@@ -295,6 +295,7 @@
     </CustomBuildStep>
     <None Include="graphics\roms3.bin" />
     <None Include="graphics\roms4.bin" />
+    <None Include="readme.md" />
     <None Include="roms\DISK.BIN" />
     <None Include="roms\EA_Utils.bin" />
     <None Include="roms\fbForth200_3.bin" />

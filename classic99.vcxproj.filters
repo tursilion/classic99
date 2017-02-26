@@ -452,6 +452,7 @@
     <None Include="roms\fbForth200_3.bin">
       <Filter>roms\apps</Filter>
     </None>
+    <None Include="readme.md" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="2xSAI">

@@ -819,7 +819,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_HELP_ABOUT:
 				sprintf(szTemp, "Classic99 %s\n"\
-								"©1994-2016\n\n"\
+								"©1994-2017\n\n"\
 								"By Mike Brent (Tursi)\n"\
 								"ROM data included under license from Texas Instruments.\n\n"\
 								"So many people in the TI community make this all worthwhile!\n\n"\

@@ -1755,7 +1755,15 @@ Cartridge System:
 -change image disk sector allocation - FDRs at the beginning, data at the end. Makes for nicer layout
 -disabled VDP warning, it's still not quite right
 
+-----------------------------------------------
+26 February 2017
 
+-fix bug with multi-bit CRU instructions - byte flag was set wrong way around and broke register auto-increment
+-add support for F18A SPI flash interface (upgrade program runs now)
+-also means that CKON, CKOFF, LDCR and STCR on the F18A work now
+-fix sector allocation when writing to disk image files to more closely match original TI controller
+-add support for more of the F18A status registers and reading them from the host
+-move source project to github after this
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)

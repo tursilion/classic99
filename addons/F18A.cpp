@@ -128,7 +128,7 @@ void spi_try_command() {
 				bytesleft = 1;
 				activecmd = CMD_READ_MODE2;
 				address = reg32_in&0x0fffff;
-				debug_write("SPI Set read address to %p", address);
+				//debug_write("SPI Set read address to %p", address);
 				pending_out = pFlash[address++]<<24;
 				address &= 0x0fffff;
 				break;
@@ -137,7 +137,7 @@ void spi_try_command() {
 				bytesleft = 1;
 				activecmd = CMD_READ_MODE2;
 				address = reg32_in&0x0fffff;
-				debug_write("SPI Set read address to %p", address);
+				//debug_write("SPI Set read address to %p", address);
 				pending_out = 0xffffffff;		// dummy read
 				break;
 
@@ -204,7 +204,7 @@ void spi_try_command() {
 
 			case CMD_PP_MODE3:
 				// flush the data out - remember we can only set 1's to 0's
-				debug_write("Sector write - %p", address);
+				//debug_write("Sector write - %p", address);
 
 				for (int idx=0; idx<256; idx++) {
 					pFlash[address+idx] &= pagedata[idx];
@@ -218,7 +218,7 @@ void spi_try_command() {
 			case CMD_SE:
 				// TODO: this shouldn't happen unless chip select is released
 				address = reg32_in&0x0f0000;
-				debug_write("Sector erase of SPI flash - %p", address);
+				//debug_write("Sector erase of SPI flash - %p", address);
 				memset(&pFlash[address], 0xff, 65536);
 				reg32_in=0;
 				activecmd = 0;
@@ -338,15 +338,14 @@ void spi_flash_enable(bool enable) {
 
 	if (bEnable) {
 		// start new command
-		debug_write("SPI enable");
+		//debug_write("SPI enable");
 		bitcount = 0;
 		bytesleft = 0;
 	} else {
-		debug_write("SPI disable");
+		//debug_write("SPI disable");
 		switch (activecmd) {
 		case CMD_PP_MODE2:
 			activecmd = CMD_PP_MODE3;
-			debug_write("activecmd changed from %02X to %02X (bytesleft=%d)", CMD_PP_MODE2, CMD_PP_MODE3, bytesleft);
 			break;
 		}
 		spi_try_command();
@@ -356,13 +355,6 @@ void spi_flash_enable(bool enable) {
 }
 
 void clock() {
-	static int oldcmd = 0;
-
-	if (oldcmd != activecmd) {
-		debug_write("activecmd changed from %02X to %02X", oldcmd, activecmd);
-		oldcmd = activecmd;
-	}
-
 	reg32_in <<= 1;
 	pending_out <<= 1;
 }
