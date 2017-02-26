@@ -1,0 +1,143 @@
+* Cartridge ROM header
+	AORG >6000
+	DATA >AA01,>0100,>0000,START		* updated with pointer to generated header
+	DATA >0000,>0000
+
+* other patched information here
+INTROT
+	DATA PROTECT						* address of the FCTN-4 interrupt routine, else patch >0000 here to disable it
+GPLADR
+	DATA >0000							* current GPL address - 1
+CPYSIZ
+	DATA >2000							* number of bytes in second VDP copy bank
+VDPLDR
+	DATA >0043							* start address for VDP write, byte flipped and bit set - set to >0040 if the screen is being written
+
+* table of register data for VDP, in the order bytes are written
+VDPREG
+	DATA >0080,>F082,>0C83,>F884,>8685,>F886,>0387,>E081
+	
+* a text string to give a clue to anyone who looks at the dump
+	TEXT 'Classic99 TI BASIC Dump!'
+
+* Used to set addresses and write registers. Start with the byte-swapped version in R0
+VWADR
+	MOVB R0,@>8C02	* write first control byte
+	SWPB R0
+	MOVB R0,@>8C02	* write second control byte
+	B *R11
+	
+* This function is copied to scratchpad so it can copy from any bank
+* also just a little faster. :)
+* R0 = Address in ROM to copy from
+* R1 = number of bytes to copy
+* R2 = Cartridge bank to copy from
+* R3 = Cartridge bank to return to
+COPYLP
+	MOV R0,*R2			* bankswitch
+NEXTCP
+	MOVB *R0+,@>8C00	* copy byte to VDP
+	DEC R1
+	JNE NEXTCP
+	MOV R0,*R3			* switch back
+	B *R11
+
+* entry point here
+START
+	LWPI >8300		* safe workspace - the only console memory (except VDRP DSR buffers) we don't overwrite till the end!
+	LI R0,>8081		* R1, screen off, ints off, 16k mode
+	BL @VWADR
+	
+* now that the screen is off, we can mess around in VRAM. 
+* first copy the copy loop to scratchpad so we can bank switch
+	LI R0,COPYLP
+	LI R1,>8308		* address of R4 (R4-R10 unavailable)
+	LI R2,7			* copy function is 7 words long
+LP1
+	MOV *R0+,*R1+
+	DEC R2
+	JNE LP1
+	
+* now, clear the screen. In BASIC the space character is >80, not >20
+* if a screen was provided, we'll overwrite this next.
+	LI R0,>0040		* write address of >0000
+	BL @VWADR
+	LI R0,>8000		* space character
+	LI R1,768		* number of bytes
+SCRLP
+	MOVB R0,@>8C00	* write one byte
+	DEC R1
+	JNE SCRLP
+	
+* set the VDP write address
+	MOV @VDPLDR,R0	* set write address of >0300 (or >0000 if screen available)
+	BL @VWADR
+
+* first bank copy - starts at >6300 and is >1D00 long (even if it's not, it is ;) )
+	LI R0,>6300
+	LI R1,>1D00
+	LI R2,>6000		* startup bank
+	MOV R2,R3		* return to same bank
+	BL @>8308		* call copy function
+	
+* second bank copy - starts at >6000 and length is in the header
+	LI R0,>6000
+	MOV @CPYSIZ,R1
+	LI R2,>6002		* other bank
+	LI R3,>6000		* return to startup bank
+	BL @>8308		* call copy function
+	
+* set all the registers to the correct TI BASIC values.
+* we do R1 last so the screen pops up in the right mode
+	LI R0,VDPREG
+	LI R1,16			* number of bytes to write
+REGLP
+	MOVB *R0+,@>8C02	* VDP command address
+	DEC R1
+	JNE REGLP
+	
+* the almost last thing we do is scratchpad. We do a straight loop for all
+* except the registers we are using - those we overwrite manually
+	LI R0,>6206		* source in ROM (starting at R3)
+	LI R1,>8306		* destination in RAM
+	LI R2,125		* number of words (250 bytes / 2)
+PADLP
+	MOV *R0+,*R1+
+	DEC R2
+	JNE PADLP
+	
+* before we start up - load the console interrupt with the protection code (or not if it was cleared)
+	MOV @INTROT,@>83C4
+	
+* overwrite the last 3 registers explicitly - we have lots of room for it!
+	MOV @>6204,@>8304	* R2
+	MOV @>6202,@>8302	* R1
+	MOV @>6200,@>8300	* R0
+	
+* Set the correct GROM address (it matters here!)
+	MOVB @GPLADR,@>9C02
+	MOVB @GPLADR+1,@>9C02
+	
+* ALL DONE! Jump to the interpreter. In this embedded version, the emulator
+* makes sure that the save state occurs when the GPL interpreter is at
+* >0070, about to start a new instruction cycle.
+* Even better, the GPL and VDP addresses are both undefined at this point, 
+* so we don't have to worry about them.
+	LWPI >83E0		* GPLWS
+	B @>0070
+	
+* The protection code itself - checks if the BASIC program is still running.
+* if not, it resets the console.
+PROTECT
+	MOV @>8344,R0	* Test state - 0=not running
+	JEQ REBOOT
+	MOV R11,R0      * Save return address (CLEAR test only uses R12)
+	BL @>0020		* use the console routine to check CLEAR
+	JEQ REBOOT
+	B *R0			* all okay
+	
+REBOOT
+	CLR @>83C4		* Disable interrupt
+	BLWP @>0000		* reset
+	
+	END

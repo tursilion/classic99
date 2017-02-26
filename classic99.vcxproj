@@ -1,0 +1,419 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Template|Win32">
+      <Configuration>Template</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{CD39BEDB-A5B4-427D-9C21-3078DF1026CE}</ProjectGuid>
+    <RootNamespace>classic99</RootNamespace>
+    <SccProjectName>
+    </SccProjectName>
+    <SccAuxPath>
+    </SccAuxPath>
+    <SccLocalPath>
+    </SccLocalPath>
+    <SccProvider>
+    </SccProvider>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">.\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">.\Release\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">.\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">.\Debug\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</LinkIncremental>
+    <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+    <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+    <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+    <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+    <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Template|Win32'" />
+    <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Template|Win32'" />
+    <ExecutablePath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin;C:\Program Files %28x86%29\NASM;$(ExecutablePath)</ExecutablePath>
+    <ExecutablePath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin;$(ExecutablePath)</ExecutablePath>
+    <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">console;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Include;$(IncludePath)</IncludePath>
+    <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(IncludePath)</IncludePath>
+    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86;$(LibraryPath)</LibraryPath>
+    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x86;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Midl>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>true</MkTypLibCompatible>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <TypeLibraryName>.\Release/classic99.tlb</TypeLibraryName>
+      <HeaderFileName>
+      </HeaderFileName>
+    </Midl>
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DIRECTSOUND_VERSION=0x0800;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeaderOutputFile>.\Release/classic99.pch</PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
+      <ObjectFileName>.\Release/</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
+      <BrowseInformation>true</BrowseInformation>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <OmitFramePointers>true</OmitFramePointers>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>ws2_32.lib;dxguid.lib;odbc32.lib;odbccp32.lib;dsound.lib;winmm.lib;vfw32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>.\Release/classic99.exe</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>.\Release/classic99.pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <TargetMachine>MachineX86</TargetMachine>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\Release/classic99.bsc</OutputFile>
+    </Bscmake>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Midl>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>true</MkTypLibCompatible>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <TypeLibraryName>.\Debug/classic99.tlb</TypeLibraryName>
+      <HeaderFileName>
+      </HeaderFileName>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DIRECTSOUND_VERSION=0x0800;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeaderOutputFile>.\Debug/classic99.pch</PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>.\Debug/</AssemblerListingLocation>
+      <ObjectFileName>.\Debug/</ObjectFileName>
+      <ProgramDataBaseFileName>.\Debug/</ProgramDataBaseFileName>
+      <BrowseInformation>true</BrowseInformation>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <AdditionalIncludeDirectories>console</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+      <UseUnicodeForAssemblerListing>false</UseUnicodeForAssemblerListing>
+      <StringPooling>true</StringPooling>
+      <FloatingPointExceptions>false</FloatingPointExceptions>
+      <CreateHotpatchableImage>false</CreateHotpatchableImage>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <OpenMPSupport>false</OpenMPSupport>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>ws2_32.lib;dxguid.lib;odbc32.lib;odbccp32.lib;dsound.lib;winmm.lib;vfw32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>.\Debug/classic99.exe</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>.\Debug/classic99.pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <TargetMachine>MachineX86</TargetMachine>
+      <PreventDllBinding>false</PreventDllBinding>
+      <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
+      <CreateHotPatchableImage>X64Image</CreateHotPatchableImage>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <AssemblyDebug>true</AssemblyDebug>
+      <LargeAddressAware>false</LargeAddressAware>
+      <TerminalServerAware>false</TerminalServerAware>
+      <OptimizeReferences>false</OptimizeReferences>
+      <EnableCOMDATFolding>false</EnableCOMDATFolding>
+      <FixedBaseAddress>false</FixedBaseAddress>
+      <SupportUnloadOfDelayLoadedDLL>false</SupportUnloadOfDelayLoadedDLL>
+      <SupportNobindOfDelayLoadedDLL>false</SupportNobindOfDelayLoadedDLL>
+      <CLRThreadAttribute>DefaultThreadingAttribute</CLRThreadAttribute>
+      <CLRUnmanagedCodeCheck>false</CLRUnmanagedCodeCheck>
+      <CLRSupportLastError>Enabled</CLRSupportLastError>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+    </Link>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\Debug/classic99.bsc</OutputFile>
+    </Bscmake>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="addons\F18A.cpp" />
+    <ClCompile Include="addons\loadsave_brk.cpp" />
+    <ClCompile Include="addons\ubergrom.cpp" />
+    <ClCompile Include="console\cpu9900.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="console\sound.cpp" />
+    <ClCompile Include="console\Tiemul.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="console\tivdp.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="addons\WindowProc.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="2xSaI\2xsaiwin.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="debugger\9900dism.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="addons\avi.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="debugger\bug99.cpp" />
+    <ClCompile Include="addons\makecart.cpp" />
+    <ClCompile Include="addons\mpd.cpp" />
+    <ClCompile Include="debugger\dbghook.cpp" />
+    <ClCompile Include="disk\TICCDisk.cpp" />
+    <ClCompile Include="keyboard\kb.cpp" />
+    <ClCompile Include="keyboard\keyboard.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="keyboard\ti.cpp" />
+    <ClCompile Include="addons\ams.cpp" />
+    <ClCompile Include="addons\rs232_pio.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="disk\ClipboardDisk.cpp" />
+    <ClCompile Include="disk\ClockDisk.cpp" />
+    <ClCompile Include="disk\disk.cpp">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="disk\diskclass.cpp" />
+    <ClCompile Include="disk\FiadDisk.cpp" />
+    <ClCompile Include="disk\ImageDisk.cpp" />
+    <ClCompile Include="ubercombined.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="addons\F18A.h" />
+    <ClInclude Include="addons\loadsave_brk.h" />
+    <ClInclude Include="addons\ubergrom.h" />
+    <ClInclude Include="console\cpu9900.h" />
+    <ClInclude Include="console\sound.h" />
+    <ClInclude Include="console\tiemul.h" />
+    <ClInclude Include="debugger\dbghook.h" />
+    <ClInclude Include="disk\TICCDisk.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="2xSaI\2xSaI.h" />
+    <ClInclude Include="debugger\bug99.h" />
+    <ClInclude Include="addons\makecart.h" />
+    <ClInclude Include="addons\mpd.h" />
+    <ClInclude Include="keyboard\kb.h" />
+    <ClInclude Include="keyboard\Scancodes.h" />
+    <ClInclude Include="keyboard\ti.h" />
+    <ClInclude Include="addons\ams.h" />
+    <ClInclude Include="addons\rs232_pio.h" />
+    <ClInclude Include="disk\ClipboardDisk.h" />
+    <ClInclude Include="disk\ClockDisk.h" />
+    <ClInclude Include="disk\diskclass.h" />
+    <ClInclude Include="disk\FiadDisk.h" />
+    <ClInclude Include="disk\ImageDisk.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="addons\BASIC_ROM_header.a99">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </None>
+    <None Include="graphics\cursor1.cur" />
+    <None Include="graphics\icon1.ico" />
+    <CustomBuildStep Include="addons\BASIC_ROM_header.a99">
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </CustomBuildStep>
+    <None Include="graphics\roms3.bin" />
+    <None Include="graphics\roms4.bin" />
+    <None Include="roms\DISK.BIN" />
+    <None Include="roms\EA_Utils.bin" />
+    <None Include="roms\fbForth200_3.bin" />
+    <None Include="roms\GPL%40LOADER" />
+    <None Include="roms\RXBASSM1" />
+    <None Include="roms\RXBASSM2" />
+    <None Include="roms\RXBASSM3" />
+    <None Include="roms\RXBC.Bin" />
+    <None Include="roms\RXBCSAVE" />
+    <None Include="roms\RXBCSAVE2" />
+    <None Include="roms\RXBD.Bin" />
+    <None Include="roms\RXBEDIT" />
+    <None Include="roms\RXBEDIU" />
+    <None Include="roms\RXBG.Bin" />
+    <None Include="roms\XB27_EEPROM_060315.bin" />
+    <None Include="roms\XB27_GROM_060315.bin" />
+    <None Include="roms\XB27_ROM_060315.bin" />
+    <None Include="whatsnew.txt" />
+    <None Include="roms\994AGROM.BIN" />
+    <None Include="roms\994AROM.BIN" />
+    <None Include="roms\ACERC.bin" />
+    <None Include="roms\ACERP.bin" />
+    <None Include="roms\ALPINERC.BIN" />
+    <None Include="roms\ALPINERG.BIN" />
+    <None Include="roms\AMAZEG.BIN" />
+    <None Include="roms\AMI99DSK.BIN" />
+    <None Include="roms\AMSTEST4" />
+    <None Include="roms\ASHOE" />
+    <None Include="roms\ASSM1.bin" />
+    <None Include="roms\ASSM2.bin" />
+    <None Include="roms\BlakjakG.Bin" />
+    <None Include="roms\CarWarsG.Bin" />
+    <None Include="roms\ChishlmC.Bin" />
+    <None Include="roms\ChishlmG.Bin" />
+    <None Include="roms\CON22G0.GRM" />
+    <None Include="roms\con22g1.grm" />
+    <None Include="roms\CON22G2.GRM" />
+    <None Include="roms\con22r0.rom" />
+    <None Include="roms\CON4G0.GRM" />
+    <None Include="roms\CON4G1.GRM" />
+    <None Include="roms\CON4G2.GRM" />
+    <None Include="roms\CON4R0.ROM" />
+    <None Include="roms\DEMOG.BIN" />
+    <None Include="roms\DiagnosG.Bin" />
+    <None Include="roms\EDIT1.BIN" />
+    <None Include="roms\FATHOMC.BIN" />
+    <None Include="roms\FATHOMD.BIN" />
+    <None Include="roms\FATHOMG.BIN" />
+    <None Include="roms\FootbalG.Bin" />
+    <None Include="roms\BASIC_ROM_header.bin" />
+    <None Include="roms\HomFDecG.Bin" />
+    <None Include="roms\HustleG.Bin" />
+    <None Include="roms\LOGOC.BIN" />
+    <None Include="roms\LOGOG.BIN" />
+    <None Include="roms\MinChalG.Bin" />
+    <None Include="roms\MiniMemC.Bin" />
+    <None Include="roms\MiniMemG.Bin" />
+    <None Include="roms\MunchMnC.Bin" />
+    <None Include="roms\MunchMnG.Bin" />
+    <None Include="roms\p1f00g_0000_f800.GRM" />
+    <None Include="roms\PARSECC.BIN" />
+    <None Include="roms\PARSECG.BIN" />
+    <None Include="roms\PCardC.ROM" />
+    <None Include="roms\PCardD.ROM" />
+    <None Include="roms\PENNIES" />
+    <None Include="roms\QUEST" />
+    <None Include="roms\RS232.Bin" />
+    <None Include="roms\SPCHROM.BIN" />
+    <None Include="roms\SSALOAD.BIN" />
+    <None Include="roms\ssaram.bin" />
+    <None Include="roms\SSD.BIN" />
+    <None Include="roms\SSE.BIN" />
+    <None Include="roms\TE-IIC.BIN" />
+    <None Include="roms\TE-IIG.BIN" />
+    <None Include="roms\TI-InvaC.Bin" />
+    <None Include="roms\TI-InvaG.Bin" />
+    <None Include="roms\TIEAG.BIN" />
+    <None Include="roms\TIEXTC.BIN" />
+    <None Include="roms\TIEXTD.BIN" />
+    <None Include="roms\TIEXTG.BIN" />
+    <CustomBuildStep Include="roms\tinopoly.ams">
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </CustomBuildStep>
+    <None Include="roms\TOMBCITC.BIN" />
+    <None Include="roms\TOMBCITG.BIN" />
+    <None Include="roms\TunDoomG.Bin" />
+    <None Include="roms\V-CHESSC.BIN" />
+    <None Include="roms\V-CHESSG.BIN" />
+    <None Include="roms\WUMPUSG.BIN" />
+    <None Include="roms\ZEROZAPG.BIN" />
+    <None Include="roms\EPSGMODG.BIN" />
+    <None Include="roms\TIPlayerC.BIN" />
+    <None Include="roms\tiworkshop379.bin" />
+    <None Include="roms\mm2\DummyG.bin" />
+    <None Include="roms\mm2\TIMM2PIC_C" />
+    <None Include="roms\mm2\TIMM2PIC_P" />
+    <None Include="roms\mm2\timusic" />
+    <None Include="roms\mm2\timusid" />
+    <None Include="roms\mm2\timusie" />
+    <None Include="roms\mm2\timusif" />
+    <None Include="roms\chara1" />
+    <None Include="roms\DEMQ" />
+    <None Include="graphics\ti_keyboard_map.bmp" />
+    <None Include="roms\TurboForthC.BIN" />
+    <None Include="roms\TurboForthD.BIN" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Script2.rc">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties RESOURCE_FILE="Script2.rc" />
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>

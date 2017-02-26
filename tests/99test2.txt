@@ -1,0 +1,297 @@
+
+;*****************************************************************************
+;
+; TI9900 Self-Test
+;
+; Modified from the TI990 boot loader ROM; TI990 Handbook, 6-11 (page 218).
+; by Scott L Baker, June 2002
+;
+; Assembled using Macro Assembler AS V1.42 (Alfred Arnold et. al.)
+;
+;
+;*****************************************************************************
+
+          RELAXED ON
+          SUPMODE ON
+
+          ORG  0x0000
+
+          WORD 0xF800         ; initial WP
+          WORD START          ; initial PC
+
+; cpu test routine entry point
+
+START:    SBO  0x0B           ; switch "Fault" light on
+          LI   R8,0x7FFF
+          INCT R8
+          JNO  ERROR1         ; stop if no overflow
+          MOV  R0,R1
+          MOV  R8,R0
+          SRA  R8,5
+          SRL  R8,1
+          SRA  R8,0
+          MOV  R1,R0          ; restore R0
+          CI   R8,0x3F00
+          JNE  ERROR1         ; stop if different from the value expected
+          SETO R4
+          ANDI R4,0x5555
+          BL   @ERR1          ; this should clear R4, or stop if it fails
+          ORI  R4,0x5555
+          BL   @ERR1
+          LIMI 0x0001         ; effectively sets least significant bit in ST
+          BLWP @INDIR1        ; jump indirect to CONT1
+
+; should be called with R4 == 0x5555
+
+ERR1:     ORI  R4,0xAAAA
+          INC  R4
+          JNE  ERROR1         ; stop if R4 != 0
+          B    *R11
+
+; continue on...
+
+CONT1:    STST R11
+          SRA  R11,1          ; test LSBit in ST
+          JNC  ERROR1         ; stop if not set
+          CLR  R15            ; -> clear ST
+          LI   R14,CONT2      ; actual jump address
+          RTWP
+
+INDIR1:   WORD 0xF7EC         ; BLWP vector
+          WORD CONT1
+
+; continue on...  This gets tricky :-) .
+
+CONT2:    STST R7
+          MOV  R7,R1
+          JNE  ERROR1         ; stop if ST not clear
+
+LOOP1:    MOV  R1,R2
+          SRC  R2,5
+          SWPB R2             ; effectively rotate R2 3 bits left
+          MOV  R2,R11
+          ABS  R11
+
+          MOV  R2,R3
+          SLA  R3,1           ; test R2 sign bit
+          JNC  CONT3          ; start if R2 is positive
+
+          INV  R11            ; R11 = ~R11
+          C    R11,R2         ; so R11 = R2-1
+          JH   ERROR1         ; stop the machine if R11>R2
+          JLT  OK1            ; huh ??? what if R2 == 0x8000 ? This must be a bug !
+
+ERROR1:   JMP  ERROR1         ; stop everything
+
+OK1:      C    R2,R11
+          JL   ERROR2         ; we still have R11 = R2-1...
+          INCT R11
+          DEC  R11            ; now R11 == R2
+
+; we jump here when R2 >= 0
+
+CONT3:    C    R11,R2
+          JNE  ERROR2
+
+          MOV  R1,R3
+          A    R2,R3
+          MOV  R1,R4
+          NEG  R4
+          S    R2,R4
+          NEG  R4
+          CB   R3,R4           ; we should have R3==R4
+          JH   ERROR2          ; stop if logically higher
+          JLE  CONT4           ; jump there if OK
+          JMP  ERROR2          ; stop if arithmetically greater
+
+CONT4:    CB   @0xF807,@0xF809 ; compare R3 MSB and R4 MSB
+          JNE  ERROR2          ; stop if different
+          COC  R4,R3           ; (R3 & R4) == R3 ?
+          JNE  ERROR2
+          INV  R4
+          CZC  R4,R3           ; (R3 & ~R4) == R3 ?
+          JNE  ERROR2
+          INV  R4
+          SB   R3,R4           ; result 0 in R4 MSB
+          JLT  ERROR2
+          JNE  ERROR2
+          SB   @0xF807,@0xF809 ; subtract LSB
+          JNE  ERROR2
+          MOVB R2,R4           ; move R2 MSB
+          MOVB @0xF805,@0xF809 ; move R2 LSB
+          AB   @0xF803,@0xF809 ; add R1 LSB
+          JNC  CONT5
+          AI   R4,0x0100       ; adjust carry if needed
+CONT5:    AB   R1,R4           ; add R1 MSB
+          C    R3,R4           ; we should still have R3 = R1+R2, too...
+          JNE  ERROR2
+          INC  R3
+          INC  R3
+          C    R4,R3
+          JEQ  ERROR2
+          JGT  ERROR2
+          DECT R3
+          C    R3,R4
+          JNE  ERROR2
+          MOV  R3,R5
+          MOV  R5,R6
+          MOV  R5,R7
+          SWPB R7             ; swap bytes (8-bit rotate)
+          SRL  R5,8
+          SLA  R6,8
+          SOC  R5,R6          ; swap bytes with another method
+          C    R6,R7
+          JNE  ERROR2
+          SRC  R6,8           ; swap bytes again
+          C    R6,R3          ; should equate the original value
+          JNE  ERROR2
+
+; now, multiply R1 and R2 with custom code, then check MPY gives the same result
+
+          LI   R10,0x0010     ; 16 bits to test
+          CLR  R11
+          CLR  R8
+          CLR  R7
+          MOV  R2,R6
+          MOV  R1,R5
+
+LOOP2:    SRA  R5,1           ; if R5 LSB is set
+          JNC  CONT6
+
+          A    R6,R11         ; add R7:R6 to R8:R11
+          JNC  AR7R8
+          INC  R8
+AR7R8:    A    R7,R8
+
+CONT6:    SLA  R7,1           ; shift R7:R6
+          SLA  R6,1
+          JOC  INCR7
+          JMP  DECR10
+INCR7:    INC  R7
+
+DECR10:   DEC  R10            ; loop
+          JNE  LOOP2
+
+          MOV  R1,R3
+          MPY  @0xF804,R3     ; = MPY R2,R3
+          C    R3,R8          ; compare MSWord
+          JNE  ERROR2
+          C    R4,R11         ; compare LSWord
+          JNE  ERROR2
+
+; now, test DIVide
+
+          C    R1,R2
+          JHE  DIV2
+          A    R1,R4          ; if R1 < R2, add R1 to MSW (R4)
+          JNC  DIV1
+SUBR4:    S    R1,R4          ; if carry, revert to normal method
+          JMP  DIV2           ; (otherwise, there might be an overflow when executing DIV)
+DIV1:     DIV  R2,R3
+          X    @SUBR4         ; = S R1,R4 (remainder should be R1, and is fixed to be 0)
+          JMP  CHKREM
+
+DIV2:     DIV  @0xF804,R3     ; compute R3:R4 / R2
+          MOV  R4,R4          ; test the remainder
+CHKREM:   JNE  ERROR2         ; should be 0
+
+; now test parity ST bit
+
+          MOVB R1,R6
+          LI   R7,0x0008      ; 8 bits to test
+          CLR  R8
+SLAR6:    SLA  R6,1
+          JNC  DECR7
+          INC  R8             ; count bits
+DECR7:    DEC  R7
+          JGT  SLAR6          ; loop if some bits left
+
+          SRC  R8,1           ; test parity
+          JNC  ABR1R7
+
+          MOVB R1,R1          ; should be odd parity
+          JOP  MOVR2R5
+ERROR2:   JMP  ERROR2
+
+ABR1R7:   AB   R1,R7          ; R7 == 0 from previous loop (remember ?)
+          JOP  ERROR2         ; should be even parity
+
+MOVR2R5:  MOV  R2,R5
+          SZC  R2,R5          ; R5 = R5 & ~R2
+          JNE  ERROR2         ; result should be 0
+          A    R2,R5          ; hence R5 = R2
+          SZCB R2,R5          ; R2 MSB & R5 MSB
+          JNE  ERROR2
+          SZCB @0xF805,@0xF80B ; R2 LSB & R5 LSB
+          JNE  ERROR2
+          SETO R11            ; R11 = 0xFFFF
+          SZC  R2,R11         ; R11 = R11 & ~R2
+          JEQ  ERROR2         ; obviously, R2 is assumed to be non-zero
+          SOCB R1,R5          ; R5 should be 0 from previous computation.
+          SWPB R5
+          SOCB @0xF803,R5     ; bit-wise OR with R1 LSB
+          SRC  R5,8           ; so R5 = R1
+          S    R1,R5
+          JNE  ERROR2
+
+          INC  R1             ; increment R1
+          CI   R1,0xFFC0
+          JH   MEMTEST        ; if R1 > 0xFFC0, bail out
+
+          MOV  R1,R6
+          LI   R4,0x0013
+          DIV  R4,R5          ; effectively computes R6 / 19  (R5 is still 0, remember ?)
+          MOV  R6,R6          ; test the remainder
+          JNE  EOLOOP1
+          AI   R1,0x03E8      ; add 1000 to R1 if R1 is multiple of 19
+EOLOOP1:  B    @LOOP1         ; and loop
+
+; this effectively results into testing a sequence :
+; 0,1,...,18,1019,1020,1021,1022,...,2032,3033,...,65467,...,65472.
+; The next value is 65473, which is greater than 0xFFC0 (65472), so we exit
+; the routine at this point.  Looks like a decent way to shuffle values.
+
+; memory test
+; we use some nasty self-compiling code
+
+MEMTEST:  SETO R10
+          LI   R2,0x02E0      ; LWPI
+          CLR  R3             ; 0x0000
+          LI   R4,0x0460      ; B @
+          LI   R5,0xFDD0      ; 0xFDD0
+
+; memtest loop start
+
+MEMLOOP:  CI   R3,0xF800
+          JEQ  EOMLOOP        ; don't test system area 0xF800-0xFFFF
+          STWP R6
+          C    R3,R6          ; do not overwrite our workspace.
+          JNE  MSKP1          ; geez, the previous test already ensured this !
+          AI   R3,0x0020
+MSKP1:    MOV  *R3,R1         ; save future R0 register
+
+          B    R2             ; this emulates missing "LWP R3" instruction
+          XOR  @0xF814,R0     ; XOR old R10 with new R0
+          LWPI 0xF800         ; restore old WP
+          INV  R1             ; R1 = ~R1
+          MOV  R1,R7
+          C    R1,*R3         ; should give the same result as R0 = R0 ^ 0xFFFF
+          JNE  MOVR3
+          INV  *R3            ; Restore memory location
+          XOR  *R3+,R1        ; result should be 0xFFFF
+          INC  R1
+          JEQ  MEMLOOP        ; try next word if OK
+
+          DECT R3             ; else restore R3
+          INV  R7             ; restore value read in RAM
+MOVR3:    MOV  R3,R6
+          SLA  R6,3           ; if the address in on a 8kb-boundary, we must only have left
+          JEQ  EOMLOOP        ; the RAM area, so we continue on (?)
+          MOV  R7,R2
+          IDLE                ; else stop the machine
+          MOV  @0xFFF8,R1     ; read pointer to boot routine
+EOMLOOP:  B    *R1            ; and jump here on PASS !!
+
+
+INDADDR:  WORD EOMLOOP
+

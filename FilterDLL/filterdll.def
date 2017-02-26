@@ -1,0 +1,7 @@
+EXPORTS
+	sms_ntsc_init		@1
+	sms_ntsc_blit		@2
+	sms_ntsc_scanlines	@3
+
+
+

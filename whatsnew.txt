@@ -1,0 +1,1779 @@
+(new stuff is at the bottom, above the TODOs)
+
+--------------------
+28 Mar 99
+
+A long time ago I implemented the speed improvement in the core I hinted
+at in the original release.. it made about a 15% improvement. (Using table
+lookup instead of tearing apart the opcode every cycle).
+
+Did some work on cleaning up a little - wrote a simulator for the console
+interrupt routine. It's incomplete, but it improved compatibility
+remarkably! Between that, and actually loading the right amount of
+cartridge data, a lot of stuff that didn't even try before now runs.
+
+It also means I scan for FCTN (ALT) = now. ;) Though other FCTN keys are
+NOT implemented. I notice FCTN = crashes sometimes - I think if it's held
+down and repeats once or twice. I'll get to checking that.
+
+--------------------
+24-25 April 99
+
+Quite a few changes, actually. I made a few minor internal changes to the emulator, then
+completely rewrote the VDP core to use a tile-based approach instead of drawing every
+single pixel. I was very tired when I did this, and the first attempt, although
+boosting the speed of the system 3 times, couldn't handle color. ;) The second attempt
+still roughly doubled performance on my system.
+
+Sprites and other graphics modes are still not supported, though the new core makes
+supporting text mode awfully easy. ;)
+
+Then I added a flag - the emulator now redraws the screen only if a write to VDP RAM
+or a VDP register occurs, otherwise it skips that step, as it takes time. This helped
+speed a bit, too.
+
+Finally, I ported the whole mess to Win32, using MS Visual C++ 5.0 and WinAllegro, the
+excellent port of the DOS Allegro library. To my surprise, the emulation instructions
+per second jumped about 25%! Impressive. :)
+
+I fixed the breakpoint problem in BASIC by telling the CRU to return '1' for everything,
+instead of reading what was written (what the heck was I thinking?). The keyboard hack
+is still in there, and the console interrupt simulator is still incomplete.
+
+Various tweaks later, and we're at this stage. 
+
+Now, originally it ran in standard VGA 320x200 mode... but my documention says that not
+all video drivers under windows support that, so if it can't set that mode, it will try
+640x480x256 colors instead. You will need at least 512k video RAM to pull that off. Also,
+if it uses this resolution, everything will be squished into a corner of the screen.
+Tell me if it matters, and I'll incorporate a scaling routine for you. 320x200x256 works
+on my system, so if nobody else cares I don't need to incorporate it. ;)
+
+You will likely need Direct X 5.0.... I don't use anything fancy, but the WinAlleg library
+expects that version. The current is 6.1, so if you're older you're getting behind. ;)
+
+I'll see about adding a menu and simplifying the config next time around.
+
+--------------------
+30 April 99
+
+Not a release, but quite a few hours poking around the console interrupt simulator.
+Added user-defined interrupt support, that worked first try, surprisingly. At least,
+I think it did, because several games (like Star Trek) began working after that.
+
+I've sorta been working on it daily, and so didn't mention earlier that the sprites are
+implemented with 100% support now, and a few other changes were made to the way the
+screen is drawn.. though you won't see it. But it should tie up Windows less (if you
+noticed at all.) I'm not sure if I have sprite priorities right, though, even though
+when I compare my Emulators priorities to V9T9s in XB it looks the same. ;) Also, I
+don't have any support for the 5-sprite-on-a-line flicker, and I doubt I will ever
+bother doing that, as it's just silly. Sprite coincidences are not checked yet, but
+very few games outside of XB ever used that feature.
+
+Modified the VDP interrupt timer to count using the GPL status register like the real
+thing does. May not really matter, but it doesn't hurt my code any.
+
+Modified the system to check the status register and see whether or not it's allowed
+to run the interrupt routine, and also to check if the VDP is actually supposed to
+generate an interrupt. If an interrupt is supposed to happen, and the interrupt mask
+(LIMI) is set to 0, a flag is set to queue the interrupt to occur as soon as it's
+allowed to.
+
+Question! Is this correct behaviour? How would we test it? It seems to work. But is
+the interrupt allowed to wait to run, or is it lost?
+
+The standard practice of coding LIMI 2;LIMI 0 in your program seems to suggest that
+VDP interrupts CAN wait, otherwise we're not giving it much of a window.
+
+A lot of games are flagged as 'slow' in my database, but that should be fixed now that
+the interrupt routine is working correctly.
+
+Also, went through and optimized the multiply instruction and all of the jump
+instructions - it made a difference, too! The emulator is regularly hitting over
+1,000,000 instructions/second on my PC now. :)
+
+Configuration is still coming.. the TIDATA file is getting awkward. But note it! That
+will probably be a fixed format when I do get things rolling.
+
+Big time thanks to Darrin (Docwadd@aol.com) for support and encouragement, without his
+effort testing and debugging to date would have been a lot less informative!
+
+Thanks also to Mark Van Coppennolle of the PC99 team for an encouraging email and a hint
+about the funky XB things I was seeing. However, I couldn't reply because his reply
+address was messed up, and I deleted the original message where he had it typed
+correctly in his sig. My oops. ;)
+
+-------------------------------
+18 May 99
+
+The much-promised config routine will hafta wait, it's boring. ;)
+
+Sound and CRU keyboard scanning added. Once the keyboard responds correctly I'll likely
+release this version. Notes above on the sound support... still have to add the noise
+channel (need to hook up the TI and sample the noises ;) ). Volume control is not working
+because WinAllegro doesn't support it, but I at least hacked in a way to turn OFF the
+channel when it's supposed to be silent.
+
+The games I had flagged before as SLOW *do* have better timing now.
+
+Some things are working, some things are broken.. fixing everything is a bit tricky as
+the hardware doesn't all exist yet. ;)
+
+As for the keyboard... it responds as a TI keyboard. So the function keys don't do anything,
+and so on. If you want a quote you'll need to press ALT-P (FCTN-P), and so on... the keys
+are not fully remapped. This is just a basic addition to get the games playing. ;)
+
+-------------------------------
+26 Jun 99
+
+One thing to note on the keyboard, only left shift works, either ALT responds as the TI's
+FCTN. I've noticed it doesn't come back from switching out to Windows at all, so don't do it. 
+That's something funny in the WinAllegro library. In addition, the author of WinAllegro has 
+told me he's discontinued the project, and most of it is incorporated into the main Allegro 
+project.. so eventually I'll have to convert it over to THAT!
+
+(From Amiga, to PC DOS with Allegro, to PC Windows with WinAllegro, to PC Windows 
+with Allegro... tsk.)
+
+Ok! There were some bugs in a few of the opcodes, I think they're fixed now. I wasn't 
+resetting the status flags for some instructions. CRU scanning of keyboard and joysticks 
+got a major overhaul... a combination of tweaking the CRU routine and fixing opcode 
+bugs has got Alpha Lock emulation working, and joystick nearly working. The joystick,
+mapped to the arrow keys and TAB, responds ONLY if you hit diagonals, but it does at 
+least respond correctly now. The keyboard seems to work 100% finally.
+
+Except, of course, that it's a TI keyboard. ;) I'll map it to the PC keyboard 
+eventually.
+
+Many of the games are working now thanks to CRU scanning, and for the record, XB 
+lowercase letters appear now, just as I was told they would. How absolutely bizarre..
+does anyone know the piece of code in XB that checks this? I'd love to see that...
+
+Enjoy!
+
+-------------------------------
+5 July 99
+
+After an attempted discussion on the TI mailing list, which seems to have been taken as
+attempts to bash PC99, the commercial emulator, I've decided to cease major efforts on
+this project and do something more enjoyable. ;)
+
+The new purpose of this Emulator is to run the original Super Space Acer, a game I 
+created ages ago, so that I can distribute it with the PC version I'm working on. ;) 
+Since the code will be horribly hacked apart to make everything work the way I want 
+it to, I'm only adding a few more things before releasing this to the world.
+
+Today I added the DSK1 support - program image file loading works sweetly. I also
+corrected a bug with the VDP status not setting the VDP interrupt bit, so now C99 
+programs load correctly. I also added a very simple tool that will show you a 
+disassembly of the current program as it runs... press HOME to turn it on, and END 
+to turn it off. It's a low-res font and read-only. Pressing F1 (it may take more 
+than a tap!) will stop and single-step the emulator, letting you watch program flow. 
+Pressing F2 lets it run full speed again. When single stepping, you will not get 
+response from any keys other than F1 or F2.
+
+(It would have been nice, if I had proceeded with this, to kick the screen into 
+640x480, and let you watch the TI screen in one corner, see the disassembly in a
+second corner, see the registers and a memory dump in the third, and had a little 
+control panel/hex editor in the fourth. Wouldn't it? ;) )
+
+TODO before quitting - noise support - though possibly not fully. And Bitmap graphics 
+support (if I feel nice, I'll toss in a few other toys before quitting, but those two 
+are the main list.)
+
+-------------------------------
+6 July 99
+
+The disassembly screen that comes up with HOME now draws the TI display in the top
+left corner, a disassembly down the left side, and a register dump under the TI
+display. F1 still single-steps, F2 resumes. F3 changes the color of the text, in case
+you can't see it. It's not 100%, there are some glitches. But it's shown there is
+likely a bug in the way BLWP/RTWP is handled which is crashing some games. Will check
+that out.
+
+Also, Bitmap mode is now implemented, I believe correctly, and Text mode is also
+implemented. Multicolor mode is ignored as I can't test it anyway.
+
+Finally, the '#' switches in the TIDATA file work (the #FRAMESKIP worked in the last
+release, actually).
+
+#FRAMESKIP n		- skip 'n' video redraws before actually redrawing
+#KSCAN n			- (new) 0 - disable keyboard 'hack' (more accurate)
+						    1 - enable keyboard 'hack' (faster)
+
+-------------------------------
+10 July 99
+
+Emulator is now as far as it's going to go..
+Noise channel support has been added, and tested as working as listed above.
+Upgraded to a newer version of Visual C, and Allegro, so new libraries are
+in the zip file. The uploaded source is also the final public version.
+
+I also found a simple workaround for the one directory restriction... you can
+in fact pass subdirectories to the TI, and they'll work (if they already
+exist).
+
+For example, you can set up your PC directory like this:
+
+\Ami99
+\Ami99\DSK1
+\Ami99\DSK1\BASIC
+\Ami99\DSK1\XB
+... etc, and access like so:
+
+OLD DSK1.BASIC\MYGAME
+RUN "DSK1.XB\XBGAME"
+
+etc...
+
+(Remember that '\' on a TI is FCTN-Z)
+
+Of course, many programs limit you to 10 characters, but in basic and XB you can enter longer strings.
+
+Which brings me to mention filenames. This DSR uses the PC filesystem with no translation
+at all! Use sensible filenames. Since this is a Win32 program, going up to 10 characters
+is probably ok. So is using more than 10... you don't have the traditional restrictions.
+But I can't say for sure if it'll work or not, test it. Don't go overboard.
+
+And if you use V9T9 files, remember that to Ami99, a file called "MYFILENA.ME" is just
+that... on V9T9, you would use "MYFILENAME". On Ami99, use it just like it looks,
+"MYFILENA.ME"
+
+Ami99 should be able to load V9T9 files, and TIFILES files. It checks for a 00 or FF as
+the first byte, and if it isn't there, assumes a 128 byte header. This may cause grief,
+but it worked on all the files I have. ;)
+
+---------------------------------
+11 July 99
+
+I know I was done, but I couldn't resist trying to figure out what was crashing things,
+and I did.. the interrupt routine left interrupts enabled when calling user interrupt
+functions. Once I disabled that, most games started working, including the much loved
+Parsec! It's too fast, of course, on my PC.
+
+So, I added a quick speed control to the TIDATA file.. the current setting is close enough
+on my machine... but feel free to adjust it as you like. The current method of setting
+speed is based on the refresh, so in many instances it won't be rock solid, but it's
+enough to slow games down to playable where needed. ;)
+
+Finally, added a #DEBUG flag to TIDATA to start the emu in debug mode.. if you hold F1
+while starting it will single-step right away (most of the time)
+
+---------------------------------
+17 July 99
+
+Noticed a simple fix to make a small speed improvement, and implemented it, and
+added a small hack to make it interrupt closer to 60hz instead of 70hz, so music
+will play closer to the right speed. ;)
+
+----------------------------------
+6 Oct 99
+
+Implemented speech support. Bits of it were implemented before, but tonight I gave
+up on Allegro ever getting streaming right under windows and implemented it with
+dynamically created samples. Currently the resident library works correctly, although
+it pauses the thread while speaking. The overall effect is the same as the real TI,
+as normally programs would just loop and wait for the speech to complete, but it's
+important to note that when you send a >50 speak command, the software will think
+the synthesizer returned immediately. So this isn't quite right, but it works. ;)
+
+-----------------------------------
+17 Oct 99
+
+Actually started like on the 10th or so - removed all Allegro code and ported emu to
+DirectX, running it in a resizeable window. Removed the F3 debug color key, as it's
+not needed now. All graphics modes now work as well as they did in the old version.
+Sound is, however, completely broken, and there is no speech yet either. It's also
+SSSSSSLLLLLLLLOOOOOOOOOW. I'll see what I can do in future versions for that, I think
+multi-threading will help a lot. Might be time to knuckle down and do some Assembly,
+too, but a lot of the slowdown came from making the video routines completely device
+independant, so they will work on any depth, by using Windows, of course. There are a
+couple of ways I can improve that, I think, perhaps by not using the GDI, but I would
+like it to be compatible for all future machines, too.
+Anyway, I'll release today, with the new source code, as the source is a lot cleaner. ;)
+
+-------------------------------------
+23 Oct 99
+
+A little bit of tuning, and replacement of the timer system has things running a lot
+better now - the old method was lucky to get 20-30 ticks per second, this method
+gives me (close to) 60 much more reliably. There will eventually be an option to
+set it to 50 or 70 eventually. ;) Also implemented the voice channels (no noise or
+speech yet, sorry it's taking so long, but time is short ;) ). Very short sounds,
+such as the beeps in the Demo cart, may not play right, but everything else works
+well. The square wave is now generated and so the tone.wav isn't needed any more.
+Sorry if you liked using the SINE or TRIANGLE waves... if someone liked it, speak
+up and I'll add an option to generate those. I've reversed the sprite priorities, 
+and to my annoyance it made no difference in the Demonstration cart. Will someone
+*please* confirm whether sprite priorities are correct or backwards? (ie: do the
+sprites overlap in the right order). I don't have a working system to check with.
+But you'll find this release runs a lot faster, nearly as fast as the old Allegro
+version did. I still have a few things to do, so no source upload.
+
+--------------------------------------
+24 Oct 99
+
+Further revisions to the system. Speech is implemented in it's own thread, but it's
+not functioning quite right due to problems with the streaming routines, and I'm
+not positive the code itself is working quite right. The Video update has also been
+moved into it's own thread, and was rewritten to use the blitter more and the GDI
+less. It seems a bit faster, but the only thing I can say for sure is that Windows
+responds a lot better when it's in bitmap mode.
+
+Re speech, cause it's what everyone wants. It doesn't work well. Not at all. XB
+speech is sometimes legible. Games - forget it. They aren't running fast enough
+to keep the speech buffer full, it runs out of data, and you get garbled noise
+instead of speech. 
+
+For now, though, here's the code. I'm tired and I don't wanna look at this anymore
+for a little while.
+
+---------------------------------------
+15 Nov 99
+
+In response to comments on the emulation board which pointed out that the last
+build of Ami99 was not compatible with Windows 95 (only 98 and newer), I did some work
+today. I have replaced the timer system with the Win95 equivalent, and although I
+don't have a Win95 system to test on, this should work ok. ;)
+
+Also, I found a bug I'd been seeing on and off for quite a while which was more
+common in this build - ALT-Equals completely screwing up the video. It was related
+to the single-byte access of the Video chip not being reset (IE: I didn't reset
+the video processor, and it got confused as all heck.) I'm quite confident that
+bug is fixed now.
+
+Those are the only differences, this is an "emergency" release. ;)
+
+----------------------------------------
+16 Nov 99
+
+-Fixed a crash bug - illegal opcodes no longer generate errors on exit as they used to.
+-Added some of the menu options - QUIT, actually. ;) 
+-Added preliminary AVI support - currently it just saves the AVI as C:\AMI99AVI.AVI. 
+There is no sound, nor is there likely to ever be any, I'm afraid. It eats up disk 
+rather quickly, too, as it's uncompressed and 16-bit color. I'm not sure at the 
+moment how to reduce it or how to compress it, the MSDN docs are vague as best 
+(and difficult to search through.) ;) Expect about 70-80mb a minute (!!)
+Your desktop must be in 16-bit mode for this to work correctly.
+-Added 50/60hz switch.
+
+-----------------------------------------
+22 Nov 99
+
+-Found a big bug in the interrupt routine - it was being called far too often. Made a small
+change that makes a lot more sense than the original version (flagging the interrupt in the
+timer routine), and things are (a) correct, and (b) Much faster! ;) I hoped it might fix some
+crash bugs, but no, sorry.
+-This version works on Windows 95 now. Grr.
+
+------------------------------------------
+1 Dec 99
+
+-Implemented code to compress AVIs
+
+------------------------------------------
+6 Dec 99
+
+-Discovered cause of lost frames during AVI recording - contention between the AVI write routine and
+the VDP thread for control of the backbuffer. Increased speed of copy loop from the backbuffer, and
+the AVI thread releases the backbuffer much sooner, allowing a better chance. The VDP thread does not
+explicitly lock the backbuffer, it's locked only during writes and varies by video driver. This is
+better... but not perfect.
+-Fixed the sprite priorities. The reason it never made any difference before (and hence, my frustration),
+is that the sprite loop counted forward through the sprite attribute list, using the loop index only
+as a counter. Now the loop index is an index, so when I count backwards it actually GOES backwards.
+------------------------------------------
+9 Feb 00
+
+Began merge of Roland Meier's Linux-based changes and removed speech support. Will revisit speech
+when I get a better idea of how to implement it. There were too many fundamental problems with
+the way I did it.
+------------------------------------------
+11-12 Feb 00
+
+Completed code merge, began work on getting it all working in Win32. Scratchpad RAM moved from
+a "real" address of 0x8300 to 0x8000, this affects all the patches which read the CPU[] array
+directly. They've all been updated (after ripping my hair out for hours ;) ) 
+------------------------------------------
+15 Feb 00
+
+Implemented Windows 9938 mouse support. Various other tweaks and tests... passed code to
+Roland to check. :)
+------------------------------------------
+28 Feb 00
+
+Roland has finished his changes, and most stuff works in Win32. A few known issues, RESET acts
+funny wen you're in 9938 mode. Colors are probably wrong in Text2, and possibly the other
+modes as well. G4-7 are a little slow to draw.
+
+We've included Roland's FR213 Fractal Generator to test things... You can load English texts
+by selecting 7 Programkonfiguration, then 9 Load English Text. :) You will need to make the
+Window larger in Win32 to see the 80 coloumn text. :)
+
+The Linux port works, too, probably a little better right now as I'm still trying to understand
+the 9938 chipset, while Roland knows it well. ;)
+
+Some people were complaining before about Ami99 taking a LONG time to start, and running the disk
+frequently. I wonder if it's a difference between the Release and Debug builds, so I've included
+both. If you have that problem, try the Ami99Debug.exe instead, and please let me know if it's
+better!
+
+Give it a try, though, have fun! :) 
+
+--------------------------------------------
+4 Mar 00
+
+Fixed the XB crash problem - it was caused by trying to speed up CPU memory writes and checking
+the XB bank switch a bit too late. ;)
+---------------------------------------------
+25 Mar 01
+
+(Yes more than a year later)
+Just a few minor updates from old email - attempting to improve the VDP emulation.
+
+These VC++ settings were found to improve start time of release builds:
+Release build optimizations - custom:
+-Assume aliasing across function calls
+-favour fast code
+-frame pointer omission
+-full optimization
+
+-Modified VDP draw order slightly, no real changes noted
+-Corrected reset VDP access flag on data access - didn't fix anything
+-Hide mouse when over the TI Window
+-Added real joystick support (arrow keys still work, and override both sticks)
+---------------------------------------------
+14 Oct 01
+
+Mostly work on the DSR.
+-Implemented directory searching on the Windows side. 
+-Implemented the file read sector function. Implemented autodetect of file type
+on the LOAD command. (V9T9, TIFILES or RAW)
+
+Not released because the video is all messed up
+-----------------------------------------------
+10-22 November 01 - Alpha 1 Release
+
+QI Alpha Release - system-wide enhancements
+-Rewrote video blit-to-screen system
+-Added configurable stretch mode
+-Re-added DirectX support and implemented several full-screen modes
+-Improvements in the 9918 register emulation thanks to Thierry's page
+-Fixed sprite wraparound at top of screen
+-Implemented Multicolor mode
+-Implemented 'illegal' mode
+-Implemented Bitmap versions of all modes
+-AVI recording is now working flawlessly, thanks to the new buffer code
+-AVI recording also works regardless of your desktop display depth
+-Removed 9938 and Linux support. (Sorry, folkses, I can't maintain 'em)
+-Auditted CPU core for minor speedups
+-Auditted flag clearing in CPU core - several fixes
+-Improved memory handler
+-Major bugfixes involving mapping of scratchpad RAM in speedup routines
+-Removed never-to-be-used menu options, added some new ones
+-Added ability to 'paste' text to the emulated keyboard
+-(internal) Moved scratchpad back to 0x8300 because otherwise it's too confusing ;)
+-Bugfix in SAVE PROGRAM opcode on V9T9 style directories
+-Implemented proper handling of *real* console interrupt
+-Disabled write to GROM (why'd I enable that?)
+-Fixed bug autodetecting TIFILES files
+-Added switch to disable joysticks (they slow things down if they are missing)
+-----------------------------------------------
+24 November 01 - Alpha 2 Release
+Continuing QI work...
+-Fixed bug in the CB instruction (probably all C instructions) that was confusing
+the optimizer - Ami99 now seems to work correctly with optimizations on. Pre-emptively
+modified the JMP and CRU instructions, which were doing the same silly thing.
+-Correctly enumerate and disallow unsupported graphics modes for full screen
+-Bugfix in word-sized CRU multi-bit instructions using Indirect Register Autoincrement mode -
+always set byte mode off
+-Bugfix - failed to set byte mode on or off in single address instructions, XOP, MPY and DIV
+(again, may affect instructions using Indirect Register Autoincrement mode) (So it would use
+whatever was last used, possibly with incorrect results)
+-Minor bugfixes in several opcodes regarding bit setting. This fixed Pole Position and a few
+others that had been bothering me!
+-Fixed joystick reading. Duh. I strongly dislike the 9901. Was confused about inverted bits,
+when they weren't meant to be inverted at all. There are no longer any hack routines involved
+in normal execution! 
+-Simplified timer handler to reduce dependancy on Windows messaging system
+-Implemented precise interrupt timing using performance counters. This will usually cause
+CPU usage to sit at 100% but Ami99 will give up it's timeslice regularly so it should not
+cause your PC to slow down unreasonably. If it doesn't, tell me and I'll add an option to
+disable it (Sleep(), the alternate method now, is not reliable at all)
+-Added configuration of Joystick 1 and 2, they may be the keyboard, PC joystick 1 or 2
+-Added configuration of volume attenuation and implemented the 9919 default of 2db/step
+-----------------------------------------------
+10 December 01
+Continuing...
+-updated Help->About box
+-----------------------------------------------
+12 December 01
+-added Register watch window
+-added Debug watch window
+-added Disassembly window
+-did away with all direct access to CPU[] - now calls the memory functions (VDP is okay)
+(except in the loader [deliberate] and in Roland's float speedup calls [tricky], and naturally
+in the actual CPU memory access functions. Perhaps a future operator override?)
+-Discovered my *$#@**$@%#! PC locks solid if you hit the video card too fast.
+-Readded Pause and Single Step (only when throttling is on)
+-----------------------------------------------
+14 December 01
+-Worked on remaining unknown bug that is throwing some programs into hyperspace - determined that
+observed bugs in Moon Patrol and Slymoids (illegal opcode, and Idle opcode) are actually in the
+games themselves, at least according to both Ami99 and the disassembler code. Two code bases agree.
+SXB and Tunnels of Doom still exhibit an illegal opcode condition, but it's caused by something in
+the GPL interpreter launching the code into hyperspace, and will take a lot more work to track down
+-Added 'Bank' to the watch window - displays the current XB bank switched in
+-Modified Watch window to NOT call rcpubyte as this could cause it to trigger the VDP or GROM
+memory addresses and cause crashes
+-----------------------------------------------
+14 December 01
+-More work on the CPU bug. Discovered I was not loading all of Tunnels of Doom, and my Super XB
+was (probably?) corrupt, as downloading a new copy of that worked. However, some games (Princess
+and Frog, Tunnels of Doom) *still* exhibit a few glitches that need to be figured out. I think
+they are pretty rare cases, though. :) No more illegal opcodes (unexplained, anyway). 
+-----------------------------------------------
+28 December 01
+-Added 2xSaI rendering code by Derek Liauw Kie Fa (Kreed), and support code from SNES9x. Added new Video
+option "Filter" to support this, with the idea of adding other things someday. But.. WOW. :)
+-Re-organized source. While it's still quite incestuous, it's getting cleaner
+-Modified disassembler to not use romword()
+-I now believe the Tunnels of Doom glitches are caused by a bad data file, need to get DSK images
+working to verify that
+-----------------------------------------------
+29 December 01 - Released Alpha3
+-Completed integration of the 2xSaI code into the menu and permit dynamic changing. Added code to
+allow it to work regardless of the stretch mode (including 'none'). Will release this code soon cause
+it's pretty. ;) Kreed's email link is bad, though, so I'll just hope the comments on his web page
+about using it in emulators is cool ;)
+-Broke sound at some point - anything less than maximum volume is silent
+-And a lucky break it was - was caused by initializing one more voice channel than actually existed.
+Fixing this should break some "odd" behaviour glitches :) That's been in there ever since breaking
+out the noises into their own channels. 
+-----------------------------------------------
+10-13 January 02 - Released Alpha 3.1 (bugfix)
+-Fixed lockup bug with CPU Throttling enabled
+-Renamed emulator to Classic99 to deal with the realization that it's not for the Amiga after all!
+ Silly me, all this time and I never noticed! (Okay, I knew, but many people ass-u-me.) ;)
+-Added borders to fix 2xSaI and DirectX render glitches (and to have a border for border color)
+-Added non-DirectX version - I expect it to be slow, mind you! And it has no sound.
+-Fixed bug that was preventing display in Windows 98 - bad parameter to the blit function!
+-----------------------------------------------
+20 Jan 02
+-Added DirectDraw clipper so that Ami99 won't draw on top of everything else!! ;)
+-*Finally* fixed the 'can't find specified memory file' to tell you WHICH ONE!! ;)
+-Verified that DirectX code is DX7 compliant.
+-----------------------------------------------
+21 Jun 02
+-Added support for loading variable and fixed record files, and saving fixed type. All preliminary
+and not 100%, but it lets you read some XB programs and some data files. Fixed a few more minor CPU
+bugs by writing a CPU test program that does at least one test on every CPU instruction (excluding
+CRU) and comparing to a real TI.
+-----------------------------------------------
+10 July 02
+-Added Sprite collision detection. Updated compatibility in TIDATA file :)
+-----------------------------------------------
+28 July 02
+-Improved XB loading - seems to work now
+-Started work on speech, but it doesn't work at all ;)
+-----------------------------------------------
+28 September 02
+-Big overhaul in the disk emulation system:
+--No longer prefers RAW files - TIFILES or V9T9 only (TIFILES preferred) Raw files are NOT recommended.
+--Loads, saves, reads and writes pretty much all file/record types
+--Returns correct error codes on disk issues
+-Having problems with ARC303 and writing compressed files - uncompressed works, decompression works. (CPU?)
+-Added emulation of the IDLE instruction, improved RSET. Note that neither are meant to be used on the 994A
+-Added range testing to XOP (0-F)
+-Minor cleanup of Program and Workspace pointers
+-Implemented 9901 Timer (Very much imperfect, probably very wrong. But Frogger tries to do things now, at least)
+-Implemented 9901 VDP and Timer interrupt control
+-Do not set the interrupt mask when calling an interrupt (except in console simulator)
+-Updated color palette (hey, I've used the old one since '92!! ;) ). Now uses Raphael's version.
+-Improved VDP 9918A memory access (Popeye works now! Diagnostics checkboard test passes!)
+-----------------------------------------------
+24 November 02
+-Bugfix only - Removed Windows NT specific code so it will run on Windows 98 again
+-----------------------------------------------
+22 May 04
+-Added a number of ROMs as built-in resources
+-Updated menu for ROM/system selection
+-Added more reasonable defaults for today's machines
+-Removed TIDATA file
+-Added 'magic' disk ability so things like Editor/Assembler can have their support files available
+-Default to filtered screen, DirectX mode
+-----------------------------------------------
+24 May 04
+-Had to change the included ROM list to remove a few that were not actually TI's copyright (I added
+ more to make up for it ;) )
+-----------------------------------------------
+25 July 04
+-Bugfix in STCR - wasn't setting parity correctly on byte transfers
+-Reworked the interrupt code to improve triggering, and not trigger when the last wasn't cleared
+-Fixed sprite early clock - was reading the wrong bit
+-P-Code card is implemented (but doesn't work yet)
+-Added Tunnels of Doom with 'Pennies', 'Penny' (same quest?), and 'Quest' quests 
+ (previous issues were a bad dump of the Pennies quest)
+-Verified CPU core is at least as good as TI/SIM's, by plugging his in temporarily. Not sure the
+ cause of the problems I still see -- bad dumps?
+-Added 'Known issues with current cartridge' under About
+-----------------------------------------------
+14 Aug 04
+-Rebuilt files after a report that Tunnels of Doom wasn't working (turns out my copy was loading 
+the files from disk instead of the built-in files, and the built-in files were corrupt.)
+-----------------------------------------------
+4 July 05
+-Minor fix-ups, release of little tweaks made over the last year to disk, video, and sound.
+ While none of the new stuff is really ready, have temporarily disabled the 99/4 system due to
+ weird behaviour in it. Will do more.
+-Removed GDI-only build - no longer supported.
+-----------------------------------------------
+5 July 05, 7 July 05
+-Reworked audio system - now has default square wave, softer sine wave, as well as flute, 
+ oboe, organ, piano, sax, strings, trombone and violin samples. Now you can pretend the TI was 
+ a cheap synth. ;) (works well on some music, poorly on others).
+-Noise should have better pitch now too, found an error in the samples there.
+-Added configuration dialog for instruments
+-Added option configuration dialog
+-Cleaned alt-enter fullscreen code
+-Re-enabled 99/4 but it may still be a bit flakey
+-Slightly simplified startup procedure
+-Configuration settings are now saved! (No config dialog yet - I ran out of time. But 
+ everything is in there now, for the first time ever.)
+-User cartridges can be loaded (right now they must be manually added to the classic99.ini)
+-Added option to slow down keyboard when unthrottled (good for BASIC/XB)
+-Small fix to timer code
+-Couple of small CRU fixes - ignore cards and repeat lower CRU space properly
+-Documentation (LoadingFiles.txt) updated!
+-----------------------------------------------
+29 Aug 05
+-Very minor fix to the disk system to support sequential reads of variable record files.
+ This makes Major Tom work. (Though it still shouldn't, it does. ;) )
+-Added samples for Classic99.ini cartridges in Mods\Mods.txt
+-----------------------------------------------
+6 Nov 05
+-Re-added speech. It works mostly, although it occasionally falls out of sync and garbles.
+ Both Speech ROM and External speech work. Put into a DLL so the GPL code doesn't contaminate
+ the TI code. :)
+-----------------------------------------------
+4 Feb 06
+-Added switch to disable speech, if desired
+-Added keyboard map image to Help menu
+-----------------------------------------------
+15 Mar 06
+-Added CPU cycle-accurate counting (still throttled only per-frame, but at least 
+speed is correct and not guessed at now). Except DIV is a bit fast. Docs are unclear 
+on that. Will guess at it later. Interrupt simulator does not have cycle counts, and
+probably won't. If you're using that, you're trying to run faster anyway. ;)
+-Disk can now read Windows text files as DF80 (to load compressed object files from 
+cross-assemblers with Editor/Assembler Load and Run). I'll do the DV80 as normal text later. 
+Uncompressed object files will not load until I do that.
+-Relax CPU usage when 'Pause Window When Inactive' is set, and the Window is inactive
+-Rewrite timer thread to use waitable timers instead of spinning on the Performance 
+counters, but did not note an improvement in CPU usage. (Still have to measure and see 
+if it's accurate). Tweaked 9901 timers for the new code but did not see if it was better 
+since it's still pretty wrong. ;)
+-Clear blit event after a blit - this prevents a double blit after a video update.
+-Clear user interrupt on File->Reset to work around a console ROM bug
+-----------------------------------------------
+21 Apr 06
+-Implemented the NTSC TV Filter by Shay Green with some real time controls - now
+ nicely reproduces the look of the original TI Monitor (and can be tweaked some)
+-Implemented the browse button for AVI filename on the options dialog
+-----------------------------------------------
+3 Aug 06
+-Updated to Visual Studio 2005
+-Comment fixes in the code
+-Couple of obsolesence code fixes for VS2005 - not much yet
+-Added 'Open' option to Cartridge->User - this is incomplete, it replaces the first 
+ User entry and does not update the GUI or save settings yet, but it will work on 
+ V9T9 carts - load any of the files and it will find the rest if they follow the 
+ standard naming convention and are in the same folder.
+-Rewrote timing code again - system now behaves better - greatly reduced CPU load 
+ when the host can keep up. Also improved emulation timing (possibly) when host 
+ system is slow.
+-Numerous 9901 timer fixes - still not sure if they are right.
+-Increased CPU speed from 3MHZ to 3.3MHZ - need to measure on a real TI sometime.
+-Fixed buffer underrun in displaying debug windows with no DSR active
+-----------------------------------------------
+28 Aug 06
+-Got 9901 timer code working correctly (I believe) thanks to Sudoku from http://sometimes.99er.net -
+ Now OLD CS1 times out like it should (hey, it was newsworthy for PC99 ;) ) In all cases the 9901 
+ timer countdown is tied to the CPU speed.
+-Set CPU speed back to 3.0MHz - that's what everyone seems to say. I really need to test it now
+ that I know how the 9901 works. If you want 3.3 you can overclock in the options menu anyway.
+-Fixed loading of larger cartridge files which were sometimes truncated.
+-Added range checking to ROM loader to prevent corrupting memory
+-New configurations for CPU Throttle - 3 modes: Normal, CPU Overdrive, System Maximum
+ Normal: Runs the system with normal throttle, CPU/System speed can be tuned in the options menu,
+  but defaults to 3MHz. Very little impact on the host CPU in most cases.
+ CPU Overdrive: Detaches the CPU from the system and runs it as fast as possible, sleeping occasionally
+  to reduce load on the host CPU. VDP still fires at 60fps - this means that interrupt driven functions
+  such as sprites will still run at the correct speed. This mode is potentially useful for speeding
+  up Extended BASIC games while still leaving them playable.
+ System Maximum: All parts run as fast as possible. This is new to Classic99 but is the traditional
+  means of unthrottling in most emulators. This will spin the host CPU to 100%.
+-----------------------------------------------
+20 Jun 07
+-Rewrote Speech support - included new speech core and completely redid the timing. It's VERY
+good now, working with XB and all tested games. 
+-Speak External halting the CPU on full FIFO is implemented, but not real well. Long speaks in 
+your own code will probably not work well unless you poll the status and wait yourself (which is 
+better than making the hardware halt anyway ;) Parsec's approach is to write 8 bytes every time 
+the synth reports Buffer Low - this is good on both real HW and Classic99.) 
+-However, this means that TE2 Text to Speech (and the related XB library) does not work correctly.
+They rely on the synth halting the CPU, and the recovery mechanism in Classic99 does not handle
+this case. Eventually bits are dropped and the synth loses state.
+-One non-standard change to the 5220 core is that I increased the FIFO to 32 bytes. This helps the
+core deal with the differences in timing between the real machine and the emulator, and corrected
+all the remaining garbles. It does not seem to affect any software I tried, and I could not think
+of any that would break as a result of it, since it's still legal to use just 16 bytes. Most software
+from TI watches the Buffer Low line to feed the synth so they use the extra FIFO space. :) 
+-Got the software DAC support working in the same pass - digitized speech through the sound chip 
+(as in TMNT or, in theory, Barry Boone's SoundFX (that I don't have to test with), should now 
+work (TMNT works)), as well as digitized audio played using the 9901 and the cassette audio gate 
+(like Perfect Push). Note that the playback rate is locked to the speech rate of 8khz, so samples 
+played faster than that will suffer quality some, but probably not much. ;)
+-Software DAC will adjust it's volume by the number of channels being used, so a single channel
+should be just as loud as multiple channels (SoundFX uses multiple channels for more volume)
+-Added emulator mouse support for menus and the like - if you double-click on the screen, it will
+type the character underneath on the TI keyboard for you. This will not work in BASIC or XB at this time.
+-Moved debug windows in a single dialog for better debugging control in future
+-Increased length of debug history and size of memory dumps
+-Implemented multiple breakpoints (10)
+-Inverted Caps Lock - off on the PC will be uppercase on the TI. This makes it easier to switch
+back and forth since the TI usually uses uppercase.
+-Tweaked instructions MOV, SETO and CLR to emulate a read before write
+-----------------------------------------------
+28 Jun 07
+-Added clear thread for speech buffer
+-Fixed directsound error checking
+-Made speech a global buffer like the rest of the sound
+-Fixed thread startup
+-----------------------------------------------
+22 Sep 07
+-Fixed carry bug in SRC thanks to Matthrew Hagerty
+-Removed raw file reading from emulated directory access 
+-Added some debug muting in SpeechDLL
+-Fixed potential overrun in debug in SpeechDLL
+-Added enums for file types in disk emulation
+-Added filename munging in disk emulation - certain chars become '~' on disk
+-Removed '/' sometimes remapping to '_' (now always maps to '~')
+-Ignore protection and undefined bits in filetype header for Open
+-Fixed filenames to uppercase (note this is not strictly right for the TI,
+ whose file system was case-sensitive)
+-Maybe fixed a bug detecting variable/fixed type for Status (maybe introduced a bug, 
+ not sure how to test it at the moment)
+-Added ability to read Windows text files as DV80 (autodetects DF80 and DV80)
+-----------------------------------------------
+12-13 November 07
+-Implemented first pass of PS/2 keyboard emulation based on my Atmel code
+-Improved double-click mouse menu code to work with BASIC/XB
+-Updated list of illegal Windows file characters
+-----------------------------------------------
+19 November 07
+-Added Joe Delekto's SAMS memory card support, some menus, and his TI-Nopoly game!
+-Removed some of the old hacks
+-----------------------------------------------
+24 November 07
+-Improved auto-detection of V9T9 files so that filename munging does not require
+ hacking the header (punctuation is ignored). Also files named ?TIFILES should
+ detect correctly now when they are NOT V9T9 format. ;)
+-----------------------------------------------
+8 December 07
+-Fixed odd parity bit handling in ab,sb,cb,ldcr,stcr,movb,socb,szcb
+-removed filename restrictions on ; [ ] + = -- these are legal under Windows and ';' is common on TI
+-Fixed debug dialog memory/disassembly after AMS fixes
+-Substantial improvement to performance of debug dialog
+-Fixed the Breakpoint remove button (previously did not remove breakpoints)
+-Fixed debug dialog display of VDP registers (potential crash)
+-----------------------------------------------
+14 Jan 08
+-Crash bug - AMS code was not treating all areas as RAM
+-----------------------------------------------
+11 Nov 08
+-Fix setting of VDP interrupt bit - must be set regardless of interrupt mask
+-Fix clearing of sprite coincidence bit - only a read of the status register should clear it
+-Fix clearing of carry flag by LDCR - LDCR does not affect carry
+-Fix for loading bank-switched DSRs
+-Added support for multiple GROM bases - use user cartridge definitions (see 'loadingfiles.txt')
+-Allow up to 16 ROMs in a 'cart', rather than the old limit of 4
+-----------------------------------------------
+13 Feb 09
+Video:
+-Implemented HQ4X filter mode
+-Changed full screen modes to better reflect modern machines
+-Made TV mode display full picture!
+
+Debug/Code:
+-Removed DAC warning debugs
+-Debug help by exposing the AMS memory (code only)
+-removed chunks of old, unused code
+-Enabled the address box in the debugger - can use addresses or registers
+-Implemented the rest of the memory browser keys in the debugger
+-Allowed debugger to refresh even when emulation is paused
+-Added debugger to Edit menu
+-Added Pause/Step/Play/FF keys to debugger window
+-Added F3 to toggle fast foward (Scroll lock must be on)
+-Remove many redundant readroms() calls
+-Centralized the helptext in the title bar
+-Dropped the point in the version number to make it easier to see
+
+Hardware:
+-Fixed multi-GROM base prefetch
+-Slight timing improvements (not the big ones that are coming)
+-Added initial support for SDGROM concept hardware (not considered final yet)
+-Added SDGROM option to the cartridge menu (not fully tested)
+-Fixed System Maximum setting to chow less VDP time so it actually runs faster
+-----------------------------------------------
+22 Feb 09
+-Added debugger documentation to Classic99.txt
+-Added horizontal scrollbar to debug window
+-Added many more breakpoint options: PC, memory access, memory read, memory write, memory compare (CPU and VDP), register compare (CPU and VDP)
+-Activated the dormant cycle counting system too (you can measure cycle performance of a block of code)
+-Improved the debug draw code to the window
+-Removed redundant read-before-write emulation
+-----------------------------------------------
+30 Mar 09
+-Added a non-modal help window for the debugger breakpoint syntax
+-Added the ability for User ROMs loaded via the INI file to override the DSR system (like Arcturus)
+-----------------------------------------------
+5 Apr 09
+-Fixed disassembly reading wrong data when using DSR ROM override
+-Reworked cartridge paging system to support Jon's LS379 and Super Space paging up to 64k (type '3' in Classic99.ini)
+-Fixed AMS system not to page areas mapped as ROM, only RAM (fix? questionable)
+-Removed obsolete CPU array (save 64k RAM)
+-Fixed detection of raw headerless files
+-Removed old speedup hacks (floats and interrupt simulator)
+-----------------------------------------------
+22 Jun 09
+-Implemented sprite flicker
+-----------------------------------------------
+25 Jun 09
+-Removed Duplicate TIEAG.BIN file
+-Created 'Disk' filter and added new disk class
+-Moved disk handler into disk.cpp and calls to new disk class
+-Updated Ami99DSK.BIN to support CALL FILES()
+-Added configuration upgrade for new disk class system
+27 Jun 09
+-Added FiadDisk class
+-Rewrote do_dsrlnk for new disk system
+-Removed obsolete 'setnofileerror' function
+-Added FileInfo copy handlers
+-Wrote base class handlers for Close, FindFileInfo
+-More defines and macros for various filesystem bits
+-Added DSK0 to Ami99DSK
+-Made GROM Writes update prefetch (eh?)
+-Implemented FiadDisk handlers for construction, Startup, option set/get, filename, creating output files, and Open
+5 Jul 09
+-Set RAM to random values rather than 0 on powerup to help find software bugs
+-Add maximum volume setting to INI file to allow softer sound (set default to 80%)
+6 Jul 09
+-Added F12 for LOAD interrupt (but checks for a vector, unlike the real TI)
+-Changed CPU 'turbo' from F3 to F4
+-Added 'step over' on F3 (for BL and BLWP)
+-Added configuration to ram scrambling and extra menu option to force it
+-Implemented central SBRLNK code, updated Magic File support to new system.
+12 Jul 09
+-Added datasize tracker for FileInfo class
+-Added Image Type tracking to FileInfo class
+-Added initial code for image types Unknown, TIFILES, V9T9, TEXT, IMG, V9T9DSK, PC99DSK
+-Added error defines for bad DSR name and no error
+-Added type mask for PAB file request
+-Added test code to FiadDisk overriden fopen()
+-Implemented TryOpenFile and DetectImageType for FiadDisk
+-Correct some status/filetype mixups
+-Properly detect the incoming file type information
+-Better debug on file detection
+-Implement BufferFile, BufferTextFile, BufferFiadFile, FlushFile, FlushWindowsText, FlushFiad
+-Update WriteFileHeader for new system
+16 Jul 09
+-Added comments to the PAB parsing
+-Clear last error before a new operation
+-Implemented 'current record'
+-Check file modes on READ, WRITE, and RESTORE
+-write back status to PAB after a STATUS call
+-Pre-parse filename for SBR calls
+-Remove all old code
+-Implement BaseDisk: Read, Write, Restore, Scratch, Status
+-Add generic HEADERSIZE to FIADDisk for future growth
+-Add some todos to FIADDISK to check TICC behaviour
+-Implement FiadDisk Load, Save, ReadSector, ReadFileSectors, WriteFileSectors (and support code)
+-Remove stpcpy and stpncpy
+-More tweaks to whatsnew.txt
+17 Jul 09
+-Removed more old headers
+-Syntax fixes -- code builds!
+-Added Open and Dirty flags
+-Fix mode masks
+-Remove test breakpoint
+-Reimplement CALL FILES in Ami99DSK.bin (what happened there?)
+-Tested LOAD and SAVE opcodes, configuration, READ of some file types
+-Added test list to disk.cpp
+-Added 'recycle' for buffers to deal with XB not closing failed files
+-Fix flag and PAB return handling on OPEN, READ and STATUS
+-Reduce debug and read and write success cases
+-Added count index to FileInfo for debug
+-Fix close to always work and free the buffer
+-Change some error returns to try and give the right 'no LOAD file' code to XB
+-Leave room for the header when flushing a FIAD file
+-Handle end of sector properly when flushing a FIAD file
+-Fix leaked buffer in FiadFile::Open
+-Disable Fx keys as Alt-x replacements when Scroll Lock is on
+-Merged Instructions into Classic99.txt
+-Added documentation on how to set values in the debugger
+-Removed old disk functions from tiemul.h
+-Updated pab error function to release the buffer since TI apps don't on error
+-Fix open and read not to modify the PAB on error
+-added disk full return code to createoutputfile
+-Fixed non-existant file to return TI code 7
+-Removed disk specifier from magic disk files
+-moved scramblereset to correct location 
+-add write commands to the debugger dialog
+19 July 09
+-Added central code to read filename from VDP
+-debug improvements
+-enable copyback of record number to PAB for read and write (seems right!)
+-Changed protect and rename to build the filename in the central code rather than making derived classes do it
+-removed unused HeaderType member from FileInfo
+-fixed random access in read
+-fix unset buffer entries when growing data past end of current
+-Disable scratch code - not going to be tested
+-Fix typemask on status
+-Added directory cache to FiadDisk
+-Fixed V9T9 file detection
+-Fixed buffering variable files
+-Fixed error return codes in several cases
+-Found (but not yet fixed) a bug that overwrites an existing file if it exists but is opened in update mode with the wrong parameters.
+-Fixed overwrite bug in FiadDisk::Open
+-Removed old diskpath config (upgrader didn't work right)
+-Removed unused 'OpenMode' from FileInfo
+-Fix configuration update when value is zero
+-Updated disk error debug
+-Updated docs with keystrokes
+-removed volume_mult from configuration
+-fixed step over to work with nested branches
+-added option to read extensionless files as text
+-return better status information on text files
+-fix buffer resize code
+-text file reads take only what is needed from a line
+-set header output type in WriteFileHeader
+-move volume slider to audio dialog
+-implement master volume control
+-move turbo key to F11
+-Made config option names a little more friendly
+-Fixed buffer EOF detection
+-Fixed flush of Windows text file to clear the dirty flag
+-Add directory read support ("DSK1." style)
+-Fixed long directory list
+-----------------------------------------------
+20 July 09  (updaters - ignore above list, it is condensed here for release)
+-Rewrote Disk system in its entirety - new system supports full FIAD access in all modes (including update) as well as several new modes for interacting with Windows text files (reading AND writing them). The Editor/Assembler's Assembler now works! Check Classic99.txt for details on the new disk configuration.
+-Updated Ami99DSK.BIN to support CALL FILES()
+-Added DSK0 to Ami99DSK (now allows DSK0 through DSK9)
+-Made GROM Writes update prefetch (eh?)
+-Added option to Set RAM to random values rather than 0 on powerup to help find software bugs
+-Added maximum volume setting to Audio options dialog
+-Added F12 for LOAD interrupt (but checks for a vector, unlike the real TI)
+-Changed CPU 'turbo' from F3 to F11
+-Added 'step over' on F3 (for BL and BLWP)
+-Updated Documentation and moved it all into Classic99.txt
+-Disable Function keys as Alt-x replacements when Scroll Lock is on
+-Added debugger commands to modify memory at runtime
+-Add directory read support ("DSK1." style)
+-Finally released!
+-----------------------------------------------
+4 August 09
+-Fix record count header (broken in various ways - byte order)
+-Added compatibility code to detect and correct a byte-swapped record count
+-Added better checking for reading variable record files to improve resiliance against corrupt ones
+-Fixed V9T9 file headers again (331a)
+-----------------------------------------------
+9 Aug 09 
+-More filesystem debug
+-Added ability to set Program Counter (disasm page)
+-Added better description of file header mismatch
+-Added better detection of TIFILES header
+-Fixed broken host text file fixed/variable determination
+-Commented out speech and dac warning debugs (they don't help)
+-Print one less debug line to window to avoid last line being masked
+-----------------------------------------------
+5 Nov 09
+-Updated Classic99.txt to describe the file system naming and types
+-added some 'X' notes in the CPU core
+-Set unmapped DSR return error in disk system to FILE_ERROR
+-Added Edit->HeatMap to display memory heatmap in real time
+-Added some notes on printer emulation to the RS232/PIO file
+-Increased max bank-switch cartridge size to 128k (379 method)
+-disable arrow keys and tab when they are mapped to the joystick and the system is reading the joystick (nice transparent trade-off)
+-When 'pause when window inactive' is set, don't count up real time during the pause (fixes speed boost when you go back to the emulator)
+-disable scroll lock's effect on the arrow keys
+
+6 Nov 09
+-Relayout of debug screen - edit control mode allows more information to be displayed, plus when frozen, you can copy and paste the register information
+-This freed up enough room to also add a readable breakdown of the CPU and VDP status registers
+-The debugger control buttons were made larger and have readable text on them now
+-Added buttons for memory dump, VDP character display mode, and triggering the LOAD interrupt
+-moved VDP character mode to F9 (page up and page down no longer debug keys)
+-deleted 'end' key to turn off debug screen (home is the only non "f" key for the debugger now)
+-added defines for VDP status flags
+-clear entire VDP status register on read as per E/A manual
+-handle timeslips of more than roughly 200ms by dropping the extra time
+-made sure heatmap doesn't draw too often when CPU is overclocked
+-added flickered sprite number in VDP status to VDP sprite flicker code
+-implemented screenshot support - under Video in the menu, or with Scroll Lock active, F5 (raw) or F6 (filtered), BMP only today
+-Made HQ4x use the same secondary buffer as the other filters
+-Made cartridge open dialog say 'open' instead of 'save'
+
+7 Nov 09
+-added new sound core - not 100% yet, it's not playing clean?
+-added DAC support to sound core (only on the 60hz right now, so not accurate)
+-removed old instrument based sound system and all samples
+-changed volume control to a master volume (still need to adjust range)
+-fixed sound chip latching for noise and volume registers
+
+8 Nov 09
+-new audio system is now working
+-added mixing frequency to audio controls
+-replaced the time compensation code with rounding in the sound emulation
+-changed the shift register emulation to 15 bit using newer BBC and Coleco values from the SMS Power spec (compared to real machine by ear, sounds pretty close)
+-corrected user-defined rate on periodic noise - if channel 3 is zero, noise register still counts down!
+-flat output on frequency zero or one per SMS power on tone channels (really?)
+-noise channel always counts down, fixed that
+-tweaked up mute code
+-Rewrote master volume control code, reduced range
+-tweaked jitter buffer code
+-Added audio registers to the debug screen
+
+10 Nov 09
+-Added clipboard support (device "CLIP")
+-Bugfixes in class layout for BaseDisk
+-Bugfix in FIADDisk CreateOutputFile (corruption risk)
+-Fixed error return on SBRLNK file sector read
+-Fixed V9T9 file detection on SBRLNK calls
+-Removed protection flag from disk information
+-Maintain current directory when loading modules or saving screenshots
+
+11 Nov 09
+-Transparently support .TIAP and .TIAC extensions as _C and _P for TI apps
+-Experimental support for reading V9T9 files with munged filenames
+-Fix Record length tests on PROGRAM image files (fixes Tunnels of Doom loads)
+-Added 'slow' CPU throttle mode
+-Added video options to disable blanking, background, and/or sprites 
+-Updated Window text to disable current CPU throttle mode when not normal
+-Display filename of disk files in loading debug
+-New shortcut keys Control F5-F8 trigger different throttle modes
+-New shortcut key Control-F12 resets (and reloads all ROMs)
+-Disabled speech buffer full debug for now
+-Potential buffer overrun fixed in debug system
+-Cap maximum size of min jitter count
+-Loading a cart from User->Open no longer overwrites INI carts
+-Added "are you sure?" to the quit option
+-Rearranged file menu a bit
+-----------------------------------------------
+12 Nov 09
+(summary of above notes for release, you can use just this date)
+
+PLEASE READ CLASSIC99.TXT -- IT HAS ALL THE NOTES ON FILES, KEYS, ETC
+
+New Features:
+-Added Edit->HeatMap to display memory usage 'heatmap' in real time
+-Increased max bank-switch cartridge size to 128k (379 method)
+-implemented screenshot support - under Video in the menu, or with Scroll Lock active, F5 (raw) or F6 (filtered), BMP only today
+-added new sound core
+-added mixing frequency to audio controls
+-Added clipboard device access support (device "CLIP")
+-Transparently support .TIAP and .TIAC extensions as _C and _P for TI apps
+-Experimental support for reading V9T9 files with munged filenames
+-Added 'slow' CPU throttle mode
+-Added video options to disable blanking, background, and/or sprites 
+-Updated Window text to disable current CPU throttle mode when not normal
+-New shortcut keys Control F5-F8 trigger different throttle modes
+-New shortcut key Control-F12 resets (and reloads all ROMs)
+-Added "are you sure?" to the quit option
+-Rearranged file menu a bit
+
+Bugfixes:
+-When 'pause when window inactive' is set, don't count up real time during the pause (fixes speed boost when you go back to the emulator)
+-handle timeslips of more than roughly 200ms by dropping the extra time
+-Made cartridge open dialog say 'open' instead of 'save'
+-Bugfix in FIADDisk CreateOutputFile (corruption risk)
+-Maintain current directory when loading modules or saving screenshots
+-Fix Record length tests on PROGRAM image files (fixes Tunnels of Doom loads)
+-Potential buffer overrun fixed in debug system
+-Loading a cart from User->Open no longer overwrites INI carts
+
+Emulation Changes:
+-Set unmapped DSR return error in disk system to FILE_ERROR
+-disable arrow keys and tab when they are mapped to the joystick and the system is reading the joystick (nice transparent trade-off)
+-disable scroll lock's effect on the arrow keys
+-moved VDP character mode to F9 (page up and page down no longer debug keys)
+-deleted 'end' key to turn off debug screen (home is the only non "f" key for the debugger now)
+-clear entire VDP status register on read as per E/A manual
+-added flickered sprite number in VDP status to VDP sprite flicker code
+-Fixed error return on SBRLNK file sector read
+-Fixed V9T9 file detection on SBRLNK calls
+-Removed protection flag from disk information
+
+Sound Emulation Changes:
+-removed old instrument based sound system and all samples
+-DAC only updates once per frame for now, dedicated DAC mode removed (new bug to solve later)
+-fixed sound chip latching for noise and volume registers
+-changed the shift register emulation to 15 bit using newer BBC and Coleco values from the SMS Power spec (compared to real machine by ear, sounds pretty close)
+-flat output on frequency zero or one per SMS power on tone channels (really?)
+-noise channel always counts down, fixed that
+-Rewrote master volume control code, reduced range
+
+Debugger Changes:
+-Relayout of debug screen - edit control mode allows more information to be displayed, plus when frozen, you can copy and paste the register information
+-This freed up enough room to also add a readable breakdown of the CPU and VDP status registers
+-The debugger control buttons were made larger and have readable text on them now
+-Added buttons for memory dump, VDP character display mode, and triggering the LOAD interrupt
+-Added audio registers to the debug screen
+-Display filename of disk files in loading debug
+-Disabled speech buffer full debug for now
+
+Source Only changes:
+-Updated Classic99.txt to describe the file system naming and types, and new keyboard shortcuts
+-added some 'X' notes in the CPU core
+-Added some notes on printer emulation to the RS232/PIO file
+-added defines for VDP status flags
+-Made HQ4x use the same secondary buffer as the other filters
+-Bugfixes in class layout for BaseDisk
+-----------------------------------------------
+19 Dec 09
+-Moved several long-term user-carts into the Apps menu
+-Added 'redraw' and 'clear' to the debug window
+-Updated Breakpoint system with ability to specify memory ranges
+-Changed breakpoint tag for timing code (now needs just one entry)
+-Increased minimum sound jitter buffer to reduce garble
+-Fix output when audio voice set to 0 (not flat)
+-disable audio debug to disk (was not meant to be on!)
+-(code) re-laid-out cartridge structs and created new breakpoint struct
+-When config file not present, set up defaults for disks
+-run audio and speech thread at higher priority
+-change default 379 bank to last one
+-made 'step over' not show the stepped over instructions in the debugger
+-when system running very slow, don't update speech (temporary workaround)
+-changed "slow cpu" to run as slow as possible (about 60hz right now)
+-Made 99/4 not have a bitmap mode 
+-don't lose the current directory when saving a snapshot
+-(code) changed nasm command line
+-----------------------------------------------
+12 Mar 10
+-Added Bug99 Debugger support (Edit, Bug99 Window)
+-Fixed error returns from SBRLNK
+-Added TI Workshop ROM with permission from the author
+-Implemented proper address emulation for VDP 4k mode
+-Fix mute/unmute issues around user interface
+-Fix debugger ROM modify flags
+-Fixed by-sector read/write file access
+-fixed delayed timing race
+-Got keyboard controls (TAB, Function Keys, shortcut keys) working on the debug dialog
+-Added WP as a set command on the debugger
+-Made PC and WP work in all debug views
+-Added 1x,2x,4x video sizing options, and fixed aspect ratio
+-default to 1x on startup (for whatever filter is in use)
+-VDPS doesn't clear the 5th sprite number when read, fixed that
+-Fixed meta key problem with keyboard interface
+-Add support for Marc Hull's SID Blaster card (enable in Options->Audio, try XB program MICH_SID!)
+-Moved CPU to separate thread
+-added threat synchronization code now that CPU is running freely
+-replaced video mutex with critical section (performance)
+-replaced PeekMessage loop with GetMessage (performance)
+-Added single-byte VDP address port access
+-Fix timing in 50HZ mode
+-Add audio to AVI files (not working!!)
+-Tweak multicolor bitmap mode registers
+-Fixed partial video frames in AVI video recording
+-Wrote a PDF manual
+(13 Mar 10)
+-Fix uninitialized critical section at startup - fixes start crash on pre-Windows7
+(14 Apr 10)
+-Fix sprite fade-in position at top of screen
+-----------------------------------------------
+11 July 10
+-Add ability to breakpoint on uninitialized memory read (console RAM only for now, no AMS)
+-added 3x scaling to the video size menu
+-save default scaling size
+-Fixed broken continue and Step Over in debugger
+-Added cycle counting and hex data to disassembly window
+-changed default memory pointers to something more useful than R0
+-made changing the filter mode reset the screen scaling size
+-debugger now allows changing any memory type from any view window - VDP now has a V prefix, GROM has a G prefix. See docs.
+-added memory type enums to the debugger display (code change only)
+-----------------------------------------------
+3 November 10
+-Updated code to change how post-increment is handled - found incorrect results on MOV R3,*R3+ - now fixed
+-----------------------------------------------
+23 December 10
+-Removed SDGROM concept
+-Fixed Speech Synth reset code
+-Fix setting of carry bit on SRC instruction
+-Fix for post-increment on the CPU to handle instructions that reference the same register for source and destination 
+ (this affects about half the opcodes!) - further fix to previous one to handle MOV *R3+,@>0008(R3)
+-Make "Step over" work on branches that include a data statement after them or that otherwise increment the return address by 2
+-fix debugger - register match value is entered in hex again
+-CPU fixes seem to have fixed minimemory load and run
+-----------------------------------------------
+2 January 11
+-Fix S and SB opcodes - zero minus zero was not setting carry but should (thanks Stuart Conner!)
+-----------------------------------------------
+5 January 11
+-Fix S and SB opcodes again, but more better! Seems ANYTHING minus 0 sets carry. (thanks again Stuart!)
+-----------------------------------------------
+3 February 11
+-Improve memory access timing by wrapping all CPU accesses (making sure the CPU always does 16-bit access)
+-Fix cycle count patching in post_inc to be correct in all memory cases
+-Removed extra RMW faking in certain opcodes
+-Change default for "AllowTxtWithoutExtension" to false -- Windows TXT files must have a recognized extension
+-Added support to read files without extension as DF128 (MUST have AllowTxtWithoutExtension set to 0 in the INI)
+-Added hack to allow faking the SID back to the 9919 (not available outside of source code)
+-Change interrupt flag to end_of_frame, and fix up the timing around that
+-removed some old CPU memory wrapper functions that didn't do anything
+-make sure we still check the VDP for redraw even if the CRU interrupt is masked (fixes rare case where screen did not update)
+-Make sure the 9901 timer is not restarted when CRU bit 0 is cleared if it was not set
+-Automatically set CPU Overdrive mode when pasting text
+-Don't let console hardware respond to odd memory addresses
+-Write VDP registers at the end of the VDPDUMP.BIN file
+-----------------------------------------------
+17 February 11
+-Improved debugger support for multi-bank cartridges - most addresses and address ranges will also accept a :<bank> at the end to specify a specific ROM bank. Cartridge ROM only for now.
+-Added DSK image support - currently read-only, still configurable only through Classic99.ini. Considered experimental at this point.
+-Disabled the IDLE instruction's idling, was causing an unresolvable lockup due to the timing system.
+-Improved reporting of the illegal instruction to include the bad opcode
+-Added configuration option to disable reading headless files as DF128 on FIAD drives
+-Some cleanup in the disk system
+-Fixed file identification bug in FIAD disk support
+-Fixed detection of V9T9 files in FIAD subdirectories
+-Fixed filename matching of V9T9 files where the unknown file is NOT V9T9
+-Fixed memory leak in FIAD directory listings
+-Added muting of high frequency tones
+-Changed disassembly history to include cartridge bank when applicable
+-Made warning debug display correct PC more often, as well as the cartridge and DSR banks
+-Fix CPU cycle counting on byte memory accesses a little better
+-Fix crash bug with a particular sequence of switching between DX and non-DX modes
+-----------------------------------------------
+17 Mar 2011
+-Change free sectors on FIAD disks to make sector based programs willing to try to write
+-open DSK images as binary to prevent read translation errors
+-Add read/write breakpoints for VDP and GROM addresses
+-Save file open information into the right buffer
+-Check a file is open before reading or writing it (or restore or scratch)
+-Fix bitmap mode masking
+-Rework X instruction - more efficent and works correctly with jumps now
+-Fixed case where X instruction may be skipped, depending on race
+-Fixed case where cycles may be lost due to race condition
+-Moved debug GUI buttons into drop-down menu
+-Made fast-forward from debug GUI reset timers correctly
+-Closing debug dialog should now clear all debug modes and restore normal operation
+-Changed disk Open() methods to return the new FileInfo object used, fixes certain cases of lost state
+-Added CHARA1 as a resource for the save RAM dialog
+-added cycle counting to run result report
+-Fixed LOAD opcode in FIAD disk not to load more than program says is valid (used to read whole of last sector or more if file was invalid)
+-Made debugger memory change require a prefix for CPU and display a warning otherwise
+-Implemented code to create Cartridge Images (GROM and 379) and E/A#5 program files from the Debug panel from loaded memory
+-Cartridge image code supports injecting lower-case characters and Editor/Assembler utilities, as well as patching C99 programs
+-Fixed uninitialized memory tracking for 32k expansion RAM
+-Added 3.BIN extension for autoloading 379 style carts
+-Clear all cartridge checks when using User->Open
+-Fixed the Disk Class to run the DSR powerup only once
+-Allow '0' for CALL FILES() (emulates CS1 mode)
+-Make CALL FILES actually use up VDP RAM to closer resemble real disk system. You can override with CALL FILES(0)
+-Added disk configuration dialog
+-Added menu option to open a disk folder in Explorer (or disk image if you have something like TI99Dir configured)
+-Added ability to make GROM writable (GRAM?) - not really tested as I have no software to test with
+-Adde Help->Open Manual to open the PDF file
+-Disable SID Blaster by default
+-Don't check for a 6-byte header on 379 type files
+-Fix reset race by disabling interrupts on reset (fixes 99/4 startup?)
+-More accurate CPU instruction counting
+-OPEN opcode shows the requested filetype in debug
+-Included Line-by-Line assembler and Lines demo for Mini-Memory on DSK1
+-----------------------------------------------
+20 Mar 2011
+-Update 'known issues' for Diagnostic Cart -- Checkerboard test fails when the disk system allocates VRAM. No fix intended - in the future you'll be able to disable the disk controller. If you need it now, use the debugger on the title screen to set >8370 to >3FFF
+-Fix resource leak in Heatmap that would eventually lock up the emulator
+-Simplified VDP address updates based on hardware observations
+-Verified VDP prefetch and address register behaviour against hardware
+-fixed GRAM write address (tesed against RXB's CALL POKEG)
+-verified GROM address and prefetch behaviour during writes against hardware
+-----------------------------------------------
+21 Mar 2011
+-Fix AMS card registers to map through entire DSR space
+-Ensure AMS card is in map mode by default (fixes RXB)
+-----------------------------------------------
+10 Apr 2011
+-Fix STATUS opcode for better EOF detection (this fixes DM2 copies)
+-STATUS opcode should work on non-open files now (not fully tested)
+-Default FIAD record length is now 80 instead of 128
+-Bugfix in GROM cartridge creation for loading lowercase character set on 99/4A
+-Cartridge creation window stays open after saving
+-Enabled TI BASIC cartridge creation
+-Added support for MPD project (new ROM type of 'M' - files not available yet)
+-Allow options on disk controllers. An option goes at the beginning of the filename, starts with a question mark, and ends with a period. For example: "DSK1.?W.FILENAME". Currently only FIAD has options, and there are three possibilities:
+	- ?W. - File should be handled as Windows text (override defaults - good way to save as Text or open text without extensions!)
+	- ?T. - File should be treated as TIFILES (detection for this works well, so this is not too useful unless you use the V9T9 default save option)
+	- ?V. - File should be treated as V9T9 (mostly useful for saving V9T9 format in a TIFILES configured folder)
+Note that when reading, the file detection is still attempted first, so forcing a filetype on a read will only work if for some reason the autodetection fails. All options have value when saving, though.
+-Allow FIAD folders to support long filenames in directories. This is experimental, it seems to work with some apps (like BASIC catalogs), but I expect it will break others. The idea is that the program opens the directory as IF0, and must accept filenames up to 127 characters long afterwards (it will get a record length of 254 instead of 38). I may change this in the future to an explicitly different open (variable instead of fixed records) if it breaks too much software. This option is off by default. This does not affect emulated sector access.
+-Also an option to allow FIAD directories to return more than 127 files. This is off by default and does not affect emulated sector access.
+-----------------------------------------------
+22 April 2011
+-Added SRAM to MPD
+-Fix FIAD disk paths to always end with backslash
+-Make MPD repair broken configuration bytes
+-Fix lockup problem after browsing a disk folder-Added TurboForth
+-Numerous tweaks to P-Code card, still doesn't work. I don't think I have disk images for this!
+-Updated long filename support - open as IV0 to get long filenames
+-----------------------------------------------
+21 May 2011
+-Changed palette (not final yet)
+-Added CLOCK device support
+-Made Ctrl-Alt-Reset configurable
+-Fixed Long Filename and >127 file option check boxes in file dialog
+-Made disk path dialog box quote tolerant
+-Fixed text entry/browse button when changing drive type
+-Fixed Speech checkmark in menu to reflect configuration
+-Fixed spelling of Help->Known issues
+-Implemented by-sector file reads on disk images (not fully tested)
+-Implemented PC99 disk image reading
+-Fix crash bug getting file status on a non-existant file
+-Removed unused code and fixed comments in ClipboardDisk.cpp
+-----------------------------------------------
+25 May 2011
+-Tweaking video code to try and better save audio (note: video record may be broken now)
+-Fix Keys ROM type in INI file and add Other for easier cartridge loading
+-Faster keyboard paste
+-Fix Window focus on startup
+-----------------------------------------------
+29 May 2011
+-added '*' as a Classic99.ini ROM type - means autodetect type by filename and size by file on disk
+-----------------------------------------------
+2 Jun 2011
+-Fix ImgDisk directories not to skip the first entry (non-announced update)
+-Numerous tweaks to the SID conversion hack
+-Fix seeking of record zero in relative files
+-add timer to MPD
+-make MPD config and EEPROM banks mappable to either bank 1 or 2
+-----------------------------------------------
+18 July 2011
+-New cleaner tree structure
+-Updated to Visual Studio 2010
+-Windows support upgraded to Windows 2000 and higher
+-Deprecated SID engine (old SIDdll.dll should still work)
+-Original palette restored
+-added option to disable the inverted caps lock
+-window location is saved on exit
+-Added F7 to toggle sprites and F8 to toggle background (scroll lock must be on)
+-----------------------------------------------
+1 Aug 2011
+-Fix the RTF paste from IE function by properly looking up the RTF text type
+-----------------------------------------------
+27 Nov 2011
+-Added RXB2012 to the Apps menu
+-Enhanced the IE clipboard support - should now be able to handle copy and paste from IPB forums and IE properly
+-Made sure ClipboardDisk uses the same parsed clipboard data as Paste does
+-Added limited 80 column 9938-like support (note: will not work for screenshots, AVI, or video filters)
+-Added "Paste XB" support - special mode for pasting Extended BASIC program listings
+-Removed EA magic disk from EPSGMOD sample
+-Updated TurboForth to 1.1 and included BLOCKS file
+-Fixed caps lock inversion option
+-Fixed double loading of cartridge ROMs
+-Fixed keyboard slowdown in XB for CPU Overdrive mode (may not work in other variants)
+-----------------------------------------------
+11 Dec 2011
+-Fix setting of VDP interrupt bit to happen AFTER the screen is drawn, not before (fixes Mad Marvin demo)
+-fix stack overflow in loading 'O'ther cart types from Classic99.ini
+-New TurboForth BLOCKS file (today's date!)
+-----------------------------------------------
+30 Jun 2012
+
+1) MBX bank switching preliminary (use type '!'). Paging works in the same manner as 379 style ROMs 
+(that is, it assumes one big ROM, so load at 8k offset for pages). But MBX only pages the top half of 
+the cart space, so only load the top half of each page. As an example using PC99 format files:
+
+[usercart1]
+name=Terry Turtle
+rom0=G|6000|2000|C:\classic99\other\TerryTurtle\PHM31546.GRM
+rom1=G|8000|2000|C:\classic99\other\TerryTurtle\PHM31545.GRM
+rom2=G|A000|2000|C:\classic99\other\TerryTurtle\PHM31544.GRM
+rom3=!|0000|2000|C:\classic99\other\TerryTurtle\PHM31543.GRM
+rom4=!|2FFE|1002|C:\classic99\other\TerryTurtle\PHM31542.GRM
+rom5=!|4FFE|1002|C:\classic99\other\TerryTurtle\PHM31541.GRM
+rom6=!|6FFE|1002|C:\classic99\other\TerryTurtle\PHM3154.GRM
+
+This boots. Load values were determined from the header. But of course is rather pointless since it will 
+not operate without the MBX itself, which is not emulated. If we could get the MBX files released publically, 
+there were not many, we could compile simpler ROM tables for them.
+
+But, some games don't require it. SewerMania works, like so:
+
+[usercart2]
+name=SewerMania
+rom1=G|6000|1800|C:\classic99\other\SewerMania\PHM31505.GRM
+rom2=G|8000|1800|C:\classic99\other\SewerMania\PHM31504.GRM
+rom3=!|0000|2000|C:\classic99\other\SewerMania\PHM31503.GRM
+rom4=!|2FFE|1002|C:\classic99\other\SewerMania\PHM31502.GRM
+rom5=!|4FFE|1002|C:\classic99\other\SewerMania\PHM31501.GRM
+rom6=!|6FFE|1002|C:\classic99\other\SewerMania\PHM3150.GRM
+
+In deference to the terms of my agreement with TI, I can't give you these ROMs. Don't ask.  If we could get 
+the MBX files released publically, there were not many, we could compile simpler ROM tables for them.
+
+2) Finally, added Retroclouds contribution for loading and saving Breakpoints. Sorry for taking so long!
+
+3) Added debugger option (in menu) Break on Illegal Opcode
+
+4) Added warm reset option - doesn't erase RAM before resetting.
+
+5) Fix NEG opcode - was not setting C
+-----------------------------------------------
+1/12/2013
+
+CORE:
+-Made CPU a class object to support multiple instances
+-BUGFIX: 2-word X opcodes which executed a relative jump would use the wrong address offset (fixes Jumpy)
+-Fix startup hang when no cartridge selected (like a new install)
+
+Video:
+-Implemented early (buggy) support for the F18A's 9900-based GPU. This emulation is not considered production quality yet. But you can step and debug code (while the main CPU incorrectly halts). No other F18A registers or graphics is implemented and the updated/unsupported opcodes are also wrong. Experimental/early use only.
+
+Disk system:
+-Added AutoMap DSK1 option to disk system (lets you run many DSK1 centric titles from any disk index automatically)
+-New code to handle global disk option types
+-Warn in debug log if DSRLNK is called with any workspace other than GPLWS (>83E0)
+-Update VDP heatmap when reading records and programs from disk
+-Added some TODOs
+-Fix bug checking file type with OPEN on Image files - was causing the TI Assembler to throw a DSR error on COPY of a DV file
+
+Cartridge System:
+-Added ability to recognize .C, .D, .G and .3 files in the User->Open menu (old format was only C.BIN, D,BIN, etc)
+-Also recognizes "(Part x of y)" in the file name and will search for up to 3 parts, because that was a dumb idea. ;)
+-Allows filenames longer than 31 characters
+-Allows filenames longer than 64 characters in the INI file
+
+-----------------------------------------------
+16 Jan 2013
+
+-Fix SBR Information request to correctly return number of sectors, and properly read record count as 16-bit. This fixes Archiver and compressed files!
+-P-Code card works (previous fix to 'X' instruction fixed it)
+-Implement disk 'write protect' option
+-Implement raw sector writes to image disks
+
+-----------------------------------------------
+21 Jan 2013
+
+-Fix loading of Extended BASIC programs in I/V254 mode from disk image files
+-Fix starting in full screen mode not to hang
+-Clear VDP registers 0 and 1 on reset per the 9918 datasheet
+
+-----------------------------------------------
+12 Jun 2013
+-fix screen redraw on debug activities to VDP
+-fix debug character display in bitmap mode
+-fix screen color changes from the debugger
+-UberGROM simulation/test application (not production quality)
+-More F18A GPU improvements, but most special opcodes are not implemented. Opcodes updated (not tested):
+	CALL
+	RET
+	PUSH
+	POP
+	SLC
+	PIX		(incomplete)
+	CSON	(not implemented)
+	CSOFF	(not implemented)
+	SPIOUT	(not implemented)
+	SPIIN	(not implemented)
+	RTWP
+	disabled known unimplemented 9900 opcodes
+-Added CRU support for emulator-unused 9901 bits (fixes Robotron)
+-Added support for DSK.DISKNAME.FILENAME disk access. For FIAD, the foldername is used.
+
+-----------------------------------------------
+20 Jun 2013
+-Fix file information requests on image disks to return correct number of sectors
+-Fix per-sector file read on image disks
+
+-----------------------------------------------
+14 Aug 2013
+-uber-grom updates to match upcoming release (not documented yet)
+-added some debug to the disk controller for future memory-munching update
+-better debug when classic99 munges TI filenames
+-80-column 128k RAM mode added for 9938-compatible applications (loosely tested with Funnelweb - additional hack option in menu)
+-fix bug that showed sprites when display was disabled
+-fix setting of breakpoint registers so you can type them in decimal again
+-fix (?) GROM breakpoint addresses
+-fix keyboard ref counting if an arrow key is pressed when the arrow keys transition from keyboard to joystick mode internally
+-improvements to Paste XB code to strip unneeded spaces better and skip over empty/comment lines (with '!' only, not 'REM')
+
+-----------------------------------------------
+15 Sep 2013
+-First pass, sort of working read-only TI Disk Controller support (hacker only)
+-Don't warn if 128k mode is active on startup
+-save and restore 128k hack checkbox
+-save screen size if not a multiple of resolution
+-remove the hacky cartridge remap code that never worked
+-add option to corrupt DSK ram to help find conflicts
+-Ensure FIAD only writes well formed status bits into the header
+-Create file by sectors will pad the file out to the correct size (not proven)
+-Lots more DSRLNK debug & warnings - checks PAB and scratchpad addresses for basic information
+-Fail opcode LOAD if file is larger than buffer - real disk does this
+-Warn on DSR conflicts (turning on a card while another card is already on)
+
+-----------------------------------------------
+29 Sep 2013
+-Don't corrupt >83D0->83D3 in disk emulation
+-Make DSK RAM corruption an option
+-Add disable for F18A
+
+-----------------------------------------------
+22 October 2013
+
+-Added support for F18 opcodes to disassembler (not fully tested)
+-Add support for interleaved GPU operation (check option under Video)
+-return end of frame on GPU address >7000 so it can be checked for (super hacky)
+-add heat map to GPU VDP access
+-make GPU VDP memory changes force a redraw
+-override TriggerInterrupt for GPU to prevent potential errors
+-protect 'muteaudio' call with audio critical section (helps pause on inactive?)
+-more DSR debug checks
+-fix for more than 100 cartridge groups
+-fix CRU testing of VDP interrupt bit
+
+-----------------------------------------------
+7 June 2014
+
+-TurboForth label updated to 1.2 (binary was already correct)
+-Rasmus' ECM sprite support added
+-Fix padding when making 379 carts
+-add EEPROM test code to ubergrom
+-GPU can write to VDP registers
+-weak VDP overrun warning
+-fix to F18A DPM disable handling
+-Fix F18A SIT bit pattern handling
+-Fixes to F18A enhanced sprite mode handling thanks to RasmusM 
+-Debug fix in disk image handler
+-updated rendering interface to 32-bit (all filters updated)
+-removed unused code from 2xSAI - no need for NASM anymore
+-removed DDRAW.LIB dependency (still uses DirectDraw though)
+-(checkin only) adding DSK.DISKNAME support to DSR and TurboForth2
+-Added new debug hook system (memory only implemented, disabled by default)
+-improve timing thread
+
+-----------------------------------------------
+8 October 2014
+
+-some hacky test code in sound for unrelated projects - ignore
+-increase cartridge bankswitch size to 2MB
+-add non-inverted cart switch scheme (type '8')
+-Disable the VDP warning everyone dislikes ;)
+-Removed ROMs from source again, because people suck
+
+-----------------------------------------------
+7 February 2015
+-EEPROM lock support for UberGROM
+-Miscellaneous Audio fixes 
+-new DAC system added (works for cassette gate bit and high frequency square waves)
+-audio mute fixes for menu interactions
+-tweak system timing code for more responsiveness
+-change debug screen to say 'mask' instead of 'size' on color and pattern tables in bitmap mode
+
+(376)
+-Don't blindly unmute audio on window size events
+-Don't unpause breakpoints when opening the debug window
+
+-----------------------------------------------
+15 February 2015
+
+-crash fix for loading 378 files larger than 2MB
+-DAC fix for non-100% CPU settings
+-big file hack fix - only enabled on command line (not yet in documentation)
+
+-----------------------------------------------
+17 February 2015
+
+-update big file hack to work with arbitrary sized data
+
+-----------------------------------------------
+22 March 2015
+
+-Fix filename padding in directory for ImageDisk and FiadDisk
+-add warning on pCode that the Editor doesn't like overdrive
+-Fix record index handling for sequential files
+-makecart tool now supports dumping cart space as an 8k cart
+-enable writes from TI disk controller
+-remove non-inverted bank switch hacks
+-update TurboForth to 1.2.1
+-allow loading of up to 32MB of bank switched cart
+-improve F18A GPU interleave mechanism
+-changes to disassembler to show GPU instructions
+-allow display of extra 2k VRAM in VDP debugger
+
+-----------------------------------------------
+24 March 2015
+
+-Undo previous disk hack unhacking - it wasn't a hack ;)
+-disable jitter buffer debug (haven't worked on that for years)
+-fix record counting - fixed vs variable, rather than relative vs sequential.
+-clock can now be opened in INPUT mode (oversight ;) )
+
+-----------------------------------------------
+15 June 2015
+
+-safer and more correct triggering of the LOAD interrupt
+-Fix Day of Week from clock to be 0-6 - CorComp manual lied ;)
+-FIAD disks search entire index sector to work around one form of copy protection (Still technically not the same as TICC, and may fail in particular cases)
+-TICC now supports DSK.DISKNAME.FILENAME (not tested on disks other than DSK1)
+-removed old bigfilehack filenames and implemented address register read and write (Read untested)
+-Allow high ascii as a terminator in filenames
+-Fix directory listings that return errors
+-Write the Disk DSR buffer header to VRAM. This makes P-Code work with the Classic99 DSR.
+-Fix VDP disk buffer header for Corrupt DSK RAM option
+-fix EOF flag
+-fix off-by-one in header of variable length FIAD files for bytes in last sector
+
+-----------------------------------------------
+18 July 2015
+-Updated RXB to RXB2015E and added support folder
+-Added Harry Wilhelm's Playground, XB256, XB256 Compiler and Missing Link 2.0, and documentation
+-Added USCD Pascal disks for pCode emulation
+-Reworked Clipboard support for Unicode - no longer need 'enhanced' hack
+-Fixed debugger VDP memory view to properly work with F18A extra RAM
+-Improved disk directory sizes (thanks to Lee!)
+-Directory listings now REQUIRE trailing period (like TI disk controller)
+-Fix debugger run-away that would break a run if the program breakpointed on an interrupt handler before LIMI 0
+-tweak LOAD interrupt processing
+-Cycle counting overhaul - all opcodes reverified and documented
+-Cycle counting on memory accesses revised.
+-possible hang on reset during speech fixed
+-Changed name of 'X' flag to 'XOP' flag (it was confusing me)
+-made reset use the general interrupt trigger function
+-StopIdle properly place in interrupt handler (not used yet)
+-changed DIV to use a likely algorithm that produces timing results in the correct range - need to test on hardware.
+-removed hack in LDCR and STCR that was setting /no/ flags for word operations - the datasheets all say only parity is unchanged for word. Need to test on hardware.
+-added Read-before-write to the only four opcodes that have an unnecessary one: MOV, MOVB, CLR and SETO.
+
+-----------------------------------------------
+30 August 2015
+
+-updated debugger help window to note bank select syntax
+-added ability to mask watch values for breakpoints
+-RXB properly listed as 2015E
+-added ability to configure UberGROM EEPROM - carts are now properly loadable
+-Edit->Paste now works in TI-99/4 and v2.2
+-added GROM access timing - Ahl benchmark timing in TI BASIC now matches console
+
+-----------------------------------------------
+18 September 2015
+
+-added mouse clicks for 80-column mode
+
+-----------------------------------------------
+19 September 2015
+
+-allowed loading ROMs from the command line (same scheme as "user->open"), pass command line "-rom <filename>"
+
+-----------------------------------------------
+7 October 2015
+
+-Updated TurboForth to 1.2.1:4
+-Added XB2.7 suite 060315
+-make Windows text files read only as DV (fixes assembling with EA from TXT files)
+-Enable disabling 32k by loading ROM overtop of it
+
+-----------------------------------------------
+14 November 2015
+
+-Redid 5 sprite on a line handling
+-Ensure PC and WP are always even
+-leave OBJ and COB files as fixed text files, while TXT is variable (fixes loading Asm99 files, broken last version)
+-fix attribute debug lines
+-updated Turboforth to 1.2.1:5
+
+-----------------------------------------------
+22 December 2015
+
+-new debugger command for the command window: "DISASM=<start>,<end>" will write a disassembly of the specified range
+-new breakpoint option: Lxxxx=# - logs all writes to address 'xxxx' to disk file # (1-9). 
+-F18A palette fix (Thanks to Rasmus!)
+-VDP timing tweak
+
+-----------------------------------------------
+3 March 2016
+
+-fix two bugs in 379 cartridge make code - one would not detect the size of carts that bumped right up against an 8k boundary, and the other wrote the wrong jump address to the startup code (file that under 'how did it ever work?').
+-add menu option to erase UberGROM contents (for testing)
+-add a hack for programs that require the 5th sprite number to count up during frames when 5S and F are reset (Miner2049er - may have been in previous release)
+-fix a "Paste XB" bug that would incorrectly collapse spaces used as PRINT separators
+
+-----------------------------------------------
+10 October 2016
+
+-TI Artist remapping extended to handle 'TIAM' to '_M' files
+-handle truncated sectors when reading FIAD by sector
+-fix debug key handling - only active when debug window open. NO MORE SCROLL LOCK.
+-tuning of CPU speed
+-turn off F18A DPM when reading status register
+-more debug on GPU start/stop
+-stop GPU when go bit is cleared
+-condense palette to F18A palette (now implemented for tiles)
+-fix buffer overflow in debug function
+-added fbForth 2.09
+-alphabetized RXB in the cartridge list
+-version 390
+
+-----------------------------------------------
+6 November 2016
+
+-Patch for XB256 'DELAY' call
+-Fix for disk CLOSE causing type mismatch
+-Fix for VDP memory overrun in disk systems (for data that ended exactly at >4000)
+-Make inverted carts respond to '9' instead of '3' for extension ('3' still supported)
+-Make VDP screen redraw when breakpointed
+
+-----------------------------------------------
+2 January 2017
+
+-update palette colors (suggestion from Sometimes99er)
+-fix startup CPU timing
+-add some register support to GPU
+-implement scanline VDP processing
+-implement disk image writing (except per-sector writes)
+-re-added VDP warning (with a little more state awareness)
+-add optional FPS display
+-automatically disable disconnected joysticks (was causing slowdown in some cases)
+-fix F18A multiple palette support on ECM0 tiles
+-fix 5-sprite-on-a-line flag
+
+-----------------------------------------------
+7 January 2017
+
+-rewrote speech synth CPU halt system, but this didn't fix anything that I could see
+-bugfix in image disk sector allocation that would leave empty holes on the disk
+-bugfix in image disk writing cluster list that only wrote one sector per cluster ;)
+-change image disk sector allocation - FDRs at the beginning, data at the end. Makes for nicer layout
+-disabled VDP warning, it's still not quite right
+
+
+
+-TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
+-TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
+-TODO: add ability to mount a CF7 compact flash card (including the VDP addresses for changing mount??)
+-TODO: Rewrite AMS code to bring it into the mainline memory system for improved debugging (ie: always run a 1MB memory space)
+-TODO: rewrite Speech Synth core to match original documentation
+-TODO: Clean up the project so it's buildable - package the internal ROMs so they can be included again
+-TODO: Fix international keyboard support
+-TODO: Add user cartridge manager (started)
+-TODO: Implement support for the MESS "RPK" format (extend to support all Classic99 memory types?)
+-TODO: Allow File->Open to load a TI BASIC, XB, EA#5 or EA#3 program (might be tricky to get BASIC vs XB)
+-TODO: remove AVI recording - there are better external packages these days
+-TODO: Add support for PIO (LPT) and RS232 (COM) access, possibly including low level
+-TODO: Fix multiple scanning of joysticks (scan on timer tick?)
+-TODO: Implement cassette ports on sound card? (would require precise timing!)
+-TODO: Implement cassette load from WAV files? (trace WAV file against CPU time)
+-TODO: Implement cassette load from audio CD? (some people are saving stuff there!)
+-TODO: Allow debugger to display in hex or decimal
+-TODO: Implement psuedo-CS1 support that calls through the FIAD system from CS1 and CS2
+-TODO: F18A support (to some extent at least - CPU support partially in place)
+-TODO: support relative paths including '.' (part of a file system update I am documenting)

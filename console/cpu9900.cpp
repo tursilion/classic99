@@ -1,0 +1,3476 @@
+//
+// (C) 2004 Mike Brent aka Tursi aka HarmlessLion.com
+// This software is provided AS-IS. No warranty
+// express or implied is provided.
+//
+// This notice defines the entire license for this code.
+// All rights not explicity granted here are reserved by the
+// author.
+//
+// You may redistribute this software provided the original
+// archive is UNCHANGED and a link back to my web page,
+// http://harmlesslion.com, is provided as the author's site.
+// It is acceptable to link directly to a subpage at harmlesslion.com
+// provided that page offers a URL for that purpose
+//
+// Source code, if available, is provided for educational purposes
+// only. You are welcome to read it, learn from it, mock
+// it, and hack it up - for your own use only.
+//
+// Please contact me before distributing derived works or
+// ports so that we may work out terms. I don't mind people
+// using my code but it's been outright stolen before. In all
+// cases the code must maintain credit to the original author(s).
+//
+// -COMMERCIAL USE- Contact me first. I didn't make
+// any money off it - why should you? ;) If you just learned
+// something from this, then go ahead. If you just pinched
+// a routine or two, let me know, I'll probably just ask
+// for credit. If you want to derive a commercial tool
+// or use large portions, we need to talk. ;)
+//
+// If this, itself, is a derived work from someone else's code,
+// then their original copyrights and licenses are left intact
+// and in full force.
+//
+// http://harmlesslion.com - visit the web page for contact info
+//
+/////////////////////////////////////////////////////////////////////
+// Classic99 - TMS9900 CPU Routines
+// M.Brent
+// The TMS9900 is a 16-bit CPU by Texas Instruments, with a 16
+// bit data and 16-bit address path, capable of addressing
+// 64k of memory. All reads and writes are word (16-bit) oriented.
+// Byte access is simulated within the CPU by reading or writing
+// the entire word, and manipulating only the requested byte.
+// This is not currently emulated here. The CPU uses external
+// RAM for all user registers. There are 16 user registers, R0-R15,
+// and the memory base for these registers may be anywhere in
+// memory, set by the Workspace Pointer. The CPU also has a Program
+// Counter and STatus register internal to it.
+// This emulation generates a lookup table of addresses for each
+// opcode. It's not currently intended for use outside of Classic99
+// and there may be problems with dependancy on other parts of the
+// code if it is moved to another project.
+// Word is defined to be an unsigned 16-bit integer (__int16)
+// Byte is defined to be an unsigned 8-bit integer (__int8)
+/////////////////////////////////////////////////////////////////////
+
+// TODO: (somewhere)
+// CRUCLK is not available at the cartridge port of QI consoles, so we should
+// disable it on cartridges for v2.2 consoles, if we ever do it.
+
+#define WIN32_LEAN_AND_MEAN
+#define _WIN32_WINNT 0x0500
+#include <stdio.h>
+#include <windows.h>
+#include <vector>
+#include "tiemul.h"
+#include "cpu9900.h"
+#include "..\addons\F18A.h"
+
+extern bool BreakOnIllegal;							// true if we should trigger a breakpoint on bad opcode
+extern CPU9900 * volatile pCurrentCPU;
+extern CPU9900 *pCPU, *pGPU;
+extern int bInterleaveGPU;
+
+/////////////////////////////////////////////////////////////////////
+// Status register defines
+/////////////////////////////////////////////////////////////////////
+#if 0
+// defined in tiemul.h
+#define BIT_LGT 0x8000
+#define BIT_AGT 0x4000
+#define BIT_EQ  0x2000
+#define BIT_C   0x1000
+#define BIT_OV  0x0800
+#define BIT_OP  0x0400
+#define BIT_XOP 0x0200
+#endif
+
+#define ST_LGT (ST & BIT_LGT)						// Logical Greater Than
+#define ST_AGT (ST & BIT_AGT)						// Arithmetic Greater Than
+#define ST_EQ  (ST & BIT_EQ)						// Equal
+#define ST_C   (ST & BIT_C)							// Carry
+#define ST_OV  (ST & BIT_OV)						// Overflow
+#define ST_OP  (ST & BIT_OP)						// Odd Parity
+#define ST_X   (ST & BIT_XOP)						// Set during an XOP instruction
+#define ST_INTMASK (ST&0x000f)						// Interrupt mask (the TI uses only values 0 and 2)
+
+#define set_LGT (ST|=0x8000)						// Logical Greater than: >0x0000
+#define set_AGT (ST|=0x4000)						// Arithmetic Greater than: >0x0000 and <0x8000
+#define set_EQ  (ST|=0x2000)						// Equal: ==0x0000
+#define set_C   (ST|=0x1000)						// Carry: carry occurred during operation
+#define set_OV  (ST|=0x0800)						// Overflow: overflow occurred during operation
+#define set_OP  (ST|=0x0400)						// Odd parity: word has odd number of '1' bits
+#define set_XOP (ST|=0x0200)						// Executing 'XOP' function
+
+#define reset_LGT (ST&=0x7fff)						// Clear the flags
+#define reset_AGT (ST&=0xbfff)
+#define reset_EQ  (ST&=0xdfff)
+#define reset_C   (ST&=0xefff)
+#define reset_OV  (ST&=0xf7ff)
+#define reset_OP  (ST&=0xfbff)
+#define reset_XOP (ST&=0xfdff)
+
+// Group clears
+#define reset_EQ_LGT (ST&=0x5fff)
+#define reset_LGT_AGT_EQ (ST&=0x1fff)
+#define reset_LGT_AGT_EQ_OP (ST&=0x1bff)
+#define reset_EQ_LGT_AGT_OV (ST&=0x17ff)
+#define reset_EQ_LGT_AGT_C (ST&=0x0fff)
+#define reset_EQ_LGT_AGT_C_OV (ST&=0x7ff)
+#define reset_EQ_LGT_AGT_C_OV_OP (ST&=0x3ff)
+
+// Assignment masks
+#define mask_EQ_LGT (BIT_EQ|BIT_LGT)
+#define mask_LGT_AGT_EQ (BIT_LGT|BIT_AGT|BIT_EQ)
+#define mask_LGT_AGT_EQ_OP (BIT_LGT|BIT_AGT|BIT_EQ|BIT_OP)
+#define mask_LGT_AGT_EQ_OV (BIT_LGT|BIT_AGT|BIT_EQ|BIT_OV)
+#define mask_LGT_AGT_EQ_OV_C (BIT_LGT|BIT_AGT|BIT_EQ|BIT_OV|BIT_C)		// carry here used for INC and NEG only
+
+// Status register lookup table (hey, what's another 64k these days??) -- shared
+Word WStatusLookup[64*1024];
+Word BStatusLookup[256];
+
+// Note: Post-increment is a trickier case that it looks at first glance.
+// For operations like MOV R3,*R3+ (from Corcomp's memory test), the address
+// value is written to the same address before the increment occurs.
+// There are even trickier cases in the console like MOV *R3+,@>0008(R3),
+// where the post-increment happens before the destination address calculation.
+// Thus it appears the steps need to happen in this order:
+//
+// 1) Calculate source address
+// 2) Get Source data
+// 3) Handle source post-increment
+// 4) Calculate destination address
+// 5) Store destination data
+// 6) Handle Destination post-increment
+//
+// Only the following instruction formats support post-increment:
+// FormatI
+// FormatIII (src only) (destination can not post-increment)
+// FormatIV (src only) (has no destination)
+// FormatVI (src only) (has no destination)
+// FormatIX (src only) (has no destination)
+
+// NOTE: this keeps it safe, but forces a PC from 0x8000-0x83ff into the 0x83xx range
+// This is wrong, of course, but even more so since the RAM is repeated from
+// 0x8100-0x8300, and not at 0x8000. However, 0x8000-0x80ff is the memory mapped
+// hardware, so if the Program Counter is there, we're in trouble ANYWAY! ;)
+// TODO: do I need this scratchpad remap? doesn't the memory fetch function handle it?
+#define ADDPC(x) { PC+=(x); PC&=0xfffe; if ((PC&0xfc00)==0x8000) PC|=0x300; }	
+
+/////////////////////////////////////////////////////////////////////
+// Inlines for getting source and destination addresses
+/////////////////////////////////////////////////////////////////////
+#define FormatI { Td=(in&0x0c00)>>10; Ts=(in&0x0030)>>4; D=(in&0x03c0)>>6; S=(in&0x000f); B=(in&0x1000)>>12; fixS(); }
+#define FormatII { D=(in&0x00ff); }
+#define FormatIII { Td=0; Ts=(in&0x0030)>>4; D=(in&0x03c0)>>6; S=(in&0x000f); B=0; fixS(); }
+#define FormatIV { D=(in&0x03c0)>>6; Ts=(in&0x0030)>>4; S=(in&0x000f); B=(D<9); fixS(); }			// No destination (CRU ops)
+#define FormatV { D=(in&0x00f0)>>4; S=(in&0x000f); S=WP+(S<<1); }
+#define FormatVI { Ts=(in&0x0030)>>4; S=in&0x000f; B=0; fixS(); }									// No destination (single argument instructions)
+#define FormatVII {}																				// no argument
+#define FormatVIII_0 { D=(in&0x000f); D=WP+(D<<1); }
+#define FormatVIII_1 { D=(in&0x000f); D=WP+(D<<1); S=ROMWORD(PC); ADDPC(2); }
+#define FormatIX  { D=(in&0x03c0)>>6; Ts=(in&0x0030)>>4; S=(in&0x000f); B=0; fixS(); }				// No destination here (dest calc'd after call) (DIV, MUL, XOP)
+
+//////////////////////////////////////////////////////////////////////////
+// Arrays to handle post-increment on registers - separate for source and dest
+// There are probably better ways to handle this. 
+//////////////////////////////////////////////////////////////////////////
+// Register number to increment, ORd with 0x80 for 2, or 0x40 for 1
+#define SRC 0
+#define DST 1
+#define POSTINC2 0x80
+#define POSTINC1 0x40
+
+CPU9900::CPU9900() {
+	buildcpu();
+	pType="9900";
+}
+
+void CPU9900::reset() {
+	// Base cycles: 26
+	// 5 memory accesses:
+	//	Read WP
+	//	Write WP->R13
+	//	Write PC->R14
+	//	Write ST->R15
+	//	Read PC
+	
+	// TODO: Read WP & PC are obvious, what are the other 3? Does it do a TRUE BLWP? Can we see where a reset came from?
+	// It matches the LOAD interrupt, so maybe yes! Test above theory on hardware.
+	
+	StopIdle();
+	halted = 0;			// clear all possible halt sources
+	nReturnAddress=0;
+
+	// zero out the post increment tracking
+	nPostInc[SRC]=0;
+	nPostInc[DST]=0;
+
+	TriggerInterrupt(0x000);				// reset vector is 22 cycles
+	AddCycleCount(4);						// reset is slightly more work than a normal interrupt
+
+	X_flag=0;								// not currently executing an X instruction
+	ST=(ST&0xfff0);							// disable interrupts
+
+	spi_reset();							// reset the F18A flash interface
+}
+
+/////////////////////////////////////////////////////////////////////
+// Wrapper functions for memory access
+/////////////////////////////////////////////////////////////////////
+Byte CPU9900::RCPUBYTE(Word src) {
+	Word ReadVal=romword(src);
+	if (src&1) {
+		return ReadVal&0xff;
+	} else {
+		return ReadVal>>8;
+	}
+}
+
+void CPU9900::WCPUBYTE(Word dest, Byte c) {
+	Word ReadVal=romword(dest, true);	// read-before-write needed, of course!
+	if (dest&1) {
+		wrword(dest, (Word)((ReadVal&0xff00) | c));
+	} else {
+		wrword(dest, (Word)((ReadVal&0x00ff) | (c<<8)));
+	}
+}
+
+Word CPU9900::ROMWORD(Word src) {
+	// nothing special here yet
+	return romword(src);
+}
+
+void CPU9900::WRWORD(Word dest, Word val) {
+	wrword(dest, val);
+}
+
+Word CPU9900::GetSafeWord(int x, int bank) {
+	x&=0xfffe;
+	return (GetSafeByte(x, bank)<<8)|GetSafeByte(x+1, bank);
+}
+
+// Read a byte withOUT triggering the hardware - for monitoring
+Byte CPU9900::GetSafeByte(int x, int bank) {
+	return GetSafeCpuByte(x, bank);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Get addresses for the destination and source arguments
+// Note: the format code letters are the official notation from Texas
+// instruments. See their TMS9900 documentation for details.
+// (Td, Ts, D, S, B, etc)
+// Note that some format codes set the destination type (Td) to
+// '4' in order to skip unneeded processing of the Destination address
+//////////////////////////////////////////////////////////////////////////
+void CPU9900::fixS()
+{
+	int temp,t2;													// temp vars
+
+	switch (Ts)														// source type
+	{ 
+	case 0: S=WP+(S<<1); 
+			break;													// register						(R1)			Address is the address of the register
+
+	case 1: 
+			S=ROMWORD(WP+(S<<1)); 
+			AddCycleCount(4); 
+			break;													// register indirect			(*R1)			Address is the contents of the register
+
+	case 2: 
+			if (S) { 
+				S=ROMWORD(PC)+ROMWORD(WP+(S<<1)); 					// indexed						(@>1000(R1))	Address is the contents of the argument plus the
+			} else {												//												contents of the register
+				S=ROMWORD(PC); 										// symbolic						(@>1000)		Address is the contents of the argument
+			}
+			ADDPC(2); 
+			AddCycleCount(8);
+			break;
+
+	case 3: 
+			nPostInc[SRC] = S | (B==1?POSTINC1:POSTINC2);			// do the increment after the opcode is done with the source
+			t2=WP+(S<<1); 
+			temp=ROMWORD(t2); 
+			S=temp;			
+			AddCycleCount((B==1?6:8));								// (add 1 if byte, 2 if word)	(*R1+)			Address is the contents of the register, which
+			break;													// register indirect autoincrement				is incremented by 1 for byte or 2 for word ops
+	}
+}
+
+void CPU9900::fixD()
+{
+	int temp,t2;													// temp vars
+
+	switch (Td)														// destination type 
+	{																// same as the source types
+	case 0: 
+			D=WP+(D<<1); 
+			break;													// register
+
+	case 1: D=ROMWORD(WP+(D<<1)); 
+			AddCycleCount(4);
+			break;													// register indirect
+
+	case 2: 
+			if (D) { 
+				D=ROMWORD(PC)+ROMWORD(WP+(D<<1));					// indexed 
+			} else {
+				D=ROMWORD(PC);										// symbolic
+			}
+			ADDPC(2);
+			AddCycleCount(8);
+			break;
+
+	case 3: nPostInc[DST] = D | (B==1?POSTINC1:POSTINC2);			// do the increment after the opcode is done with the dest
+			t2=WP+(D<<1);											// (add 1 if byte, 2 if word)
+			temp=ROMWORD(t2); 
+			D=temp; 
+			AddCycleCount((B==1?6:8)); 
+			break;													// register indirect autoincrement
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////
+// Check parity in the passed byte and set the OP status bit
+/////////////////////////////////////////////////////////////////////////
+void CPU9900::parity(Byte x)
+{
+	int z;															// temp vars
+
+	for (z=0; x; x&=(x-1)) z++;										// black magic?
+	
+	if (z&1)														// set bit if an odd number
+		set_OP; 
+	else 
+		reset_OP;
+}
+
+// Helpers for what used to be global variables
+void CPU9900::StartIdle() {
+	idling = 1;
+}
+void CPU9900::StopIdle() {
+	idling = 0;
+}
+int  CPU9900::GetIdle() {
+	return idling;
+}
+// TODO: right now only speech can halt the CPU, but there are multiple
+// possible sources. Instead of a global start/stop, each possible system
+// should be able to register a halt and turn it on and off, then let
+// the CPU decide if it's halted from ALL the flags (could use a bitflag
+// for faster testing)
+void CPU9900::StartHalt(int source) {
+	halted |= (1<<source);
+}
+void CPU9900::StopHalt(int source) {
+	halted &= ~(1<<source);
+}
+int  CPU9900::GetHalt() {
+	return halted;
+}
+void CPU9900::SetReturnAddress(Word x) {
+	nReturnAddress = x;
+}
+int CPU9900::GetReturnAddress() {
+	return nReturnAddress;
+}
+void CPU9900::ResetCycleCount() {
+	InterlockedExchange((LONG*)&nCycleCount, 0);
+}
+void CPU9900::AddCycleCount(int val) {
+	InterlockedExchangeAdd((LONG*)&nCycleCount, val);
+}
+int CPU9900::GetCycleCount() {
+	return nCycleCount;
+}
+void CPU9900::SetCycleCount(int x) {
+	InterlockedExchange((LONG*)&nCycleCount, x);
+}
+void CPU9900::TriggerInterrupt(Word vector) {
+	// Base cycles: 22
+	// 5 memory accesses:
+	//	Read WP
+	//	Write WP->R13
+	//	Write PC->R14
+	//	Write ST->R15
+	//	Read PC
+
+	// no more idling!
+	StopIdle();
+	
+	// I don't think this is legal on the F18A
+	Word NewWP = ROMWORD(vector);
+
+	WRWORD(NewWP+26,WP);				// WP in new R13 
+	WRWORD(NewWP+28,PC);				// PC in new R14 
+	WRWORD(NewWP+30,ST);				// ST in new R15 
+	//ST=(ST&0xfff0);					// disable interrupts
+
+	Word NewPC = ROMWORD(vector+2);
+
+	/* now load the correct workspace, and perform a branch and link to the address */
+	SetWP(NewWP);
+	SetPC(NewPC);
+
+	AddCycleCount(22);
+	skip_interrupt = 1;					// you get one instruction to turn interrupts back off
+										// this is true for all BLWP-like operations
+}
+Word CPU9900::GetPC() {
+	return PC;
+}
+void CPU9900::SetPC(Word x) {			// should rarely be externally used (Classic99 uses it for disk emulation)
+	// the PC is 15 bits wide - confirmed via BigFoot game which relies on this
+	PC=x&0xfffe;
+}
+Word CPU9900::GetST() {
+	return ST;
+}
+void CPU9900::SetST(Word x) {
+	ST=x;
+}
+Word CPU9900::GetWP() {
+	return WP;
+}
+void CPU9900::SetWP(Word x) {
+	// TODO: confirm on hardware - is the WP also 15-bit?
+	// we can test using BLWP and see what gets stored
+	WP=x&0xfffe;
+}
+Word CPU9900::GetX() {
+	return X_flag;
+}
+void CPU9900::SetX(Word x) {
+	X_flag=x;
+}
+
+Word CPU9900::ExecuteOpcode(bool nopFrame) {
+	if (nopFrame) {
+		in = 0x1000;				// JMP $ - NOP, but because we don't ADDPC below it doesn't move ;) TODO: is there a better instruction?
+	} else {
+		in=ROMWORD(PC);				// ie: not an 'X' command
+		ADDPC(2);					// thanks to Jeff Brown for explaining that!
+	}
+
+	CALL_MEMBER_FN(this, opcode[in])();
+
+	return in;
+}
+
+////////////////////////////////////////////////////////////////////
+// Classic99 - 9900 CPU opcodes
+// Opcode functions follow
+// one function for each opcode (the mneumonic prefixed with "op_")
+// src - source address (register or memory - valid types vary)
+// dst - destination address
+// imm - immediate value
+// dsp - relative displacement
+////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////
+// DO NOT USE wcpubyte or rcpubyte in here! You'll break the RMW
+// emulation and the cycle counting! You'll also break the F18A. ;)
+// The 9900 can only do word access.
+/////////////////////////////////////////////////////////////////////
+#define wcpubyte #error Do not use in this file
+#define rcpubyte #error Do not use in this file
+#define romword  #error Do not use in this file
+#define wrword	 #error Do not use in this file
+
+void CPU9900::post_inc(int nWhich) {
+	if (nPostInc[nWhich]) { 
+		int i = nPostInc[nWhich] & 0xf;
+		int t2=WP+(i<<1); 
+
+		int nTmpCycles = nCycleCount;
+		Word nTmpVal = GetSafeWord(t2, xbBank);	// we need to reread this value, but the memory access can't count for cycles
+		SetCycleCount(nTmpCycles);
+
+		WRWORD(t2, nTmpVal + ((nPostInc[nWhich]&POSTINC2) ? 2 : 1)); 
+		nPostInc[nWhich]=0;
+	} 
+}
+
+void CPU9900::op_a()
+{
+	// Add words: A src, dst
+
+	// TODO: all timing needs revision, however, I'm going to start by documenting the cycles
+	// In case I care in the future, every machine step is 2 cycles -- so a four cycle memory
+	// access (which is indeed normal) is 2 cycles on the bus, and 2 cycles of thinking
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1,x2,x3;
+
+	FormatI;
+	x1=ROMWORD(S); 
+	post_inc(SRC);
+
+	fixD();
+	x2=ROMWORD(D);
+	x3=x2+x1; 
+	WRWORD(D,x3);
+	post_inc(DST);
+																						// most of these are the same for every opcode.
+	reset_EQ_LGT_AGT_C_OV;																// We come out with either EQ or LGT, never both
+	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
+
+	if (x3<x2) set_C;																	// if it wrapped around, set carry
+	if (((x1&0x8000)==(x2&0x8000))&&((x3&0x8000)!=(x2&0x8000))) set_OV;					// if it overflowed or underflowed (signed math), set overflow
+	
+	AddCycleCount(14);
+}
+
+void CPU9900::op_ab()
+{ 
+	// Add bytes: A src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Byte x1,x2,x3;
+
+	FormatI;
+	x1=RCPUBYTE(S); 
+	post_inc(SRC);
+
+	fixD();
+	x2=RCPUBYTE(D);
+	x3=x2+x1;
+	WCPUBYTE(D,x3);
+	post_inc(DST);
+	
+	reset_EQ_LGT_AGT_C_OV_OP;
+	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
+
+	if (x3<x2) set_C;
+	if (((x1&0x80)==(x2&0x80))&&((x3&0x80)!=(x2&0x80))) set_OV;
+	
+	AddCycleCount(14);
+}
+
+void CPU9900::op_abs()
+{ 
+	// ABSolute value: ABS src
+	
+	// MSB == 0
+	// Base cycles: 12
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+
+	// MSB == 1
+	// Base cycles: 14
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest (same as source)
+
+	Word x1,x2;
+
+	FormatVI;
+	x1=ROMWORD(S);
+
+	if (x1&0x8000) {
+		x2=(~x1)+1;																		// if negative, make positive
+		WRWORD(S,x2);
+		AddCycleCount(2);
+	}
+	post_inc(SRC);
+
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_ai()
+{ 
+	// Add Immediate: AI src, imm
+	
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1,x3;
+
+	FormatVIII_1;
+	x1=ROMWORD(D);
+
+	x3=x1+S;
+	WRWORD(D,x3);
+
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
+
+	if (x3<x1) set_C;
+	if (((x1&0x8000)==(S&0x8000))&&((x3&0x8000)!=(S&0x8000))) set_OV;
+	
+	AddCycleCount(14);
+}
+
+void CPU9900::op_dec()
+{ 
+	// DECrement: DEC src
+
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+	
+	Word x1;
+
+	FormatVI;
+	x1=ROMWORD(S);
+
+	x1--;
+	WRWORD(S,x1);
+	post_inc(SRC);
+
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	if (x1!=0xffff) set_C;
+	if (x1==0x7fff) set_OV;
+	
+	AddCycleCount(10);
+}
+
+void CPU9900::op_dect()
+{ 
+	// DECrement by Two: DECT src
+	
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	Word x1;
+
+	FormatVI;
+	x1=ROMWORD(S);
+
+	x1-=2;
+	WRWORD(S,x1);
+	post_inc(SRC);
+	
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	if (x1<0xfffe) set_C;
+	if ((x1==0x7fff)||(x1==0x7ffe)) set_OV;
+	
+	AddCycleCount(10);
+}
+
+void CPU9900::op_div()
+{ 
+	// DIVide: DIV src, dst
+	// Dest, a 2 word number, is divided by src. The result is stored as two words at the dst:
+	// the first is the whole number result, the second is the remainder
+
+	// ST4 (OV) is to be set:
+	// Base cycles: 16
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source MSW
+	//	Read dest
+
+	// ST4 (OV) is not to be set:
+	// Base cycles: 92 - 124
+	// 6 memory accesses:
+	//	Read instruction (already done)
+	//	Read source MSW
+	//	Read dest
+	//	Read source LSW
+	//	Write dest quotient
+	//	Write dest remainder
+
+	// Sussing out the cycle count. It is likely a shift and test
+	// approach, due to the 16 bit cycle variance. We know the divisor
+	// is larger than the most significant word, ie: the total output
+	// of the first 16 bits of the 32-bit result MUST be >0000, so
+	// the algorithm likely starts with the first bit of the LSW, and
+	// shifts through up to 16 cycles, aborting early if the remaining
+	// value is smaller than the divisor (or if it's zero, but that
+	// would early out in far fewer cases).
+	//
+	// For example (using 4 bits / 2 bits = 2 bits):
+	//	DDDD
+	// / VV
+	//  ---
+	//    1 (subtract from DDDx if set)
+	//
+	//  0DDD
+	// /  VV
+	//   ---
+	//     2
+	//
+	// 12 are the bits in the result, and DDD goes to the remainder
+	//
+	// Proofs:
+	// 8/2 -> Overflow (10xx >= 10)
+	// 4/2 -> Ok (01xx < 10) -> 010x / 10 = '1' -> 010-10=0 -> 10 > 00 so early out, remaining bits 0 -> 10, remainder 0, 1 clock
+	// 1/1 -> Ok (00xx < 01) -> 000x / 01 = '0' -> x001 / 01 = '1' -> 001-01=0 -> 01>00 so finished (either way) -> 01, remainder 1, 2 clocks
+	// 5/2 -> Ok (01xx < 10) -> 010 / 10 = '1' -> 010-10=0 -> 10 > 001 so done -> 10, remainder 1, 1 clock
+	// 
+	// TODO: We should be able to prove on real hardware that the early out works like this (greater than, and not 0) with a few choice test cases
+
+	Word x1,x2; 
+	unsigned __int32 x3;
+
+	FormatIX;
+	x2=ROMWORD(S);
+	post_inc(SRC);
+
+	D=WP+(D<<1);
+	x3=ROMWORD(D);
+	
+	// E/A: When the source operand is greater than the first word of the destination
+	// operand, normal division occurs. If the source operand is less than or equal to
+	// the first word of the destination operand, normal division results in a quotient
+	// that cannot be represented in a 16-bit word. In this case, the computer sets the
+	// overflow status bit, leaves the destination operand unchanged, and cancels the
+	// division operation.
+	if (x2>x3)						// x2 can not be zero because they're unsigned										
+	{ 
+		x3=(x3<<16)|ROMWORD(D+2);
+#if 0
+		x1=(Word)(x3/x2);
+		WRWORD(D,x1);
+		x1=(Word)(x3%x2);
+		WRWORD(D+2,x1);
+#else
+		// lets try it the iterative way, should be able to afford it
+		// tested with 10,000,000 random combinations, should be accurate :)
+		unsigned __int32 mask = (0xFFFF8000);	// 1 extra bit, as noted above
+		unsigned __int32 divisor = (x2<<15);	// slide up into place
+		int cnt = 16;							// need to fill 16 bits
+		x1 = 0;									// initialize quotient, remainder will end up in x3 LSW
+		while (x2 <= x3) {
+			x1<<=1;
+			if ((x3&mask) >= divisor) {
+				x1|=1;
+				x3-=divisor;
+			}
+			mask>>=1;
+			divisor>>=1;
+			--cnt;
+			AddCycleCount(1);
+		}
+		if (cnt < 0) {
+			debug_write("Warning: Division bug. Send to Tursi if you can.");
+		}
+		while (cnt-- > 0) {
+			// handle the early-out case
+			x1<<=1;
+		}
+		WRWORD(D,x1);				// quotient
+		WRWORD(D+2,x3&0xffff);		// remainder
+#endif
+		reset_OV;
+		AddCycleCount(92);			// base ticks
+	}
+	else
+	{
+		set_OV;						// division wasn't possible - change nothing
+		AddCycleCount(16);
+	}
+}
+
+void CPU9900::op_inc()
+{ 
+	// INCrement: INC src
+	
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	Word x1;
+
+	FormatVI;
+	x1=ROMWORD(S);
+	
+	x1++;
+	WRWORD(S,x1);
+	post_inc(SRC);
+	
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV_C;
+	
+	AddCycleCount(10);
+}
+
+void CPU9900::op_inct()
+{ 
+	// INCrement by Two: INCT src
+	
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	Word x1;
+
+	FormatVI;
+	x1=ROMWORD(S);
+	
+	x1+=2;
+	WRWORD(S,x1);
+	post_inc(SRC);
+	
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	if (x1<2) set_C;
+	if ((x1==0x8000)||(x1==0x8001)) set_OV;
+	
+	AddCycleCount(10);
+}
+
+void CPU9900::op_mpy()
+{ 
+	// MultiPlY: MPY src, dst
+	// Multiply src by dest and store 32-bit result
+
+	// Base cycles: 52
+	// 5 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest MSW
+	//	Write dest LSW
+
+	Word x1; 
+	unsigned __int32 x3;
+
+	FormatIX;
+	x1=ROMWORD(S);
+	post_inc(SRC);
+	
+	D=WP+(D<<1);
+	x3=ROMWORD(D);
+	x3=x3*x1;
+	WRWORD(D,(Word)(x3>>16)); 
+	WRWORD(D+2,(Word)(x3&0xffff));
+	
+	AddCycleCount(52);
+}
+
+void CPU9900::op_neg()
+{ 
+	// NEGate: NEG src
+
+	// Base cycles: 12
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	Word x1;
+
+	FormatVI;
+	x1=ROMWORD(S);
+
+	x1=(~x1)+1;
+	WRWORD(S,x1);
+	post_inc(SRC);
+
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV_C;
+	
+	AddCycleCount(12);
+}
+
+void CPU9900::op_s()
+{ 
+	// Subtract: S src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1,x2,x3;
+
+	FormatI;
+	x1=ROMWORD(S); 
+	post_inc(SRC);
+
+	fixD();
+	x2=ROMWORD(D);
+	x3=x2-x1;
+	WRWORD(D,x3);
+	post_inc(DST);
+
+	reset_EQ_LGT_AGT_C_OV;
+	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
+
+	// any number minus 0 sets carry.. my theory is that converting 0 to the two's complement
+	// is causing the carry flag to be set.
+	if ((x3<x2) || (x1==0)) set_C;
+	if (((x1&0x8000)!=(x2&0x8000))&&((x3&0x8000)!=(x2&0x8000))) set_OV;
+	
+	AddCycleCount(14);
+}
+
+void CPU9900::op_sb()
+{ 
+	// Subtract Byte: SB src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Byte x1,x2,x3;
+
+	FormatI;
+	x1=RCPUBYTE(S); 
+	post_inc(SRC);
+
+	fixD();
+	x2=RCPUBYTE(D);
+	x3=x2-x1;
+	WCPUBYTE(D,x3);
+	post_inc(DST);
+
+	reset_EQ_LGT_AGT_C_OV_OP;
+	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
+
+	// any number minus 0 sets carry.. my theory is that converting 0 to the two's complement
+	// is causing the carry flag to be set.
+	if ((x3<x2) || (x1==0)) set_C;
+	if (((x1&0x80)!=(x2&0x80))&&((x3&0x80)!=(x2&0x80))) set_OV;
+	
+	AddCycleCount(14);
+}
+
+void CPU9900::op_b()
+{ 
+	// Branch: B src
+	// Unconditional absolute branch
+
+	// Base cycles: 8
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+
+	// TODO: hey, is b *r11 really a WR indirect access? Or just WR?
+	// I'm not sure it deserves the extra 4 cycles and I don't know if
+	// it fetches the  result of the register. Can probably tell in
+	// that CPU data book.
+
+	FormatVI;
+	SetPC(S);
+	post_inc(SRC);
+	
+	AddCycleCount(8);
+}
+
+void CPU9900::op_bl()
+{	
+	// Branch and Link: BL src
+	// Essentially a subroutine jump - return address is stored in R11
+	// Note there is no stack, and no official return function.
+	// A return is simply B *R11. Some assemblers define RT as this.
+
+	// Base cycles: 12
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write return
+
+	FormatVI;
+	if (0 == GetReturnAddress()) {
+		SetReturnAddress(PC);
+	}
+	WRWORD(WP+22,PC);
+	SetPC(S);
+	post_inc(SRC);
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_blwp()
+{ 
+	// Branch and Load Workspace Pointer: BLWP src
+	// A context switch. The src address points to a 2 word table.
+	// the first word is the new workspace address, the second is
+	// the address to branch to. The current Workspace Pointer,
+	// Program Counter (return address), and Status register are
+	// stored in the new R13, R14 and R15, respectively
+	// Return is performed with RTWP
+
+	// Base cycles: 26
+	// 6 memory accesses:
+	//	Read instruction (already done)
+	//	Read WP
+	//	Write WP->R13
+	//	Write PC->R14
+	//	Write ST->R15
+	//	Read PC
+
+	// Note that there is no "read source" (BLWP R0 /does/ branch with >8300, it doesn't fetch R0)
+	// TODO: We need to time out this instruction and verify that analysis.
+
+	Word x1;
+
+	FormatVI;
+	if (0 == GetReturnAddress()) {
+		SetReturnAddress(PC);
+	}
+	x1=WP;
+	SetWP(ROMWORD(S));
+	WRWORD(WP+26,x1);
+	WRWORD(WP+28,PC);
+	WRWORD(WP+30,ST);
+	SetPC(ROMWORD(S+2));
+	post_inc(SRC);
+
+	// TODO: is it possible to conceive a test where the BLWP vectors being written affects
+	// where it jumps to? That is - can we prove the above order of operation is correct
+	// by placing the workspace and the vector such that they overlap, and then seeing
+	// where it actually jumps to on hardware?
+
+	skip_interrupt=1;
+	
+	AddCycleCount(26);
+}
+
+void CPU9900::op_jeq()
+{ 
+	// Jump if equal: JEQ dsp
+	// Conditional relative branch. The displacement is a signed byte representing
+	// the number of words to branch
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (ST_EQ) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jgt()
+{ 
+	// Jump if Greater Than: JGT dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (ST_AGT) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jhe()
+{ 
+	// Jump if High or Equal: JHE dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if ((ST_LGT)||(ST_EQ)) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jh()
+{ 
+	// Jump if High: JH dsp
+	
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if ((ST_LGT)&&(!ST_EQ)) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jl()
+{
+	// Jump if Low: JL dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+  	FormatII;
+	if ((!ST_LGT)&&(!ST_EQ)) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jle()
+{ 
+	// Jump if Low or Equal: JLE dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if ((!ST_LGT)||(ST_EQ)) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jlt()
+{ 
+	// Jump if Less Than: JLT dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if ((!ST_AGT)&&(!ST_EQ)) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jmp()
+{ 
+	// JuMP: JMP dsp
+	// (unconditional)
+	
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (X_flag) {
+		SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+	}
+	if (D&0x80) {
+		D=128-(D&0x7f);
+		ADDPC(-(D+D));
+	} else {
+		ADDPC(D+D);
+	}
+
+	AddCycleCount(10);
+}
+
+void CPU9900::op_jnc()
+{ 
+	// Jump if No Carry: JNC dsp
+	
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (!ST_C) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jne()
+{ 
+	// Jump if Not Equal: JNE dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (!ST_EQ) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jno()
+{ 
+	// Jump if No Overflow: JNO dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (!ST_OV) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_jop()
+{ 
+	// Jump on Odd Parity: JOP dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (ST_OP) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_joc()
+{ 
+	// Jump On Carry: JOC dsp
+
+	// Jump taken:
+	// Base cycles: 10
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	// Jump not taken:
+	// Base cycles: 8
+	// 1 memory access:
+	//	Read instruction (already done)
+
+	FormatII;
+	if (ST_C) 
+	{
+		if (X_flag) {
+			SetPC(X_flag);	// Update offset - it's relative to the X, not the opcode
+		}
+
+		if (D&0x80) {
+			D=128-(D&0x7f);
+			ADDPC(-(D+D));
+		} else {
+			ADDPC(D+D);
+		}
+		AddCycleCount(10);
+	} else {
+		AddCycleCount(8);
+	}
+}
+
+void CPU9900::op_rtwp()
+{ 
+	// ReTurn with Workspace Pointer: RTWP
+	// The matching return for BLWP, see BLWP for description
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read ST<-R15
+	//	Read WP<-R13
+	//	Read PC<-R14
+
+	FormatVII;
+
+	ST=ROMWORD(WP+30);
+	SetPC(ROMWORD(WP+28));
+	SetWP(ROMWORD(WP+26));		// needs to be last!
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_x()
+{ 
+	// eXecute: X src
+	// The argument is interpreted as an instruction and executed
+
+	// Base cycles: 8 - added to the execution time of the instruction minus 4 clocks and 1 memory
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+
+	if (X_flag!=0) 
+	{
+		warn("Recursive X instruction!!!!!");
+		// While it will probably work (recursive X), I don't like the idea ;)
+		// Barry Boone says that it does work, although if you recursively
+		// call X in a register (ie: X R4 that contains X R4), you will lock
+		// up the CPU so bad even the LOAD interrupt can't recover it.
+		// We don't emulate that lockup here in Classic99, but of course it
+		// will just spin forever.
+		// TODO: we should try this ;)
+	}
+
+	FormatVI;
+	in=ROMWORD(S);
+	post_inc(SRC);		// does this go before or after the eXecuted instruction??
+	skip_interrupt=1;	// (ends up having no effect because we call the function inline, but technically still correct)
+	AddCycleCount(8-4);	// For X, add this time to the execution time of the instruction found at the source address, minus 4 clock cycles and 1 memory access. 
+						// we already accounted for the memory access (the instruction is already in S)
+
+	X_flag=PC;			// set flag and save true post-X address for the JMPs (AFTER X's oprands but BEFORE the instruction's oprands, if any)
+
+	CALL_MEMBER_FN(this, opcode[in])();
+
+	X_flag=0;			// clear flag
+}
+
+void CPU9900::op_xop()
+{ 
+	// eXtended OPeration: XOP src ???
+	// The CPU maintains a jump table starting at 0x0040, containing BLWP style
+	// jumps for each operation. In addition, the new R11 gets a copy of the address of
+	// the source operand.
+	// Apparently not all consoles supported both XOP 1 and 2 (depends on the ROM)
+	// so it is probably rarely, if ever, used on the TI99.
+	
+	// Base cycles: 36
+	// 8 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read WP
+	//	Write Src->R11
+	//	Write WP->R13
+	//	Write PC->R14
+	//	Write ST->R15
+	//	Read PC
+
+	Word x1;
+
+	FormatIX;
+	D&=0xf;
+
+	x1=WP;
+	SetWP(ROMWORD(0x0040+(D<<2)));
+	WRWORD(WP+22,S);
+	post_inc(SRC);
+	WRWORD(WP+26,x1);
+	WRWORD(WP+28,PC);
+	WRWORD(WP+30,ST);
+	SetPC(ROMWORD(0x0042+(D<<2)));
+	set_XOP;
+
+	skip_interrupt=1;
+
+	AddCycleCount(36);
+}
+
+void CPU9900::op_c()
+{ 
+	// Compare words: C src, dst
+	
+	// Base cycles: 14
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+
+	Word x3,x4;		// unsigned 16 bit
+
+	FormatI;
+	x3=ROMWORD(S); 
+	post_inc(SRC);
+
+	fixD();
+	x4=ROMWORD(D); 
+	post_inc(DST);
+
+	reset_LGT_AGT_EQ;
+	if (x3>x4) set_LGT;
+	if (x3==x4) set_EQ;
+	if ((x3&0x8000)==(x4&0x8000)) {
+		if (x3>x4) set_AGT;
+	} else {
+		if (x4&0x8000) set_AGT;
+	}
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_cb()
+{ 
+	// Compare Bytes: CB src, dst
+
+	// Base cycles: 14
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+
+	Byte x3,x4;
+
+	FormatI;
+	x3=RCPUBYTE(S); 
+	post_inc(SRC);
+
+	fixD();
+	x4=RCPUBYTE(D); 
+	post_inc(DST);
+  
+	reset_LGT_AGT_EQ_OP;
+	if (x3>x4) set_LGT;
+	if (x3==x4) set_EQ;
+	if ((x3&0x80)==(x4&0x80)) {
+		if (x3>x4) set_AGT;
+	} else {
+		if (x4&0x80) set_AGT;
+	}
+	ST|=BStatusLookup[x3]&BIT_OP;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_ci()
+{ 
+	// Compare Immediate: CI src, imm
+	
+	// Base cycles: 14
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+
+	Word x3;
+
+	FormatVIII_1;
+	x3=ROMWORD(D); 
+  
+	reset_LGT_AGT_EQ;
+	if (x3>S) set_LGT;
+	if (x3==S) set_EQ;
+	if ((x3&0x8000)==(S&0x8000)) {
+		if (x3>S) set_AGT;
+	} else {
+		if (S&0x8000) set_AGT;
+	}
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_coc()
+{ 
+	// Compare Ones Corresponding: COC src, dst
+	// Basically comparing against a mask, if all set bits in the src match
+	// set bits in the dest (mask), the equal bit is set
+
+	// Base cycles: 14
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+
+	Word x1,x2,x3;
+
+	FormatIII;
+	x1=ROMWORD(S);
+	post_inc(SRC);
+
+	fixD();
+	x2=ROMWORD(D);
+	
+	x3=x1&x2;
+  
+	if (x3==x1) set_EQ; else reset_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_czc()
+{ 
+	// Compare Zeros Corresponding: CZC src, dst
+	// The opposite of COC. Each set bit in the dst (mask) must
+	// match up with a zero bit in the src to set the equals flag
+
+	// Base cycles: 14
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+
+	Word x1,x2,x3;
+
+	FormatIII;
+	x1=ROMWORD(S);
+	post_inc(SRC);
+
+	fixD();
+	x2=ROMWORD(D);
+	
+	x3=x1&x2;
+  
+	if (x3==0) set_EQ; else reset_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_ldcr()
+{ 
+	// LoaD CRu - LDCR src, dst
+	// Writes dst bits serially out to the CRU registers
+	// The CRU is the 9901 Communication chip, tightly tied into the 9900.
+	// It's serially accessed and has 4096 single bit IO registers.
+	// It thinks 0 is true and 1 is false.
+	// All addresses are offsets from the value in R12, which is divided by 2
+
+	// Base cycles: 20 + 2 per count (count of 0 represents 16)
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source (byte access if count = 1-8)
+	//	Read R12
+
+	Word x1,x3,cruBase; 
+	int x2;
+
+	FormatIV;
+	if (D==0) D=16;
+	x1=(D<9 ? RCPUBYTE(S) : ROMWORD(S));
+	post_inc(SRC);
+  
+	x3=1;
+
+	// CRU base address - R12 bits 3-14 (0=MSb)
+	// 0001 1111 1111 1110
+	cruBase=(ROMWORD(WP+24)>>1)&0xfff;
+	for (x2=0; x2<D; x2++)
+	{ 
+		wcru(cruBase+x2, (x1&x3) ? 1 : 0);
+		x3=x3<<1;
+	}
+
+	AddCycleCount(20+2*D);
+
+	// TODO: the data manual says this return is not true - test
+	// whether a word load affects the other status bits
+	//	if (D>8) return;
+
+	reset_LGT_AGT_EQ;
+	if (D<9) {
+		reset_OP;
+		ST|=BStatusLookup[x1&0xff]&mask_LGT_AGT_EQ_OP;
+	} else {
+		ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+	}
+}
+
+void CPU9900::op_sbo()
+{ 
+	// Set Bit On: SBO src
+	// Sets a bit in the CRU
+	
+	// Base cycles: 12
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read R12
+
+	Word add;
+
+	FormatII;
+	add=(ROMWORD(WP+24)>>1)&0xfff;
+	if (D&0x80) {
+		add-=128-(D&0x7f);
+	} else {
+		add+=D;
+	}
+	wcru(add,1);
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_sbz()
+{ 
+	// Set Bit Zero: SBZ src
+	// Zeros a bit in the CRU
+
+	// Base cycles: 12
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read R12
+
+	Word add;
+
+	FormatII;
+	add=(ROMWORD(WP+24)>>1)&0xfff;
+	if (D&0x80) {
+		add-=128-(D&0x7f);
+	} else {
+		add+=D;
+	}
+	wcru(add,0);
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_stcr()
+{ 
+	// STore CRU: STCR src, dst
+	// Stores dst bits from the CRU into src
+
+	// Base cycles: C=0:60, C=1-7:42, C=8:44, C=9-15:58
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read R12
+	//	Write dest (byte access if count = 1-8)
+
+	Word x1,x3,x4, cruBase; 
+	int x2;
+
+	FormatIV;
+	if (D==0) D=16;
+	x1=0; x3=1;
+  
+	cruBase=(ROMWORD(WP+24)>>1)&0xfff;
+	for (x2=0; x2<D; x2++)
+	{ 
+		x4=rcru(cruBase+x2);
+		if (x4) 
+		{
+			x1=x1|x3;
+		}
+		x3<<=1;
+	}
+
+	if (D<9) 
+	{
+		WCPUBYTE(S,(Byte)(x1&0xff));  
+	}
+	else 
+	{
+		WRWORD(S,x1);
+	}
+	post_inc(SRC);
+
+	if (D<8) {
+		AddCycleCount(42);
+	} else if (D < 9) {
+		AddCycleCount(44);
+	} else if (D < 16) {
+		AddCycleCount(58);
+	} else {
+		AddCycleCount(60);
+	}
+
+	// TODO: the data manual says this return is not true - test
+	// whether a word load affects the other status bits
+	//if (D>8) return;
+
+	reset_LGT_AGT_EQ;
+	if (D<9) {
+		reset_OP;
+		ST|=BStatusLookup[x1&0xff]&mask_LGT_AGT_EQ_OP;
+	} else {
+		ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+	}
+}
+
+void CPU9900::op_tb()
+{ 
+	// Test Bit: TB src
+	// Tests a CRU bit
+
+	// Base cycles: 12
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read R12
+
+	Word add;
+
+	FormatII;
+	add=(ROMWORD(WP+24)>>1)&0xfff;
+	if (D&0x80) {
+		add-=128-(D&0x7f);
+	} else {
+		add+=D;
+	}
+
+	if (rcru(add)) set_EQ; else reset_EQ;
+
+	AddCycleCount(12);
+}
+
+// These instructions are valid 9900 instructions but are invalid on the TI-99, as they generate
+// improperly decoded CRU instructions.
+
+void CPU9900::op_ckof()
+{ 
+	// Base cycles: 12
+	// 1 memory accesses:
+	//	Read instruction (already done)
+
+	FormatVII;
+	warn("ClocK OFf instruction encountered!");					// not supported on 99/4A
+	// This will set A0-A2 to 110 and pulse CRUCLK (so not emulated)
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_ckon()
+{ 
+	// Base cycles: 12
+	// 1 memory accesses:
+	//	Read instruction (already done)
+
+	FormatVII;
+	warn("ClocK ON instruction encountered!");					// not supported on 99/4A
+	// This will set A0-A2 to 101 and pulse CRUCLK (so not emulated)
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_idle()
+{
+	// Base cycles: 12
+	// 1 memory accesses:
+	//	Read instruction (already done)
+
+	FormatVII;
+	warn("IDLE instruction encountered!");						// not supported on 99/4A
+	// This sets A0-A2 to 010, and pulses CRUCLK until an interrupt is received
+	// Although it's not supposed to be used on the TI, at least one game
+	// (Slymoids) uses it - perhaps to sync with the VDP? So we'll emulate it someday
+
+	// TODO: we can't do this today. Everything is based on CPU cycles, which means
+	// when the CPU stops, so does the VDP, 9901, etc, so no interrupt ever comes in
+	// to wake up the system. This will be okay when the VDP is the timing source.
+//	SetIdle();
+	AddCycleCount(12);
+}
+
+void CPU9900::op_rset()
+{
+	// Base cycles: 12
+	// 1 memory accesses:
+	//	Read instruction (already done)
+
+	FormatVII;
+	warn("ReSET instruction encountered!");						// not supported on 99/4A
+	// This will set A0-A2 to 011 and pulse CRUCLK (so not emulated)
+	// However, it does have an effect, it zeros the interrupt mask
+	ST&=0xfff0;
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_lrex()
+{
+	// Base cycles: 12
+	// 1 memory accesses:
+	//	Read instruction (already done)
+
+	FormatVII;
+	warn("Load or REstart eXecution instruction encountered!");	// not supported on 99/4A
+	// This will set A0-A2 to 111 and pulse CRUCLK (so not emulated)
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_li()
+{
+	// Base cycles: 12
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	// TODO: rumoured no read-before write - time instruction and prove it
+
+	// Load Immediate: LI src, imm
+
+	FormatVIII_1;
+	WRWORD(D,S);
+	
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[S]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(12);
+}
+
+void CPU9900::op_limi()
+{ 
+	// Load Interrupt Mask Immediate: LIMI imm
+	// Sets the CPU interrupt mask
+
+	// Base cycles: 16
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+
+	FormatVIII_1;
+	ST=(ST&0xfff0)|(S&0xf);
+
+	AddCycleCount(16);
+}
+
+void CPU9900::op_lwpi()
+{ 
+	// Load Workspace Pointer Immediate: LWPI imm
+	// changes the Workspace Pointer
+
+	// Base cycles: 10
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+
+	FormatVIII_1;
+	SetWP(S);
+
+	AddCycleCount(10);
+}
+
+void CPU9900::op_mov()
+{ 
+	// MOVe words: MOV src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1;
+
+	FormatI;
+	x1=ROMWORD(S);
+	post_inc(SRC);
+	
+	fixD();
+	ROMWORD(D);		// wasted read before write
+	WRWORD(D,x1);
+	post_inc(DST);
+  
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_movb()
+{ 
+	// MOVe Bytes: MOVB src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Byte x1;
+
+	FormatI;
+	x1=RCPUBYTE(S);
+	post_inc(SRC);
+	
+	fixD();
+	ROMWORD(D);			// wasted read before write (always a word!) (hacky, this one is for timing, but WCPUBYTE needs to read again to build the word)
+	WCPUBYTE(D,x1);
+	post_inc(DST);
+	
+	reset_LGT_AGT_EQ_OP;
+	ST|=BStatusLookup[x1]&mask_LGT_AGT_EQ_OP;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_stst()
+{ 
+	// STore STatus: STST src
+	// Copy the status register to memory
+
+	// Base cycles: 8
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Write dest
+
+	FormatVIII_0;
+	WRWORD(D,ST);
+
+	AddCycleCount(8);
+}
+
+void CPU9900::op_stwp()
+{ 
+	// STore Workspace Pointer: STWP src
+	// Copy the workspace pointer to memory
+
+	// Base cycles: 8
+	// 2 memory accesses:
+	//	Read instruction (already done)
+	//	Write dest
+
+	FormatVIII_0;
+	WRWORD(D,WP);
+
+	AddCycleCount(8);
+}
+
+void CPU9900::op_swpb()
+{ 
+	// SWaP Bytes: SWPB src
+	// swap the high and low bytes of a word
+
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	Word x1,x2;
+
+	FormatVI;
+	x1=ROMWORD(S);
+
+	x2=((x1&0xff)<<8)|(x1>>8);
+	WRWORD(S,x2);
+	post_inc(SRC);
+
+	AddCycleCount(10);
+}
+
+void CPU9900::op_andi()
+{ 
+	// AND Immediate: ANDI src, imm
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1,x2;
+
+	FormatVIII_1;
+
+	x1=ROMWORD(D);
+	x2=x1&S;
+	WRWORD(D,x2);
+	
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[x2]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_ori()
+{ 
+	// OR Immediate: ORI src, imm
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1,x2;
+
+	FormatVIII_1;
+
+	x1=ROMWORD(D);
+  	x2=x1|S;
+	WRWORD(D,x2);
+  
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[x2]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_xor()
+{ 
+	// eXclusive OR: XOR src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1,x2,x3;
+
+	FormatIII;
+	x1=ROMWORD(S);
+	post_inc(SRC);
+
+	fixD();
+	x2=ROMWORD(D);
+  
+	x3=x1^x2;
+	WRWORD(D,x3);
+  
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_inv()
+{ 
+	// INVert: INV src
+
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	Word x1;
+
+	FormatVI;
+
+	x1=ROMWORD(S);
+  	x1=~x1;
+	WRWORD(S,x1);
+  	post_inc(SRC);
+
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(10);
+}
+
+void CPU9900::op_clr()
+{ 
+	// CLeaR: CLR src
+	// sets word to 0
+
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	FormatVI;
+	ROMWORD(S);		// wasted read before write
+	WRWORD(S,0);
+	post_inc(SRC);
+
+	AddCycleCount(10);
+}
+
+void CPU9900::op_seto()
+{ 
+	// SET to One: SETO src
+	// sets word to 0xffff
+
+	// Base cycles: 10
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	FormatVI;
+	ROMWORD(S);			// wasted read before write
+	WRWORD(S,0xffff);
+	post_inc(SRC);
+
+	AddCycleCount(10);
+}
+
+void CPU9900::op_soc()
+{ 
+	// Set Ones Corresponding: SOC src, dst
+	// Essentially performs an OR - setting all the bits in dst that
+	// are set in src
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Word x1,x2,x3;
+
+	FormatI;
+	x1=ROMWORD(S);
+	post_inc(SRC);
+
+	fixD();
+	x2=ROMWORD(D);
+  	x3=x1|x2;
+	WRWORD(D,x3);
+	post_inc(DST);
+  
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_socb()
+{ 
+	// Set Ones Corresponding, Byte: SOCB src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Byte x1,x2,x3;
+
+	FormatI;
+	x1=RCPUBYTE(S);
+	post_inc(SRC);
+
+	fixD();
+	x2=RCPUBYTE(D);
+  	x3=x1|x2;
+	WCPUBYTE(D,x3);
+	post_inc(DST);
+
+	reset_LGT_AGT_EQ_OP;
+	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_szc()
+{ 
+	// Set Zeros Corresponding: SZC src, dst
+	// Zero all bits in dest that are zeroed in src
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+	
+	Word x1,x2,x3;
+
+	FormatI;
+	x1=ROMWORD(S);
+	post_inc(SRC);
+
+	fixD();
+	x2=ROMWORD(D);
+  	x3=(~x1)&x2;
+	WRWORD(D,x3);
+	post_inc(DST);
+  
+	reset_LGT_AGT_EQ;
+	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_szcb()
+{ 
+	// Set Zeros Corresponding, Byte: SZCB src, dst
+
+	// Base cycles: 14
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Read dest
+	//	Write dest
+
+	Byte x1,x2,x3;
+
+	FormatI;
+	x1=RCPUBYTE(S);
+	post_inc(SRC);
+
+	fixD();
+	x2=RCPUBYTE(D);
+  	x3=(~x1)&x2;
+	WCPUBYTE(D,x3);
+	post_inc(DST);
+
+	reset_LGT_AGT_EQ_OP;
+	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
+
+	AddCycleCount(14);
+}
+
+void CPU9900::op_sra()
+{ 
+	// Shift Right Arithmetic: SRA src, dst
+	// For the shift instructions, a count of '0' means use the
+	// value in register 0. If THAT is zero, the count is 16.
+	// The arithmetic operations preserve the sign bit
+
+	// Count != 0
+	// Base cycles: 12 + 2*count
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	// Count = 0
+	// Base cycles: 20 + 2*count (in R0 least significant nibble, 0=16)
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read R0
+	//	Read source
+	//	Write dest
+
+	Word x1,x3,x4; 
+	int x2;
+
+	FormatV;
+	if (D==0)
+	{ 
+		D=ROMWORD(WP) & 0xf;
+		if (D==0) D=16;
+		AddCycleCount(8);
+	}
+	x1=ROMWORD(S);
+	x4=x1&0x8000;
+	x3=0;
+  
+	for (x2=0; x2<D; x2++)
+	{ 
+		x3=x1&1;   /* save carry */
+		x1=x1>>1;  /* shift once */
+		x1=x1|x4;  /* extend sign bit */
+	}
+	WRWORD(S,x1);
+  
+	reset_EQ_LGT_AGT_C;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	if (x3) set_C;
+
+	AddCycleCount(12+2*D);
+}
+
+void CPU9900::op_srl()
+{ 
+	// Shift Right Logical: SRL src, dst
+	// The logical shifts do not preserve the sign
+
+	// Count != 0
+	// Base cycles: 12 + 2*count
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	// Count = 0
+	// Base cycles: 20 + 2*count (in R0 least significant nibble, 0=16)
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read R0
+	//	Read source
+	//	Write dest
+
+	Word x1,x3; 
+	int x2;
+
+	FormatV;
+	if (D==0)
+	{ 
+		D=ROMWORD(WP)&0xf;
+		if (D==0) D=16;
+		AddCycleCount(8);
+	}
+	x1=ROMWORD(S);
+	x3=0;
+  
+	for (x2=0; x2<D; x2++)
+	{ 
+		x3=x1&1;
+		x1=x1>>1;
+	}
+	WRWORD(S,x1);
+
+	reset_EQ_LGT_AGT_C;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	if (x3) set_C;
+
+	AddCycleCount(12+2*D);
+}
+
+void CPU9900::op_sla()
+{ 
+	// Shift Left Arithmetic: SLA src, dst
+
+	// Count != 0
+	// Base cycles: 12 + 2*count
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	// Count = 0
+	// Base cycles: 20 + 2*count (in R0 least significant nibble, 0=16)
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read R0
+	//	Read source
+	//	Write dest
+
+	Word x1,x3,x4; 
+	int x2;
+
+	FormatV;
+	if (D==0)
+	{ 
+		D=ROMWORD(WP)&0xf;
+		if (D==0) D=16;
+		AddCycleCount(8);
+	}
+	x1=ROMWORD(S);
+	x4=x1&0x8000;
+	reset_EQ_LGT_AGT_C_OV;
+
+	x3=0;
+	for (x2=0; x2<D; x2++)
+	{ 
+		x3=x1&0x8000;
+		x1=x1<<1;
+		if ((x1&0x8000)!=x4) set_OV;
+	}
+	WRWORD(S,x1);
+  
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	if (x3) set_C;
+
+	AddCycleCount(12+2*D);
+}
+
+void CPU9900::op_src()
+{ 
+	// Shift Right Circular: SRC src, dst
+	// Circular shifts pop bits off one end and onto the other
+	// The carry bit is not a part of these shifts, but it set
+	// as appropriate
+
+	// Count != 0
+	// Base cycles: 12 + 2*count
+	// 3 memory accesses:
+	//	Read instruction (already done)
+	//	Read source
+	//	Write dest
+
+	// Count = 0
+	// Base cycles: 20 + 2*count (in R0 least significant nibble, 0=16)
+	// 4 memory accesses:
+	//	Read instruction (already done)
+	//	Read R0
+	//	Read source
+	//	Write dest
+
+	Word x1,x4;
+	int x2;
+
+	FormatV;
+	if (D==0)
+	{ 
+		D=ROMWORD(WP)&0xf;
+		if (D==0) D=16;
+		AddCycleCount(8);
+	}
+	x1=ROMWORD(S);
+	for (x2=0; x2<D; x2++)
+	{ 
+		x4=x1&0x1;
+		x1=x1>>1;
+		if (x4) 
+		{
+			x1=x1|0x8000;
+		}
+	}
+	WRWORD(S,x1);
+  
+	reset_EQ_LGT_AGT_C;
+	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
+
+	if (x4) set_C;
+
+	AddCycleCount(12+2*D);
+}
+
+void CPU9900::op_bad()
+{ 
+	char buf[128];
+
+	// Base cycles: 6
+	// 1 memory accesses:
+	//	Read instruction (already done)
+
+	FormatVII;
+	sprintf(buf, "Illegal opcode (%04X)", in);
+	warn(buf);					// Don't know this Opcode
+	AddCycleCount(6);
+	SwitchToThread();			// these have a habit of taking over the emulator in crash situations :)
+	if (BreakOnIllegal) TriggerBreakPoint();
+}
+
+////////////////////////////////////////////////////////////////////////
+// functions that are different on the F18A
+// (there will be more than just this!)
+void CPU9900::op_idleF18() {
+	// GPU goes to sleep
+	// In this broken implementation, we switch context back to the host CPU
+	// TODO: do this properly.
+	FormatVII;
+	debug_write("GPU Encountered IDLE, switching back to CPU");
+	StartIdle();
+	if (!bInterleaveGPU) {
+		pCurrentCPU = pCPU;
+	}
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_callF18() {
+	Word x2;
+
+	FormatVI;
+	x2=ROMWORD(WP+30);		// get R15
+
+	if (0 == GetReturnAddress()) {
+		SetReturnAddress(PC);
+	}
+	WRWORD(x2,PC);
+	SetPC(S);
+
+	x2-=2;
+	WRWORD(WP+30, x2);		// update R15
+
+	post_inc(SRC);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_retF18(){
+	Word x1;
+	
+	FormatVII;
+
+	// TODO: what do we have to do? Stack based return?
+	x1=ROMWORD(WP+30);		// get R15
+	x1+=2;
+	SetPC(ROMWORD(x1));		// get PC	TODO: is the F18A GPU PC also 15 bits, or 16?
+	WRWORD(WP+30, x1);		// update R15
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_pushF18(){
+	Word x1,x2;
+
+	FormatVI;
+	x1=ROMWORD(S);
+	x2=ROMWORD(WP+30);		// get R15
+
+	// Push the word on the stack
+	// the stack pointer post-decrements (per Matthew)
+	WRWORD(x2, x1);
+	x2-=2;
+	WRWORD(WP+30, x2);		// update R15
+
+	post_inc(SRC);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_popF18(){
+	Word x1,x2;
+
+	FormatVI;				// S is really D in this one...
+	x2=ROMWORD(WP+30);		// get R15
+
+	// POP the word from the stack
+	// the stack pointer post-decrements (per Matthew)
+	// so here we pre-increment!
+	x2+=2;
+	x1=ROMWORD(x2);
+	WRWORD(S, x1);
+	WRWORD(WP+30, x2);		// update R15
+
+	post_inc(SRC);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_slcF18(){
+	// TODO: this one seems misdefined? It only has a source address, and no count??
+	// Wasn't it removed from the final??
+
+	Word x1,x2;
+
+	FormatVI;
+	x1=ROMWORD(S);
+
+	// circular left shift (TODO: once? does it rotate through carry??)
+	x2=x1&0x8000;
+	x1<<=1;
+	if (x2) x1|=0x0001;
+	WRWORD(S, x1);
+
+	post_inc(SRC);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_pixF18(){
+	// PIX is a funny instruction. It has a huge candy-machine interface that works with
+	// Bitmap mode, with the new bitmap overlay, and it can perform logic operations. It's
+	// almost a mini-blitter.
+
+	Word x1,x2,ad;
+
+	FormatIX;
+	D=WP+(D<<1);
+
+	// SRC = XXXXXXXX YYYYYYYY
+	// Command bits in destination:
+	// Format: MAxxRWCE xxOOxxPP
+	// M  - 1 = calculate the effective address for GM2 instead of the new bitmap layer (todo: so do nothing else??)         
+	//      0 = use the remainder of the bits for the new bitmap layer pixels
+	// A  - 1 = retrieve the pixel's effective address instead of setting a pixel   (todo: so do nothing else??)       
+	//      0 = read or set a pixel according to the other bits
+	// R  - 1 = read current pixel into PP, only after possibly writing PP         
+	//      0 = do not read current pixel into PP
+	// W  - 1 = do not write PP         
+	//      0 = write PP to current pixel
+	// C  - 1 = compare OO with PP according to E, and write PP only if true         
+	//      0 = always write
+	// E  - 1 = only write PP if current pixel is equal to OO         
+	//      0 = only write PP if current pixel is not equal to OO
+	// OO   pixel to compare to existing pixel
+	// PP   new pixel to write, and previous pixel when reading
+	//
+	// The destination parameter is the PIX instruction as indicated above.  
+	// If you use the M or A operations, the destination register will contain the address 
+	// after the instruction has executed.  If you use the R operation, the read pixel will 
+	// be in PP (over writes the LSbits).  You can read and write at the same time, in which 
+	// case the PP bits are written first and then replaced with the original pixel bits
+	//
+	
+	x1=ROMWORD(S);
+	x2=ROMWORD(D);
+
+	if (x2 & 0x8000) {
+		// calculate BM2 address:
+		// 00PYYYYY00000YYY +
+		//     0000XXXXX000
+		// ------------------
+		// 00PY YYYY XXXX XYYY
+		//
+		// Note: Bitmap GM2 address /includes/ the offset from VR4 (pattern table), so to use
+		// it for both pattern and color tables, put the pattern table at >0000
+		ad = ((VDPREG[4]&0x04) ? 0x2000 : 0) |			// P
+			 ((x1&0x00F8) << 5) |						// YYYYY
+			 ((x1&0xF800) >> 8) |						// XXXXX
+			 ((x1&0x0007));								// YYY
+	} else {
+		// calculate overlay address -- I don't have the math for this.
+		// TODO: Is it chunky or planar? I assume chunky, 2 bits per pixel, linear.
+		// TODO: I don't have the reference in front of me to know what registers do what (size, start address, etc)
+		// so.. do this later.
+		ad = 0;		// todo: put actual math in place
+	}
+
+	// only parse the other bits if M and A are zero
+	if ((x2 & 0xc000) == 0) {
+		// everything in here thus assumes overlay mode and the pixel is at AD.
+
+		unsigned char pix = RCPUBYTE(ad);	// get the byte
+		unsigned char orig = pix;			// save it
+		// TODO: if we are 2 bits per pixel, there is still masking to do??
+		pix &= 0x03;		// TODO: this is wrong, get the correct pixel into the LSb's
+		bool bComp = (pix == ((x2&0x0030)>>4));		// compare the pixels
+		unsigned char newpix = x2&0x0003;			// new pixel
+		bool bWrite = (x2&0x0400)!=0;				// whether to write
+
+		// TODO: are C and E dependent on W being set? I am assuming yes.
+		if ((bWrite)&&(x2&0x0200)) {				// C - compare active (only important if we are writing anyway?)
+			if (x2&0x0100) {
+				// E is set, comparison must be true
+				if (!bComp) bWrite=false;
+			} else {
+				// E is clear, comparison must be false
+				if (bComp) bWrite=false;
+			}
+		}
+
+		if (bWrite) {
+			// TODO: properly merge the pixel (newpix) back in to orig
+			WCPUBYTE(ad, (orig&0xfc) | newpix);
+		}
+		if (x2 & 0x0800) {
+			// read is set, so save the original read pixel color in PP
+			x2=(x2&0xFFFC) | pix;
+			WRWORD(D, x2);			// write it back
+		}
+	} else {
+		// user only wants the address
+		WRWORD(D, ad);
+	}
+
+	// only the source address can be post-inc
+	post_inc(SRC);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_csonF18(){
+	// chip select to the EEPROM
+	FormatVII;
+	
+	spi_flash_enable(true);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_csoffF18(){
+	// chip select to the EEPROM off (TODO)
+	FormatVII;
+	
+	spi_flash_enable(false);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_spioutF18(){
+
+	// todo: based on LDCR
+	// Always a byte operation. Always just a single byte.
+	// So should we assume it's always encoded with Td=8? Td=0? Ignore Td?
+	// My increment code looks at Td>8 to determine whether autoincrement
+	// should step by 1 or 2 -- does the F18 do that?
+	Byte x1;
+
+	FormatIV;		// TODO: if it never does Td, maybe a FormatVI is more appropriate?
+	x1=RCPUBYTE(S);
+	post_inc(SRC);
+
+	// TODO: is the comment above valid? ALWAYS 8 bits?
+	spi_write_data(x1, 8);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_spiinF18(){
+	// based on STCR
+	// Always a byte operation. Always just a single byte.
+	// So should we assume it's always encoded with Td=8? Td=0? Ignore Td?
+	// My increment code looks at Td>8 to determine whether autoincrement
+	// should step by 1 or 2 -- does the F18 do that?
+
+	Byte x1;
+
+	FormatIV;
+	
+	x1 = spi_read_data(8);
+	WCPUBYTE(S,(Byte)(x1&0xff));  
+	post_inc(SRC);
+
+	// TODO: does it affect any status flags??
+	//reset_EQ_LGT_AGT_C_OV;
+	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
+
+	//AddCycleCount(??);
+}
+
+void CPU9900::op_rtwpF18(){
+	// Almost the same. Used by interrupt code only. Does not touch R13 as there is no WP.
+	// ReTurn with Workspace Pointer: RTWP
+
+	FormatVII;
+	ST=ROMWORD(WP+30);
+	SetPC(ROMWORD(WP+28));
+
+	//AddCycleCount(??);		// TODO: 
+}
+
+////////////////////////////////////////////////////////////////////////
+// Fill the CPU Opcode Address table
+////////////////////////////////////////////////////////////////////////
+void CPU9900::buildcpu()
+{
+	Word in,x,z;
+	unsigned int i;
+
+	for (i=0; i<65536; i++)
+	{ 
+		in=(Word)i;
+
+		x=(in&0xf000)>>12;
+		switch(x)
+		{ 
+		case 0: opcode0(in);		break;
+		case 1: opcode1(in);		break;
+		case 2: opcode2(in);		break;
+		case 3: opcode3(in);		break;
+		case 4: opcode[in]=&CPU9900::op_szc;	break;
+		case 5: opcode[in]=&CPU9900::op_szcb; break;
+		case 6: opcode[in]=&CPU9900::op_s;	break;
+		case 7: opcode[in]=&CPU9900::op_sb;	break;
+		case 8: opcode[in]=&CPU9900::op_c;	break;
+		case 9: opcode[in]=&CPU9900::op_cb;	break;
+		case 10:opcode[in]=&CPU9900::op_a;	break;
+		case 11:opcode[in]=&CPU9900::op_ab;	break;
+		case 12:opcode[in]=&CPU9900::op_mov;	break;
+		case 13:opcode[in]=&CPU9900::op_movb; break;
+		case 14:opcode[in]=&CPU9900::op_soc;	break;
+		case 15:opcode[in]=&CPU9900::op_socb; break;
+		default: opcode[in]=&CPU9900::op_bad;
+		}
+	} 
+
+	// build the Word status lookup table
+	for (i=0; i<65536; i++) {
+		WStatusLookup[i]=0;
+		// LGT
+		if (i>0) WStatusLookup[i]|=BIT_LGT;
+		// AGT
+		if ((i>0)&&(i<0x8000)) WStatusLookup[i]|=BIT_AGT;
+		// EQ
+		if (i==0) WStatusLookup[i]|=BIT_EQ;
+		// C
+		if (i==0) WStatusLookup[i]|=BIT_C;
+		// OV
+		if (i==0x8000) WStatusLookup[i]|=BIT_OV;
+	}
+	// And byte
+	for (i=0; i<256; i++) {
+		Byte x=(Byte)(i&0xff);
+		BStatusLookup[i]=0;
+		// LGT
+		if (i>0) BStatusLookup[i]|=BIT_LGT;
+		// AGT
+		if ((i>0)&&(i<0x80)) BStatusLookup[i]|=BIT_AGT;
+		// EQ
+		if (i==0) BStatusLookup[i]|=BIT_EQ;
+		// C
+		if (i==0) BStatusLookup[i]|=BIT_C;
+		// OV
+		if (i==0x80) BStatusLookup[i]|=BIT_OV;
+		// OP
+		for (z=0; x; x&=(x-1)) z++;						// black magic?
+		if (z&1) BStatusLookup[i]|=BIT_OP;				// set bit if an odd number
+	}
+
+	nCycleCount = 0;
+}
+
+///////////////////////////////////////////////////////////////////////////
+// CPU Opcode 0 helper function
+///////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode0(Word in)
+{
+	Word x;
+
+	x=(in&0x0f00)>>8;
+
+	switch(x)
+	{ 
+	case 2: opcode02(in);		break;
+	case 3: opcode03(in);		break;
+	case 4: opcode04(in);		break;
+	case 5: opcode05(in);		break;
+	case 6: opcode06(in);		break;
+	case 7: opcode07(in);		break;
+	case 8: opcode[in]=&CPU9900::op_sra;	break;
+	case 9: opcode[in]=&CPU9900::op_srl;	break;
+	case 10:opcode[in]=&CPU9900::op_sla;	break;
+	case 11:opcode[in]=&CPU9900::op_src;	break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////
+// CPU Opcode 02 helper function
+////////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode02(Word in)
+{ 
+	Word x;
+
+	x=(in&0x00e0)>>4;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_li;	break;
+	case 2: opcode[in]=&CPU9900::op_ai;	break;
+	case 4: opcode[in]=&CPU9900::op_andi; break;
+	case 6: opcode[in]=&CPU9900::op_ori;	break;
+	case 8: opcode[in]=&CPU9900::op_ci;	break;
+	case 10:opcode[in]=&CPU9900::op_stwp; break;
+	case 12:opcode[in]=&CPU9900::op_stst; break;
+	case 14:opcode[in]=&CPU9900::op_lwpi; break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////
+// CPU Opcode 03 helper function
+////////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode03(Word in)
+{ 
+	Word x;
+
+	x=(in&0x00e0)>>4;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_limi; break;
+	case 4: opcode[in]=&CPU9900::op_idle; break;
+	case 6: opcode[in]=&CPU9900::op_rset; break;
+	case 8: opcode[in]=&CPU9900::op_rtwp; break;
+	case 10:opcode[in]=&CPU9900::op_ckon; break;
+	case 12:opcode[in]=&CPU9900::op_ckof; break;
+	case 14:opcode[in]=&CPU9900::op_lrex; break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////
+// CPU Opcode 04 helper function
+///////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode04(Word in)
+{ 
+	Word x;
+
+	x=(in&0x00c0)>>4;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_blwp; break;
+	case 4: opcode[in]=&CPU9900::op_b;	break;
+	case 8: opcode[in]=&CPU9900::op_x;	break;
+	case 12:opcode[in]=&CPU9900::op_clr;	break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+// CPU Opcode 05 helper function
+//////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode05(Word in)
+{ 
+	Word x;
+
+	x=(in&0x00c0)>>4;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_neg;	break;
+	case 4: opcode[in]=&CPU9900::op_inv;	break;
+	case 8: opcode[in]=&CPU9900::op_inc;	break;
+	case 12:opcode[in]=&CPU9900::op_inct; break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////
+// CPU Opcode 06 helper function
+////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode06(Word in)
+{ 
+	Word x;
+
+	x=(in&0x00c0)>>4;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_dec;	break;
+	case 4: opcode[in]=&CPU9900::op_dect; break;
+	case 8: opcode[in]=&CPU9900::op_bl;	break;
+	case 12:opcode[in]=&CPU9900::op_swpb; break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////
+// CPU Opcode 07 helper function
+////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode07(Word in)
+{ 
+	Word x;
+
+	x=(in&0x00c0)>>4;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_seto; break;
+	case 4: opcode[in]=&CPU9900::op_abs;	break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}	
+}
+
+////////////////////////////////////////////////////////////////////////
+// CPU Opcode 1 helper function
+////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode1(Word in)
+{ 
+	Word x;
+
+	x=(in&0x0f00)>>8;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_jmp;	break;
+	case 1: opcode[in]=&CPU9900::op_jlt;	break;
+	case 2: opcode[in]=&CPU9900::op_jle;	break;
+	case 3: opcode[in]=&CPU9900::op_jeq;	break;
+	case 4: opcode[in]=&CPU9900::op_jhe;	break;
+	case 5: opcode[in]=&CPU9900::op_jgt;	break;
+	case 6: opcode[in]=&CPU9900::op_jne;	break;
+	case 7: opcode[in]=&CPU9900::op_jnc;	break;
+	case 8: opcode[in]=&CPU9900::op_joc;	break;
+	case 9: opcode[in]=&CPU9900::op_jno;	break;
+	case 10:opcode[in]=&CPU9900::op_jl;	break;
+	case 11:opcode[in]=&CPU9900::op_jh;	break;
+	case 12:opcode[in]=&CPU9900::op_jop;	break;
+	case 13:opcode[in]=&CPU9900::op_sbo;	break;
+	case 14:opcode[in]=&CPU9900::op_sbz;	break;
+	case 15:opcode[in]=&CPU9900::op_tb;	break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////
+// CPU Opcode 2 helper function
+////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode2(Word in)
+{ 
+	Word x;
+
+	x=(in&0x0c00)>>8;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_coc; break;
+	case 4: opcode[in]=&CPU9900::op_czc; break;
+	case 8: opcode[in]=&CPU9900::op_xor; break;
+	case 12:opcode[in]=&CPU9900::op_xop; break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////
+// CPU Opcode 3 helper function
+////////////////////////////////////////////////////////////////////////
+void CPU9900::opcode3(Word in)
+{ 
+	Word x;
+
+	x=(in&0x0c00)>>8;
+
+	switch(x)
+	{ 
+	case 0: opcode[in]=&CPU9900::op_ldcr; break;
+	case 4: opcode[in]=&CPU9900::op_stcr; break;
+	case 8: opcode[in]=&CPU9900::op_mpy;	break;
+	case 12:opcode[in]=&CPU9900::op_div;	break;
+	default: opcode[in]=&CPU9900::op_bad;
+	}
+}
+
+///// F18A implementation/override class
+
+// TODO: the only speed rating we have is 150-200nS per instruction on average. Actual
+// timing information is not currently available. This is probably good
+// enough for a rough start.
+// Some details that are available:
+// 100MHz clock
+// jump takes 5 clocks
+// instructions with 2 symbolic addresses take 20 clocks
+//
+// Stack operations use R15 as the stack pointer - always a word operation on EVEN address (so top is >47FE)
+//
+// the GPU auto-starts on reset (on VDP reset!) after loading the bitstream from EPROM, which pre-sets all RAM.
+// TODO: I need a dump of the bitstream from Matthew to include, and I need a load routine and to start the GPU.
+// 
+// TODO: Disassembler needs to know about the changed opcodes
+
+GPUF18A::GPUF18A() {
+	// build default 9900
+	buildcpu();
+
+	// override with F18A replacements
+
+	// new opcodes
+	// CALL 0C80 - 0000 1100 10Ts SSSS
+	for (int idx=0x0C80; idx<=0x0CBF; idx++) {
+		opcode[idx] = &CPU9900::op_callF18;
+	}
+
+	// RET  0C00 - 0000 1100 0000 0000
+	opcode[0x0c00] = &CPU9900::op_retF18;
+
+	// PUSH 0D00 - 0000 1101 00Ts SSSS
+	for (int idx=0x0D00; idx<=0x0D3F; idx++) {
+		opcode[idx]=&CPU9900::op_pushF18;
+	}
+
+	// POP  0F00 - 0000 1111 00Td DDDD
+	for (int idx=0x0F00; idx<=0x0f3F; idx++) {
+		opcode[idx]=&CPU9900::op_popF18;
+	}
+
+	// SLC  0E00 - 0000 1110 00Ts SSSS
+	for (int idx=0x0E00; idx<=0x0E3F; idx++) {
+		opcode[idx]=&CPU9900::op_slcF18;
+	}
+
+	// Modified opcodes
+	
+	// IDLE = IDLE     Forces the GPU state machine to the idle state, restart with a trigger from host
+	opcode[0x0340] = &CPU9900::op_idleF18;
+
+	//TODO: be smart about these later
+	for (int idx=0; idx<0xffff; idx++) {
+		// XOP  = PIX       The new dedicated pixel plotting instruction
+		if (opcode[idx] == &CPU9900::op_xop) opcode[idx]=&CPU9900::op_pixF18;
+
+		// CKON = SPI !CE Sets the chip enable line to the SPI Flash ROM low (enables the ROM)
+		if (opcode[idx] == &CPU9900::op_ckon) opcode[idx]=&CPU9900::op_csonF18;
+
+		// CKOF = SPI CE  Sets the chip enable line to the SPI Flash ROM high (disables the ROM)
+		if (opcode[idx] == &CPU9900::op_ckof) opcode[idx]=&CPU9900::op_csoffF18;
+
+		// LDCR = SPI OUT Writes a byte (always a byte operation) to the SPI Flash ROM
+		if (opcode[idx] == &CPU9900::op_ldcr) opcode[idx]=&CPU9900::op_spioutF18;
+
+		// STCR = SPI IN  Reads a byte (always a byte operation) from the SPI Flash ROM
+		if (opcode[idx] == &CPU9900::op_stcr) opcode[idx]=&CPU9900::op_spiinF18;
+
+		// RTWP = RTWP     Modified, does not use R13, only performs R14->PC, R15->status flags
+		if (opcode[idx] == &CPU9900::op_rtwp) opcode[idx]=&CPU9900::op_rtwpF18;
+
+		// Unimplemented
+		if (opcode[idx] == &CPU9900::op_sbo) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_sbz) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_tb) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_blwp) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_stwp) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_lwpi) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_limi) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_rset) opcode[idx]=&CPU9900::op_bad;
+		if (opcode[idx] == &CPU9900::op_lrex) opcode[idx]=&CPU9900::op_bad;
+	}
+
+	pType="F18A";
+}
+
+void GPUF18A::reset() {
+	StartIdle();
+	nReturnAddress=0;
+
+	// zero out the post increment tracking
+	nPostInc[SRC]=0;
+	nPostInc[DST]=0;
+
+	// todo: big time hack - set the scanline register to 192 for programs that use this
+	// method of VSYNC (note that programs might overwrite it...)
+	VDP[0x7000] = 192;
+
+	SetWP(0xff80);			// just a dummy, out of the way place for them. F18A doesn't have a WP
+	SetPC(0);				// it doesn't run automatically, either
+	X_flag=0;				// not currently executing an X instruction (todo: does it have X?)
+	ST=(ST&0xfff0);			// disable interrupts (todo: does it have interrupts?)
+	SetCycleCount(26);		// not that it's a big deal, but that's how long reset takes ;)
+
+	// TODO: GPU /does/ autostart, but we have to load the bitstream from eeprom first (so we need a stopidle - not the startidle above)
+}
+
+// There are no side-effects to reading anything from the F18A,
+// so we won't bother implementing the word/rbw actions
+// There are WRITE side effects, but till we have the registers
+// implemented it doesn't matter.
+// TODO: does the F18 /actually/ implement word-only access or can it do TRUE bytes? word accesses are aligned, bytes are true bytes
+// TODO: do reads differ from writes in that respect? no
+// TODO: do F18 writes perform a read-before-write in any case? (does it matter? there are no side-effects. Just timing.)
+
+// >0000 to >3FFF VRAM
+// >4000 to >47FF GPU-RAM
+// >5000 to >5x7F Color Registers, and you can READ them! (2 bytes per register)
+// >6000 to >6x3F VDP Registers, read/write 
+// >7000 to >7xxx Current scan line (0 to 192 / 240 (in 30-row mode)) (255 is repeated at top of frame?)
+// >8000 to >8xx3 32-bit counter
+// >9000 to >9xx3 32-bit RNG
+// >A000 to >A??? SPI interface - not worked out yet -- TODO: this is worked out, get detailed
+// >B000 to >Bxxx F18A version
+// ???
+// >FF80 to >FF9F - GPU registers R0-R15
+// NOTE: GPU accessing VDP registers or VDP RAM is slow compared to the palette registers..
+Byte GPUF18A::RCPUBYTE(Word src) {
+	UpdateHeatVDP(src);		// todo: maybe GPU vdp writes can be a different color
+
+	// map the regisgers.
+	// TODO: what happens when these values are read as words?
+	switch ((src&0xf000)>>12) {
+	case 0:
+	case 1:
+	case 2:
+	case 3:
+		// standard 16k VDP RAM - no mapping
+		break;
+
+	case 4:
+		// 4k GPU RAM
+		// TODO: does it mirror? I'm going to mirror it
+		src&=0xf7ff;
+		break;
+
+	case 5:
+		// 16-bit color registers
+		// TODO: do they mirror? I am mirroring them
+		src &= 0xf07f;
+		break;
+
+	case 6:
+		// 8-bit VDP registers
+		// TODO: what happens on 16-bit read?
+		// TODO: do they mirror?
+		src&=0xf03f;
+		break;
+
+	case 7:
+		// current scanline in even byte
+		// blanking bit in odd byte
+		src&=0xf001;
+		break;
+
+	case 8:
+	case 9:
+		// 32-bit counter and RNG (RNG is deprecated)
+		// TODO: does the last nibble mirror?
+		src&=0xf003;
+		break;
+
+
+	case 0xf:
+		// registers are at >ff80, so just let these through
+		break;
+
+	default:
+		// ignoring the rest for now
+		return 0;
+	}
+
+	return VDP[src];
+}
+
+void GPUF18A::WCPUBYTE(Word dest, Byte c) {
+	UpdateHeatVDP(dest);		// todo: maybe GPU vdp writes can be a different color
+	VDP[dest]=c;
+	VDPMemInited[dest]=1;
+	if (dest < 0x4000) redraw_needed=REDRAW_LINES;		// to avoid redrawing because of GPU R0-R15 registers changing
+
+	// TODO: note that I'm NOT mirroring the registers here - read or write, one is wrong ;)
+	if (((dest&0xF0FF)>=0x6000) && ((dest&0xf0ff)<=0x603f)) {
+		// write VDP register
+		wVDPreg(dest&0x3f,c);
+	}
+	if (((dest&0xF0FF)>=0x5000) && ((dest&0xf0ff)<=0x507f)) {
+		// update the mirrored memory base
+		VDP[dest&0xf07f] = c;
+		VDPMemInited[dest]=1;
+
+		// write VDP palette
+		int reg = (dest&0x7f)/2;
+
+		// the palette register is doubled up, so we need to deal with that
+		int r=(VDP[dest&0xf07e] & 0x0f);
+		int g=(VDP[(dest&0xf07e)+1] & 0xf0)>>4;
+		int b=(VDP[(dest&0xf07e)+1] & 0x0f);
+		F18APalette[reg] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
+		redraw_needed = REDRAW_LINES;
+	}
+}
+
+Word GPUF18A::ROMWORD(Word src) {
+	src&=0xfffe;
+	return (RCPUBYTE(src)<<8) | RCPUBYTE(src+1);
+//	return (VDP[(src)]<<8) | VDP[(src+1)];
+} 
+
+void GPUF18A::WRWORD(Word dest, Word val) {
+	dest&=0xfffe;
+	WCPUBYTE(dest, val>>8);
+	WCPUBYTE(dest+1, val&0xff);
+//	VDP[dest]= val>>8;
+//	VDP[dest+1]= val&0xff;
+}
+
+Word GPUF18A::GetSafeWord(int x, int) {
+	// bank is irrelevant
+	return ROMWORD(x);
+}
+
+// Read a byte withOUT triggering the hardware - for monitoring
+Byte GPUF18A::GetSafeByte(int x, int) {
+	// bank is irrelevant
+	return RCPUBYTE(x);
+}
+
+void GPUF18A::TriggerInterrupt(Word /*vector*/) {
+	// do nothing, there are no external interrupts
+}

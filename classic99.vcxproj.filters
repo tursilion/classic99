@@ -1,0 +1,497 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="2xSaI\2xsaiwin.cpp">
+      <Filter>2xSAI</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\ams.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\avi.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\makecart.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\mpd.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\rs232_pio.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\WindowProc.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="console\tivdp.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
+    <ClCompile Include="console\Tiemul.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
+    <ClCompile Include="console\sound.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
+    <ClCompile Include="console\cpu9900.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
+    <ClCompile Include="debugger\9900dism.cpp">
+      <Filter>debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="debugger\bug99.cpp">
+      <Filter>debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="disk\ClipboardDisk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
+    <ClCompile Include="disk\ClockDisk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
+    <ClCompile Include="disk\disk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
+    <ClCompile Include="disk\diskclass.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
+    <ClCompile Include="disk\FiadDisk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
+    <ClCompile Include="disk\ImageDisk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
+    <ClCompile Include="keyboard\kb.cpp">
+      <Filter>keyboard</Filter>
+    </ClCompile>
+    <ClCompile Include="keyboard\keyboard.cpp">
+      <Filter>keyboard</Filter>
+    </ClCompile>
+    <ClCompile Include="keyboard\ti.cpp">
+      <Filter>keyboard</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\loadsave_brk.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\ubergrom.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="ubercombined.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+    <ClCompile Include="disk\TICCDisk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
+    <ClCompile Include="debugger\dbghook.cpp">
+      <Filter>debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="addons\F18A.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="2xSaI\2xSaI.h">
+      <Filter>2xSAI</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\ams.h">
+      <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\makecart.h">
+      <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\mpd.h">
+      <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\rs232_pio.h">
+      <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="console\tiemul.h">
+      <Filter>console</Filter>
+    </ClInclude>
+    <ClInclude Include="console\sound.h">
+      <Filter>console</Filter>
+    </ClInclude>
+    <ClInclude Include="debugger\bug99.h">
+      <Filter>debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\ClipboardDisk.h">
+      <Filter>disk</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\ClockDisk.h">
+      <Filter>disk</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\diskclass.h">
+      <Filter>disk</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\FiadDisk.h">
+      <Filter>disk</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\ImageDisk.h">
+      <Filter>disk</Filter>
+    </ClInclude>
+    <ClInclude Include="keyboard\kb.h">
+      <Filter>keyboard</Filter>
+    </ClInclude>
+    <ClInclude Include="keyboard\Scancodes.h">
+      <Filter>keyboard</Filter>
+    </ClInclude>
+    <ClInclude Include="keyboard\ti.h">
+      <Filter>keyboard</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\loadsave_brk.h">
+      <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="console\cpu9900.h">
+      <Filter>console</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\ubergrom.h">
+      <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\TICCDisk.h">
+      <Filter>disk</Filter>
+    </ClInclude>
+    <ClInclude Include="debugger\dbghook.h">
+      <Filter>debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\F18A.h">
+      <Filter>addons</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Script2.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="whatsnew.txt" />
+    <None Include="addons\BASIC_ROM_header.a99">
+      <Filter>addons</Filter>
+    </None>
+    <None Include="graphics\icon1.ico">
+      <Filter>graphics</Filter>
+    </None>
+    <None Include="graphics\ti_keyboard_map.bmp">
+      <Filter>graphics</Filter>
+    </None>
+    <None Include="graphics\cursor1.cur">
+      <Filter>graphics</Filter>
+    </None>
+    <None Include="roms\mm2\DummyG.bin">
+      <Filter>roms\MM2</Filter>
+    </None>
+    <None Include="roms\mm2\TIMM2PIC_C">
+      <Filter>roms\MM2</Filter>
+    </None>
+    <None Include="roms\mm2\timusif">
+      <Filter>roms\MM2</Filter>
+    </None>
+    <None Include="roms\mm2\TIMM2PIC_P">
+      <Filter>roms\MM2</Filter>
+    </None>
+    <None Include="roms\mm2\timusic">
+      <Filter>roms\MM2</Filter>
+    </None>
+    <None Include="roms\mm2\timusid">
+      <Filter>roms\MM2</Filter>
+    </None>
+    <None Include="roms\mm2\timusie">
+      <Filter>roms\MM2</Filter>
+    </None>
+    <None Include="roms\994AGROM.BIN">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\994AROM.BIN">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\CON22G0.GRM">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\con22g1.grm">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\CON22G2.GRM">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\con22r0.rom">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\CON4G0.GRM">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\CON4G1.GRM">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\CON4G2.GRM">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\CON4R0.ROM">
+      <Filter>roms\console</Filter>
+    </None>
+    <None Include="roms\AMI99DSK.BIN">
+      <Filter>roms\cards</Filter>
+    </None>
+    <None Include="roms\PCardC.ROM">
+      <Filter>roms\cards</Filter>
+    </None>
+    <None Include="roms\PCardD.ROM">
+      <Filter>roms\cards</Filter>
+    </None>
+    <None Include="roms\p1f00g_0000_f800.GRM">
+      <Filter>roms\cards</Filter>
+    </None>
+    <None Include="roms\RS232.Bin">
+      <Filter>roms\cards</Filter>
+    </None>
+    <None Include="roms\SPCHROM.BIN">
+      <Filter>roms\cards</Filter>
+    </None>
+    <None Include="roms\ACERC.bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\AMAZEG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\ACERP.bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\ALPINERC.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\ALPINERG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\BlakjakG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\CarWarsG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\ChishlmC.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\ChishlmG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\FATHOMC.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\FATHOMD.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\FATHOMG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\FootbalG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\HustleG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\MinChalG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\MunchMnC.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\MunchMnG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\PARSECC.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\PARSECG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\PENNIES">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\QUEST">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\SSALOAD.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\ssaram.bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\SSD.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\SSE.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\TI-InvaC.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\TI-InvaG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\TOMBCITC.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\TOMBCITG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\TunDoomG.Bin">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\V-CHESSC.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\V-CHESSG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\WUMPUSG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\ZEROZAPG.BIN">
+      <Filter>roms\games</Filter>
+    </None>
+    <None Include="roms\AMSTEST4">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TurboForthD.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\ASHOE">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\ASSM1.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\ASSM2.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\BASIC_ROM_header.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\chara1">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\DEMOG.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\DEMQ">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\DiagnosG.Bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\EDIT1.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\EPSGMODG.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\HomFDecG.Bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\LOGOC.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\LOGOG.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\MiniMemC.Bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\MiniMemG.Bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TE-IIC.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TE-IIG.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TIEAG.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TIEXTC.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TIEXTD.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TIEXTG.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TIPlayerC.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\tiworkshop379.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\TurboForthC.BIN">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\EA_Utils.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\RXBC.Bin" />
+    <None Include="roms\RXBD.Bin" />
+    <None Include="roms\RXBG.Bin" />
+    <None Include="roms\GPL%40LOADER" />
+    <None Include="roms\RXBASSM1" />
+    <None Include="roms\RXBASSM2" />
+    <None Include="roms\RXBASSM3" />
+    <None Include="roms\RXBCSAVE" />
+    <None Include="roms\RXBCSAVE2" />
+    <None Include="roms\RXBEDIT" />
+    <None Include="roms\RXBEDIU" />
+    <None Include="roms\DISK.BIN">
+      <Filter>roms\cards</Filter>
+    </None>
+    <None Include="roms\XB27_EEPROM_060315.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\XB27_GROM_060315.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="roms\XB27_ROM_060315.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+    <None Include="graphics\roms3.bin" />
+    <None Include="graphics\roms4.bin" />
+    <None Include="roms\fbForth200_3.bin">
+      <Filter>roms\apps</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="2xSAI">
+      <UniqueIdentifier>{b088cd20-ac96-4488-900d-1cddfe98e65f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="addons">
+      <UniqueIdentifier>{b9009e43-d30e-479c-84b6-46ee33a3c641}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="console">
+      <UniqueIdentifier>{d291c213-00c4-48a4-afb8-d9cf0b2dde03}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="debugger">
+      <UniqueIdentifier>{a5c667c1-cc9d-4b12-82f4-60a9b56ce484}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="disk">
+      <UniqueIdentifier>{c115157e-2c06-4e88-a4a7-ca9ac0bb39de}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="graphics">
+      <UniqueIdentifier>{604719b1-67ab-4873-9292-4b9963f01b6f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="keyboard">
+      <UniqueIdentifier>{620d1a33-4fb5-4c66-9f84-f60e42952344}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="roms">
+      <UniqueIdentifier>{7ef370f0-6d64-4e3d-a7c0-b858f9110c8d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="roms\MM2">
+      <UniqueIdentifier>{2f2e35b5-a642-42cb-a1a4-a1307c1cd4b1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="roms\console">
+      <UniqueIdentifier>{4be716c1-b4f2-4856-b9f1-d2c1f573457f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="roms\cards">
+      <UniqueIdentifier>{67d9802c-f0b7-42e4-93ab-f1587785538e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="roms\games">
+      <UniqueIdentifier>{fceeee08-dd9a-4316-a66a-718dbf2ad99a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="roms\apps">
+      <UniqueIdentifier>{b41083fd-c50b-4d5f-a3d8-724ab9e72f43}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

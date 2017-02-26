@@ -1,0 +1,9 @@
+EXPORTS
+	SpeechInit		@1
+	SpeechStop		@2
+	SpeechRead		@3
+	SpeechWrite		@4
+	SpeechProcess	@5
+
+
+

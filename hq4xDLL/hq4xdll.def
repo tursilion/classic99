@@ -1,0 +1,6 @@
+EXPORTS
+	hq4x_init		@1
+	hq4x_process	@2
+
+
+
