@@ -3425,7 +3425,7 @@ Byte GPUF18A::RCPUBYTE(Word src) {
 }
 
 void GPUF18A::WCPUBYTE(Word dest, Byte c) {
-	// map the regisgers.
+	// map the registers.
 	// TODO: what happens when these values are written as words? I think it should work
 	switch ((dest&0xf000)>>12) {
 	case 0:
@@ -3444,20 +3444,25 @@ void GPUF18A::WCPUBYTE(Word dest, Byte c) {
 		break;
 
 	case 5:
-		// 16-bit color registers
-		//   -- PRAM  7-bit, 128 @ >5000 to >5x7F (0101 xxxx x111 1111)
-		// Mirrored numerous times
-		dest &= 0xf07f;
+		{
+			// 16-bit color registers
+			//   -- PRAM  7-bit, 128 @ >5000 to >5x7F (0101 xxxx x111 1111)
+			// Mirrored numerous times
+			dest &= 0xf07f;
+			// we do this write first, because the registers are 16-bit,
+			// and so we read the resulting value back out in the next bit
+			VDP[dest&0xf07f] = c;
 
-		// write VDP palette
-		int reg = (dest&0x7f)/2;
+			// write VDP palette
+			int reg = (dest&0x7f)/2;
 
-		// the palette register is doubled up, so we need to deal with that
-		int r=(VDP[dest&0xf07e] & 0x0f);
-		int g=(VDP[(dest&0xf07e)+1] & 0xf0)>>4;
-		int b=(VDP[(dest&0xf07e)+1] & 0x0f);
-		F18APalette[reg] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
-		redraw_needed = REDRAW_LINES;
+			// the palette register is doubled up, so we need to deal with that
+			int r=(VDP[dest&0xf07e] & 0x0f);
+			int g=(VDP[(dest&0xf07e)+1] & 0xf0)>>4;
+			int b=(VDP[(dest&0xf07e)+1] & 0x0f);
+			F18APalette[reg] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
+			redraw_needed = REDRAW_LINES;
+		}
 		break;
 
 	case 6:

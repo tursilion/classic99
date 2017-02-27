@@ -113,7 +113,7 @@ void spi_backup_flash(int adr, int size) {
 		}
 	}
 
-	fseek(pFlash, adr, SEEK_SET);
+	fseek(fp, adr, SEEK_SET);
 	if (size/1024*1024 == size) {
 		// a little faster if the math works
 		fwrite(pFlash, 1024, size/1024, fp);
