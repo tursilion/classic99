@@ -4397,6 +4397,9 @@ void wVDPreg(Byte r, Byte v)
 			}
 		}
 	}
+
+	// for the F18A GPU, copy it to RAM
+	VDP[0x6000+r]=v;
 }
 
 ////////////////////////////////////////////////////////////////

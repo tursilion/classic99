@@ -2436,7 +2436,7 @@ unsigned char getF18AStatus() {
 	case 9:
 	case 10:
 	case 11:
-		// TODO: 64 bit counter - if it's still valid
+		// TODO: 64 bit counter - if it's still valid (it's not?)
 		return 0;
 
 	case 12:

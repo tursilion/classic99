@@ -38,6 +38,10 @@
 
 // F18A support functions - for the moment it's just the SPI flash
 
+// TODO: I did this bitwise, but that was unnecessary, the F18A can only
+// speak to it one byte at a time. This emulation could be simplified by
+// removing the bit assumptions.
+
 #define WIN32_LEAN_AND_MEAN
 #define _WIN32_WINNT 0x0500
 #include <stdio.h>
@@ -46,17 +50,17 @@
 #include "tiemul.h"
 #include "F18A.h"
 
-// TODO: for now the SPI flash is just kept in RAM, and it's
-// neither saved to disk nor used for startup in any way.
 // This exists mostly to be able to test the F18A updater.
 
 // This is based loosely on the datasheet,
 // the flash chip is the M25P80 SPI Flash
 
-// There's pretty much no error handing - we just assume it's right
+// There's pretty much no error handing - we just assume commands are valid
 // There's no timing here - commands are assumed to complete immediately
 
+// assumed to be a multiple of 1024
 #define FLASH_SIZE (64*(64*1024))
+#define FLASH_FILENAME "F18ASpiFlash.bin"
 
 unsigned char *pFlash = NULL;
 bool bEnable = false;
@@ -95,6 +99,30 @@ int pageaddress;
 #define STATUS_BP0  0x04
 #define STATUS_WEL  0x02
 #define STATUS_WIP  0x01
+
+void spi_backup_flash(int adr, int size) {
+	// open in modify mode
+	FILE *fp = fopen(FLASH_FILENAME, "r+b");
+	if (NULL == fp) {
+		// but if we couldn't, just create from scratch
+		debug_write("Creating new file for F18A SPI Flash backup: %s", FLASH_FILENAME);
+		fp = fopen(FLASH_FILENAME, "wb");
+		if (NULL == fp) {
+			debug_write("Failed to create disk backup");
+			return;
+		}
+	}
+
+	fseek(pFlash, adr, SEEK_SET);
+	if (size/1024*1024 == size) {
+		// a little faster if the math works
+		fwrite(pFlash, 1024, size/1024, fp);
+	} else {
+		// just write bytes then
+		fwrite(pFlash, 1, size, fp);
+	}
+	fclose(fp);
+}
 
 void spi_reset() {
 	status_reg=0;
@@ -209,6 +237,7 @@ void spi_try_command() {
 				for (int idx=0; idx<256; idx++) {
 					pFlash[address+idx] &= pagedata[idx];
 				}
+				spi_backup_flash(address, 256);
 
 				reg32_in=0;
 				activecmd = 0;
@@ -220,6 +249,7 @@ void spi_try_command() {
 				address = reg32_in&0x0f0000;
 				//debug_write("Sector erase of SPI flash - %p", address);
 				memset(&pFlash[address], 0xff, 65536);
+				spi_backup_flash(address, 256);
 				reg32_in=0;
 				activecmd = 0;
 				status_reg &= ~STATUS_WEL;
@@ -301,6 +331,7 @@ void spi_try_command() {
 		// TODO: this is supposed to wait for select to be released
 		debug_write("Bulk erase of SPI flash");
 		memset(pFlash, 0xff, FLASH_SIZE);
+		spi_backup_flash(0, FLASH_SIZE);
 		status_reg &= ~STATUS_WEL;
 		reg32_in=0;
 		activecmd = 0;
@@ -333,7 +364,22 @@ void spi_flash_enable(bool enable) {
 
 	if ((bEnable) && (pFlash == NULL)) {
 		pFlash = (unsigned char*)malloc(FLASH_SIZE);
-		debug_write("Creating 1MB in-memory flash emulation for F18A SPI.");
+		if (NULL != pFlash) {
+			// make it look uninitialized
+			memset(pFlash, 0xcd, FLASH_SIZE);
+			// check if there's an old one to load from disk
+			FILE *fp = fopen(FLASH_FILENAME, "rb");
+			if (NULL == fp) {
+				debug_write("Creating 1MB flash emulation for F18A SPI.");
+				spi_backup_flash(0, FLASH_SIZE);
+			} else {
+				debug_write("Reading old 1MB flash for F18A SPI.");
+				fread(pFlash, 1024, FLASH_SIZE/1024, fp);
+				fclose(fp);
+			}
+		} else {
+			debug_write("Unable to allocate RAM for F18A SPI flash emulation.");
+		}
 	}
 
 	if (bEnable) {

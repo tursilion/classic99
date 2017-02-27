@@ -2893,19 +2893,20 @@ void CPU9900::op_csoffF18(){
 }
 
 void CPU9900::op_spioutF18(){
-
-	// todo: based on LDCR
-	// Always a byte operation. Always just a single byte.
-	// So should we assume it's always encoded with Td=8? Td=0? Ignore Td?
-	// My increment code looks at Td>8 to determine whether autoincrement
-	// should step by 1 or 2 -- does the F18 do that?
+	// based on LDCR
+	// The count is ignored, this is always an 8-bit byte operation
 	Byte x1;
 
-	FormatIV;		// TODO: if it never does Td, maybe a FormatVI is more appropriate?
+	// force the bit count to be 8, no matter what it really was
+	// This is needed so the FormatIV instruction correctly interprets
+	// this as a byte operation in all cases.
+	in = (in&(~0x03c0)) | (8<<6);
+
+	FormatIV;
 	x1=RCPUBYTE(S);
 	post_inc(SRC);
 
-	// TODO: is the comment above valid? ALWAYS 8 bits?
+	// Always 8 bits
 	spi_write_data(x1, 8);
 
 	// TODO: does it affect any status flags??
@@ -2917,15 +2918,17 @@ void CPU9900::op_spioutF18(){
 
 void CPU9900::op_spiinF18(){
 	// based on STCR
-	// Always a byte operation. Always just a single byte.
-	// So should we assume it's always encoded with Td=8? Td=0? Ignore Td?
-	// My increment code looks at Td>8 to determine whether autoincrement
-	// should step by 1 or 2 -- does the F18 do that?
-
+	// The count is ignored, this is always an 8-bit byte operation
 	Byte x1;
+
+	// force the bit count to be 8, no matter what it really was
+	// This is needed so the FormatIV instruction correctly interprets
+	// this as a byte operation in all cases.
+	in = (in&(~0x03c0)) | (8<<6);
 
 	FormatIV;
 	
+	// Always 8 bits
 	x1 = spi_read_data(8);
 	WCPUBYTE(S,(Byte)(x1&0xff));  
 	post_inc(SRC);
@@ -2940,6 +2943,7 @@ void CPU9900::op_spiinF18(){
 void CPU9900::op_rtwpF18(){
 	// Almost the same. Used by interrupt code only. Does not touch R13 as there is no WP.
 	// ReTurn with Workspace Pointer: RTWP
+	// TODO: what interrupt code? what am I doing here?
 
 	FormatVII;
 	ST=ROMWORD(WP+30);
@@ -3327,10 +3331,6 @@ void GPUF18A::reset() {
 	nPostInc[SRC]=0;
 	nPostInc[DST]=0;
 
-	// todo: big time hack - set the scanline register to 192 for programs that use this
-	// method of VSYNC (note that programs might overwrite it...)
-	VDP[0x7000] = 192;
-
 	SetWP(0xff80);			// just a dummy, out of the way place for them. F18A doesn't have a WP
 	SetPC(0);				// it doesn't run automatically, either
 	X_flag=0;				// not currently executing an X instruction (todo: does it have X?)
@@ -3348,17 +3348,6 @@ void GPUF18A::reset() {
 // TODO: do reads differ from writes in that respect? no
 // TODO: do F18 writes perform a read-before-write in any case? (does it matter? there are no side-effects. Just timing.)
 
-// >0000 to >3FFF VRAM
-// >4000 to >47FF GPU-RAM
-// >5000 to >5x7F Color Registers, and you can READ them! (2 bytes per register)
-// >6000 to >6x3F VDP Registers, read/write 
-// >7000 to >7xxx Current scan line (0 to 192 / 240 (in 30-row mode)) (255 is repeated at top of frame?)
-// >8000 to >8xx3 32-bit counter
-// >9000 to >9xx3 32-bit RNG
-// >A000 to >A??? SPI interface - not worked out yet -- TODO: this is worked out, get detailed
-// >B000 to >Bxxx F18A version
-// ???
-// >FF80 to >FF9F - GPU registers R0-R15
 // NOTE: GPU accessing VDP registers or VDP RAM is slow compared to the palette registers..
 Byte GPUF18A::RCPUBYTE(Word src) {
 	UpdateHeatVDP(src);		// todo: maybe GPU vdp writes can be a different color
@@ -3370,44 +3359,61 @@ Byte GPUF18A::RCPUBYTE(Word src) {
 	case 1:
 	case 2:
 	case 3:
+		//   -- VRAM 14-bit, 16K @ >0000 to >3FFF (0011 1111 1111 1111)
 		// standard 16k VDP RAM - no mapping
 		break;
 
 	case 4:
 		// 4k GPU RAM
-		// TODO: does it mirror? I'm going to mirror it
+		//   -- GRAM 11-bit, 2K  @ >4000 to >47FF (0100 x111 1111 1111)
+		// Mirrored twice in 8k space
 		src&=0xf7ff;
 		break;
 
 	case 5:
 		// 16-bit color registers
-		// TODO: do they mirror? I am mirroring them
+		//   -- PRAM  7-bit, 128 @ >5000 to >5x7F (0101 xxxx x111 1111)
+		// Mirrored numerous times
 		src &= 0xf07f;
 		break;
 
 	case 6:
 		// 8-bit VDP registers
+		//   -- VREG  6-bit, 64  @ >6000 to >6x3F (0110 xxxx xx11 1111)
 		// TODO: what happens on 16-bit read?
-		// TODO: do they mirror?
 		src&=0xf03f;
 		break;
 
 	case 7:
 		// current scanline in even byte
 		// blanking bit in odd byte
+		//   -- current scanline @ >7000 to >7xx0 (0111 xxxx xxxx xxx0) --
+		//   -- blanking         @ >7001 to >7xx1 (0111 xxxx xxxx xxx1) --
 		src&=0xf001;
 		break;
 
 	case 8:
-	case 9:
-		// 32-bit counter and RNG (RNG is deprecated)
-		// TODO: does the last nibble mirror?
-		src&=0xf003;
+		//   -- DMA              @ >8000 to >8xx7 (1000 xxxx xxxx 0111) --
+		// TODO: not implemented
+		src&=0xf00f;
 		break;
 
+	case 0x0a:
+		//   -- F18A version     @ >A000 to >Axxx (1010 xxxx xxxx xxxx) --
+		return 0x18;
+
+	case 0x0b:
+		//   -- GPU status data  @ >B000 to >Bxxx (1011 xxxx xxxx xxxx) --
+		// TODO: is this right - is GDATA still supported?
+		if (pGPU->GetIdle() == 0) {
+			return 0x80 | VDP[0xb000];
+		} else {
+			return VDP[0xb000];
+		}
 
 	case 0xf:
 		// registers are at >ff80, so just let these through
+		// >FF80 to >FF9F - GPU registers R0-R15 (Classic99 hack, I think!)
 		break;
 
 	default:
@@ -3419,20 +3425,29 @@ Byte GPUF18A::RCPUBYTE(Word src) {
 }
 
 void GPUF18A::WCPUBYTE(Word dest, Byte c) {
-	UpdateHeatVDP(dest);		// todo: maybe GPU vdp writes can be a different color
-	VDP[dest]=c;
-	VDPMemInited[dest]=1;
-	if (dest < 0x4000) redraw_needed=REDRAW_LINES;		// to avoid redrawing because of GPU R0-R15 registers changing
+	// map the regisgers.
+	// TODO: what happens when these values are written as words? I think it should work
+	switch ((dest&0xf000)>>12) {
+	case 0:
+	case 1:
+	case 2:
+	case 3:
+		//   -- VRAM 14-bit, 16K @ >0000 to >3FFF (0011 1111 1111 1111)
+		// standard 16k VDP RAM - no mapping
+		break;
 
-	// TODO: note that I'm NOT mirroring the registers here - read or write, one is wrong ;)
-	if (((dest&0xF0FF)>=0x6000) && ((dest&0xf0ff)<=0x603f)) {
-		// write VDP register
-		wVDPreg(dest&0x3f,c);
-	}
-	if (((dest&0xF0FF)>=0x5000) && ((dest&0xf0ff)<=0x507f)) {
-		// update the mirrored memory base
-		VDP[dest&0xf07f] = c;
-		VDPMemInited[dest]=1;
+	case 4:
+		// 4k GPU RAM
+		//   -- GRAM 11-bit, 2K  @ >4000 to >47FF (0100 x111 1111 1111)
+		// Mirrored twice in 8k space
+		dest&=0xf7ff;
+		break;
+
+	case 5:
+		// 16-bit color registers
+		//   -- PRAM  7-bit, 128 @ >5000 to >5x7F (0101 xxxx x111 1111)
+		// Mirrored numerous times
+		dest &= 0xf07f;
 
 		// write VDP palette
 		int reg = (dest&0x7f)/2;
@@ -3443,7 +3458,54 @@ void GPUF18A::WCPUBYTE(Word dest, Byte c) {
 		int b=(VDP[(dest&0xf07e)+1] & 0x0f);
 		F18APalette[reg] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
 		redraw_needed = REDRAW_LINES;
+		break;
+
+	case 6:
+		// 8-bit VDP registers
+		//   -- VREG  6-bit, 64  @ >6000 to >6x3F (0110 xxxx xx11 1111)
+		// write VDP register
+		wVDPreg(dest&0x3f,c);
+		return;
+
+	case 7:
+		// current scanline in even byte
+		// blanking bit in odd byte
+		//   -- current scanline @ >7000 to >7xx0 (0111 xxxx xxxx xxx0) --
+		//   -- blanking         @ >7001 to >7xx1 (0111 xxxx xxxx xxx1) --
+		// not writable?
+		return;
+
+	case 8:
+		//   -- DMA              @ >8000 to >8xx7 (1000 xxxx xxxx 0111) --
+		// TODO: not implemented
+		dest&=0xf00f;
+		break;
+
+	case 0x0a:
+		//   -- F18A version     @ >A000 to >Axxx (1010 xxxx xxxx xxxx) --
+		// not writable
+		return;
+
+	case 0x0b:
+		//   -- GPU status data  @ >B000 to >Bxxx (1011 xxxx xxxx xxxx) --
+		// TODO: is this how we write GDATA?
+		VDP[0xb000] = c&0x7f;
+		return;
+
+	case 0xf:
+		// registers are at >ff80, so just let these through
+		// >FF80 to >FF9F - GPU registers R0-R15 (Classic99 hack, I think!)
+		break;
+
+	default:
+		// ignoring the rest
+		return;
 	}
+
+	UpdateHeatVDP(dest);		// todo: maybe GPU vdp writes can be a different color
+	VDP[dest]=c;
+	VDPMemInited[dest]=1;
+	if (dest < 0x4000) redraw_needed=REDRAW_LINES;		// to avoid redrawing because of GPU R0-R15 registers changing
 }
 
 Word GPUF18A::ROMWORD(Word src) {
