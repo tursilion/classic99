@@ -59,7 +59,7 @@
 // There's no timing here - commands are assumed to complete immediately
 
 // assumed to be a multiple of 1024
-#define FLASH_SIZE (64*(64*1024))
+#define FLASH_SIZE (16*(256*256))
 #define FLASH_FILENAME "F18ASpiFlash.bin"
 
 unsigned char *pFlash = NULL;
@@ -116,10 +116,10 @@ void spi_backup_flash(int adr, int size) {
 	fseek(fp, adr, SEEK_SET);
 	if (size/1024*1024 == size) {
 		// a little faster if the math works
-		fwrite(pFlash, 1024, size/1024, fp);
+		fwrite(&pFlash[adr], 1024, size/1024, fp);
 	} else {
 		// just write bytes then
-		fwrite(pFlash, 1, size, fp);
+		fwrite(&pFlash[adr], 1, size, fp);
 	}
 	fclose(fp);
 }
@@ -248,8 +248,9 @@ void spi_try_command() {
 				// TODO: this shouldn't happen unless chip select is released
 				address = reg32_in&0x0f0000;
 				//debug_write("Sector erase of SPI flash - %p", address);
-				memset(&pFlash[address], 0xff, 65536);
-				spi_backup_flash(address, 256);
+				// A sector is 256 pages
+				memset(&pFlash[address], 0xff, 256*256);
+				spi_backup_flash(address, 256*256);
 				reg32_in=0;
 				activecmd = 0;
 				status_reg &= ~STATUS_WEL;
