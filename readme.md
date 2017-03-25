@@ -2,9 +2,7 @@ This depot is not guaranteed to build at any given time - it's my bleeding edge 
 
 <center>
 <h1>Classic99</h1>
-<img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_1.jpg" alt="[Screenshot]">
-<img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_2.jpg" alt="[Screenshot]">
-<img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_3.jpg" alt="[Screenshot]">
+<img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_1.jpg" alt="[Screenshot]"><img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_2.jpg" alt="[Screenshot]"><img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_3.jpg" alt="[Screenshot]">
 <p>
 Tipjar! 
 <form action="https://www.paypal.com/cgi-bin/webscr" method="post">
@@ -25,7 +23,7 @@ Amazon Wishlist</a>)
 <p>
 Download the latest release copy here: <A href="https://github.com/tursilion/classic99/raw/master/dist/classic99.zip">https://github.com/tursilion/classic99/raw/master/dist/classic99.zip</a>
 <p>
-Open source (but restrictive license) emulator including ROMs licensed by Texas Instruments - see documentation for license and restrictions.
+Open source (but restrictive license) emulator including ROMs licensed by Texas Instruments - see <a href="https://github.com/tursilion/classic99/raw/master/dist/Classic99%20Manual.pdf">documentation</a> for license and restrictions.
 <p>
 Tips and tricks video: <a href="https://www.youtube.com/watch?v=dt50U5kPnTY">https://www.youtube.com/watch?v=dt50U5kPnTY</a><br>
 Using the debugger: <a href="https://www.youtube.com/watch?v=_qjZN6qf1wk">https://www.youtube.com/watch?v=_qjZN6qf1wk</a><br>
