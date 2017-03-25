@@ -2,9 +2,9 @@ This depot is not guaranteed to build at any given time - it's my bleeding edge 
 
 <center>
 <h1>Classic99</h1>
-<img src="https://github.com/tursilion/classic99/blob/master/dist/classic99_1.jpg" alt="[Screenshot]">
-<img src="https://github.com/tursilion/classic99/blob/master/dist/classic99_2.jpg" alt="[Screenshot]">
-<img src="https://github.com/tursilion/classic99/blob/master/dist/classic99_3.jpg" alt="[Screenshot]">
+<img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_1.jpg" alt="[Screenshot]">
+<img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_2.jpg" alt="[Screenshot]">
+<img src="https://github.com/tursilion/classic99/raw/master/dist/classic99_3.jpg" alt="[Screenshot]">
 <p>
 Tipjar! 
 <form action="https://www.paypal.com/cgi-bin/webscr" method="post">
@@ -23,7 +23,7 @@ Tipjar!
 (Alternately, there's my <a target="new" href="http://www.amazon.com/gp/registry/2AFCOAM5DD1L6/ref=cm_aya_wl/103-5991996-6483001">
 Amazon Wishlist</a>)
 <p>
-Download the latest release copy here: <A href="https://github.com/tursilion/classic99/blob/master/dist/classic99.zip">https://github.com/tursilion/classic99/blob/master/dist/classic99.zip</a>
+Download the latest release copy here: <A href="https://github.com/tursilion/classic99/raw/master/dist/classic99.zip">https://github.com/tursilion/classic99/raw/master/dist/classic99.zip</a>
 <p>
 Open source (but restrictive license) emulator including ROMs licensed by Texas Instruments - see documentation for license and restrictions.
 <p>
