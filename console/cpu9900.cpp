@@ -188,6 +188,7 @@ Word BStatusLookup[256];
 CPU9900::CPU9900() {
 	buildcpu();
 	pType="9900";
+	enableDebug=true;
 }
 
 void CPU9900::reset() {
@@ -425,6 +426,10 @@ Word CPU9900::GetPC() {
 	return PC;
 }
 void CPU9900::SetPC(Word x) {			// should rarely be externally used (Classic99 uses it for disk emulation)
+	if (x&0x0001) {
+		debug_write("Warning: setting odd PC address from >%04X", PC);
+	}
+
 	// the PC is 15 bits wide - confirmed via BigFoot game which relies on this
 	PC=x&0xfffe;
 }
@@ -2652,17 +2657,20 @@ void CPU9900::op_idleF18() {
 void CPU9900::op_callF18() {
 	Word x2;
 
+	// 0C80 call	00001 100 1x Ts SSSS
+	// CALL <gas> = (R15) <= PC , R15 <= R15 - 2 , PC <= gas
+
 	FormatVI;
 	x2=ROMWORD(WP+30);		// get R15
-
 	if (0 == GetReturnAddress()) {
 		SetReturnAddress(PC);
 	}
 	WRWORD(x2,PC);
-	SetPC(S);
 
 	x2-=2;
 	WRWORD(WP+30, x2);		// update R15
+
+	SetPC(S);
 
 	post_inc(SRC);
 
@@ -2675,14 +2683,15 @@ void CPU9900::op_callF18() {
 
 void CPU9900::op_retF18(){
 	Word x1;
-	
+
+	// 0C00 ret		00001 100 0x xx xxxx
+	// RET        = R15 <= R15 + 2 , PC <= (R15)	
 	FormatVII;
 
-	// TODO: what do we have to do? Stack based return?
 	x1=ROMWORD(WP+30);		// get R15
 	x1+=2;
-	SetPC(ROMWORD(x1));		// get PC	TODO: is the F18A GPU PC also 15 bits, or 16?
 	WRWORD(WP+30, x1);		// update R15
+	SetPC(ROMWORD(x1));		// get PC	TODO: is the F18A GPU PC also 15 bits, or 16?
 
 	// TODO: does it affect any status flags??
 	//reset_EQ_LGT_AGT_C_OV;
@@ -2694,13 +2703,15 @@ void CPU9900::op_retF18(){
 void CPU9900::op_pushF18(){
 	Word x1,x2;
 
+	// Push the word on the stack
+	// 0D00 push	00001 101 0x Ts SSSS
+	// PUSH <gas> = (R15) <= (gas) , R15 <= R15 - 2
+
 	FormatVI;
 	x1=ROMWORD(S);
 	x2=ROMWORD(WP+30);		// get R15
-
-	// Push the word on the stack
-	// the stack pointer post-decrements (per Matthew)
 	WRWORD(x2, x1);
+
 	x2-=2;
 	WRWORD(WP+30, x2);		// update R15
 
@@ -2716,16 +2727,20 @@ void CPU9900::op_pushF18(){
 void CPU9900::op_popF18(){
 	Word x1,x2;
 
-	FormatVI;				// S is really D in this one...
-	x2=ROMWORD(WP+30);		// get R15
-
 	// POP the word from the stack
 	// the stack pointer post-decrements (per Matthew)
 	// so here we pre-increment!
+
+	// 0F00 pop		00001 111 0x Td DDDD
+	// POP  <gad> = R15 <= R15 + 2 , (gad) <= (R15)
+
+	FormatVI;				// S is really D in this one...
+	x2=ROMWORD(WP+30);		// get R15
 	x2+=2;
+	WRWORD(WP+30, x2);		// update R15
+
 	x1=ROMWORD(x2);
 	WRWORD(S, x1);
-	WRWORD(WP+30, x2);		// update R15
 
 	post_inc(SRC);
 
@@ -2741,6 +2756,8 @@ void CPU9900::op_slcF18(){
 	// Wasn't it removed from the final??
 
 	Word x1,x2;
+
+	// 0E00 slc		00001 110 0x Ts SSSS
 
 	FormatVI;
 	x1=ROMWORD(S);

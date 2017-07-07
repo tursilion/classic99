@@ -338,6 +338,9 @@ void do_dsrlnk() {
 		}
 	}
 
+	// finally, check the VDP buffer header is intact
+	verifyCallFiles();
+
 	// You can make assumptions when the device name is always the same length, but
 	// we have a few, so we need to work out which one we had, then subtract an additional 10 bytes.
 	PAB -= 4;					// enough to differentiate which we have (DSKx and CLIP are both 4 chars)

@@ -308,6 +308,8 @@
 #define IDC_DISK_AUTOMAPDSK1            1171
 #define IDC_CHECK1                      1172
 #define IDC_DISK_WRITEPROTECT           1172
+#define IDC_BREAKCPU                    1172
+#define IDC_BREAKGPU                    1173
 #define ID_USER_0                       30000
 #define ID_SYSTEM_0                     39000
 #define ID_APP_0                        39100
@@ -454,14 +456,15 @@
 #define ID_VIDEO_INTERLEAVEGPU          40154
 #define ID_FILE_ERASEUBERGROM           40155
 #define ID_VIDEO_SHOWFPS                40156
+#define ID_CARTRIDGE_EJECT              40157
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        346
-#define _APS_NEXT_COMMAND_VALUE         40157
-#define _APS_NEXT_CONTROL_VALUE         1173
+#define _APS_NEXT_COMMAND_VALUE         40158
+#define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

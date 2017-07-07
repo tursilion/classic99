@@ -84,7 +84,7 @@ extern int keyboard, ps2keyboardok;
 extern bool fKeyEverPressed;
 extern void GenerateToneBuffer();
 extern void GenerateSIDBuffer();
-extern int max_cpf, oldmax;
+extern int max_cpf, cfg_cpf;
 // needed for configuration
 extern char AVIFileName[256];
 extern int drawspeed, fJoy, joy1mode, joy2mode;
@@ -817,6 +817,22 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			break;
 
+			case ID_CARTRIDGE_EJECT:
+				nCart=-1;
+
+				for (int idx=0; idx<100; idx++) {
+					CheckMenuItem(GetMenu(myWnd), ID_USER_0+idx, MF_UNCHECKED);
+				}
+				for (int idx=0; idx<100; idx++) {
+					CheckMenuItem(GetMenu(myWnd), ID_GAME_0+idx, MF_UNCHECKED);
+				}
+				for (int idx=0; idx<100; idx++) {
+					CheckMenuItem(GetMenu(myWnd), ID_APP_0+idx, MF_UNCHECKED);
+				}
+
+				SendMessage(hwnd, WM_COMMAND, ID_FILE_RESET, 0);
+				break;
+
 			case ID_HELP_ABOUT:
 				sprintf(szTemp, "Classic99 %s\n"\
 								"©1994-2017\n\n"\
@@ -892,7 +908,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					bWarmBoot = false;
 				}
 				
-				TriggerBreakPoint();					// halt the CPU
+				TriggerBreakPoint(true);				// halt the CPU
 				Sleep(50);								// wait for it...
 
 				memset(CRU, 1, 4096);					// reset 9901
@@ -954,6 +970,8 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				DoPlay();
 				// these must come AFTER DoPlay()
 				max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
+				cfg_cpf=max_cpf;
+				InterlockedExchange((LONG*)&cycles_left, max_cpf);
 				InterlockedExchange((LONG*)&cycles_left, max_cpf);
 				break;
 
@@ -1246,13 +1264,13 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_CPUTHROTTLING_NORMAL:
 				CPUThrottle=CPU_NORMAL;
 				SystemThrottle=VDP_CPUSYNC;
-				max_cpf=oldmax;
+				max_cpf=cfg_cpf;
 				resetDAC();		// otherwise we will be way out of sync
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				if (max_cpf <= SLOW_CPF) {
 					// we've lost the configured speed.. sorry? to remove that later anyway
 					max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
-					oldmax=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
+					cfg_cpf=max_cpf;
 				}
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
 				break;
@@ -1260,7 +1278,6 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_CPUTHROTTLING_CPUSLOW:
 				CPUThrottle=CPU_NORMAL;
 				SystemThrottle=VDP_CPUSYNC;
-				oldmax=max_cpf;
 				max_cpf=SLOW_CPF;
 				resetDAC();		// just to empty it, it won't be filled in slow mode
 				MuteAudio();
@@ -1270,7 +1287,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_CPUTHROTTLING_CPUOVERDRIVE:
 				CPUThrottle=CPU_OVERDRIVE;
 				SystemThrottle=VDP_REALTIME;
-				max_cpf=oldmax;
+				max_cpf=cfg_cpf;
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
 				break;
@@ -1278,7 +1295,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_CPUTHROTTLING_SYSTEMMAXIMUM:
 				CPUThrottle=CPU_MAXIMUM;
 				SystemThrottle=VDP_CPUSYNC;
-				max_cpf=oldmax;
+				max_cpf=cfg_cpf;
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
 				break;
@@ -1863,6 +1880,7 @@ BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					// Read new values from dialog
 					SendDlgItemMessage(hwnd, IDC_AVIFILENAME, WM_GETTEXT, 256, (LPARAM)AVIFileName);
 					max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF)*SendDlgItemMessage(hwnd, IDC_SLDCPU, TBM_GETPOS, 0, 0)/10;
+					cfg_cpf=max_cpf;
 					drawspeed=SendDlgItemMessage(hwnd, IDC_SLDFRAMESKIP, TBM_GETPOS, 0, 0);
 					slowdown_keyboard=IsDlgButtonChecked(hwnd, IDC_CHKSLOWKEY)?1:0;
 					
@@ -2692,6 +2710,14 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					SetEvent(hDebugWindowUpdateEvent);
 					break;
 
+				case IDC_BREAKCPU:
+					pCPU->enableDebug = (SendDlgItemMessage(hwnd, IDC_BREAKCPU, BM_GETCHECK, 0, 0)==BST_CHECKED) ? 1 : 0;
+					break;
+
+				case IDC_BREAKGPU:
+					pGPU->enableDebug = (SendDlgItemMessage(hwnd, IDC_BREAKGPU, BM_GETCHECK, 0, 0)==BST_CHECKED) ? 1 : 0;
+					break;
+
 				case IDC_ADDBREAK:
 					{
 						// add a new breakpoint
@@ -3201,6 +3227,9 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			bFrozenText = false;
 			VDPDebug = false;
 
+			SendDlgItemMessage(hwnd, IDC_BREAKCPU, BM_SETCHECK, pCPU->enableDebug?BST_CHECKED:BST_UNCHECKED, 0);
+			SendDlgItemMessage(hwnd, IDC_BREAKGPU, BM_SETCHECK, pGPU->enableDebug?BST_CHECKED:BST_UNCHECKED, 0);
+
 			// breakpoints
 			SendDlgItemMessage(hwnd, IDC_COMBO1, CB_RESETCONTENT, NULL, NULL);
 			for (idx=0; idx<nBreakPoints; idx++) {
@@ -3259,7 +3288,6 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
 }
 
 // DEBUG TODOs:
-// - separate tabs for GPU and CPU disasm
 // - ability to spawn multiple debug windows
 // - register views for each device (rather than combined as today)
 //		-CPU state (registers and flags)
@@ -3269,7 +3297,8 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
 //		-SAMS registers
 //		-RS232/PIO card (someday)
 void DebugUpdateThread(void*) {
-	static int nOldPC=-1;
+	static int nOldCPC=-1;
+	static int nOldGPC=-1;
 	static int nOldMemType=-1;
 	static char szOldMemory[5][32] = { "", "", "", "", "" };
 	static CString csOut;
@@ -3290,13 +3319,12 @@ void DebugUpdateThread(void*) {
 		}
 
 		// Helps a bit -- not much can change unless the PC does ;)
-		// TODO: the GPU could be running, but until the 9900 can actually halt
-		// in this emulator this test will probably be okay.
-		if ((nOldPC == pCurrentCPU->GetPC()) && (nOldMemType == nMemType) && (0 == memcmp(szOldMemory, szTopMemory, sizeof(szOldMemory)))) {
+		if ((nOldCPC == pCPU->GetPC()) && (nOldGPC == pGPU->GetPC()) && (nOldMemType == nMemType) && (0 == memcmp(szOldMemory, szTopMemory, sizeof(szOldMemory)))) {
 			continue;
 		}
 
-		nOldPC=pCurrentCPU->GetPC();
+		nOldCPC=pCPU->GetPC();
+		nOldGPC=pGPU->GetPC();
 		nOldMemType=nMemType;
 
 		// Debug window

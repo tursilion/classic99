@@ -89,6 +89,7 @@ BEGIN
             MENUITEM "&Open...",                    ID_CART_USER_OPEN
             MENUITEM SEPARATOR
         END
+        MENUITEM "Eject",                       ID_CARTRIDGE_EJECT
     END
     POPUP "Disk"
     BEGIN
@@ -490,6 +491,8 @@ BEGIN
     PUSHBUTTON      "Edit",IDC_EDITMEM,225,265,34,14,WS_DISABLED
     LTEXT           "Breakpoints",IDC_STATIC,373,12,38,8
     GROUPBOX        "",IDC_STATIC,214,248,221,36
+    CONTROL         "Debug CPU",IDC_BREAKCPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,106,52,10
+    CONTROL         "Debug GPU",IDC_BREAKGPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,121,52,10
 END
 
 IDD_BRKHLP DIALOGEX 0, 0, 327, 234

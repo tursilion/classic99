@@ -147,6 +147,7 @@ extern bool bWarmBoot;
 
 // disk
 extern bool bCorruptDSKRAM;
+int filesTopOfVram = 0x3fff;
 
 // Must remain compatible with LARGE_INTEGER - just here
 // to make QuadPart unsigned ;)
@@ -269,7 +270,7 @@ int nCurrentDSR=-1;									// Which DSR Bank are we on?
 unsigned int index1;								// General counter variable
 int drawspeed=0;									// flag used in display updating
 int max_cpf=DEFAULT_60HZ_CPF;						// Maximum cycles per frame (default)
-int oldmax=max_cpf;									// copy of same
+int cfg_cpf=max_cpf;								// copy of same
 int slowdown_keyboard = 1;							// slowdown keyboard autorepeat in the GROM code
 int cpucount, cpuframes;							// CPU counters for timing
 int timercount;										// Used to estimate runtime
@@ -955,6 +956,7 @@ void ReadConfig() {
 	SystemThrottle=	GetPrivateProfileInt("emulation",	"systemthrottle",		SystemThrottle,	INIFILE);
 	// Proper CPU throttle (cycles per frame) - ipf is deprecated
 	max_cpf=		GetPrivateProfileInt("emulation",	"maxcpf",				max_cpf,		INIFILE);
+	cfg_cpf = max_cpf;
 	// Pause emulator when window inactive: 0-no, 1-yes
 	PauseInactive=	GetPrivateProfileInt("emulation",	"pauseinactive",		PauseInactive,	INIFILE);
 	// Disable speech if desired
@@ -1562,6 +1564,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	bEnable80Columns=1;			// allow the 80 column hack
 	bEnable128k=0;				// disable the 128k mode
 	max_cpf=DEFAULT_60HZ_CPF;	// max cycles per frame
+	cfg_cpf=max_cpf;
 	PauseInactive=0;			// don't pause when window inactive
 	SpeechEnabled=1;			// speech is decent now
 	Recording=0;				// not recording AVI
@@ -1576,6 +1579,8 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	CPUSpeechHalt=false;		// not halted for speech reasons
 	CPUSpeechHaltByte=0;		// doesn't matter
 	doLoadInt=false;			// no pending LOAD
+	pCPU->enableDebug=1;		// whether breakpoints affect CPU
+	pGPU->enableDebug=1;		// whether breakpoints affect GPU
 
 	// initialize debugger links
 	InitBug99();
@@ -1639,7 +1644,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	DrawMenuBar(myWnd);
 	
 	// set temp stuff
-	oldmax=max_cpf;
+	cfg_cpf=max_cpf;
 
 	// set up SAMS emulation
 	SetupSams(sams_enabled, sams_size);
@@ -2283,6 +2288,10 @@ void __cdecl emulti(void *)
 					for (int nCnt = 0; nCnt < 20; nCnt++) {	// /instructions/ per 9900 instruction - approximation!!
 						do1();
 						if (pGPU->GetIdle()) {
+							break;
+						}
+						// handle step
+						if (cycles_left <= 1) {
 							break;
 						}
 					}
@@ -3141,8 +3150,12 @@ void do1()
 		}
 	}
 
-	if (cycles_left > 0)			// speed throttling
-	{
+	bool bOperate = true;
+	if (cycles_left <= 0) bOperate=false;
+	// force run of the other CPU if we're stepping
+	if ((cycles_left == 1) && (!pCurrentCPU->enableDebug)) bOperate=true;
+
+	if (bOperate) {
 		cpucount++;					// increment instruction counter (TODO: just remove, pointless today)
  
 		////////////////// System Patches - not active for GPU
@@ -3266,13 +3279,15 @@ void do1()
 		}
 
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
-			// Update the disassembly trace
-			memmove(&Disasm[0], &Disasm[1], 19*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
-			Disasm[19].pc=pCurrentCPU->GetPC();
-			if (pCurrentCPU == pGPU) {
-				Disasm[19].bank = -1;
-			} else {
-				Disasm[19].bank = xbBank;
+			if (pCurrentCPU->enableDebug) {
+				// Update the disassembly trace
+				memmove(&Disasm[0], &Disasm[1], 19*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
+				Disasm[19].pc=pCurrentCPU->GetPC();
+				if (pCurrentCPU == pGPU) {
+					Disasm[19].bank = -1;
+				} else {
+					Disasm[19].bank = xbBank;
+				}
 			}
 			// will fill in cycles below
 		}
@@ -3320,10 +3335,24 @@ void do1()
 				vdpwroteaddress -= pCurrentCPU->GetCycleCount();
 				if (vdpwroteaddress < 0) vdpwroteaddress=0;
 			}
+
+			// some debug help for DSR overruns
+			// TODO: this is probably not quite right (AMS?), but should work for now
+			int top = (staticCPU[0x8370] << 8) + staticCPU[0x8371];
+			if (top != filesTopOfVram) {
+				if ((pCurrentCPU->GetPC() < 0x4000) || (pCurrentCPU->GetPC() > 0x5FFF)) {
+					// top of VRAM changed, not in a DSR, so write a warning
+					// else this is in a DSR, so we'll assume it's legit
+					debug_write("Top of VRAM pointer at >8370 changed by PC >%04X", pCurrentCPU->GetPC());
+				}
+				updateCallFiles(top);
+			}
 		}
 
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
-			Disasm[19].cycles = pCurrentCPU->GetCycleCount();
+			if (pCurrentCPU->enableDebug) {
+				Disasm[19].cycles = pCurrentCPU->GetCycleCount();
+			}
 		}
 
 		if ((!nopFrame) && (nStepCount > 0)) {
@@ -3415,6 +3444,36 @@ void do1()
 		}
 
 		WaitForSingleObject(hWakeupEvent, 50);
+	}
+}
+
+// "legally" update call files from the DSR
+void updateCallFiles(int newTop) {
+	filesTopOfVram = newTop;
+}
+
+// verify the top of VRAM pointer so we can warn about disk problems
+// this is called when a DSR is executed
+void verifyCallFiles() {
+	int nTop = (staticCPU[0x8370]<<8) | staticCPU[0x8371];
+
+	if (nTop > 0x3be3) {
+		// there's not enough memory for even 1 disk buffer, so never mind
+		return;
+	}
+
+	// validate the header for disk buffers - P-Code Card crashes with Stack Overflow without these
+	// user programs can have this issue too, of course, if they use the TI CC
+	if ((VDP[nTop+1] != 0xaa) ||	// valid header
+		(VDP[nTop+2] != 0x3f) ||	// top of RAM, MSB (not validating LSB since CF7 can change it)
+		(VDP[nTop+4] != 0x11) ||	// CRU of disk controller (TODO: we assume >1100 today)
+		(VDP[nTop+5] > 9)) {		// number of files, we support 0-9
+			char buf[256];
+			sprintf(buf, "Invalid file buffer header at >%04X. Bytes >%02X,>%02X,>%02X,>%02X,>%02X",
+				nTop, VDP[nTop+1], VDP[nTop+2], VDP[nTop+3], VDP[nTop+4], VDP[nTop+5]);
+			debug_write(buf);
+			TriggerBreakPoint();
+			MessageBox(myWnd, "Disk access is about to crash - the emulator has been paused. Check debug log for details.", "Classic99 Error", MB_OK);
 	}
 }
 
@@ -4179,7 +4238,7 @@ void wvdpbyte(Word x, Byte c)
 					// Added by RasmusM
 					if (nReg == 15) {
 						// Status register select
-						debug_write("F18A status register 0x%02X selected", nData & 0x0f);
+						//debug_write("F18A status register 0x%02X selected", nData & 0x0f);
 						F18AStatusRegisterNo = nData & 0x0f;
 						return;
 					}
@@ -4323,6 +4382,24 @@ void wvdpbyte(Word x, Byte c)
 		UpdateHeatVDP(RealVDP);
 		VDP[RealVDP]=c;
 		VDPMemInited[RealVDP]=1;
+
+		// before the breakpoint, check and emit debug if we messed up the disk buffers
+		{
+			int nTop = (staticCPU[0x8370]<<8) | staticCPU[0x8371];
+			if (nTop <= 0x3be3) {
+				// room for at least one disk buffer
+				bool bFlag = false;
+
+				if ((RealVDP == nTop+1) && (c != 0xaa)) {	bFlag = true;	}
+				if ((RealVDP == nTop+2) && (c != 0x3f)) {	bFlag = true;	}
+				if ((RealVDP == nTop+4) && (c != 0x11)) {	bFlag = true;	}
+				if ((RealVDP == nTop+5) && (c > 9))		{	bFlag = true;	}
+
+				if (bFlag) {
+					debug_write("VDP disk buffer header corrupted at PC >%04X", pCurrentCPU->GetPC());
+				}
+			}
+		}
 
 		// check breakpoints against what was written to where - still assume internal address
 		for (int idx=0; idx<nBreakPoints; idx++) {
@@ -5640,7 +5717,7 @@ void DoStep() {
 
 void DoStepOver() {
 	if (0 == max_cpf) {
-		max_cpf=oldmax;
+		max_cpf=cfg_cpf;
 		SetWindowText(myWnd, szDefaultWindowText);
 		InterlockedExchange((LONG*)&cycles_left, max_cpf);
 		pCurrentCPU->SetReturnAddress(0);
@@ -5652,7 +5729,7 @@ void DoStepOver() {
 
 void DoPlay() {
 	if (0 == max_cpf) {
-		max_cpf=oldmax;
+		max_cpf=cfg_cpf;
 		nStepCount=1;
 		SetWindowText(myWnd, szDefaultWindowText);
 		InterlockedExchange((LONG*)&cycles_left, max_cpf);
@@ -5714,7 +5791,10 @@ void DoMemoryDump() {
 	}
 }
 
-void TriggerBreakPoint() {
+void TriggerBreakPoint(bool bForce) {
+	if ((!pCurrentCPU->enableDebug)&&(!bForce)) {
+		return;
+	}
 	SetWindowText(myWnd, "Classic99 - Breakpoint. F1 - Continue, F2 - Step, F3 - Step Over");
 	max_cpf=0;
 	MuteAudio();

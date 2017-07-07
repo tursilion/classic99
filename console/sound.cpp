@@ -123,8 +123,8 @@ extern LPDIRECTSOUNDBUFFER soundbuf;						// sound chip audio buffer
 extern LPDIRECTSOUNDBUFFER sidbuf;							// sid blaster audio buffer
 extern LPDIRECTSOUNDBUFFER speechbuf;						// speech audio buffer
 extern int hzRate;		// 50 or 60 fps (HZ50 or HZ60)
-extern int max_cpf;		// used to disable DAC buffer if running slower than normal
 extern int Recording;
+extern int max_cpf;
 extern void WriteAudioFrame(void *pData, int nLen);
 
 // hack for now - a little DAC buffer for cassette ticks and CPU modulation

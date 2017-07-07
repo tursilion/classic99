@@ -63,9 +63,9 @@
 extern bool gDisableDebugKeys;
 extern Byte CPUMemInited[65536];
 extern Byte VDPMemInited[128*1024];
-extern volatile signed long cycles_left;
-extern int max_cpf;
 extern CPU9900 * volatile pCurrentCPU;
+extern int max_cpf, cfg_cpf;
+extern volatile signed long cycles_left;
 
 // direct access to write CPU RAM
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);

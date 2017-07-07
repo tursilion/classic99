@@ -60,6 +60,7 @@
 #include "diskclass.h"
 
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
+Byte ReadMemoryByte(Word address, bool trueWrite);
 
 const char *pszOptionNames[] = {
 	"FIAD_WriteV9T9",		
@@ -212,29 +213,40 @@ void BaseDisk::Startup() {
 }
 
 bool BaseDisk::SetFiles(int n) {
-	CloseAllFiles(); 
+	CloseAllFiles();
 	m_nMaxFiles=n; 
-	{
-		// In order to be more compatible with real TI disk controllers, tweak up 
-		// the free VRAM pointer. Note we do not USE the wasted VRAM, and for
-		// today, we will allow even 0 files (for CS1 style memory)
+
+	// we just use this test to control debug, we still re-initialize everything
+	int nNewTop = 0x3def - (256+256+6)*n - 5 - 1;		// should be 0x37d7 with 3 files
+	int nCurTop = ReadMemoryByte(0x8370,false)*256 + ReadMemoryByte(0x8371,false);
+	if (nNewTop != nCurTop) {
 		if (n > 0) {
-			int nTop = 0x3def - (256+256+6)*n - 5 - 1;		// should be 0x37d7 with 3 files
-			debug_write("Setting top of VRAM to >%04X (%d files)", nTop, n);
-			WriteMemoryByte(0x8370, (nTop>>8)&0xff, false);
-			WriteMemoryByte(0x8371, nTop&0xff, false);
-			// set up the header for disk buffers - P-Code Card crashes with Stack Overflow without these
-			VDP[++nTop] = 0xaa;		// valid header
-			VDP[++nTop] = 0x3f;		// top of VRAM, MSB
-			VDP[++nTop] = 0xff;		// top of VRAM, LSB (TODO: CF7 will change top of VRAM value by 6 bytes)
-			VDP[++nTop] = 0x11;		// CRU of this disk controller
-			VDP[++nTop] = n;		// number of files
+			debug_write("Setting top of VRAM to >%04X (%d files)", nNewTop, n);
 		} else {
 			debug_write("Setting top of VRAM to >3FFF (CS1 MODE)");
-			WriteMemoryByte(0x8370, 0x3f, false);
-			WriteMemoryByte(0x8371, 0xff, false);
 		}
 	}
+			
+	// In order to be more compatible with real TI disk controllers, tweak up 
+	// the free VRAM pointer. Note we do not USE the wasted VRAM, and for
+	// today, we will allow even 0 files (for CS1 style memory)
+	if (n > 0) {
+		WriteMemoryByte(0x8370, (nNewTop>>8)&0xff, false);
+		WriteMemoryByte(0x8371, nNewTop&0xff, false);
+		updateCallFiles(nNewTop);
+		// set up the header for disk buffers - P-Code Card crashes with Stack Overflow without these
+		VDP[++nNewTop] = 0xaa;		// valid header
+		VDP[++nNewTop] = 0x3f;		// top of VRAM, MSB
+		VDP[++nNewTop] = 0xff;		// top of VRAM, LSB (TODO: CF7 will change top of VRAM value by 6 bytes)
+		VDP[++nNewTop] = 0x11;		// CRU of this disk controller
+		VDP[++nNewTop] = n;		// number of files
+	} else {
+		WriteMemoryByte(0x8370, 0x3f, false);
+		WriteMemoryByte(0x8371, 0xff, false);
+		updateCallFiles(0x3fff);
+		// there are no disk buffers, so no disk buffer header
+	}
+
 	return true; 
 }
 

@@ -41,7 +41,7 @@
 ///////////////////////////////////////////////////
 
 // Defines
-#define VERSION "QI394"
+#define VERSION "QI395"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -441,6 +441,8 @@ int Dasm9900 (char *buffer, int pc, int nBank);
 
 void InitDiskDSR();
 bool HandleDisk();
+void updateCallFiles(int newTop);
+void verifyCallFiles();
 
 void DoPause();
 void DoStep();
@@ -449,7 +451,7 @@ void DoPlay();
 void DoFastForward();
 void DoMemoryDump();
 void DoLoadInterrupt();
-void TriggerBreakPoint();
+void TriggerBreakPoint(bool bForce = false);
 
 int nodot(void);
 Byte GetSafeCpuByte(int x, int bank);

@@ -1049,7 +1049,7 @@ bool ImageDisk::Load(FileInfo *pFile) {
 	// address counter, but for simplicity we don't. It's
 	// likely a bug anyway! If we want to do emulator proof
 	// code, though... ;)
-	if (pFile->DataBuffer + pFile->RecordNumber >= 0x4000) {
+	if (pFile->DataBuffer + pFile->RecordNumber > 0x4000) {
 		debug_write("Attempt to load bytes past end of VDP, truncating");
 		pFile->RecordNumber = 0x4000 - pFile->DataBuffer;
 	}
@@ -1247,7 +1247,7 @@ bool ImageDisk::ReadSector(FileInfo *pFile) {
 	bool nRet = true;
 
 	// sanity test
-	if (pFile->DataBuffer + 256 >= 0x4000) {
+	if (pFile->DataBuffer + 256 > 0x4000) {
 		debug_write("Attempt to read sector past end of VDP memory, aborting.");
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
@@ -1282,7 +1282,7 @@ bool ImageDisk::WriteSector(FileInfo *pFile) {
 	bool nRet = true;
 
 	// sanity test
-	if (pFile->DataBuffer + 256 >= 0x4000) {
+	if (pFile->DataBuffer + 256 > 0x4000) {
 		debug_write("Attempt to write sector from buffer past end of VDP memory, aborting.");
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
@@ -1358,7 +1358,7 @@ bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
 	}
 
 	// sanity test
-	if (pFile->LengthSectors*256 + pFile->DataBuffer >= 0x4000) {
+	if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
 		debug_write("Attempt to sector read file %s past end of VDP, truncating.", pFile->csName);
 		pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
 		if (pFile->LengthSectors < 1) {
@@ -1744,7 +1744,7 @@ bool ImageDisk::Save(FileInfo *pFile) {
 	// address counter, but for simplicity we don't. It's
 	// likely a bug anyway! If we want to do emulator proof
 	// code, though... ;)
-	if (pFile->DataBuffer + pFile->RecordNumber >= 0x4000) {
+	if (pFile->DataBuffer + pFile->RecordNumber > 0x4000) {
 		debug_write("Attempt to save bytes past end of VDP, truncating");
 		pFile->RecordNumber = 0x4000 - pFile->DataBuffer;
 	}

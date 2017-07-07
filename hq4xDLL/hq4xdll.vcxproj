@@ -106,18 +106,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="hq4x.c" />
-    <ClCompile Include="Image.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="my_filter.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Image.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="hq4xdll.def" />
     <None Include="LGPL.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="hqx.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -451,7 +451,7 @@ void VDPmain()
 			hq4x_process=NULL;
 			hHQ4DLL=NULL;
 		} else {
-			hq4x_init();			// TODO: this needs to be updated for RGB
+			hq4x_init();
 		}
 	}
 

@@ -1750,7 +1750,7 @@ bool FiadDisk::Load(FileInfo *pFile) {
 	// address counter, but for simplicity we don't. It's
 	// likely a bug anyway! If we want to do emulator proof
 	// code, though... ;)
-	if (pFile->DataBuffer + pFile->RecordNumber >= 0x4000) {
+	if (pFile->DataBuffer + pFile->RecordNumber > 0x4000) {
 		debug_write("Attempt to load bytes past end of VDP, truncating");
 		pFile->RecordNumber = 0x4000 - pFile->DataBuffer;
 	}
@@ -1810,7 +1810,7 @@ bool FiadDisk::Save(FileInfo *pFile) {
 	// address counter, but for simplicity we don't. It's
 	// likely a bug anyway! If we want to do emulator proof
 	// code, though... ;)
-	if (pFile->DataBuffer + pFile->RecordNumber >= 0x4000) {
+	if (pFile->DataBuffer + pFile->RecordNumber > 0x4000) {
 		debug_write("Attempt to save bytes past end of VDP, truncating");
 		pFile->RecordNumber = 0x4000 - pFile->DataBuffer;
 	}
@@ -2046,7 +2046,7 @@ bool FiadDisk::ReadSector(FileInfo *pFile) {
 	bool nRet = true;
 
 	// sanity test
-	if (pFile->DataBuffer + 256 >= 0x4000) {
+	if (pFile->DataBuffer + 256 > 0x4000) {
 		debug_write("Attempt to read sector past end of VDP memory, aborting.");
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
@@ -2127,7 +2127,7 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 	}
 
 	// sanity test
-	if (pFile->LengthSectors*256 + pFile->DataBuffer >= 0x4000) {
+	if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
 		debug_write("Attempt to sector read file %s past end of VDP, truncating.", pFile->csName);
 		pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
 		if (pFile->LengthSectors < 1) {
@@ -2210,7 +2210,7 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	}
 
 	// sanity test
-	if (pFile->LengthSectors*256 + pFile->DataBuffer >= 0x4000) {
+	if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
 		debug_write("Attempt to sector write file %s past end of VDP, truncating.", pFile->csName);
 		pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
 		if (pFile->LengthSectors < 1) {
