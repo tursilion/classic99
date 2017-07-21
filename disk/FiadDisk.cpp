@@ -437,15 +437,17 @@ bool FiadDisk::TryOpenFile(FileInfo *pFile) {
 		return false;
 	}
 
-	// Verify the parameters as a last step before we OK it all :)
-	if ((pFile->FileType&TIFILES_MASK) != (lclInfo.FileType&TIFILES_MASK)) {
-		// note: don't put function calls into varargs!
-		const char *str1,*str2;
-		str1=GetAttributes(lclInfo.FileType);
-		str2=GetAttributes(pFile->FileType);
-		debug_write("Incorrect file type: %d/%s%d (real) vs %d/%s%d (requested)", lclInfo.FileType&TIFILES_MASK, str1, lclInfo.RecordLength, pFile->FileType&TIFILES_MASK, str2, pFile->RecordLength);
-		pFile->LastError = ERR_BADATTRIBUTE;
-		return false;
+	// Verify the parameters as a last step before we OK it all, but only on open
+	if ((pFile->OpCode == OP_OPEN) || (pFile->OpCode == OP_LOAD)) {
+		if ((pFile->FileType&TIFILES_MASK) != (lclInfo.FileType&TIFILES_MASK)) {
+			// note: don't put function calls into varargs!
+			const char *str1,*str2;
+			str1=GetAttributes(lclInfo.FileType);
+			str2=GetAttributes(pFile->FileType);
+			debug_write("Incorrect file type: %d/%s%d (real) vs %d/%s%d (requested)", lclInfo.FileType&TIFILES_MASK, str1, lclInfo.RecordLength, pFile->FileType&TIFILES_MASK, str2, pFile->RecordLength);
+			pFile->LastError = ERR_BADATTRIBUTE;
+			return false;
+		}
 	}
 
 	if (0 == (lclInfo.FileType & TIFILES_PROGRAM)) {
@@ -1721,7 +1723,12 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 				// So we should have a file now - read it in
 				if (!BufferFile(pFile)) {
 					pFile->LastError = ERR_FILEERROR;
-					goto error;
+					// in this special case, I want to return pFile
+					// so that STATUS can get information even if
+					// it had mismatched attributes, like PROGRAM
+					pNewFile->CopyFileInfo(pFile, false);
+					Close(pNewFile);
+					return pNewFile;
 				}
 				break;
 		}

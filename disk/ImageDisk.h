@@ -75,17 +75,18 @@ public:
 	virtual bool Save(FileInfo *pFile);
 	virtual bool Delete(FileInfo *pFile);
 //	virtual bool Scratch(FileInfo *pFile);				// not supported
-//	virtual bool Status(FileInfo *pFile);				// base class ok
+//	virtual void MapStatus(FileInfo *src, FileInfo *dest);// base class ok
+//	virtual bool GetStatus(FileInfo *pFile);			// base class ok
 
 	// SBRLNK opcodes (files is handled by shared handler)
 	virtual bool ReadSector(FileInfo *pFile);
 	virtual bool WriteSector(FileInfo *pFile);
 	virtual bool ReadFileSectors(FileInfo *pFile);
-//	virtual bool WriteFileSectors(FileInfo *pFile);		// TODO: not supporting writes till comfortable with this format
-//	virtual bool FormatDisk(FileInfo *pFile);			// TODO: not supporting writes till comfortable with this format
-//	virtual bool ProtectFile(FileInfo *pFile);			// TODO: not supporting writes till comfortable with this format
-//	virtual bool UnProtectFile(FileInfo *pFile);		// TODO: not supporting writes till comfortable with this format
-//	virtual bool RenameFile(FileInfo *pFile);			// TODO: not supporting writes till comfortable with this format
+//	virtual bool WriteFileSectors(FileInfo *pFile);		// TODO
+//	virtual bool FormatDisk(FileInfo *pFile);			// TODO - maybe someday
+//	virtual bool ProtectFile(FileInfo *pFile);			// not supported
+//	virtual bool UnProtectFile(FileInfo *pFile);		// not supported
+//	virtual bool RenameFile(FileInfo *pFile);			// TODO - maybe someday
 
 	// class-specific functions
 	bool BufferSectorFile(FileInfo *pFile);

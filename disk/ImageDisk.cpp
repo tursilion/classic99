@@ -1020,7 +1020,12 @@ FileInfo *ImageDisk::Open(FileInfo *pFile) {
 				// So we should have a file now - read it in
 				if (!BufferFile(pFile)) {
 					pFile->LastError = ERR_FILEERROR;
-					goto error;
+					// in this special case, I want to return pFile
+					// so that STATUS can get information even if
+					// it had mismatched attributes, like PROGRAM
+					pNewFile->CopyFileInfo(pFile, false);
+					Close(pNewFile);
+					return pNewFile;
 				}
 				break;
 		}

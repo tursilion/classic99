@@ -556,15 +556,18 @@ bool BaseDisk::Scratch(FileInfo *pFile) {
 }
 #endif
 
-// get file status - we get this for the most part from the header!
-bool BaseDisk::Status(FileInfo *pFile) {
-	pFile->ScreenOffset = 0;
+// maps the status flags from the src object (FileType, Record) into the dest (ScreenOffset)
+// They may be the same object!
+void BaseDisk::MapStatus(FileInfo *src, FileInfo *dest) {
+	// now update status on the new file record
 	// Currently we only return some of the bits (See STATUS_ enum)
 	// Is it too hard to use ONE set of flags?
-	if (pFile->FileType & TIFILES_VARIABLE)	pFile->ScreenOffset|=STATUS_VARIABLE;
-	if (pFile->FileType & TIFILES_INTERNAL)	pFile->ScreenOffset|=STATUS_INTERNAL;
-	if (pFile->FileType & TIFILES_PROGRAM)	pFile->ScreenOffset|=STATUS_PROGRAM;
-	if (pFile->nCurrentRecord >= pFile->NumberRecords) pFile->ScreenOffset|=STATUS_EOF;
+	if (src->FileType & TIFILES_VARIABLE)	dest->ScreenOffset|=STATUS_VARIABLE;
+	if (src->FileType & TIFILES_INTERNAL)	dest->ScreenOffset|=STATUS_INTERNAL;
+	if (src->FileType & TIFILES_PROGRAM)	dest->ScreenOffset|=STATUS_PROGRAM;
+	if ((dest->ScreenOffset&STATUS_PROGRAM) == 0) {
+		if (src->nCurrentRecord >= src->NumberRecords) dest->ScreenOffset|=STATUS_EOF;
+	}
 
 	// not supported:
 	//#define STATUS_PROTECTED	0x40
@@ -572,6 +575,51 @@ bool BaseDisk::Status(FileInfo *pFile) {
 
 	// handled elsewhere:
 	//#define STATUS_NOSUCHFILE	0x80
+}
+
+// get file status - we get this for the most part from the header!
+// Note that this works only for the most naive implementations,
+// most disks need some drive-specific support to get the data.
+// (This is the old code that actually worked for all but PROGRAM ;) )
+// Currently there's no way to fail...
+bool BaseDisk::GetStatus(FileInfo *pFile) {
+	pFile->ScreenOffset = 0;
+
+	// if it's not open, try to open it in order to get the data we need
+	if (!pFile->bOpen) {
+		FileInfo *pNewFile=NULL;
+
+		// we need to try and open the file to get the needed data
+		// Make sure we only try to /open/ the file.
+		pFile->Status &=~ FLAG_MODEMASK;
+		pFile->Status |= FLAG_INPUT;
+		pNewFile = Open(pFile);
+		if (NULL == pNewFile) {
+			pFile->ScreenOffset = STATUS_NOSUCHFILE;
+			// this is NOT a failure!
+		} else {
+			// The pointer to the new object is needed since that's what the derived
+			// class updated/created. (This fixes Owen's Wycove Forth issue)
+			pNewFile->nCurrentRecord = 0;
+			pNewFile->RecordNumber = 0;
+			pNewFile->bOpen = true;
+			pNewFile->bDirty = false;	// can't be dirty yet!
+
+			// map the files across into the user object
+			MapStatus(pNewFile, pFile);
+
+			// if the user didn't specify a RecordLength in the PAB, we should do that now
+			if (((pNewFile->ScreenOffset&STATUS_PROGRAM) == 0) && (VDP[pFile->PABAddress+4] == 0) && (pNewFile->RecordLength != 0)) {
+				VDP[pFile->PABAddress+4] = pNewFile->RecordLength;
+			}
+
+			// and close the file
+			Close(pNewFile);
+		}
+	} else {
+		// the file is already open, so just collect the data
+		MapStatus(pFile, pFile);
+	}
 
 	return true;
 }

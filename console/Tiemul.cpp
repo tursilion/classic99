@@ -3343,7 +3343,7 @@ void do1()
 				if ((pCurrentCPU->GetPC() < 0x4000) || (pCurrentCPU->GetPC() > 0x5FFF)) {
 					// top of VRAM changed, not in a DSR, so write a warning
 					// else this is in a DSR, so we'll assume it's legit
-					debug_write("Top of VRAM pointer at >8370 changed by PC >%04X", pCurrentCPU->GetPC());
+					debug_write("(Non-DSR) Top of VRAM pointer at >8370 changed to >%04X by PC >%04X", top, pCurrentCPU->GetPC());
 				}
 				updateCallFiles(top);
 			}

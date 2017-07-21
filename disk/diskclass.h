@@ -278,7 +278,8 @@ public:
 	virtual bool Write(FileInfo *pFile);
 	virtual bool Restore(FileInfo *pFile);
 	virtual bool Scratch(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
-	virtual bool Status(FileInfo *pFile);
+	virtual void MapStatus(FileInfo *src, FileInfo *dest);
+	virtual bool GetStatus(FileInfo *pFile);
 
 	// SBRLNK opcodes (files is handled by shared handler) - these all have special inputs and returns
 	// All functions assume that LastError is set and false is returned if an error occurrs

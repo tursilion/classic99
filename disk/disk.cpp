@@ -535,7 +535,9 @@ void do_dsrlnk() {
 				// a little more info just for opens
 				debug_write("PAB requested file type is %c%c%d", (pWorkFile->Status&FLAG_INTERNAL)?'I':'D', (pWorkFile->Status&FLAG_VARIABLE)?'V':'F', pWorkFile->RecordLength);
 				pNewFile = pDriveType[nDrive]->Open(pWorkFile);
-				if (NULL == pNewFile) {
+				if ((NULL == pNewFile) /*|| (!pNewFile->bOpen)*/) {
+					// the bOpen check is to make STATUS able to use Open to check PROGRAM files
+					pNewFile = NULL;
 					setfileerror(pWorkFile);
 				} else {
 					// if the user didn't specify a RecordLength in the PAB, we should do that now
@@ -702,48 +704,11 @@ void do_dsrlnk() {
 
 		case OP_STATUS:
 			pWorkFile->ScreenOffset = 0;
-
-			// if it's not open, try to open it in order to get the data we need
-			if (!pWorkFile->bOpen) {
-				FileInfo *pNewFile=NULL;
-
-				// we need to try and open the file to get the needed data
-				pNewFile = pDriveType[nDrive]->Open(pWorkFile);
-				if (NULL == pNewFile) {
-					pWorkFile->ScreenOffset = STATUS_NOSUCHFILE;
-					// write the result back to the PAB
-					VDP[tmpFile.PABAddress+8] = pWorkFile->ScreenOffset;
-				} else {
-					// if the user didn't specify a RecordLength in the PAB, we should do that now
-					if ((VDP[pWorkFile->PABAddress+4] == 0) && (pNewFile->RecordLength != 0)) {
-						VDP[pWorkFile->PABAddress+4]=pNewFile->RecordLength;
-					}
-					// The pointer to the new object is needed since that's what the derived
-					// class updated/created. (This fixes Owen's Wycove Forth issue)
-					pNewFile->nCurrentRecord = 0;
-					pNewFile->RecordNumber = 0;
-					pNewFile->bOpen = true;
-					pNewFile->bDirty = false;	// can't be dirty yet!
-
-					// now call status on the new file record
-					if (!pDriveType[nDrive]->Status(pNewFile)) {
-						setfileerror(pNewFile);
-					} else {
-						// write the result back to the PAB
-						VDP[tmpFile.PABAddress+8] = pNewFile->ScreenOffset;
-					}
-
-					// and close the file
-					pDriveType[nDrive]->Close(pNewFile);
-				}
+			if (!pDriveType[nDrive]->GetStatus(pWorkFile)) {
+				setfileerror(pWorkFile);
 			} else {
-				// the file is already open, so just collect the data
-				if (!pDriveType[nDrive]->Status(pWorkFile)) {
-					setfileerror(pWorkFile);
-				} else {
-					// write the result back to the PAB
-					VDP[tmpFile.PABAddress+8] = pWorkFile->ScreenOffset;
-				}
+				// write the result back to the PAB
+				VDP[tmpFile.PABAddress+8] = pWorkFile->ScreenOffset;
 			}
 			HELPFULDEBUG1("Status returns >%02X on", VDP[tmpFile.PABAddress+8]);
 			break;

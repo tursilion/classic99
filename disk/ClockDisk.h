@@ -75,7 +75,8 @@ public:
 //	virtual bool Save(FileInfo *pFile);					// not supported
 //	virtual bool Delete(FileInfo *pFile);				// not supported
 //	virtual bool Scratch(FileInfo *pFile);				// not supported
-//	virtual bool Status(FileInfo *pFile);				// base class ok
+//	virtual void MapStatus(FileInfo *src, FileInfo *dest);// base class ok
+//	virtual bool GetStatus(FileInfo *pFile);			// base class ok
 
 	// SBRLNK opcodes (files is handled by shared handler)
 //	virtual bool ReadSector(FileInfo *pFile);			// not supported
