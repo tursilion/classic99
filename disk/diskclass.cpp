@@ -582,6 +582,9 @@ void BaseDisk::MapStatus(FileInfo *src, FileInfo *dest) {
 // most disks need some drive-specific support to get the data.
 // (This is the old code that actually worked for all but PROGRAM ;) )
 // Currently there's no way to fail...
+// TODO: emit a warning when reading a Display/Fixed file - the TI Disk Controller will
+// report it as Display/Variable due to a bug at >5894 which uses JGT to avoid inserting
+// the variable bit, but DF files have a value of 0, which is not greater than.
 bool BaseDisk::GetStatus(FileInfo *pFile) {
 	pFile->ScreenOffset = 0;
 

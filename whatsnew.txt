@@ -1765,6 +1765,28 @@ Cartridge System:
 -add support for more of the F18A status registers and reading them from the host
 -move source project to github after this
 
+-----------------------------------------------
+7 July 2017
+
+-added cartridge eject to the menu
+-added CPU and GPU separate debug options (not certain they are 100%)
+-fix certain reset issues by enabling a forced breakpoint
+-throttling updates to improve consistency
+-added tests for VRAM file buffers to aid debug of code that overwrites them
+-fix disk access that writes right up to >3FFF (pCode card in particular)
+-disable F18A status register select debug
+-add warning on odd PC address being set
+-add support for F18A GPU: CALL,RET,PUSH,POP,SLC
+-updated HQ4X filter - new filter code and should fix corrupted graphics in DIB blit mode
+-reduce duplicated debug when setting top of VRAM
+
+-----------------------------------------------
+21 July 2017
+
+-Fix for reading status of PROGRAM file images
+-Related code shuffled
+
+
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
 -TODO: add ability to mount a CF7 compact flash card (including the VDP addresses for changing mount??)
