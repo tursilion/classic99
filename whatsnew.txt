@@ -1786,6 +1786,15 @@ Cartridge System:
 -Fix for reading status of PROGRAM file images
 -Related code shuffled
 
+-----------------------------------------------
+30 August 2017
+
+-make the breakpoint on disk header corruption an option in the debugger menu (off by default)
+-NV file option ('N') is now allowed for cartridge memory space in non-banked cartridges only
+-minimemory RAM is now non-volatile (weakly tested)
+-emulator now sets the current folder to the same as classic99.exe by default
+
+
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
