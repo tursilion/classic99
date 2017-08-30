@@ -140,6 +140,7 @@ int installedJoysticks = 3;									// bitmask - both joysticks are installed
 struct _break BreakPoints[MAX_BREAKPOINTS];
 int nBreakPoints=0;
 bool BreakOnIllegal = false;
+bool BreakOnDiskCorrupt = false;
 bool gDisableDebugKeys = false;
 CRITICAL_SECTION debugCS;
 char g_cmdLine[512];
@@ -167,6 +168,7 @@ typedef union {
 Byte CPUMemInited[65536];					// not going to support AMS yet -- might switch to bits, but need to sort out AMS memory usage (16MB vs 1MB?)
 Byte VDPMemInited[128*1024];				// track VDP mem
 bool g_bCheckUninit = false;				// track reads from uninitialized RAM
+bool nvRamUpdated = false;					// if cartridge RAM is written to (also needs an NVRAM type to be saved)
 
 extern Byte staticCPU[0x10000];				// main memory
 Byte CPU2[MAX_BANKSWITCH_SIZE];				// Cartridge space bank-switched (ROM >6000 space, 8k blocks, XB, 379, SuperSpace and MBX ROM)
@@ -518,6 +520,7 @@ struct CARTS Apps[] = {
 		{	
 			{	IDR_MINIMEMG,	0x6000, 0x2000,	TYPE_GROM	, 0},
 			{	IDR_MINIMEMC,	0x6000,	0x1000,	TYPE_ROM	, 0},
+			{	NULL,			0x7000,	0x1000,	TYPE_NVRAM	, 0, "minimemNV.bin"},
 		},
 		NULL,
 		NULL,
@@ -1361,8 +1364,21 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	memset(BreakPoints, 0, sizeof(BreakPoints));
 	nBreakPoints=0;
 	BreakOnIllegal=false;
+	BreakOnDiskCorrupt=false;
 	for (idx=0; idx<10; idx++) {
 		DumpFile[idx]=NULL;
+	}
+
+	// set the working folder to the classic99.exe path
+	{
+		char path1[1024];
+		int bytes = GetModuleFileName(NULL, path1, 1024);
+		if (bytes) {
+			SetCurrentDirectory(path1);
+			debug_write("Set working folder to %s", path1);
+		} else {
+			debug_write("Failed to get working folder.");
+		}
 	}
 
 	// Also do the Winsock init (non-fatal if fails)
@@ -1532,7 +1548,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Print some initial debug
 	debug_write("---");
-	debug_write("Classic99 version %s (C)2002-2013 M.Brent", VERSION);
+	debug_write("Classic99 version %s (C)2002-2017 M.Brent", VERSION);
 	debug_write("ROM files included under license from Texas Instruments");
 
 	// copy out the command line
@@ -1770,6 +1786,8 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// save out our config
 	SaveConfig();
+	// save any previous NVRAM
+	saveroms();
 
 	// Fail is the full exit
 	debug_write("Shutting down");
@@ -2328,7 +2346,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 			return;
 		} else {
 			nLen = -1;		// flag to fill in after loading
-			pImg->nLoadAddr = 0x6000;		// default except for 379, fixed below
+			pImg->nLoadAddr = 0x6000;		// default except for 379 and NVRAM, fixed below
 			pPos--;
 			switch (*pPos) {
 				case 'C':
@@ -2352,6 +2370,12 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 				case '8':
 					pImg->nType = TYPE_378;
 					pImg->nLoadAddr = 0x0000;
+					break;
+
+				case 'N':
+					pImg->nType = TYPE_NVRAM;
+					pImg->nLoadAddr = 0x7000;		// assuming minimem, if not you need an INI
+					pImg->nLength = nLen = 0x1000;	// in case it's not loaded
 					break;
 
 				default:
@@ -2494,6 +2518,30 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					}
 					WriteMemoryBlock(pImg->nLoadAddr, pData, nLen);
 					memset(&ROMMAP[pImg->nLoadAddr], 1, nLen);
+				}
+				break;
+
+			case TYPE_NVRAM:
+				// for now, this is for cartridge space only, and only if not banked
+				if ((pImg->nLoadAddr >= 0x6000) && (pImg->nLoadAddr <= 0x7fff)) {
+					if (xb > 0) {
+						debug_write("NVRAM only supported for non-paged carts, not loading.");
+					} else {
+						// cart ROM, load into the non-paged data
+						if (pImg->nLoadAddr+nLen > 0x8000) {
+							debug_write("%s overwrites memory block - truncating.", pImg->szFileName);
+							nLen=0x8000-pImg->nLoadAddr;
+							// becase we save this back out, fix up the size internally
+							pImg->nLength = nLen;
+						}
+						// load into the first bank of paged memory
+						memcpy(&CPU2[pImg->nLoadAddr-0x6000], pData, nLen);
+						// also load to main memory incase we aren't paging
+						WriteMemoryBlock(pImg->nLoadAddr, pData, nLen);
+						// it's RAM, so no memory map
+					}
+				} else {
+					debug_write("NVRAM currently only supported for cartridge space, not loading to >%04X", pImg->nLoadAddr);
 				}
 				break;
 
@@ -2785,6 +2833,9 @@ void readroms() {
 	// end hack
 #endif
 
+	// save any previous NVRAM
+	saveroms();
+
 	// process the dump list and remove any disk files
 	CloseDumpFiles();
 
@@ -2893,6 +2944,53 @@ void readroms() {
 			}
 		}
 	}
+}
+
+void saveroms()
+{
+	// if there is a cart plugged in, see if there is any NVRAM to save
+	if (nCart != -1) {
+		struct CARTS *pBank=NULL;
+
+ 		switch (nCartGroup) {
+		case 0:	
+			if (nCart < 100) {
+				pBank=Apps; 
+			}
+			break;
+		case 1: 
+			if (nCart < 100) {
+				pBank=Games; 
+			}
+			break;
+		case 2: 
+			if (nCart < nTotalUserCarts) {
+				pBank=Users; 
+			}
+			break;
+		}
+
+		if ((pBank)&&(xb==0)&&(nvRamUpdated)) {
+			for (int idx=0; idx<MAXROMSPERCART; idx++) {
+				if (pBank[nCart].Img[idx].nType == TYPE_NVRAM) {
+					// presumably all the data is correct, length and so on
+					FILE *fp = fopen(pBank[nCart].Img[idx].szFileName, "wb");
+					if (NULL == fp) {
+						debug_write("Failed to write NVRAM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
+					} else {
+						char buf[8192];
+						debug_write("Saving NVRAM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
+						ReadMemoryBlock(pBank[nCart].Img[idx].nLoadAddr, buf, min(sizeof(buf), pBank[nCart].Img[idx].nLength));
+						fwrite(buf, 1, pBank[nCart].Img[idx].nLength, fp);
+						fclose(fp);
+					}
+				}
+			}
+		}
+	}
+
+	// reset the value
+	nvRamUpdated = false;
 }
 
 //////////////////////////////////////////////////////////
@@ -3465,15 +3563,18 @@ void verifyCallFiles() {
 	// validate the header for disk buffers - P-Code Card crashes with Stack Overflow without these
 	// user programs can have this issue too, of course, if they use the TI CC
 	if ((VDP[nTop+1] != 0xaa) ||	// valid header
-		(VDP[nTop+2] != 0x3f) ||	// top of RAM, MSB (not validating LSB since CF7 can change it)
+		(VDP[nTop+2] != 0x3f) ||	// top of RAM, MSB (not validating LSB since CF7 can change it)**
 		(VDP[nTop+4] != 0x11) ||	// CRU of disk controller (TODO: we assume >1100 today)
 		(VDP[nTop+5] > 9)) {		// number of files, we support 0-9
+									// ** - actually the previous value of highest free address from 8370
 			char buf[256];
 			sprintf(buf, "Invalid file buffer header at >%04X. Bytes >%02X,>%02X,>%02X,>%02X,>%02X",
 				nTop, VDP[nTop+1], VDP[nTop+2], VDP[nTop+3], VDP[nTop+4], VDP[nTop+5]);
 			debug_write(buf);
-			TriggerBreakPoint();
-			MessageBox(myWnd, "Disk access is about to crash - the emulator has been paused. Check debug log for details.", "Classic99 Error", MB_OK);
+			if (BreakOnDiskCorrupt) {
+				TriggerBreakPoint();
+				MessageBox(myWnd, "Disk access is about to crash - the emulator has been paused. Check debug log for details.", "Classic99 Error", MB_OK);
+			}
 	}
 }
 
@@ -3818,12 +3919,19 @@ void wcpubyte(Word x, Byte c)
 			}
 			// fall through
 		case 0x2000:					// normal CPU RAM
-		case 0x6000:					// Cartridge RAM (ROM is trapped above)
 		case 0xa000:					// normal CPU RAM
 		case 0xc000:					// normal CPU RAM
 		case 0xe000:					// normal CPU RAM
 			if (!ROMMAP[x]) {
 				WriteMemoryByte(x, c, false);
+			}
+			break;
+
+		case 0x6000:					// Cartridge RAM (ROM is trapped above)
+			// but we test it anyway. Just in case. ;) I think the above is just for bank switches
+			if (!ROMMAP[x]) {
+				WriteMemoryByte(x, c, false);
+				nvRamUpdated = true;
 			}
 			break;
 
@@ -4868,6 +4976,8 @@ void wpcodebyte(Word x, Byte c)
 void SetSuperBank() {
 	// NOTE: only 8 banks supported here (64k)
 	// Does not work with all CRU-based carts (different paging schemes?)
+	// TODO: May be because some (Red Baron) write to ROM, and I don't disable
+	// the ROM-based banking here, which I should.
 
 	// What SHOULD this do if multiple CRU bits were set?
 	// Right now we take the lowest one.
@@ -4891,6 +5001,9 @@ void SetSuperBank() {
 		xbBank=7;
 	}
 	xbBank&=xb;
+
+	// debug helper for me
+//	TriggerBreakPoint();
 }
 
 //////////////////////////////////////////////////////////////////

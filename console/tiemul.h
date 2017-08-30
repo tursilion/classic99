@@ -41,7 +41,7 @@
 ///////////////////////////////////////////////////
 
 // Defines
-#define VERSION "QI396"
+#define VERSION "QI397"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -116,6 +116,7 @@ enum {
 #define TYPE_378		'8'		// Packed banks accessed by writing to ROM space (NOT inverted like XB, but all one file)
 #define TYPE_AMS		'A'		// RLE encoded memory dump from AMS card (RLE byte is 0 followed by a byte of zero runs)
 #define TYPE_ROM		'C'		// CPU ROM
+#define TYPE_NVRAM		'N'		// cartridge space has NVRAM - order of this parameter matters
 #define TYPE_DSR		'D'		// DSR memory (CRU must be set)
 #define TYPE_DSR2		'E'		// Paged DSR (from.. pcode?)
 #define TYPE_GROM		'G'		// Standard GROM
@@ -336,6 +337,7 @@ Word romword(Word, bool rmw=false);
 void wrword(Word,Word);
 void __cdecl emulti(void*);
 void readroms(void);
+void saveroms(void);
 void do1(void);
 void opcode0(Word);
 void opcode02(Word);

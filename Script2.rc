@@ -259,6 +259,7 @@ BEGIN
         MENUITEM "Trigger &Load Interrupt (F12)", ID_DEBUG_LOADINT
         MENUITEM SEPARATOR
         MENUITEM "Break on Illegal Opcode",     ID_DEBUG_BREAKONILLEGALOPCODE
+        MENUITEM "Break on Disk Corrupt",       ID_DEBUG_BREAKONDISKCORRUPT
     END
     POPUP "&Make"
     BEGIN

@@ -127,7 +127,7 @@ extern int nVolume[4];							// volume attenuation
 extern DDSURFACEDESC2 CurrentDDSD;
 // debugger
 extern HWND hBugWnd;
-extern bool BreakOnIllegal;
+extern bool BreakOnIllegal, BreakOnDiskCorrupt;
 extern bool bWarmBoot;
 extern int installedJoysticks;
 
@@ -888,6 +888,10 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_FILE_WARMRESET:
 			case ID_FILE_SCRAMBLERESET:
 			case ID_FILE_ERASEUBERGROM:
+				// save roms before we wipe all the memory!
+				saveroms();
+				
+				// now erase memories as appropriate
 				if (LOWORD(wParam) == ID_FILE_ERASEUBERGROM) {
 					memrnd(UberGROM, sizeof(UberGROM));
 					memrnd(UberRAM, sizeof(UberRAM));
@@ -3183,6 +3187,16 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					} else {
 						BreakOnIllegal = true;
 						CheckMenuItem(GetMenu(hwnd), ID_DEBUG_BREAKONILLEGALOPCODE, MF_CHECKED);
+					}
+					break;
+
+				case ID_DEBUG_BREAKONDISKCORRUPT:
+					if (BreakOnDiskCorrupt) {
+						BreakOnDiskCorrupt = false;
+						CheckMenuItem(GetMenu(hwnd), ID_DEBUG_BREAKONDISKCORRUPT, MF_UNCHECKED);
+					} else {
+						BreakOnDiskCorrupt = true;
+						CheckMenuItem(GetMenu(hwnd), ID_DEBUG_BREAKONDISKCORRUPT, MF_CHECKED);
 					}
 					break;
 
