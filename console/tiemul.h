@@ -41,7 +41,7 @@
 ///////////////////////////////////////////////////
 
 // Defines
-#define VERSION "QI397"
+#define VERSION "QI398"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;

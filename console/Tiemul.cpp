@@ -4191,6 +4191,16 @@ Byte rvdpbyte(Word x, bool rmw)
 
 	if (x&0x0002)
 	{	/* read status */
+
+		// This works around code that requires the VDP state to be able to change
+		// DURING an instruction (the old code, the VDP state and the VDP interrupt
+		// would both change and be recognized between instructions). With this
+		// approach, we can update the VDP in the future, then run the instruction
+		// against the updated VDP state. This allows Lee's fbForth random number
+		// code to function, which worked by watching for the interrupt bit while
+		// leaving interrupts enabled.
+		updateVDP(pCurrentCPU->GetCycleCount());
+
 		// The F18A turns off DPM if any status register is read
 		if ((bF18AActive)&&(bF18ADataPortMode)) {
 			bF18ADataPortMode = 0;

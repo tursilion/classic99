@@ -518,6 +518,8 @@ void CPU9900::op_a()
 
 	Word x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatI;
 	x1=ROMWORD(S); 
 	post_inc(SRC);
@@ -533,8 +535,6 @@ void CPU9900::op_a()
 
 	if (x3<x2) set_C;																	// if it wrapped around, set carry
 	if (((x1&0x8000)==(x2&0x8000))&&((x3&0x8000)!=(x2&0x8000))) set_OV;					// if it overflowed or underflowed (signed math), set overflow
-	
-	AddCycleCount(14);
 }
 
 void CPU9900::op_ab()
@@ -549,6 +549,8 @@ void CPU9900::op_ab()
 	//	Write dest
 
 	Byte x1,x2,x3;
+
+	AddCycleCount(14);
 
 	FormatI;
 	x1=RCPUBYTE(S); 
@@ -565,8 +567,6 @@ void CPU9900::op_ab()
 
 	if (x3<x2) set_C;
 	if (((x1&0x80)==(x2&0x80))&&((x3&0x80)!=(x2&0x80))) set_OV;
-	
-	AddCycleCount(14);
 }
 
 void CPU9900::op_abs()
@@ -588,6 +588,8 @@ void CPU9900::op_abs()
 
 	Word x1,x2;
 
+	AddCycleCount(12);
+
 	FormatVI;
 	x1=ROMWORD(S);
 
@@ -600,8 +602,6 @@ void CPU9900::op_abs()
 
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_ai()
@@ -616,6 +616,8 @@ void CPU9900::op_ai()
 	//	Write dest
 
 	Word x1,x3;
+	
+	AddCycleCount(14);
 
 	FormatVIII_1;
 	x1=ROMWORD(D);
@@ -628,8 +630,6 @@ void CPU9900::op_ai()
 
 	if (x3<x1) set_C;
 	if (((x1&0x8000)==(S&0x8000))&&((x3&0x8000)!=(S&0x8000))) set_OV;
-	
-	AddCycleCount(14);
 }
 
 void CPU9900::op_dec()
@@ -643,6 +643,8 @@ void CPU9900::op_dec()
 	//	Write dest
 	
 	Word x1;
+	
+	AddCycleCount(10);
 
 	FormatVI;
 	x1=ROMWORD(S);
@@ -656,8 +658,6 @@ void CPU9900::op_dec()
 
 	if (x1!=0xffff) set_C;
 	if (x1==0x7fff) set_OV;
-	
-	AddCycleCount(10);
 }
 
 void CPU9900::op_dect()
@@ -671,6 +671,8 @@ void CPU9900::op_dect()
 	//	Write dest
 
 	Word x1;
+	
+	AddCycleCount(10);
 
 	FormatVI;
 	x1=ROMWORD(S);
@@ -684,8 +686,6 @@ void CPU9900::op_dect()
 
 	if (x1<0xfffe) set_C;
 	if ((x1==0x7fff)||(x1==0x7ffe)) set_OV;
-	
-	AddCycleCount(10);
 }
 
 void CPU9900::op_div()
@@ -743,6 +743,9 @@ void CPU9900::op_div()
 
 	Word x1,x2; 
 	unsigned __int32 x3;
+	
+	// minimum possible when division does not occur
+	AddCycleCount(16);
 
 	FormatIX;
 	x2=ROMWORD(S);
@@ -794,12 +797,11 @@ void CPU9900::op_div()
 		WRWORD(D+2,x3&0xffff);		// remainder
 #endif
 		reset_OV;
-		AddCycleCount(92);			// base ticks
+		AddCycleCount(92-16);		// base ticks
 	}
 	else
 	{
 		set_OV;						// division wasn't possible - change nothing
-		AddCycleCount(16);
 	}
 }
 
@@ -814,6 +816,8 @@ void CPU9900::op_inc()
 	//	Write dest
 
 	Word x1;
+	
+	AddCycleCount(10);
 
 	FormatVI;
 	x1=ROMWORD(S);
@@ -824,8 +828,6 @@ void CPU9900::op_inc()
 	
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV_C;
-	
-	AddCycleCount(10);
 }
 
 void CPU9900::op_inct()
@@ -839,6 +841,8 @@ void CPU9900::op_inct()
 	//	Write dest
 
 	Word x1;
+	
+	AddCycleCount(10);
 
 	FormatVI;
 	x1=ROMWORD(S);
@@ -852,8 +856,6 @@ void CPU9900::op_inct()
 
 	if (x1<2) set_C;
 	if ((x1==0x8000)||(x1==0x8001)) set_OV;
-	
-	AddCycleCount(10);
 }
 
 void CPU9900::op_mpy()
@@ -871,6 +873,8 @@ void CPU9900::op_mpy()
 
 	Word x1; 
 	unsigned __int32 x3;
+	
+	AddCycleCount(52);
 
 	FormatIX;
 	x1=ROMWORD(S);
@@ -881,8 +885,6 @@ void CPU9900::op_mpy()
 	x3=x3*x1;
 	WRWORD(D,(Word)(x3>>16)); 
 	WRWORD(D+2,(Word)(x3&0xffff));
-	
-	AddCycleCount(52);
 }
 
 void CPU9900::op_neg()
@@ -896,6 +898,8 @@ void CPU9900::op_neg()
 	//	Write dest
 
 	Word x1;
+	
+	AddCycleCount(12);
 
 	FormatVI;
 	x1=ROMWORD(S);
@@ -906,8 +910,6 @@ void CPU9900::op_neg()
 
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV_C;
-	
-	AddCycleCount(12);
 }
 
 void CPU9900::op_s()
@@ -922,6 +924,8 @@ void CPU9900::op_s()
 	//	Write dest
 
 	Word x1,x2,x3;
+	
+	AddCycleCount(14);
 
 	FormatI;
 	x1=ROMWORD(S); 
@@ -940,8 +944,6 @@ void CPU9900::op_s()
 	// is causing the carry flag to be set.
 	if ((x3<x2) || (x1==0)) set_C;
 	if (((x1&0x8000)!=(x2&0x8000))&&((x3&0x8000)!=(x2&0x8000))) set_OV;
-	
-	AddCycleCount(14);
 }
 
 void CPU9900::op_sb()
@@ -956,6 +958,8 @@ void CPU9900::op_sb()
 	//	Write dest
 
 	Byte x1,x2,x3;
+	
+	AddCycleCount(14);
 
 	FormatI;
 	x1=RCPUBYTE(S); 
@@ -974,8 +978,6 @@ void CPU9900::op_sb()
 	// is causing the carry flag to be set.
 	if ((x3<x2) || (x1==0)) set_C;
 	if (((x1&0x80)!=(x2&0x80))&&((x3&0x80)!=(x2&0x80))) set_OV;
-	
-	AddCycleCount(14);
 }
 
 void CPU9900::op_b()
@@ -992,12 +994,12 @@ void CPU9900::op_b()
 	// I'm not sure it deserves the extra 4 cycles and I don't know if
 	// it fetches the  result of the register. Can probably tell in
 	// that CPU data book.
+	
+	AddCycleCount(8);
 
 	FormatVI;
 	SetPC(S);
 	post_inc(SRC);
-	
-	AddCycleCount(8);
 }
 
 void CPU9900::op_bl()
@@ -1013,6 +1015,8 @@ void CPU9900::op_bl()
 	//	Read source
 	//	Write return
 
+	AddCycleCount(12);
+
 	FormatVI;
 	if (0 == GetReturnAddress()) {
 		SetReturnAddress(PC);
@@ -1020,8 +1024,6 @@ void CPU9900::op_bl()
 	WRWORD(WP+22,PC);
 	SetPC(S);
 	post_inc(SRC);
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_blwp()
@@ -1047,6 +1049,8 @@ void CPU9900::op_blwp()
 	// TODO: We need to time out this instruction and verify that analysis.
 
 	Word x1;
+	
+	AddCycleCount(26);
 
 	FormatVI;
 	if (0 == GetReturnAddress()) {
@@ -1066,8 +1070,6 @@ void CPU9900::op_blwp()
 	// where it actually jumps to on hardware?
 
 	skip_interrupt=1;
-	
-	AddCycleCount(26);
 }
 
 void CPU9900::op_jeq()
@@ -1085,6 +1087,7 @@ void CPU9900::op_jeq()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if (ST_EQ) 
@@ -1099,9 +1102,7 @@ void CPU9900::op_jeq()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1118,6 +1119,7 @@ void CPU9900::op_jgt()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if (ST_AGT) 
@@ -1132,9 +1134,7 @@ void CPU9900::op_jgt()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1151,6 +1151,7 @@ void CPU9900::op_jhe()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if ((ST_LGT)||(ST_EQ)) 
@@ -1165,9 +1166,7 @@ void CPU9900::op_jhe()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1184,6 +1183,7 @@ void CPU9900::op_jh()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if ((ST_LGT)&&(!ST_EQ)) 
@@ -1198,9 +1198,7 @@ void CPU9900::op_jh()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1217,6 +1215,7 @@ void CPU9900::op_jl()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
   	FormatII;
 	if ((!ST_LGT)&&(!ST_EQ)) 
@@ -1231,9 +1230,7 @@ void CPU9900::op_jl()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1250,6 +1247,7 @@ void CPU9900::op_jle()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if ((!ST_LGT)||(ST_EQ)) 
@@ -1264,9 +1262,7 @@ void CPU9900::op_jle()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1283,6 +1279,7 @@ void CPU9900::op_jlt()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if ((!ST_AGT)&&(!ST_EQ)) 
@@ -1297,9 +1294,7 @@ void CPU9900::op_jlt()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1311,6 +1306,7 @@ void CPU9900::op_jmp()
 	// Base cycles: 10
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(10);
 
 	FormatII;
 	if (X_flag) {
@@ -1322,8 +1318,6 @@ void CPU9900::op_jmp()
 	} else {
 		ADDPC(D+D);
 	}
-
-	AddCycleCount(10);
 }
 
 void CPU9900::op_jnc()
@@ -1339,6 +1333,7 @@ void CPU9900::op_jnc()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if (!ST_C) 
@@ -1353,9 +1348,7 @@ void CPU9900::op_jnc()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1372,6 +1365,7 @@ void CPU9900::op_jne()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if (!ST_EQ) 
@@ -1386,9 +1380,7 @@ void CPU9900::op_jne()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1405,6 +1397,7 @@ void CPU9900::op_jno()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if (!ST_OV) 
@@ -1419,9 +1412,7 @@ void CPU9900::op_jno()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1438,6 +1429,7 @@ void CPU9900::op_jop()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if (ST_OP) 
@@ -1452,9 +1444,7 @@ void CPU9900::op_jop()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1471,6 +1461,7 @@ void CPU9900::op_joc()
 	// Base cycles: 8
 	// 1 memory access:
 	//	Read instruction (already done)
+	AddCycleCount(8);	// base count for jump not taken
 
 	FormatII;
 	if (ST_C) 
@@ -1485,9 +1476,7 @@ void CPU9900::op_joc()
 		} else {
 			ADDPC(D+D);
 		}
-		AddCycleCount(10);
-	} else {
-		AddCycleCount(8);
+		AddCycleCount(10-8);
 	}
 }
 
@@ -1503,13 +1492,13 @@ void CPU9900::op_rtwp()
 	//	Read WP<-R13
 	//	Read PC<-R14
 
+	AddCycleCount(14);
+
 	FormatVII;
 
 	ST=ROMWORD(WP+30);
 	SetPC(ROMWORD(WP+28));
 	SetWP(ROMWORD(WP+26));		// needs to be last!
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_x()
@@ -1533,13 +1522,13 @@ void CPU9900::op_x()
 		// will just spin forever.
 		// TODO: we should try this ;)
 	}
+	AddCycleCount(8-4);	// For X, add this time to the execution time of the instruction found at the source address, minus 4 clock cycles and 1 memory access. 
+						// we already accounted for the memory access (the instruction is already in S)
 
 	FormatVI;
 	in=ROMWORD(S);
 	post_inc(SRC);		// does this go before or after the eXecuted instruction??
 	skip_interrupt=1;	// (ends up having no effect because we call the function inline, but technically still correct)
-	AddCycleCount(8-4);	// For X, add this time to the execution time of the instruction found at the source address, minus 4 clock cycles and 1 memory access. 
-						// we already accounted for the memory access (the instruction is already in S)
 
 	X_flag=PC;			// set flag and save true post-X address for the JMPs (AFTER X's oprands but BEFORE the instruction's oprands, if any)
 
@@ -1570,6 +1559,8 @@ void CPU9900::op_xop()
 
 	Word x1;
 
+	AddCycleCount(36);
+
 	FormatIX;
 	D&=0xf;
 
@@ -1584,8 +1575,6 @@ void CPU9900::op_xop()
 	set_XOP;
 
 	skip_interrupt=1;
-
-	AddCycleCount(36);
 }
 
 void CPU9900::op_c()
@@ -1599,6 +1588,8 @@ void CPU9900::op_c()
 	//	Read dest
 
 	Word x3,x4;		// unsigned 16 bit
+
+	AddCycleCount(14);
 
 	FormatI;
 	x3=ROMWORD(S); 
@@ -1616,8 +1607,6 @@ void CPU9900::op_c()
 	} else {
 		if (x4&0x8000) set_AGT;
 	}
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_cb()
@@ -1631,6 +1620,8 @@ void CPU9900::op_cb()
 	//	Read dest
 
 	Byte x3,x4;
+
+	AddCycleCount(14);
 
 	FormatI;
 	x3=RCPUBYTE(S); 
@@ -1649,8 +1640,6 @@ void CPU9900::op_cb()
 		if (x4&0x80) set_AGT;
 	}
 	ST|=BStatusLookup[x3]&BIT_OP;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_ci()
@@ -1665,6 +1654,8 @@ void CPU9900::op_ci()
 
 	Word x3;
 
+	AddCycleCount(14);
+
 	FormatVIII_1;
 	x3=ROMWORD(D); 
   
@@ -1676,8 +1667,6 @@ void CPU9900::op_ci()
 	} else {
 		if (S&0x8000) set_AGT;
 	}
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_coc()
@@ -1694,6 +1683,8 @@ void CPU9900::op_coc()
 
 	Word x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatIII;
 	x1=ROMWORD(S);
 	post_inc(SRC);
@@ -1704,8 +1695,6 @@ void CPU9900::op_coc()
 	x3=x1&x2;
   
 	if (x3==x1) set_EQ; else reset_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_czc()
@@ -1722,6 +1711,8 @@ void CPU9900::op_czc()
 
 	Word x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatIII;
 	x1=ROMWORD(S);
 	post_inc(SRC);
@@ -1732,8 +1723,6 @@ void CPU9900::op_czc()
 	x3=x1&x2;
   
 	if (x3==0) set_EQ; else reset_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_ldcr()
@@ -1753,6 +1742,8 @@ void CPU9900::op_ldcr()
 
 	Word x1,x3,cruBase; 
 	int x2;
+	
+	AddCycleCount(20);	// base count
 
 	FormatIV;
 	if (D==0) D=16;
@@ -1770,7 +1761,7 @@ void CPU9900::op_ldcr()
 		x3=x3<<1;
 	}
 
-	AddCycleCount(20+2*D);
+	AddCycleCount(2*D);
 
 	// TODO: the data manual says this return is not true - test
 	// whether a word load affects the other status bits
@@ -1797,6 +1788,8 @@ void CPU9900::op_sbo()
 
 	Word add;
 
+	AddCycleCount(12);
+
 	FormatII;
 	add=(ROMWORD(WP+24)>>1)&0xfff;
 	if (D&0x80) {
@@ -1805,8 +1798,6 @@ void CPU9900::op_sbo()
 		add+=D;
 	}
 	wcru(add,1);
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_sbz()
@@ -1821,6 +1812,8 @@ void CPU9900::op_sbz()
 
 	Word add;
 
+	AddCycleCount(12);
+
 	FormatII;
 	add=(ROMWORD(WP+24)>>1)&0xfff;
 	if (D&0x80) {
@@ -1829,8 +1822,6 @@ void CPU9900::op_sbz()
 		add+=D;
 	}
 	wcru(add,0);
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_stcr()
@@ -1846,6 +1837,8 @@ void CPU9900::op_stcr()
 
 	Word x1,x3,x4, cruBase; 
 	int x2;
+
+	AddCycleCount(42);	// base value
 
 	FormatIV;
 	if (D==0) D=16;
@@ -1873,13 +1866,13 @@ void CPU9900::op_stcr()
 	post_inc(SRC);
 
 	if (D<8) {
-		AddCycleCount(42);
+//		AddCycleCount(42-42);
 	} else if (D < 9) {
-		AddCycleCount(44);
+		AddCycleCount(44-42);
 	} else if (D < 16) {
-		AddCycleCount(58);
+		AddCycleCount(58-42);
 	} else {
-		AddCycleCount(60);
+		AddCycleCount(60-42);
 	}
 
 	// TODO: the data manual says this return is not true - test
@@ -1907,6 +1900,8 @@ void CPU9900::op_tb()
 
 	Word add;
 
+	AddCycleCount(12);
+
 	FormatII;
 	add=(ROMWORD(WP+24)>>1)&0xfff;
 	if (D&0x80) {
@@ -1916,8 +1911,6 @@ void CPU9900::op_tb()
 	}
 
 	if (rcru(add)) set_EQ; else reset_EQ;
-
-	AddCycleCount(12);
 }
 
 // These instructions are valid 9900 instructions but are invalid on the TI-99, as they generate
@@ -1929,11 +1922,11 @@ void CPU9900::op_ckof()
 	// 1 memory accesses:
 	//	Read instruction (already done)
 
+	AddCycleCount(12);
+
 	FormatVII;
 	warn("ClocK OFf instruction encountered!");					// not supported on 99/4A
 	// This will set A0-A2 to 110 and pulse CRUCLK (so not emulated)
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_ckon()
@@ -1942,11 +1935,11 @@ void CPU9900::op_ckon()
 	// 1 memory accesses:
 	//	Read instruction (already done)
 
+	AddCycleCount(12);
+
 	FormatVII;
 	warn("ClocK ON instruction encountered!");					// not supported on 99/4A
 	// This will set A0-A2 to 101 and pulse CRUCLK (so not emulated)
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_idle()
@@ -1954,6 +1947,7 @@ void CPU9900::op_idle()
 	// Base cycles: 12
 	// 1 memory accesses:
 	//	Read instruction (already done)
+	AddCycleCount(12);
 
 	FormatVII;
 	warn("IDLE instruction encountered!");						// not supported on 99/4A
@@ -1965,7 +1959,6 @@ void CPU9900::op_idle()
 	// when the CPU stops, so does the VDP, 9901, etc, so no interrupt ever comes in
 	// to wake up the system. This will be okay when the VDP is the timing source.
 //	SetIdle();
-	AddCycleCount(12);
 }
 
 void CPU9900::op_rset()
@@ -1974,13 +1967,13 @@ void CPU9900::op_rset()
 	// 1 memory accesses:
 	//	Read instruction (already done)
 
+	AddCycleCount(12);
+
 	FormatVII;
 	warn("ReSET instruction encountered!");						// not supported on 99/4A
 	// This will set A0-A2 to 011 and pulse CRUCLK (so not emulated)
 	// However, it does have an effect, it zeros the interrupt mask
 	ST&=0xfff0;
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_lrex()
@@ -1989,11 +1982,11 @@ void CPU9900::op_lrex()
 	// 1 memory accesses:
 	//	Read instruction (already done)
 
+	AddCycleCount(12);
+
 	FormatVII;
 	warn("Load or REstart eXecution instruction encountered!");	// not supported on 99/4A
 	// This will set A0-A2 to 111 and pulse CRUCLK (so not emulated)
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_li()
@@ -2008,13 +2001,13 @@ void CPU9900::op_li()
 
 	// Load Immediate: LI src, imm
 
+	AddCycleCount(12);
+
 	FormatVIII_1;
 	WRWORD(D,S);
 	
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[S]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(12);
 }
 
 void CPU9900::op_limi()
@@ -2027,10 +2020,10 @@ void CPU9900::op_limi()
 	//	Read instruction (already done)
 	//	Read source
 
+	AddCycleCount(16);
+
 	FormatVIII_1;
 	ST=(ST&0xfff0)|(S&0xf);
-
-	AddCycleCount(16);
 }
 
 void CPU9900::op_lwpi()
@@ -2043,10 +2036,10 @@ void CPU9900::op_lwpi()
 	//	Read instruction (already done)
 	//	Read source
 
+	AddCycleCount(10);
+
 	FormatVIII_1;
 	SetWP(S);
-
-	AddCycleCount(10);
 }
 
 void CPU9900::op_mov()
@@ -2062,6 +2055,8 @@ void CPU9900::op_mov()
 
 	Word x1;
 
+	AddCycleCount(14);
+
 	FormatI;
 	x1=ROMWORD(S);
 	post_inc(SRC);
@@ -2073,8 +2068,6 @@ void CPU9900::op_mov()
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_movb()
@@ -2090,6 +2083,8 @@ void CPU9900::op_movb()
 
 	Byte x1;
 
+	AddCycleCount(14);
+
 	FormatI;
 	x1=RCPUBYTE(S);
 	post_inc(SRC);
@@ -2101,8 +2096,6 @@ void CPU9900::op_movb()
 	
 	reset_LGT_AGT_EQ_OP;
 	ST|=BStatusLookup[x1]&mask_LGT_AGT_EQ_OP;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_stst()
@@ -2115,10 +2108,10 @@ void CPU9900::op_stst()
 	//	Read instruction (already done)
 	//	Write dest
 
+	AddCycleCount(8);
+
 	FormatVIII_0;
 	WRWORD(D,ST);
-
-	AddCycleCount(8);
 }
 
 void CPU9900::op_stwp()
@@ -2131,10 +2124,10 @@ void CPU9900::op_stwp()
 	//	Read instruction (already done)
 	//	Write dest
 
+	AddCycleCount(8);
+
 	FormatVIII_0;
 	WRWORD(D,WP);
-
-	AddCycleCount(8);
 }
 
 void CPU9900::op_swpb()
@@ -2150,14 +2143,14 @@ void CPU9900::op_swpb()
 
 	Word x1,x2;
 
+	AddCycleCount(10);
+
 	FormatVI;
 	x1=ROMWORD(S);
 
 	x2=((x1&0xff)<<8)|(x1>>8);
 	WRWORD(S,x2);
 	post_inc(SRC);
-
-	AddCycleCount(10);
 }
 
 void CPU9900::op_andi()
@@ -2173,6 +2166,8 @@ void CPU9900::op_andi()
 
 	Word x1,x2;
 
+	AddCycleCount(14);
+
 	FormatVIII_1;
 
 	x1=ROMWORD(D);
@@ -2181,8 +2176,6 @@ void CPU9900::op_andi()
 	
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x2]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_ori()
@@ -2198,6 +2191,8 @@ void CPU9900::op_ori()
 
 	Word x1,x2;
 
+	AddCycleCount(14);
+
 	FormatVIII_1;
 
 	x1=ROMWORD(D);
@@ -2206,8 +2201,6 @@ void CPU9900::op_ori()
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x2]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_xor()
@@ -2223,6 +2216,8 @@ void CPU9900::op_xor()
 
 	Word x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatIII;
 	x1=ROMWORD(S);
 	post_inc(SRC);
@@ -2235,8 +2230,6 @@ void CPU9900::op_xor()
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_inv()
@@ -2251,6 +2244,8 @@ void CPU9900::op_inv()
 
 	Word x1;
 
+	AddCycleCount(10);
+
 	FormatVI;
 
 	x1=ROMWORD(S);
@@ -2260,8 +2255,6 @@ void CPU9900::op_inv()
 
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(10);
 }
 
 void CPU9900::op_clr()
@@ -2275,12 +2268,12 @@ void CPU9900::op_clr()
 	//	Read source
 	//	Write dest
 
+	AddCycleCount(10);
+
 	FormatVI;
 	ROMWORD(S);		// wasted read before write
 	WRWORD(S,0);
 	post_inc(SRC);
-
-	AddCycleCount(10);
 }
 
 void CPU9900::op_seto()
@@ -2294,12 +2287,12 @@ void CPU9900::op_seto()
 	//	Read source
 	//	Write dest
 
+	AddCycleCount(10);
+
 	FormatVI;
 	ROMWORD(S);			// wasted read before write
 	WRWORD(S,0xffff);
 	post_inc(SRC);
-
-	AddCycleCount(10);
 }
 
 void CPU9900::op_soc()
@@ -2317,6 +2310,8 @@ void CPU9900::op_soc()
 
 	Word x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatI;
 	x1=ROMWORD(S);
 	post_inc(SRC);
@@ -2329,8 +2324,6 @@ void CPU9900::op_soc()
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_socb()
@@ -2346,6 +2339,8 @@ void CPU9900::op_socb()
 
 	Byte x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatI;
 	x1=RCPUBYTE(S);
 	post_inc(SRC);
@@ -2358,8 +2353,6 @@ void CPU9900::op_socb()
 
 	reset_LGT_AGT_EQ_OP;
 	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_szc()
@@ -2376,6 +2369,8 @@ void CPU9900::op_szc()
 	
 	Word x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatI;
 	x1=ROMWORD(S);
 	post_inc(SRC);
@@ -2388,8 +2383,6 @@ void CPU9900::op_szc()
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_szcb()
@@ -2405,6 +2398,8 @@ void CPU9900::op_szcb()
 
 	Byte x1,x2,x3;
 
+	AddCycleCount(14);
+
 	FormatI;
 	x1=RCPUBYTE(S);
 	post_inc(SRC);
@@ -2417,8 +2412,6 @@ void CPU9900::op_szcb()
 
 	reset_LGT_AGT_EQ_OP;
 	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
-
-	AddCycleCount(14);
 }
 
 void CPU9900::op_sra()
@@ -2445,6 +2438,8 @@ void CPU9900::op_sra()
 
 	Word x1,x3,x4; 
 	int x2;
+	
+	AddCycleCount(12);	// base value
 
 	FormatV;
 	if (D==0)
@@ -2470,7 +2465,7 @@ void CPU9900::op_sra()
 
 	if (x3) set_C;
 
-	AddCycleCount(12+2*D);
+	AddCycleCount(2*D);
 }
 
 void CPU9900::op_srl()
@@ -2495,6 +2490,7 @@ void CPU9900::op_srl()
 
 	Word x1,x3; 
 	int x2;
+	AddCycleCount(12);		// base value
 
 	FormatV;
 	if (D==0)
@@ -2518,7 +2514,7 @@ void CPU9900::op_srl()
 
 	if (x3) set_C;
 
-	AddCycleCount(12+2*D);
+	AddCycleCount(2*D);
 }
 
 void CPU9900::op_sla()
@@ -2542,6 +2538,7 @@ void CPU9900::op_sla()
 
 	Word x1,x3,x4; 
 	int x2;
+	AddCycleCount(12);		// base value
 
 	FormatV;
 	if (D==0)
@@ -2567,7 +2564,7 @@ void CPU9900::op_sla()
 
 	if (x3) set_C;
 
-	AddCycleCount(12+2*D);
+	AddCycleCount(2*D);
 }
 
 void CPU9900::op_src()
@@ -2594,6 +2591,7 @@ void CPU9900::op_src()
 
 	Word x1,x4;
 	int x2;
+	AddCycleCount(12);		// base value
 
 	FormatV;
 	if (D==0)
@@ -2619,7 +2617,7 @@ void CPU9900::op_src()
 
 	if (x4) set_C;
 
-	AddCycleCount(12+2*D);
+	AddCycleCount(2*D);
 }
 
 void CPU9900::op_bad()
@@ -2629,11 +2627,11 @@ void CPU9900::op_bad()
 	// Base cycles: 6
 	// 1 memory accesses:
 	//	Read instruction (already done)
+	AddCycleCount(6);
 
 	FormatVII;
 	sprintf(buf, "Illegal opcode (%04X)", in);
 	warn(buf);					// Don't know this Opcode
-	AddCycleCount(6);
 	SwitchToThread();			// these have a habit of taking over the emulator in crash situations :)
 	if (BreakOnIllegal) TriggerBreakPoint();
 }
