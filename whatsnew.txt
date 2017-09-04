@@ -1794,6 +1794,9 @@ Cartridge System:
 -minimemory RAM is now non-volatile (weakly tested)
 -emulator now sets the current folder to the same as classic99.exe by default
 
+-----------------------------------------------
+4 September 2017
+- allow mid-instruction VDP updates when the status register is read
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
