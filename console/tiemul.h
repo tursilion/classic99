@@ -36,12 +36,12 @@
 // http://harmlesslion.com - visit the web page for contact info
 //
 ///////////////////////////////////////////////////
-// Ami 99 - header
+// Classic99 - header
 // M.Brent
 ///////////////////////////////////////////////////
 
 // Defines
-#define VERSION "QI398"
+#define VERSION "QI399"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -238,6 +238,7 @@ struct GROMType {
 	bool bWritable[8];								// which bases are writable
 	Word GRMADD;									// GROM Address counter
 	Byte grmaccess,grmdata;							// GROM Prefetch emulation
+    int LastRead, LastBase;                         // Reports last access (stored on base 0 only)
 };
 
 extern struct GROMType GROMBase[17];				// support 16 GROM bases (there is room for 256 of them!), plus 1 for PCODE
@@ -460,6 +461,12 @@ Byte GetSafeCpuByte(int x, int bank);
 Word GetSafeCpuWord(int x, int bank);
 
 void read_sect(Byte drive, int sect, char *buffer);
+
+// tape
+void updateTape(int nCPUCycles);
+void setTapeMotor(bool isOn);
+bool getTapeBit();
+void LoadTape();
 
 #if 0		// commented on main code
 void read_image_file(int PAB, char *buffer, int offset, int len);

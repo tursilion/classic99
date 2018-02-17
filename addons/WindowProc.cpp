@@ -75,8 +75,8 @@ extern int gDontInvertCapsLock;
 extern int max_volume;
 extern int starttimer9901;
 extern int timer9901;										// 9901 interrupt timer
+extern int timer9901Read;
 extern int timer9901IntReq;
-extern int timer9901IntOk;
 extern int nSystem;
 extern int nCartGroup;
 extern int nCart;
@@ -107,6 +107,7 @@ extern bool bCorruptDSKRAM;
 extern unsigned char UberGROM[120*1024];
 extern unsigned char UberRAM[15*1024];
 extern unsigned char UberEEPROM[4*1024];
+extern bool bWindowInitComplete;
 
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
@@ -920,9 +921,9 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				CRU[2]=0;
 				CRU[3]=0;
 				timer9901=0;
+                timer9901Read = 0;
 				timer9901IntReq=0;
 				starttimer9901=0;
-				timer9901IntOk=0;
 				wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
 				init_kb();								// Reset keyboard emulation
 				SetupSams(sams_enabled, sams_size);		// Prepare the AMS system
@@ -1001,6 +1002,12 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					CheckMenuItem(GetMenu(myWnd), ID_DISK_CORRUPTDSKRAM, MF_UNCHECKED);
 				}
 				break;
+
+            case ID_DISK_LOADTAPE:
+                MuteAudio();
+                LoadTape();
+                SetSoundVolumes();
+                break;
 
 			case ID_VIDEO_FLICKER:
 				if (lParam != 1) {
@@ -1703,7 +1710,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			{
 				HDC myDC;
 				
-				if (MaintainAspect)
+				if ((MaintainAspect)&&(bWindowInitComplete))
 				{
 					GetWindowRect(myWnd, &myrect);
 					GetClientRect(myWnd, &myrect2);
@@ -1734,11 +1741,13 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 
 				if (!IsZoomed(myWnd)) {
-					// save sizes if not maximized
-					GetWindowRect(myWnd, &myrect);
-					nXSize = myrect.right-myrect.left;
-					nYSize = myrect.bottom-myrect.top;
-					nDefaultScreenScale=-1;		// it's custom now
+					// save sizes if not maximized (and finished setting up)
+                    if (bWindowInitComplete) {
+					    GetWindowRect(myWnd, &myrect);
+					    nXSize = myrect.right-myrect.left;
+					    nYSize = myrect.bottom-myrect.top;
+					    nDefaultScreenScale=-1;		// it's custom now
+                    }
 				}
 			}
 			break;
@@ -2996,7 +3005,8 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									break;
 								}
 							}
-							// check if y is byte or word
+							// check if more than a byte - VDP, GROM and CPU will allow long strings
+                            // (which in turn won't use 'y')
 							char *p=strchr(buf,'=');
 							p++;
 							byte=0;
@@ -3005,8 +3015,8 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								byte++;
 								p++;
 							}
-							if ((byte > 2) && (nCurMemType == MEMCPU)) {
-								byte = 0;		// no, word -- only the CPU supports this
+							if ((byte > 2) && ((nCurMemType == MEMCPU)||(nCurMemType==MEMVDP)||(nCurMemType==MEMGROM)) ) {
+								byte = 0;		// no, multiple bytes (we won't use 'y')
 								y&=0xffff;
 							} else {
 								byte = 1;		// yes, byte
@@ -3066,14 +3076,34 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 												wcpubyte(x, y);
 											}
 										} else {
-											if ((ROMMAP[x]) && (romok)) {
-												// need to be direct
-												staticCPU[x]=y>>8;
-												staticCPU[x+1]=y&0xff;
-											} else {
-												// do this so side effects work
-												wrword(x, y);
-											}
+                                            // parse the string and write each byte...
+							                char *p=strchr(buf,'=');
+							                p++;
+							                while (isspace(*p)) p++;
+							                while ((*p)&&(*(p+1))&&(isalnum(*p))) {
+                                                char tmp[3];
+                                                tmp[0]=*p;
+                                                tmp[1]=*(p+1);
+                                                tmp[2]='\0';
+                                                if (0 == sscanf(tmp, "%X", &y)) {
+                                                    break;
+                                                }
+                                                p+=2;
+
+											    if ((ROMMAP[x]) && (romok)) {
+												    // need to be direct
+												    staticCPU[x]=y;
+											    } else {
+												    // do this so side effects work
+												    wcpubyte(x, y);
+											    }
+
+                                                ++x;
+                                                if (x > 0xffff) {
+                                                    // no wraparound
+                                                    break;
+                                                }
+                                            }
 										}
 										break;
 
@@ -3094,7 +3124,32 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 												}
 											}
 										} else {
-											VDP[x] = y;
+                                            if (byte) {
+    											VDP[x] = y;
+                                            } else {
+                                                // parse the string and write each byte...
+							                    char *p=strchr(buf,'=');
+							                    p++;
+							                    while (isspace(*p)) p++;
+							                    while ((*p)&&(*(p+1))&&(isalnum(*p))) {
+                                                    char tmp[3];
+                                                    tmp[0]=*p;
+                                                    tmp[1]=*(p+1);
+                                                    tmp[2]='\0';
+                                                    if (0 == sscanf(tmp, "%X", &y)) {
+                                                        break;
+                                                    }
+                                                    p+=2;
+
+                                                    VDP[x] = y;
+
+                                                    ++x;
+                                                    if (x>=0x47ff) {
+                                                        // no wraparound
+                                                        break;
+                                                    }
+                                                }
+                                            }
 										}
 										// force VDP to update
 										redraw_needed=REDRAW_LINES;
@@ -3102,7 +3157,32 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 									case MEMGROM:		// GROM 
 										// only base zero handled
-										GROMBase[0].GROM[x]=y;
+                                        if (byte) {
+    										GROMBase[0].GROM[x]=y;
+                                        } else {
+                                            // parse the string and write each byte...
+							                char *p=strchr(buf,'=');
+							                p++;
+							                while (isspace(*p)) p++;
+							                while ((*p)&&(*(p+1))&&(isalnum(*p))) {
+                                                char tmp[3];
+                                                tmp[0]=*p;
+                                                tmp[1]=*(p+1);
+                                                tmp[2]='\0';
+                                                if (0 == sscanf(tmp, "%X", &y)) {
+                                                    break;
+                                                }
+                                                p+=2;
+
+                                                GROMBase[0].GROM[x]=y;
+
+                                                ++x;
+                                                if (x>=0xffff) {
+                                                    // no wraparound
+                                                    break;
+                                                }
+                                            }
+                                        }
 										break;
 								}
 							}
@@ -3554,7 +3634,7 @@ void DebugUpdateThread(void*) {
 					Word WP = pCurrentCPU->GetWP();
 					int val=pCurrentCPU->GetSafeWord(WP+idx*2, xbBank);
 					int val2=pCurrentCPU->GetSafeWord(WP+(idx+8)*2, xbBank);
-					sprintf(buf1, " R%2d  %04X     R%2d  %04X\r\n", idx, val, idx+8, val2);
+					sprintf(buf1, " R%2d  %04X   R%2d  %04X\r\n", idx, val, idx+8, val2);
 					csOut+=buf1;
 				}
 
@@ -3563,11 +3643,11 @@ void DebugUpdateThread(void*) {
 				// VDP registers and associated registers beside them
 				for (idx=0; idx<8; idx++) {
 					val=VDPREG[idx];
-					sprintf(buf1, "VDP%d  %02X      ", idx, val);
+					sprintf(buf1, "VDP%d  %02X    ", idx, val);
 					csOut+=buf1;
 					switch (idx) {
 						case 0:	sprintf(buf1, " VDP  %04X\r\n", VDPADD); break;
-						case 1: sprintf(buf1, " GROM %04X\r\n", GROMBase[0].GRMADD); break;
+						case 1: sprintf(buf1, " GROM %04X (%04X.%1.1X)\r\n", GROMBase[0].GRMADD, GROMBase[0].LastRead, GROMBase[0].LastBase); break;
 						case 2: sprintf(buf1, "VDPST %02X\r\n", VDPS); break;
 						case 3: sprintf(buf1, "  PC  %04X\r\n", pCurrentCPU->GetPC()); break;
 						case 4: sprintf(buf1, "  WP  %04X\r\n", pCurrentCPU->GetWP()); break;
@@ -3584,17 +3664,17 @@ void DebugUpdateThread(void*) {
 				// VDP tables
 				sprintf(buf1, " SIT  %04X\r\n", SIT);
 				csOut+=buf1;
-				sprintf(buf1, " SDT  %04X     SAL  %04X\r\n", SDT, SAL);
+				sprintf(buf1, " SDT  %04X   SAL  %04X\r\n", SDT, SAL);
 				csOut+=buf1;
 				if (VDPREG[0]&0x02) {
 					// bitmap
-					sprintf(buf1, " PDT  %04X     Mask %04X\r\n", PDT, PDTsize);
+					sprintf(buf1, " PDT  %04X   Mask %04X\r\n", PDT, PDTsize);
 					csOut+=buf1;
-					sprintf(buf1, "  CT  %04X     Mask %04X\r\n", CT, CTsize);
+					sprintf(buf1, "  CT  %04X   Mask %04X\r\n", CT, CTsize);
 				} else {
-					sprintf(buf1, " PDT  %04X     Size %04X\r\n", PDT, PDTsize);
+					sprintf(buf1, " PDT  %04X   Size %04X\r\n", PDT, PDTsize);
 					csOut+=buf1;
-					sprintf(buf1, "  CT  %04X     Size %04X\r\n", CT, CTsize);
+					sprintf(buf1, "  CT  %04X   Size %04X\r\n", CT, CTsize);
 				}
 				csOut+=buf1;
 

@@ -66,7 +66,14 @@ unsigned char mpdGrom[19*8192];
 bool bMpdActive = false;				// enables the various hacks needed to emulate this
 int nCurrentBank[3] = { 0, 0 ,0 };		// which GROM is mapped into each of the 3 banks
 const Byte nDefaultConfigBytes[] = { 
-	MPD_BANK_994AGROM0, ~MPD_BANK_994AGROM0, MPD_BANK_994ABASIC1, ~MPD_BANK_994ABASIC1, MPD_BANK_994ABASIC2, ~MPD_BANK_994ABASIC2, 0xff, 0x00
+	(Byte)MPD_BANK_994AGROM0, 
+    (Byte)~MPD_BANK_994AGROM0, 
+    (Byte)MPD_BANK_994ABASIC1, 
+    (Byte)~MPD_BANK_994ABASIC1, 
+    (Byte)MPD_BANK_994ABASIC2, 
+    (Byte)~MPD_BANK_994ABASIC2, 
+    0xff, 
+    0x00
 };
 
 // these functions will be different on the AVR since it needs to reference EEPROM

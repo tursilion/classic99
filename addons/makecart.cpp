@@ -434,7 +434,7 @@ public:
 		memcpy(pWhere+sizeof(hdr), tramphdr, sizeof(tramphdr));
 		// and fill in the filename
 		memcpy(pWhere+0x11, opt.Name, strlen(opt.Name));
-		*(pWhere+0x10) = strlen(opt.Name);
+		*(pWhere+0x10) = (unsigned char)strlen(opt.Name);
 		return sizeof(hdr)+sizeof(tramphdr);
 	}
 
@@ -1123,7 +1123,7 @@ public:
 		grom[nProgramPos+6] = opt.FirstGROM * 0x20;
 		grom[nProgramPos+14] = opt.FirstGROM * 0x20;
 		memcpy(&grom[nProgramPos+17], opt.Name, strlen(opt.Name));
-		grom[nProgramPos+16] = strlen(opt.Name);
+		grom[nProgramPos+16] = (unsigned char)strlen(opt.Name);
 		// save off the VDP registers whether we are going to load them later or not
 		for (int i=0; i<8; i++) {
 			grom[nProgramPos+0x26+i] = VDPREG[i];
@@ -1376,7 +1376,7 @@ public:
 		buf2[ncnt++]=0;							// no next entry
 		buf2[ncnt++]=nStart/256;
 		buf2[ncnt++]=nStart%256;				// start address
-		buf2[ncnt++]=strlen(opt.Name);			// length of the name
+		buf2[ncnt++]=(unsigned char)strlen(opt.Name);			// length of the name
 		strcpy((char*)&buf2[ncnt], opt.Name);	// copy the text over
 		_strupr((char*)&buf2[ncnt]);			// make sure it's uppercase
 

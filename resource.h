@@ -458,13 +458,15 @@
 #define ID_VIDEO_SHOWFPS                40156
 #define ID_CARTRIDGE_EJECT              40157
 #define ID_DEBUG_BREAKONDISKCORRUPT     40158
+#define ID_DISK_LOAD                    40159
+#define ID_DISK_LOADTAPE                40160
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        346
-#define _APS_NEXT_COMMAND_VALUE         40159
+#define _APS_NEXT_RESOURCE_VALUE        347
+#define _APS_NEXT_COMMAND_VALUE         40161
 #define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

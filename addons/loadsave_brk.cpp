@@ -32,7 +32,14 @@ int LoadBreakpoints(HWND *myhwnd) {
 	ofn.nMaxFileTitle  = 256;
 	ofn.Flags          = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
-	if (GetOpenFileName(&ofn)) {
+	char szTmpDir[MAX_PATH];
+	GetCurrentDirectory(MAX_PATH, szTmpDir);
+
+    bool ret = GetOpenFileName(&ofn);
+
+    SetCurrentDirectory(szTmpDir);
+
+	if (ret) {
 		// MessageBox( NULL, ofn.lpstrFile, "File Name", MB_OK);
 		debug_write("Reading breakpoint file ....");
 		HANDLE fh;
@@ -103,7 +110,12 @@ int SaveBreakpoints(HWND *myhwnd) {
 	ofn.lpstrDefExt    = "brk\0";
 	ofn.Flags          = OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
 
-	if (GetSaveFileName(&ofn)) {
+	char szTmpDir[MAX_PATH];
+	GetCurrentDirectory(MAX_PATH, szTmpDir);
+    bool ret = GetSaveFileName(&ofn);
+    SetCurrentDirectory(szTmpDir);
+
+	if (ret) {
 		// MessageBox( NULL, ofn.lpstrFile, "File Name", MB_OK);
 		HANDLE fh;
 		DWORD BytesWritten = 0;

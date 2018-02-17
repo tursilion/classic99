@@ -763,8 +763,12 @@ void updateVDP(int cycleCount)
 	// byte: 5.96374 cycles
 	// So, yeah. They all take more than one byte. :)
 
+    // despite the above, max_cpf fluctates for too many things so we're just
+    // going to try to keep drawing, and see if that works better. So we'll use
+    // hzRate after all with the fixed values.
+
 	// counts from datasheet
-	double cyclesPerLine = (max_cpf / 262.0);	// 262 lines, 342 pixel clocks per line, max_cpf could change by config
+	double cyclesPerLine = ((hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF) / 262.0);	// 262 lines, 342 pixel clocks per line, max_cpf could change by config
 	// this will just be scanlines for convenience, not pixel (or byte) accurate
 	double newCycles;
 

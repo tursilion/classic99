@@ -101,6 +101,7 @@ unsigned int BIGARRAYSIZE;
 // Win32 Stuff
 HINSTANCE hInstance;						// global program instance
 HINSTANCE hPrevInstance;					// prev instance (always null so far)
+bool bWindowInitComplete = false;           // just a little sync so we ignore size changes till we're done
 extern BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 extern void DebugUpdateThread(void*);
 extern void UpdateMakeMenu(HWND hwnd, int enable);
@@ -281,9 +282,9 @@ int gDontInvertCapsLock = 0;						// if true, caps lock is not inverted
 const char *szDefaultWindowText="Classic99";		// used to set Window back to normal after a change
 
 int timer9901;										// 9901 interrupt timer
+int timer9901Read;                                  // the read-back register
 int starttimer9901;									// and it's set time
 int timer9901IntReq;								// And whether it is requesting an interrupt
-int timer9901IntOk;									// Whether it's okay to generate a timer interrupt
 int keyboard=KEY_994A_PS2;							// keyboard map (0=99/4, 1=99/4A, 2=99/4A PS/2 (see enum in .h))
 int ps2keyboardok=1;								// whether to allow PS2 keyboards
 
@@ -322,6 +323,7 @@ int PasteCount;
 unsigned long myThread;								// timer thread
 CRITICAL_SECTION VideoCS;							// Video CS
 CRITICAL_SECTION DebugCS;							// Debug CS
+CRITICAL_SECTION TapeCS;							// Tape CS
 
 extern const char *pCurrentHelpMsg;
 extern int VDPDebug;
@@ -1344,6 +1346,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	InitializeCriticalSection(&DebugCS);
 	InitializeCriticalSection(&csDriveType);
 	InitializeCriticalSection(&csAudioBuf);
+    InitializeCriticalSection(&TapeCS);
 
 	hInstance = hInst;
 	hPrevInstance=hInPrevInstance;
@@ -1523,6 +1526,8 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 		}
 		GROMBase[idx].grmaccess=2;
 		GROMBase[idx].grmdata=0;
+        GROMBase[idx].LastRead=0;   // only idx==0 is used though
+        GROMBase[idx].LastBase=0;
 	}
 		
 	vdpReset();			// TODO: should move these vars into the reset function
@@ -1536,9 +1541,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	nCurrentDSR=-1;		// no DSR selected
 	memset(nDSRBank, 0, sizeof(nDSRBank));
 	timer9901=0;		// timer is idle
+    timer9901Read =0;
 	starttimer9901=0;
 	timer9901IntReq=0;
-	timer9901IntOk=0;
 	doLoadInt=false;			// no pending LOAD
 
 	// clear debugging strings
@@ -2249,6 +2254,7 @@ void WindowThread() {
 	int cnt, idx, wid;
 
 	hAccels = LoadAccelerators(NULL, MAKEINTRESOURCE(DebugAccel));
+    bWindowInitComplete = true;     // we're finally up and running
 
 	while (!quitflag) {
 		// check for messages
@@ -3032,21 +3038,16 @@ void do1()
 		// The 9901 timer decrements every 64 periods, with the TI having a 3MHz clock speed
 		// Thus, it decrements 46875 times per second. If CRU bit 3 is on, we trigger an
 		// interrupt when it expires. 
-		if ((timer9901>0)&&(CRU[0] == 0)) {
+		if (timer9901>0) {
 			int nTimerCnt=CRUTimerTicks>>6;		// /64
 			if (nTimerCnt) {
 				timer9901-=nTimerCnt;
 				CRUTimerTicks-=(nTimerCnt<<6);	// *64
 
 				if (timer9901 < 1) {
-					timer9901=starttimer9901;
-					if (timer9901IntOk) {
-	//					debug_write("9901 timer expired, int requested");
-						timer9901IntReq=1;	
-						timer9901IntOk=0;
-	//				} else {
-	//					debug_write("9901 timer expired, int not valid");
-					}
+					timer9901=starttimer9901+timer9901;
+// 					debug_write("9901 timer expired, int requested");
+					timer9901IntReq=1;	
 				}
 			}
 		}
@@ -3054,9 +3055,12 @@ void do1()
 		// Check if the VDP or CRU wants an interrupt (99/4A has only level 1 interrupts)
 		// When we have peripheral card interrupts, they are masked on CRU[1]
 		if ((((VDPINT)&&(CRU[2]))||((timer9901IntReq)&&(CRU[3]))) && ((pCurrentCPU->GetST()&0x000f) >= 1) && (!skip_interrupt)) {
-			if (cycles_left >= 22) {					// speed throttling
+//			if (cycles_left >= 22) {					// speed throttling
 				pCurrentCPU->TriggerInterrupt(0x0004);
-			}
+//			}
+            // the if cycles_left doesn't work because if we don't take it now, we'll
+            // execute other instructions (at least one more!) instead of stopping...
+            // so we'll just take it and suffer later.
 		}
 
 		// If an idle is set
@@ -3422,6 +3426,7 @@ void do1()
 
 		Word in = pCurrentCPU->ExecuteOpcode(nopFrame);
 		if (pCurrentCPU == pCPU) {
+            updateTape(pCurrentCPU->GetCycleCount());
 			updateDACBuffer(pCurrentCPU->GetCycleCount());
 			// an instruction has executed, interrupts are again enabled
 			skip_interrupt=0;
@@ -4733,6 +4738,10 @@ Byte ReadValidGrom(int nBase, Word x) {
 		// data
 		UpdateHeatGROM(GROMBase[0].GRMADD);
 
+        // this saves some debug off for Rich
+        GROMBase[0].LastRead = GROMBase[0].GRMADD;
+        GROMBase[0].LastBase = nBase;
+
 		GROMBase[0].grmaccess=2;
 		z=GROMBase[nBase].grmdata;
 
@@ -5021,8 +5030,6 @@ void SetSuperBank() {
 //////////////////////////////////////////////////////////////////
 void wcru(Word ad, int bt)
 {
-	static bool bTimerDirty=false;
-
 	if (ad>=0x800) {
 		// DSR space
 		if (NULL != SetSidBanked) {
@@ -5121,27 +5128,50 @@ void wcru(Word ad, int bt)
 
 //		debug_write("Write CRU 0x%x with %d", ad, bt);
 
+        // cassette bits:
+        // 22 - CS1 control (1 = motor on)
+        // 23 - CS2 control (1 = motor on)
+        // 24 - audio gate  (1 = silence)
+        // 25 - audio out (shared)
+        // 26 - audio in  (CS1 only)
+        // most of these we just store and let other code deal with them
+
 		if (bt) {											// write the data
 			if ((ad>0)&&(ad<16)&&(CRU[0]==1)) {
 				if (ad == 15) {
 					// writing 1 has no effect
 				} else {
 					// writing to CRU 9901 timer
+                    int oldtimer = starttimer9901;
 					Word mask=0x01<<(ad-1);
 					starttimer9901|=mask;
-					bTimerDirty=true;
+                    if (oldtimer != starttimer9901) {
+//                        debug_write("9901 timer now set to %d", starttimer9901);
+                    }
 				}
 			} else {
 				CRU[ad]=1;
 				switch (ad) {
+                    case 0:
+                        // timer mode (update readback reg)
+                        timer9901Read = timer9901;
+                        break;
+
 					case 3:
 						// timer interrupt bit
 						timer9901IntReq=0;
+//                        debug_write("9901 timer interrupt off");
 						break;
-					case 0x18:
-						// ticking the cassette speaker
-						nDACLevel=0.75;		// set DAC high (75%)
-						break;
+
+                    case 22:
+                        // CS1 motor on
+                        setTapeMotor(true);
+                        break;
+
+                    case 23:
+                        // CS2 motor on
+                        debug_write("CS2 is not supported.");
+                        break;
 					
 					case 0x040f:
 						// super-space cart piggybacked on 379 code for now
@@ -5158,18 +5188,18 @@ void wcru(Word ad, int bt)
 				} else if (ad == 0) {
 					// Turning off timer mode - start timer
 					CRU[ad]=0;
-					if (bTimerDirty) {
-						timer9901=starttimer9901;
-						bTimerDirty=false;
-					}
+					timer9901=starttimer9901;
+                    timer9901Read = timer9901;
 					CRUTimerTicks=0;
-					timer9901IntOk=1;
 //					debug_write("Starting 9901 timer at %d ticks", timer9901);
 				} else {
 					// writing to CRU 9901 timer
 					Word mask=0x01<<(ad-1);
+                    int oldtimer = starttimer9901;
 					starttimer9901&=~mask;
-					bTimerDirty=true;
+                    if (oldtimer != starttimer9901) {
+//                        debug_write("9901 timer now set to %d", starttimer9901);
+                    }
 				}
 			} else {
 				CRU[ad]=0;
@@ -5177,12 +5207,13 @@ void wcru(Word ad, int bt)
 					case 3:
 						// timer interrupt bit
 						timer9901IntReq=0;
+//                        debug_write("9901 timer request cleared");
 						break;
 
-					case 0x18:
-						// ticking the cassette speaker
-						nDACLevel=0.0;		// set DAC low (0%)
-						break;
+                    case 22:
+                        // CS1 motor off
+                        setTapeMotor(false);
+                        break;
 					
 					case 0x040f:
 						// super-space cart piggybacked on 379 code for now
@@ -5371,11 +5402,8 @@ int rcru(Word ad)
 		if (ad == 15) {
 			return timer9901IntReq;
 		}
-//		if (ad==2) {
-//			debug_write("Reading 9901 timer at %d ticks", timer9901);
-//		}
 		Word mask=0x01<<(ad-1);
-		if (timer9901 & mask) {
+		if (timer9901Read & mask) {
 			return 1;
 		} else {
 			return 0;
@@ -5424,6 +5452,20 @@ int rcru(Word ad)
 		// todo: we don't have any, though!
 		return 1;
 	}
+
+    // cassette support
+    if (ad == 27) {
+        // tape input (the outputs can't be read back, technically)
+        if (getTapeBit()) {
+            return 0;   // inverted logic
+        } else {
+            return 1;   // this also preserves the Perfect Push 'tick' on audio gate
+        }
+    }
+    if ((ad >= 22) && (ad < 25)) {
+        // these are the cassette CRU output bits
+        return 1;
+    }
 
 	// no other hardware devices at this time, check keyboard/joysticks
 
@@ -5694,7 +5736,7 @@ void __cdecl TimerThread(void *)
 				}
 			} else {
 				// this side is used in overdrive
-				if ((nVDPFrames > 0) && ((VDPS&VDPS_INT) == 0)) {
+				if (nVDPFrames > 0) {
 					// run one frame every time we're able (and it's needed)
 					Counting();					// update counters & VDP interrupt
 					nVDPFrames--;

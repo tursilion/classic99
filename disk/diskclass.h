@@ -260,6 +260,7 @@ public:
 	virtual CString BuildFilename(FileInfo *pFile);
 
 	// disk support
+    // these ones don't call unsupported because we don't need to print a message to the user
 	virtual bool Flush(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
 	virtual bool TryOpenFile(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
 	virtual bool CreateOutputFile(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
@@ -268,16 +269,16 @@ public:
 
 	// standard PAB opcodes - local system specific - set LastError and return false on error
 	// Open must return the FileInfo object actually used (since it usually will get a new one on success)
-	virtual FileInfo *Open(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return NULL; }
+	virtual FileInfo *Open(FileInfo *pFile) { unsupported(pFile); return NULL; }
 	virtual bool Close(FileInfo *pFile);
-	virtual bool Load(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
-	virtual bool Save(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
-	virtual bool Delete(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool Load(FileInfo *pFile) { return unsupported(pFile); }
+	virtual bool Save(FileInfo *pFile) { return unsupported(pFile); }
+	virtual bool Delete(FileInfo *pFile) { return unsupported(pFile); }
 	// These functions work with the buffer so should not need to be overridden
 	virtual bool Read(FileInfo *pFile);
 	virtual bool Write(FileInfo *pFile);
 	virtual bool Restore(FileInfo *pFile);
-	virtual bool Scratch(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool Scratch(FileInfo *pFile) { return unsupported(pFile); }
 	virtual void MapStatus(FileInfo *src, FileInfo *dest);
 	virtual bool GetStatus(FileInfo *pFile);
 
@@ -286,11 +287,11 @@ public:
 
 	// ReadSector: nDrive=Drive#, DataBuffer=VDP address, RecordNumber=Sector to read
 	// Must return the sector number in RecordNumber if no error.
-	virtual bool ReadSector(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool ReadSector(FileInfo *pFile) { return unsupported(pFile); }
 
 	// WriteSector: nDrive=Drive#, DataBuffer=VDP address, RecordNumber=Sector to read
 	// Must return the sector number in RecordNumber if no error.
-	virtual bool WriteSector(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool WriteSector(FileInfo *pFile) { return unsupported(pFile); }
 
 	// These functions both take in the same parameters:
 	// LengthSectors - number of sectors to read/write
@@ -302,31 +303,36 @@ public:
 	// FileType, RecordsPerSector, BytesInLastSector, RecordLength, NumberRecords
 	// On return, LengthSectors must contain the actual number of sectors read/written,
 	// leave as 0 if 0 was originally specified.
-	virtual bool ReadFileSectors(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
-	virtual bool WriteFileSectors(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool ReadFileSectors(FileInfo *pFile) { return unsupported(pFile); }
+	virtual bool WriteFileSectors(FileInfo *pFile) { return unsupported(pFile); }
 	
 	// FormatDisk:	nDrive=Drive#, NumberRecords=# tracks per side, DataBuffer=VDP Address,
 	//				RecordsPerSector=density, LengthSectors=# sides
 	// Must return the number of sectors on the disk in LengthSectors if no error
-	virtual bool FormatDisk(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool FormatDisk(FileInfo *pFile) { return unsupported(pFile); }
 
 	// ProtectFile: nDrive=Drive#, csName=Filename
 	// No return beyond error code required
-	virtual bool ProtectFile(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool ProtectFile(FileInfo *pFile) { return unsupported(pFile); }
 
 	// UnProtectFile: nDrive=Drive#, csName=Filename
 	// No return beyond error code required
-	virtual bool UnProtectFile(FileInfo *pFile) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool UnProtectFile(FileInfo *pFile) { return unsupported(pFile); }
 
 	// RenameFile: nDrive=Drive#, csName=old filename
 	// No return beyond error code required
-	virtual bool RenameFile(FileInfo *pFile, const char * /*pNewFile*/) { pFile->LastError=ERR_ILLEGALOPERATION; return false; }
+	virtual bool RenameFile(FileInfo *pFile, const char * /*pNewFile*/) { return unsupported(pFile); }
 
 	// public base functions
 	bool GetWriteProtect() { return bWriteProtect; }
 
 	// functions for internal use
 protected:
+    // quick helper for 'not supported'
+    bool unsupported(FileInfo *pFile) { 
+        debug_write("Operation not supported on this disk type."); pFile->LastError=ERR_ILLEGALOPERATION; return false; 
+    }
+
 	// writes a TI floating point value
 	char *WriteAsFloat(char *pData, int nVal);
 	// remap a buffer from DSK1

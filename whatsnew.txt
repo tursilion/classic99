@@ -1798,6 +1798,23 @@ Cartridge System:
 4 September 2017
 - allow mid-instruction VDP updates when the status register is read
 
+-----------------------------------------------
+17 February 2018
+
+-updated manual
+-updated to Visual Studio 2017
+-added CS1 read support
+-flagged manifest as hidpi aware
+-fixes for 9901 timer handling, found via CS1 in BASIC and EasyBug
+-fix for "windowshade" mode where Classic99 started as just a title bar
+-allow debugger to write more than 1 or 2 bytes at a time (to CPU, VDP or GROM)
+-display last accessed GROM address next to the hardware register
+-fix current directory changing when breakpoints were loaded or saved
+-allow an interrupt to trigger immediately even if there aren't quite enough cycles left
+-fix VDP scanlines to draw more correctly regardless of such things as overdrive and breakpoint
+-add 'unsupported operation' debug to the file handlers so they don't silently fail when it's deliberately not supported
+
+
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
@@ -1813,7 +1830,6 @@ Cartridge System:
 -TODO: Add support for PIO (LPT) and RS232 (COM) access, possibly including low level
 -TODO: Fix multiple scanning of joysticks (scan on timer tick?)
 -TODO: Implement cassette ports on sound card? (would require precise timing!)
--TODO: Implement cassette load from WAV files? (trace WAV file against CPU time)
 -TODO: Implement cassette load from audio CD? (some people are saving stuff there!)
 -TODO: Allow debugger to display in hex or decimal
 -TODO: Implement psuedo-CS1 support that calls through the FIAD system from CS1 and CS2

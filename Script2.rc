@@ -144,6 +144,7 @@ BEGIN
             MENUITEM "Open DSK9",                   ID_DSK9_OPENDSK9
         END
         MENUITEM "Corrupt DSK RAM",             ID_DISK_CORRUPTDSKRAM
+        MENUITEM "Load/Rewind Tape",            ID_DISK_LOADTAPE
     END
     POPUP "Options"
     BEGIN
@@ -277,88 +278,166 @@ END
 // remains consistent on all systems.
 IDI_ICON1               ICON                    "graphics\\icon1.ico"
 
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // ROMS
 //
 
 IDR_994AROM             ROMS                    "roms\\994AROM.BIN"
+
 IDR_994AGROM            ROMS                    "roms\\994AGROM.BIN"
+
 IDR_AMI99DSK            ROMS                    "roms\\AMI99DSK.BIN"
+
 IDR_CON22G0             ROMS                    "roms\\CON22G0.GRM"
+
 IDR_CON22G1             ROMS                    "roms\\con22g1.grm"
+
 IDR_CON22G2             ROMS                    "roms\\CON22G2.GRM"
+
 IDR_CON22R0             ROMS                    "roms\\con22r0.rom"
+
 IDR_MINIMEMG            ROMS                    "roms\\MiniMemG.Bin"
+
 IDR_MINIMEMC            ROMS                    "roms\\MiniMemC.Bin"
+
 IDR_SPCHROM             ROMS                    "roms\\SPCHROM.BIN"
+
 IDR_DEMOG               ROMS                    "roms\\DEMOG.BIN"
+
 IDR_DIAGNOSG            ROMS                    "roms\\DiagnosG.Bin"
+
 IDR_LOGOG               ROMS                    "roms\\LOGOG.BIN"
+
 IDR_LOGOC               ROMS                    "roms\\LOGOC.BIN"
+
 IDR_ALPINERG            ROMS                    "roms\\ALPINERG.BIN"
+
 IDR_ALPINERC            ROMS                    "roms\\ALPINERC.BIN"
+
 IDR_AMAZEG              ROMS                    "roms\\AMAZEG.BIN"
+
 IDR_MUNCHMNG            ROMS                    "roms\\MunchMnG.Bin"
+
 IDR_MUNCHMNC            ROMS                    "roms\\MunchMnC.Bin"
+
 IDR_PARSECC             ROMS                    "roms\\PARSECC.BIN"
+
 IDR_PARSECG             ROMS                    "roms\\PARSECG.BIN"
+
 IDR_SSALOAD             ROMS                    "roms\\SSALOAD.BIN"
+
 IDR_SSARAM              ROMS                    "roms\\ssaram.bin"
+
 IDR_TIINVADG            ROMS                    "roms\\TI-InvaG.Bin"
+
 IDR_TIINVADC            ROMS                    "roms\\TI-InvaC.Bin"
+
 IDR_TOMBCITG            ROMS                    "roms\\TOMBCITG.BIN"
+
 IDR_TOMBCITC            ROMS                    "roms\\TOMBCITC.BIN"
+
 IDR_WUMPUSG             ROMS                    "roms\\WUMPUSG.BIN"
+
 IDR_TIEXTC              ROMS                    "roms\\TIEXTC.BIN"
+
 IDR_TIEXTD              ROMS                    "roms\\TIEXTD.BIN"
+
 IDR_TIEXTG              ROMS                    "roms\\TIEXTG.BIN"
+
 IDR_DEMQ                ROMS                    "roms\\DEMQ"
+
 IDR_TIEAG               ROMS                    "roms\\TIEAG.BIN"
+
 IDR_TE2G                ROMS                    "roms\\TE-IIG.BIN"
+
 IDR_TE2C                ROMS                    "roms\\TE-IIC.BIN"
+
 IDR_BLACKJACK           ROMS                    "roms\\BlakjakG.Bin"
+
 IDR_CARWARS             ROMS                    "roms\\CarWarsG.Bin"
+
 IDR_CHISHOLMG           ROMS                    "roms\\ChishlmG.Bin"
+
 IDR_CHISHOLMC           ROMS                    "roms\\ChishlmC.Bin"
+
 IDR_FOOTBALLG           ROMS                    "roms\\FootbalG.Bin"
+
 IDR_HOMEG               ROMS                    "roms\\HomFDecG.Bin"
+
 IDR_HUSTLEG             ROMS                    "roms\\HustleG.Bin"
+
 IDR_MINDG               ROMS                    "roms\\MinChalG.Bin"
+
 IDR_CHESSG              ROMS                    "roms\\V-CHESSG.BIN"
+
 IDR_CHESSC              ROMS                    "roms\\V-CHESSC.BIN"
+
 IDR_PCODEC              ROMS                    "roms\\PCardC.ROM"
+
 IDR_PCODED              ROMS                    "roms\\PCardD.ROM"
+
 IDR_TUNDOOMG            ROMS                    "roms\\TunDoomG.Bin"
+
 IDR_PGROM               ROMS                    "roms\\p1f00g_0000_f800.GRM"
+
 IDR_RS232               ROMS                    "roms\\RS232.Bin"
+
 IDR_CON4G0              ROMS                    "roms\\CON4G0.GRM"
+
 IDR_CON4G1              ROMS                    "roms\\CON4G1.GRM"
+
 IDR_CON4G2              ROMS                    "roms\\CON4G2.GRM"
+
 IDR_CON4R0              ROMS                    "roms\\CON4R0.ROM"
+
 IDR_EPSGMODG            ROMS                    "roms\\EPSGMODG.BIN"
+
 IDR_TIPLAYERC           ROMS                    "roms\\TIPlayerC.BIN"
+
 IDR_TIMUSIF             ROMS                    "roms\\mm2\\timusif"
+
 IDR_DUMMYG              ROMS                    "roms\\mm2\\DummyG.bin"
+
 IDR_TIMM2PICC           ROMS                    "roms\\mm2\\TIMM2PIC_C"
+
 IDR_TIMM2PICP           ROMS                    "roms\\mm2\\TIMM2PIC_P"
+
 IDR_TIMUSIC             ROMS                    "roms\\mm2\\timusic"
+
 IDR_TIMUSID             ROMS                    "roms\\mm2\\timusid"
+
 IDR_TIMUSIE             ROMS                    "roms\\mm2\\timusie"
+
 IDR_TIWORKSHOP          ROMS                    "roms\\tiworkshop379.bin"
+
 IDR_CHARA1              ROMS                    "roms\\chara1"
+
 IDR_EAUTILS             ROMS                    "roms\\EA_Utils.bin"
+
 IDR_BASICHDR            ROMS                    "roms\\BASIC_ROM_header.bin"
+
 IDR_TURBOFORTHD         ROMS                    "roms\\TurboForthD.BIN"
+
 IDR_TURBOFORTHC         ROMS                    "roms\\TurboForthC.BIN"
+
 IDR_RXBC                ROMS                    "roms\\RXBC.Bin"
+
 IDR_RXBD                ROMS                    "roms\\RXBD.Bin"
+
 IDR_RXBG                ROMS                    "roms\\RXBG.Bin"
+
 IDR_TIDISK              ROMS                    "roms\\DISK.BIN"
+
 IDR_XB27EEPROM          ROMS                    "roms\\XB27_EEPROM_060315.bin"
+
 IDR_XB27GROM            ROMS                    "roms\\XB27_GROM_060315.bin"
+
 IDR_XB27ROM             ROMS                    "roms\\XB27_ROM_060315.bin"
+
 IDR_FBFORTH             ROMS                    "roms\\fbForth200_3.bin"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -366,14 +445,23 @@ IDR_FBFORTH             ROMS                    "roms\\fbForth200_3.bin"
 //
 
 IDR_ASSM1               DISKFILES               "roms\\ASSM1.bin"
+
 IDR_ASSM2               DISKFILES               "roms\\ASSM2.bin"
+
 IDR_EDIT1               DISKFILES               "roms\\EDIT1.BIN"
+
 IDR_ACERC               DISKFILES               "roms\\ACERC.bin"
+
 IDR_ACERP               DISKFILES               "roms\\ACERP.bin"
+
 IDR_SSD                 DISKFILES               "roms\\SSD.BIN"
+
 IDR_SSE                 DISKFILES               "roms\\SSE.BIN"
+
 IDR_PENNIES             DISKFILES               "roms\\PENNIES"
+
 IDR_QUEST               DISKFILES               "roms\\QUEST"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -481,9 +569,9 @@ BEGIN
     EDITTEXT        IDC_MAINEDIT,7,7,203,279,ES_MULTILINE | ES_READONLY | WS_HSCROLL
     EDITTEXT        IDC_SECONDEDIT,214,7,130,244,ES_MULTILINE | ES_READONLY
     COMBOBOX        IDC_COMBO1,349,21,86,69,CBS_SIMPLE | CBS_SORT | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "&Add",IDC_ADDBREAK,352,85,25,14
-    PUSHBUTTON      "&?",IDC_BREAKHELP,382,85,14,14
-    PUSHBUTTON      "&Remove",IDC_REMOVEBREAK,400,85,32,14
+    PUSHBUTTON      "&Add",IDC_ADDBREAK,352,93,25,14
+    PUSHBUTTON      "&?",IDC_BREAKHELP,382,93,14,14
+    PUSHBUTTON      "&Remove",IDC_REMOVEBREAK,400,93,32,14
     CONTROL         "D&ebug",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,228,253,37,10
     CONTROL         "&Disasm",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,273,253,38,10
     CONTROL         "&CPU",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON,319,253,29,10
@@ -492,8 +580,8 @@ BEGIN
     PUSHBUTTON      "Edit",IDC_EDITMEM,225,265,34,14,WS_DISABLED
     LTEXT           "Breakpoints",IDC_STATIC,373,12,38,8
     GROUPBOX        "",IDC_STATIC,214,248,221,36
-    CONTROL         "Debug CPU",IDC_BREAKCPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,106,52,10
-    CONTROL         "Debug GPU",IDC_BREAKGPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,121,52,10
+    CONTROL         "Debug CPU",IDC_BREAKCPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,114,52,10
+    CONTROL         "Debug GPU",IDC_BREAKGPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,129,52,10
 END
 
 IDD_BRKHLP DIALOGEX 0, 0, 327, 234
@@ -741,6 +829,7 @@ END
 
 IDB_KBMAP               BITMAP                  "graphics\\ti_keyboard_map.bmp"
 
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // Accelerator
@@ -755,6 +844,17 @@ BEGIN
     VK_F2,          ID_DEBUG_STEP,          VIRTKEY, NOINVERT
     VK_F3,          ID_DEBUG_STEPOVER,      VIRTKEY, NOINVERT
     VK_F9,          ID_DEBUG_VDPCHARS,      VIRTKEY, NOINVERT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// AFX_DIALOG_LAYOUT
+//
+
+IDD_DEBUG AFX_DIALOG_LAYOUT
+BEGIN
+    0
 END
 
 #endif    // English (United States) resources

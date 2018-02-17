@@ -85,6 +85,9 @@
     <ClCompile Include="addons\F18A.cpp">
       <Filter>addons</Filter>
     </ClCompile>
+    <ClCompile Include="tape.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
