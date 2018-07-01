@@ -145,6 +145,7 @@ void (*SetSidFrequency)(int) = NULL;
 void (*SetSidEnable)(bool) = NULL;
 void (*SetSidBanked)(bool) = NULL;
 bool (*GetSidEnable)(void) = NULL;
+SID* (*GetSidPointer)(void) = NULL;
 HMODULE hSIDDll = NULL;
 void PrepareSID();
 
@@ -781,7 +782,8 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 ////////////////////////////////////////////////////////////
 // SID Interface
 
-SID *g_mySid = NULL;
+// TODO: this pulls in a Windows 'SID' structure, not the actual SID chip
+//SID *g_mySid = NULL;
 
 // try to load the SID DLL
 void PrepareSID() {
@@ -797,6 +799,8 @@ void PrepareSID() {
 		SetSidEnable=(void (*)(bool))GetProcAddress(hSIDDll, "SetSidEnable");
 		SetSidBanked=(void (*)(bool))GetProcAddress(hSIDDll, "SetSidBanked");
 		GetSidEnable=(bool (*)(void))GetProcAddress(hSIDDll, "GetSidEnable");
+        // not available in all versions of the DLL, optional
+        GetSidPointer=(SID* (*)(void))GetProcAddress(hSIDDll, "GetSidPointer");
 
 		if ((NULL == InitSid) || (NULL == sid_update) || (NULL == write_sid) || (NULL == SetSidFrequency) || (NULL == SetSidEnable) || (NULL == SetSidBanked) || (NULL == GetSidEnable)) {
 			debug_write("Failed to find all functions, skipping SID DLL");

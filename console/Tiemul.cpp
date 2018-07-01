@@ -3653,6 +3653,7 @@ Byte rcpubyte(Word x,bool rmw) {
 						// don't respond on odd addresses
 						return 0;
 					}
+                    // timing handled in rspeechbyte
 					return(rspeechbyte(x));
 				case 0x9400:				// Speech write data
 					if (x&1) {
@@ -3884,6 +3885,8 @@ void wcpubyte(Word x, Byte c)
 					return;
 				}
 				wsndbyte(c);
+                // sound chip writes eat ~28 additional cycles (verified hardware, reads do not)
+				pCurrentCPU->AddCycleCount(28);
 				break;
 			case 0x8800:				// VDP read data
 				break;
@@ -3901,6 +3904,7 @@ void wcpubyte(Word x, Byte c)
 					// don't respond on odd addresses
 					return;
 				}
+                // timing handled in wspeechbyte
 				wspeechbyte(x,c);
 				break;
 			case 0x9800:				// read GROM data
@@ -4024,8 +4028,10 @@ Byte rspeechbyte(Word x)
 {
 	Byte ret=0;
 
-	if (SpeechRead) {
+	if ((SpeechRead)&&(SpeechEnabled)) {
 		ret=SpeechRead();
+        // speech chip, if attached, reads eat 48 additional cycles (verified hardware)
+		pCurrentCPU->AddCycleCount(48);
 	}
 	return ret;
 }
@@ -4058,6 +4064,10 @@ void wspeechbyte(Word x, Byte c)
 			CPUSpeechHalt = false;
 			cnt = 0;
 		}
+        // speech chip, if attached, writes eat 64 additional cycles (verified hardware)
+        // TODO: not verified if this is still true after a halt occurs, but since a halt
+        // is variable length, maybe it doesn't matter...
+		pCurrentCPU->AddCycleCount(48);
 	}
 }
 
@@ -4714,14 +4724,9 @@ Byte ReadValidGrom(int nBase, Word x) {
 //		debug_write("Read GROM base %d(>%04X), >%04x, >%02x", nBase, x, GROMBase[0].GRMADD, GROMBase[nBase].grmdata);
 //	}
 
-	// TODO: the wait time for a read is roughly 27 cycles
-	// I know that address writes take longer after the second write
-	// but I didn't save off the data for how much longer.
-	// 4 cycles are already accounted for by the wait state generator (though does that apply?)
 	// Note that UberGROM access time (in the pre-release version) was 15 cycles (14.6), but it
 	// does not apply as long as other GROMs are in the system (and they have to be due to lack
 	// of address counter.) So this is still valid.
-	pCurrentCPU->AddCycleCount(27-4);
 
 	if (x&0x0002)
 	{
@@ -4731,6 +4736,10 @@ Byte ReadValidGrom(int nBase, Word x) {
 		// read is destructive
 		GROMBase[0].GRMADD=(((GROMBase[0].GRMADD&0xff)<<8)|(GROMBase[0].GRMADD&0xff));		
 		// TODO: Is the address incremented anyway? ie: if you keep reading, what do you get?
+
+        // GROM read address always adds about 13 cycles
+		pCurrentCPU->AddCycleCount(13);
+
 		return(z);
 	}
 	else
@@ -4759,6 +4768,10 @@ Byte ReadValidGrom(int nBase, Word x) {
 			GROMBase[idx].grmdata=GROMBase[idx].GROM[GROMBase[0].GRMADD];
 		}
 		GROMBase[0].GRMADD++;
+
+        // GROM read data always adds about 19 cycles
+		pCurrentCPU->AddCycleCount(19);
+
 		return(z);
 	}
 }
@@ -4807,16 +4820,9 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 //		debug_write("Write GROM base %d(>%04X), >%04x, >%02x, %d", nBase, x, GROMBase[0].GRMADD, c, GROMBase[0].grmaccess);
 //	}
 
-	// TODO: the wait time for a read is roughly 27 cycles
-	// I know that address writes take longer after the second write
-	// but I didn't save off the data for how much longer.
-	// 4 cycles are already accounted for by the wait state generator (though does that apply?)
-	// actually writing a GROM (non-address) isn't a real operation, so this is dubious,
-	// but we'll assume similar for now.
 	// Note that UberGROM access time (in the pre-release version) was 15 cycles (14.6), but it
 	// does not apply as long as other GROMs are in the system (and they have to be due to lack
 	// of address counter.) So this is still valid.
-	pCurrentCPU->AddCycleCount(27-4);
 
 	if (x&0x0002)
 	{
@@ -4825,6 +4831,9 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 		if (GROMBase[0].grmaccess==0)
 		{ 
 			GROMBase[0].grmaccess=2;										// prefetch emulation
+
+            // second GROM address write adds about 21 cycles (verified)
+    		pCurrentCPU->AddCycleCount(21);
 			
 			// update MPD so it can reset if needed
 			if (bMpdActive) {
@@ -4836,7 +4845,11 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 				GROMBase[idx].grmdata=GROMBase[idx].GROM[GROMBase[0].GRMADD];
 			}
 			GROMBase[0].GRMADD++;
-		}
+		} else {
+            // first GROM address write adds about 15 cycles (verified)
+    		pCurrentCPU->AddCycleCount(15);
+        }
+
 		// GROM writes do not affect the prefetches, and have the same
 		// side effects as reads (they increment the address and perform a
 		// new prefetch)
@@ -4879,6 +4892,9 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 			GROMBase[idx].grmdata=GROMBase[idx].GROM[GROMBase[0].GRMADD];
 		}
 		GROMBase[0].GRMADD++;
+
+        // GROM data writes add about 22 cycles (verified)
+   		pCurrentCPU->AddCycleCount(15);
 	}
 }
 
@@ -5763,7 +5779,7 @@ void __cdecl TimerThread(void *)
 ////////////////////////////////////////////////////////////////
 // Timer calls this function each tick
 ////////////////////////////////////////////////////////////////
-extern SID *g_mySid;
+//extern SID *g_mySid;
 void Counting()
 {
 	ticks++;
@@ -5786,6 +5802,7 @@ void Counting()
 // TO USE THIS HACK, BREAKPOINT IN THE SID DLL IN THE RESET
 // FUNCTION, AND GET THE ADDRESS OF mySid. THEN STEP OUT,
 // AND ASSIGN THAT ADDRESS TO g_mySid. The rest will just work.
+// Or implement GetSidPointer in the DLL. Sadly I've lost the code.
 //volume - voice.envelope.envelope_counter
 //
 //noise is generated on a voice when the voice.waveform == 0x08 (combinations do nothing anyway)
@@ -5801,7 +5818,11 @@ void Counting()
 //FREQUENCY = 111860.78125 / REGISTER_VALUE
 //and inversely, 
 //REGISTER_VALUE = 111860.78125 / FREQUENCY
-		if (NULL != g_mySid) {
+		if (NULL == g_mySid) {
+            if (NULL != GetSidPointer) {
+                g_mySid = GetSidPointer();
+            }
+        } else {
 			static int nDiv[3] = {1,1,1};		// used for scale adjust when a note is too far off (resets if all three channels are quiet)
 			bool bAllQuiet=true;
 			bool bNoise = false;
@@ -5814,6 +5835,7 @@ void Counting()
 
 				// volume (is just the envelope enough? is there a master volume?)
 				// looks like this is 8-bit volume, convert to 4-bit attenuation
+                // TODO: is it linear instead of logarithmic?
 				int nVol = ((255-g_mySid->voice[i]->envelope.envelope_counter)>>4);
 				if (nVol != 0x0f) bAllQuiet = false;
 				int ctrl = 0x80+(0x20*i);	

@@ -76,4 +76,5 @@ extern void (*SetSidFrequency)(int);
 extern void (*SetSidEnable)(bool);
 extern void (*SetSidBanked)(bool);
 extern bool (*GetSidEnable)(void);
+extern SID* (*GetSidPointer)(void);
 void PrepareSID();
