@@ -978,7 +978,6 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
 				cfg_cpf=max_cpf;
 				InterlockedExchange((LONG*)&cycles_left, max_cpf);
-				InterlockedExchange((LONG*)&cycles_left, max_cpf);
 				break;
 
 			case ID_FILE_QUIT:

@@ -49,7 +49,9 @@ typedef unsigned __int8 Byte;
 typedef unsigned __int16 Word;
 typedef unsigned __int32 DWord;
 
-#define CLOCK_MHZ 3000000
+// 3MHz seems to be correct via measurement
+// But 5% slack is allowed. Raising it a bit so the /62 works out even
+#define CLOCK_MHZ 3000056
 // note these actual timings as calculated from the VDP datasheet
 // TODO: try to measure on a real TI.
 // calculated it as 62.6

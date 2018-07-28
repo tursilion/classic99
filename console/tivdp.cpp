@@ -511,6 +511,7 @@ void VDPmain()
 
 			if (WAIT_OBJECT_0 == ret) {
 				doBlit();
+                continue;
 			}
 
 			// Don't ever spend all our time doing this!

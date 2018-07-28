@@ -284,6 +284,8 @@
 #define IDC_VDPREGS                     1146
 #define IDC_FIAD_WRITEV9T9              1146
 #define IDC_FIAD_READTIFILES            1147
+#define IDC_DISABLEF5                   1147
+#define IDC_INVERTBANKS                 1147
 #define IDC_FIAD_READV9T9               1148
 #define IDC_FIAD_WRITEDV80ASTEXT        1149
 #define IDC_FIAD_WRITEALLDVASTEXT       1150
@@ -465,7 +467,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        347
+#define _APS_NEXT_RESOURCE_VALUE        348
 #define _APS_NEXT_COMMAND_VALUE         40161
 #define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101

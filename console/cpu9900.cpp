@@ -1746,7 +1746,7 @@ void CPU9900::op_ldcr()
 	AddCycleCount(20);	// base count
 
 	FormatIV;
-	if (D==0) D=16;
+	if (D==0) D=16;     // this also makes the timing of (0=52 cycles) work - 2*16=32+20=52
 	x1=(D<9 ? RCPUBYTE(S) : ROMWORD(S));
 	post_inc(SRC);
   

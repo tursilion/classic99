@@ -506,19 +506,28 @@ public:
 		//	IDC_CHKCHARSET		check (load charset)
 		//	IDC_CHKCHARA1		check (use CHARA1) (through VDP RAM only)
 		//	IDC_KEYBOARD		check (init keyboard)
+        //  IDC_INVERTBANKS     check (invert bank order)
+        const char *pExt;
+
 		nOutSize=0;
 		nLastSize=0;
-		nCurrentBank=-1;				// counts UP, not down, so inverse of the TI
+		nCurrentBank=-1;				// counts UP, not down, so inverse of the TI (we assume building inverted and deal with it on output)
 		nBankFixups=0;
 
 		// fill the output data with EPROM friendly 0xff bytes
 		memset(OutCart, 0xff, sizeof(OutCart));	
 		memset(LastBank, 0xff, sizeof(LastBank));
 
-		// make sure the filename ends with 3.BIN
-		if (_stricmp(&opt.FileName[strlen(opt.FileName)-5], "3.BIN")) {
+		// make sure the filename ends with .BIN
+        // New extensions: 9.BIN for 379/inverted, 8.BIN for non-inverted
+        if (opt.bInvert) {
+            pExt = "_9.BIN";
+        } else {
+            pExt = "_8.BIN";
+        }
+		if (_stricmp(&opt.FileName[strlen(opt.FileName)-5], &pExt[1])) {
 			opt.FileName[250]='\0';
-			strcat(opt.FileName, "3.BIN");
+			strcat(opt.FileName, pExt);
 			FILE *fp=fopen(opt.FileName, "r");
 			if (NULL != fp) {
 				fclose(fp);
@@ -664,7 +673,14 @@ public:
 			MessageBox(hwnd, "Failed to open output file.", "Disk error", MB_OK | MB_ICONERROR);
 			return;
 		}
-		fwrite(OutCart, 1, nOutSize, fp);
+        if (opt.bInvert) {
+    		fwrite(OutCart, 1, nOutSize, fp);
+        } else {
+            // write the banks out in the inverse (which is really non-inverted) order
+            for (int idx=nOutSize-0x2000; idx>=0; idx-=0x2000) {
+                fwrite(&OutCart[idx], 1, 0x2000, fp);
+            }
+        }
 		fclose(fp);
 	}
 
@@ -1324,15 +1340,23 @@ public:
 		FILE *fp;
 		// remember that the second bank is the usual power-up bank
 		unsigned char buf1[8192], buf2[8192];
+        const char *pExt;
 		int ncnt, nStart;
 		char *pData;
 		HRSRC hRsrc;
 		HGLOBAL hGlob;
 
 		// make sure the filename ends with .BIN
-		if (_stricmp(&opt.FileName[strlen(opt.FileName)-5], "3.BIN")) {
+        // New extensions: 9.BIN for 379/inverted, 8.BIN for non-inverted
+        if (opt.bInvert) {
+            pExt = "_9.BIN";
+        } else {
+            pExt = "_8.BIN";
+        }
+
+		if (_stricmp(&opt.FileName[strlen(opt.FileName)-5], &pExt[1])) {
 			opt.FileName[250]='\0';
-			strcat(opt.FileName, "3.BIN");
+			strcat(opt.FileName, pExt);
 			FILE *fp=fopen(opt.FileName, "r");
 			if (NULL != fp) {
 				fclose(fp);
@@ -1453,8 +1477,14 @@ public:
 			MessageBox(hwnd, "Can't open output file - unable to save cartridge.", "Disk Error", MB_OK | MB_ICONERROR);
 			return;
 		}
-		fwrite(buf1, 1, 8192, fp);
-		fwrite(buf2, 1, 8192, fp);
+        // default now is to write non-inverted files
+        if (opt.bInvert) {
+    		fwrite(buf1, 1, 8192, fp);
+	    	fwrite(buf2, 1, 8192, fp);
+        } else {
+    		fwrite(buf1, 1, 8192, fp);
+	    	fwrite(buf2, 1, 8192, fp);
+        }
 		fclose(fp);
 	}
 
@@ -1516,20 +1546,21 @@ void SetDefaultEnables(HWND hwnd) {
 	EnableDlgItem(hwnd, IDC_VDPSTART, FALSE);
 	EnableDlgItem(hwnd, IDC_VDPEND, FALSE);
 	EnableDlgItem(hwnd, IDC_CHKCHARA1, FALSE);
-	EnableDlgItem(hwnd, IDC_KEYBOARD, FALSE);
+	EnableDlgItem(hwnd, IDC_KEYBOARD, TRUE);
 	EnableDlgItem(hwnd, IDC_GROM8K, FALSE);
 	EnableDlgItem(hwnd, IDC_DISABLEF4, FALSE);
 	EnableDlgItem(hwnd, IDC_LSTFIRSTGROM, FALSE);
-	EnableDlgItem(hwnd, IDC_BTNREADDEFS, TRUE);
-	EnableDlgItem(hwnd, IDC_VDPREGS, FALSE);
+	EnableDlgItem(hwnd, IDC_BTNREADDEFS, FALSE);
+	EnableDlgItem(hwnd, IDC_VDPREGS, TRUE);
 
-	EnableDlgItem(hwnd, IDC_NAME, FALSE);
+	EnableDlgItem(hwnd, IDC_NAME, TRUE);
 	EnableDlgItem(hwnd, IDC_BOOT, TRUE);
 	EnableDlgItem(hwnd, IDC_CHKEA, TRUE);
 	EnableDlgItem(hwnd, IDC_CHKCHARSET, TRUE);
 	EnableDlgItem(hwnd, IDC_MODIFIEDHIGH, TRUE);
 	EnableDlgItem(hwnd, IDC_MODIFIEDLOW, TRUE);
 	EnableDlgItem(hwnd, IDC_MODIFIEDVRAM, TRUE);
+    EnableDlgItem(hwnd, IDC_INVERTBANKS, TRUE);
 
 	SendDlgItemMessage(hwnd, IDC_CHKCHARSET, BM_SETCHECK, BST_UNCHECKED, 0);
 	SendDlgItemMessage(hwnd, IDC_CHKCHARA1, BM_SETCHECK, BST_UNCHECKED, 0);
@@ -1563,6 +1594,7 @@ void DisableAll(HWND hwnd) {
 	EnableDlgItem(hwnd, IDC_MODIFIEDHIGH, FALSE);
 	EnableDlgItem(hwnd, IDC_MODIFIEDLOW, FALSE);
 	EnableDlgItem(hwnd, IDC_MODIFIEDVRAM, FALSE);
+    EnableDlgItem(hwnd, IDC_INVERTBANKS, FALSE);
 
 	SendDlgItemMessage(hwnd, IDC_CHKCHARSET, BM_SETCHECK, BST_UNCHECKED, 0);
 	SendDlgItemMessage(hwnd, IDC_CHKCHARA1, BM_SETCHECK, BST_UNCHECKED, 0);
@@ -1863,6 +1895,10 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								opt.bVDPRegs = true;
 							}
 
+							if (BST_CHECKED == SendDlgItemMessage(hwnd, IDC_INVERTBANKS, BM_GETCHECK, 0, 0)) {
+								opt.bInvert = true;
+							}
+
 							opt.FirstGROM = SendDlgItemMessage(hwnd, IDC_LSTFIRSTGROM, CB_GETCURSEL, 0, 0);
 
 							// special check for GROM 0
@@ -2051,6 +2087,10 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						}
 						break;
 
+                    case IDC_INVERTBANKS:
+                        // no changes needed
+                        break;
+
 					case IDC_CHKEA:
 						if (BST_CHECKED == SendDlgItemMessage(hwnd, LOWORD(wParam), BM_GETCHECK, 0, 0)) {
 							if (IDYES == MessageBox(hwnd, "This will overwrite low RAM from >2000 to >2705 - continue?", "Change RAM?", MB_YESNO | MB_ICONQUESTION)) {
@@ -2236,6 +2276,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							EnableDlgItem(hwnd, IDC_DISABLEF4, FALSE);
 							EnableDlgItem(hwnd, IDC_LSTFIRSTGROM, FALSE);
 							EnableDlgItem(hwnd, IDC_BTNREADDEFS, TRUE);
+							EnableDlgItem(hwnd, IDC_INVERTBANKS, FALSE);
 							break;
 
 						case 1:		// enable/disable for 379
@@ -2251,6 +2292,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							EnableDlgItem(hwnd, IDC_LSTFIRSTGROM, FALSE);
 							SendDlgItemMessage(hwnd, IDC_KEYBOARD, BM_SETCHECK, BST_CHECKED, 0);
 							EnableDlgItem(hwnd, IDC_BTNREADDEFS, FALSE);
+							EnableDlgItem(hwnd, IDC_INVERTBANKS, TRUE);
 							break;
 
 						case 2:		// enable/disable for GROM
@@ -2266,6 +2308,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							EnableDlgItem(hwnd, IDC_LSTFIRSTGROM, TRUE);
 							SendDlgItemMessage(hwnd, IDC_KEYBOARD, BM_SETCHECK, BST_CHECKED, 0);
 							EnableDlgItem(hwnd, IDC_BTNREADDEFS, FALSE);
+							EnableDlgItem(hwnd, IDC_INVERTBANKS, FALSE);
 							break;
 
 						case 3:		// enable/disable for BASIC 379
@@ -2278,6 +2321,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								SendDlgItemMessage(hwnd, IDC_CHKVDPRAM, IDC_VDPREGS, BST_CHECKED, 0);
 								SendDlgItemMessage(hwnd, IDC_BOOT, WM_SETTEXT, 0, (LPARAM)"0070");
 								SendDlgItemMessage(hwnd, IDC_CHKVDPRAM, BM_SETCHECK, BST_CHECKED, 0);
+    							EnableDlgItem(hwnd, IDC_INVERTBANKS, TRUE);
 								int nTop = GetSafeCpuByte(0x8370, 0) * 256 + GetSafeCpuByte(0x8371, 0);
 								if (nTop != 0x37d7) {
 									char buf[128];
@@ -2331,7 +2375,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			SendDlgItemMessage(hwnd, IDC_CHKCHARSET, BM_SETCHECK, BST_UNCHECKED, 0);
 
 			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"E/A #5");
-			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"379 Bank-Switched Copy");
+			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"ROM Bank-Switched Copy");
 			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"GROM Copy");
 			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"TI BASIC Restore");
 			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"ROM Cart dump");
@@ -2345,7 +2389,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			SendDlgItemMessage(hwnd, IDC_LSTFIRSTGROM, CB_ADDSTRING, 0, (LPARAM)"6");
 			SendDlgItemMessage(hwnd, IDC_LSTFIRSTGROM, CB_ADDSTRING, 0, (LPARAM)"7");
 			SendDlgItemMessage(hwnd, IDC_LSTFIRSTGROM, CB_SETCURSEL, 3, 0);			// GROM 3
-			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_SETCURSEL, 0, 0);			// set EA
+			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_SETCURSEL, 1, 0);			// set ROM copy cart
 			return TRUE;
     } 
     return FALSE; 

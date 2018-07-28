@@ -2126,7 +2126,7 @@ void fail(char *x)
 	strcat(buffer,buf2);
 	sprintf(buf2,"Operation time: %d instructions processed.\n",cpucount);
 	strcat(buffer,buf2);
-	sprintf(buf2,"Operation time: %d cycles processed.\n",total_cycles);
+	sprintf(buf2,"Operation time: %lu cycles processed.\n",total_cycles);
 	strcat(buffer,buf2);
 	sprintf(buf2,"Display frames: %d video frames displayed.\n",cpuframes);
 	strcat(buffer,buf2);
@@ -2135,7 +2135,7 @@ void fail(char *x)
 	
 	sprintf(buf2,"Average speed : %d instructions per second.\n",cpucount/(timercount/hzRate));
 	strcat(buffer,buf2);
-	sprintf(buf2,"Average speed : %d cycles per second.\n",total_cycles/(timercount/hzRate));
+	sprintf(buf2,"Average speed : %lu cycles per second.\n",total_cycles/(timercount/hzRate));
 	strcat(buffer,buf2);
 	sprintf(buf2,"Frameskip     : %d\n",drawspeed);
 	strcat(buffer,buf2);
@@ -2205,7 +2205,8 @@ void fail(char *x)
 Word romword(Word x, bool rmw)
 { 
 	x&=0xfffe;		// drop LSB
-	// TODO: this reads the LSB first. Is this the correct order??
+	// This reads the LSB first. This is the correct order (verified)
+    // although this line of code is not really guaranteed to do that...
 	return((rcpubyte(x,rmw)<<8)+rcpubyte(x+1,rmw));
 }
 
@@ -2218,9 +2219,9 @@ void wrword(Word x, Word y)
 
 	x&=0xfffe;		// drop LSB
 
-	// now write the new data
-	wcpubyte(x,(Byte)(y>>8));
+	// now write the new data, LSB first
 	wcpubyte(x+1,(Byte)(y&0xff));
+	wcpubyte(x,(Byte)(y>>8));
 
 	// check breakpoints against what was written to where
 	for (int idx=0; idx<nBreakPoints; idx++) {
@@ -3149,7 +3150,21 @@ void do1()
 		}
 
 		// pause/play
-		if (key[VK_F1]) {	
+		if (key[VK_F1]) {
+            // in the case where the current CPU can not break but the other can, just
+            // hold onto this key...
+            if (!pCurrentCPU->enableDebug) {
+                if ((pCPU->enableDebug)||(pGPU->enableDebug)) {
+                    // just wait for the context switch
+                    return;
+                } else {
+                    // no debugging, so discard the key
+                    debug_write("Neither processor is enabled to breakpoint!");
+        			key[VK_F1]=0;
+                    return;
+                }
+            }
+
 			if (0 == max_cpf) {
 				// already paused, restore
 				DoPlay();
@@ -4067,7 +4082,7 @@ void wspeechbyte(Word x, Byte c)
         // speech chip, if attached, writes eat 64 additional cycles (verified hardware)
         // TODO: not verified if this is still true after a halt occurs, but since a halt
         // is variable length, maybe it doesn't matter...
-		pCurrentCPU->AddCycleCount(48);
+		pCurrentCPU->AddCycleCount(64);
 	}
 }
 
@@ -4894,7 +4909,7 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 		GROMBase[0].GRMADD++;
 
         // GROM data writes add about 22 cycles (verified)
-   		pCurrentCPU->AddCycleCount(15);
+   		pCurrentCPU->AddCycleCount(22);
 	}
 }
 
@@ -5629,7 +5644,7 @@ void __cdecl TimerThread(void *)
 	
 	// Ensure the scheduler won't move us around on multicore machines
 	SetThreadAffinityMask(GetCurrentThread(), 0x01);
-//	timeBeginPeriod(1);
+	timeBeginPeriod(1);
 
 	time(&STARTTIME);
 	if (FALSE == QueryPerformanceCounter((LARGE_INTEGER*)&nStart)) {
@@ -5652,7 +5667,9 @@ void __cdecl TimerThread(void *)
 		if (hzRate != oldHzRate) {
 			LARGE_INTEGER due;
 			due.QuadPart=-1;		// now, essentially
-			SetWaitableTimer(timer, &due, 10, NULL, NULL, FALSE);	// we can wake up at any speed, the loop below works out real time
+			if (!SetWaitableTimer(timer, &due, 10, NULL, NULL, FALSE)) {	// we can wake up at any speed, the loop below works out real time
+                debug_write("The waitable timer failed - code %d", GetLastError());
+            }
 			oldHzRate = hzRate;
 		}
 
@@ -5669,8 +5686,8 @@ void __cdecl TimerThread(void *)
 			// 62hz is 16129us per frame (fractional is .03, irrelevant here, so it works out nicer too)
 			switch (CPUThrottle) {
 				default:
-					//Sleep(1000/(hzRate*2));
-					WaitForSingleObject(timer, 1000/hzRate);	// this is 16.12, rounded to 16, so 99% of 99% is still 99% (99.2% of truth)
+                    // TODO: using the old trick of triggering early (twice as often) helps, but still wrong
+					WaitForSingleObject(timer, 1000);	// this is 16.12, rounded to 16, so 99% of 99% is still 99% (99.2% of truth)
 					break;
 				case CPU_OVERDRIVE:
 					Sleep(1);	// minimal sleep for load's sake
@@ -5701,8 +5718,8 @@ void __cdecl TimerThread(void *)
 			nAccum.QuadPart+=(((nEnd.QuadPart-nStart.QuadPart)*1000000i64)/nFreq.QuadPart);	
 			nStart.QuadPart=nEnd.QuadPart;					// don't lose any time
 			
-			// see function header comments for these numbers
-			nFreq.QuadPart=(hzRate==HZ60) ? 16129i64 : 20000i64;
+			// see function header comments for these numbers (62hz or 60hz : 50hz)
+			nFreq.QuadPart=(hzRate==HZ60) ? 16129i64/*16666i64*/ : 20000i64;
 
 			while (nAccum.QuadPart >= nFreq.QuadPart) {
 				nVDPFrames++;
@@ -5772,7 +5789,7 @@ void __cdecl TimerThread(void *)
 	time(&ENDTIME);
 	debug_write("Seconds: %ld, ticks: %ld", (long)ENDTIME-STARTTIME, ticks);
 
-//	timeEndPeriod(1);
+	timeEndPeriod(1);
 	debug_write("Ending Timer Thread");
 }
 

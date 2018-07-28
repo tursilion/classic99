@@ -80,8 +80,8 @@ public:		// type protection later. Make work today.
 	int halted;											// set when the CPU is halted by external hardware (in this emulation, we spin NOPs)
 	int nReturnAddress;									// return address for step over
 	bool enableDebug;									// whether enabling debug on this CPU
-	volatile signed long cycles_left;					// cycles_left on this CPU
-	int max_cpf, cfg_cpf;								// performance on this CPU
+//	volatile signed long cycles_left;					// cycles_left on this CPU
+//	int max_cpf, cfg_cpf;								// performance on this CPU
 
 	CPU9900();
 	virtual void reset();

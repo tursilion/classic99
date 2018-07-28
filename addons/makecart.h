@@ -45,7 +45,7 @@ struct options {
 		Boot = 0;
 		Name[0] = '\0';
 		FileName[0]='\0';
-		bEA = bCharSet = bCharA1 = bKeyboard = bGROM8K = bDisableF4 = bVDPRegs = false;
+		bEA = bCharSet = bCharA1 = bKeyboard = bGROM8K = bDisableF4 = bVDPRegs = bInvert = false;
 		FirstGROM = 0;
 	};
 
@@ -56,7 +56,7 @@ struct options {
 	char Name[256];
 	char FileName[256];
 	bool bEA, bCharSet, bCharA1, bKeyboard, bGROM8K;
-	bool bDisableF4, bVDPRegs;
+	bool bDisableF4, bVDPRegs, bInvert;
 	int FirstGROM;
 };
 
