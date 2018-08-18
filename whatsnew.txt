@@ -1814,6 +1814,20 @@ Cartridge System:
 -fix VDP scanlines to draw more correctly regardless of such things as overdrive and breakpoint
 -add 'unsupported operation' debug to the file handlers so they don't silently fail when it's deliberately not supported
 
+-----------------------------------------------
+18 August 2018
+
+-Added hotkeys for Paste (control-F1), Debugger (control-Home), and copy screen (Control-F2) 
+-added copy screen function (hold SHIFT for BASIC offset) 
+-added Tape menu and added STOP and PLAY functions (sorry, not tested) 
+-debugger adds view->ASCII Add Screen Offset for BASIC checkbox (not saved) 
+-fix display of active GRAM pages when opening dialog 
+-32MB AMS implemented - enabled it for now (we already used to reserve 16MB as it was) 
+-re-arranged VDP gettables to be more convenient and less redundant 
+-added NOCR or NOLF options to clipboard - if you open it as "CLIP.NOLF" or "CLIP.NOCR", automatic line endings will NOT be appended, 
+ you must add them yourself. NOCR and NOLF are identical, only one may be specified, and you can use either CR (13) or LF (10) when you write. 
+-fix opening new files in APPEND mode for image disks and FIAD disks - should work okay now
+
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
