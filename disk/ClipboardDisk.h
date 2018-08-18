@@ -90,5 +90,6 @@ public:
 
 	// class specific data
 	HWND m_hWnd;		// application window handle
+    bool suppressCR;    // option - no CR or LF unless the app calls for it
 };
 

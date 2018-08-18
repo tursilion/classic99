@@ -64,9 +64,10 @@ BEGIN
     END
     POPUP "Edit"
     BEGIN
-        MENUITEM "Paste",                       ID_EDITPASTE
+        MENUITEM "Paste (Ctrl+F1)",             ID_EDITPASTE
         MENUITEM "Paste XB",                    ID_EDIT_PASTEXB
-        MENUITEM "Debugger",                    ID_EDIT_DEBUGGER
+        MENUITEM "Debugger (Ctrl+Home)",        ID_EDIT_DEBUGGER
+        MENUITEM "Copy Screen (Ctrl+F2)",       ID_EDIT_COPYSCREEN
         MENUITEM "Bug99 Window",                ID_EDIT_BUG99WINDOW
         MENUITEM "HeatMap",                     ID_EDIT_HEATMAP
     END
@@ -144,7 +145,12 @@ BEGIN
             MENUITEM "Open DSK9",                   ID_DSK9_OPENDSK9
         END
         MENUITEM "Corrupt DSK RAM",             ID_DISK_CORRUPTDSKRAM
-        MENUITEM "Load/Rewind Tape",            ID_DISK_LOADTAPE
+        POPUP "Tape"
+        BEGIN
+            MENUITEM "Load/Rewind Tape",            ID_TAPE_LOADTAPE
+            MENUITEM "Stop Tape",                   ID_TAPE_STOPTAPE
+            MENUITEM "Play Tape",                   ID_TAPE_PLAYTAPE
+        END
     END
     POPUP "Options"
     BEGIN
@@ -242,6 +248,7 @@ BEGIN
         MENUITEM "&Freeze",                     ID_VIEW_FREEZE
         MENUITEM "&Redraw",                     ID_VIEW_REDRAW
         MENUITEM "&Clear",                      ID_VIEW_CLEAR
+        MENUITEM "ASCII Add Screen Offset for BASIC", ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC
     END
     POPUP "&Debug"
     BEGIN
@@ -714,7 +721,7 @@ BEGIN
     LTEXT           "Note: Enabling write to GRAM can cause the system to crash. This is not a GRAM device emulator, it only makes writes work. Use with care.",IDC_STATIC,7,7,132,35
     LTEXT           "Enable writes to GRAM at (note: affects all bases):",IDC_STATIC,7,47,164,8
     CONTROL         ">0000",IDC_WRITEGROM0,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,62,37,10
-    CONTROL         ">2000",IDC_WRITEGROM2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,77,37,10
+    CONTROL         ">2000",IDC_WRITEGROM2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,78,37,10
     CONTROL         ">4000",IDC_WRITEGROM4,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,92,37,10
     CONTROL         ">6000",IDC_WRITEGROM6,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,64,62,37,10
     CONTROL         ">8000",IDC_WRITEGROM8,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,64,77,37,10
@@ -859,6 +866,11 @@ BEGIN
 END
 
 IDD_CARTDLG AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_OPTGRAM AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

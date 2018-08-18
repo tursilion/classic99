@@ -40,6 +40,8 @@
 // M.Brent
 ///////////////////////////////////////////////////
 
+#include <atlstr.h>
+
 // Defines
 #define VERSION "QI399a"
 #define DEBUGLEN 120
@@ -285,7 +287,9 @@ void ConfigAVI();
 void SaveScreenshot(bool bAuto, bool bFiltered);
 void SetupSams(int sams_mode, int sams_size);
 
+int getCharsPerLine();
 char VDPGetChar(int x, int y, int width, int height);
+CString captureScreen(int offsetByte);
 void GetTVValues(double *hue, double *sat, double *cont, double *bright, double *sharp);
 void SetTVValues(double hue, double sat, double cont, double bright, double sharp);
 void VDPmain(void);
@@ -294,7 +298,7 @@ HRESULT InitDirectDraw( HWND hWnd );
 void VDPdisplay(int scanline);
 void updateVDP(int scanline);
 void vdpForceFrame();
-void gettables(int reg0);
+int  gettables();
 void draw_debug(void);
 void VDPgraphics(int scanline);
 void VDPgraphicsII(int scanline);
@@ -467,6 +471,7 @@ void read_sect(Byte drive, int sect, char *buffer);
 // tape
 void updateTape(int nCPUCycles);
 void setTapeMotor(bool isOn);
+void forceTapeMotor(bool isOn);
 bool getTapeBit();
 void LoadTape();
 

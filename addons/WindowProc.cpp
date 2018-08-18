@@ -171,6 +171,7 @@ static const char hexstr[17] = "0123456789ABCDEF";
 HANDLE hDebugWindowUpdateEvent = CreateEvent(NULL, false, false, NULL);
 static int nMemType=0;
 static bool bFrozenText=false;
+static int nDebugHexOffset=0;
 // top addresses for the memory banks
 static char szTopMemory[5][32] = { "", "", "8300", "0000", "0000" };		// CPU, VDP, GROM - hex address or Register number (Rx)
 // these match the array which matches the radio buttons 
@@ -1003,10 +1004,22 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 				break;
 
-            case ID_DISK_LOADTAPE:
+            case ID_TAPE_LOADTAPE:
+                // uses the load dialog, so not really much of a 'rewind',
+                // but it does go back to zero
                 MuteAudio();
                 LoadTape();
                 SetSoundVolumes();
+                break;
+
+            case ID_TAPE_STOPTAPE:
+                // stop the tape if it's playing
+                forceTapeMotor(false);
+                break;
+
+            case ID_TAPE_PLAYTAPE:
+                // start the tape, even if the remote is off
+                forceTapeMotor(true);
                 break;
 
 			case ID_VIDEO_FLICKER:
@@ -1395,6 +1408,40 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 				break;
 			
+            case ID_EDIT_COPYSCREEN:
+                {
+                    // build an output string - unknown chars will be '.'
+                    CString csOut;
+                    if (GetAsyncKeyState(VK_SHIFT)&0x8000) {
+                        // BASIC offset
+                        csOut = captureScreen(-96);
+                    } else {
+                        csOut = captureScreen(0);
+                    }
+                    if (csOut != "") {
+          	            HGLOBAL hGlob;
+	                    if (OpenClipboard(myWnd)) {
+    	                    // we need to empty the clipboard to take possession of it
+	                        if (EmptyClipboard()) {
+		                        // now copy into a global buffer and give it to the clipboard
+		                        hGlob = GlobalAlloc(GMEM_MOVEABLE, csOut.GetLength()+1);
+		                        if (NULL != hGlob) {
+    		                        char *pStr = (char*)GlobalLock(hGlob);
+	    	                        if (NULL != pStr) {
+        		                        memcpy(pStr, csOut.GetBuffer(), csOut.GetLength());
+		                                *(pStr+csOut.GetLength())='\0';
+		                                GlobalUnlock(pStr);
+		                                SetClipboardData(CF_TEXT, hGlob);
+                                        debug_write("Screen copied to clipboard.");
+                                    }
+                                }
+                            }
+                            CloseClipboard();
+                        }
+                    }
+                }
+                break;
+
 			case ID_EDIT_DEBUGGER:
 				// activate debugger screen
 				if (NULL == dbgWnd) {
@@ -2040,7 +2087,7 @@ BOOL CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		case WM_INITDIALOG:
 			// load the controls with current values
 			for (int i=0; i<8; i++) {
-				SendDlgItemMessage(hwnd, IDC_WRITEGROM0, BM_SETCHECK, GROMBase[0].bWritable[i] ? BST_CHECKED : BST_UNCHECKED, 0);
+				SendDlgItemMessage(hwnd, IDC_WRITEGROM0+i, BM_SETCHECK, GROMBase[0].bWritable[i] ? BST_CHECKED : BST_UNCHECKED, 0);
 			}
 			return TRUE;
 
@@ -3304,6 +3351,17 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					}
 					break;
 
+                case ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC:
+                    if (0 == nDebugHexOffset) {
+                        // BASIC and XB use a screen offset of >60 for ASCII
+                        nDebugHexOffset = 0x60;
+						CheckMenuItem(GetMenu(hwnd), ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC, MF_CHECKED);
+					} else {
+                        nDebugHexOffset = 0;
+						CheckMenuItem(GetMenu(hwnd), ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC, MF_UNCHECKED);
+					}
+					break;
+
 				case ID_MAKE_SAVEPROGRAM:
 					DoMakeDlg(hwnd);
 					PostMessage(hwnd, WM_COMMAND, ID_VIEW_REDRAW, 0);
@@ -3531,6 +3589,7 @@ void DebugUpdateThread(void*) {
 						{
 							// VDP and GROM *must not* call the read functions, as it will
 							// change the address!! (But, since we don't do bank switching in them...)
+                            // VDP memory only has the screen offset added to the ASCII display
 							char buf3[32];
 							int c;
 							strncpy(buf3, szTopMemory[nMemType], 32);
@@ -3562,6 +3621,7 @@ void DebugUpdateThread(void*) {
 									}
 									sprintf(buf2, "%02X ", c);
 									strcat(buf1, buf2);
+                                    c -= nDebugHexOffset;
 									if ((c>=32)&&(c<=126)) {
 										buf2[0]=c;
 									} else {

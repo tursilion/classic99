@@ -284,7 +284,6 @@
 #define IDC_VDPREGS                     1146
 #define IDC_FIAD_WRITEV9T9              1146
 #define IDC_FIAD_READTIFILES            1147
-#define IDC_DISABLEF5                   1147
 #define IDC_INVERTBANKS                 1147
 #define IDC_FIAD_READV9T9               1148
 #define IDC_FIAD_WRITEDV80ASTEXT        1149
@@ -462,13 +461,19 @@
 #define ID_DEBUG_BREAKONDISKCORRUPT     40158
 #define ID_DISK_LOAD                    40159
 #define ID_DISK_LOADTAPE                40160
+#define ID_DISK_TAPE                    40161
+#define ID_TAPE_STOPTAPE                40162
+#define ID_TAPE_PLAYTAPE                40163
+#define ID_TAPE_LOADTAPE                40164
+#define ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC 40165
+#define ID_EDIT_COPYSCREEN              40166
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        348
-#define _APS_NEXT_COMMAND_VALUE         40161
+#define _APS_NEXT_RESOURCE_VALUE        349
+#define _APS_NEXT_COMMAND_VALUE         40167
 #define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

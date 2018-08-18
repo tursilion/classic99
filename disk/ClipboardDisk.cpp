@@ -353,6 +353,8 @@ bool ClipboardDisk::Flush(FileInfo *pFile) {
 	}
 
 	// The assumption is made that these are valid text strings
+    // if suppressCR is set, then we check for explicit
+    // CRs or LFs, and write the end of line only then
 	unsigned char *pData = pFile->pData;
 	char tmp[256];
 	if (NULL == pData) {
@@ -371,8 +373,17 @@ bool ClipboardDisk::Flush(FileInfo *pFile) {
 			memcpy(tmp, pData, nLen);
 			csOut+=tmp;
 			pData+=pFile->RecordLength;
-			csOut+="\r\n";
+            if (!suppressCR) csOut+="\r\n";
 		}
+        // normalize the end of line if suppressCR was set
+        if (suppressCR) {
+            // order matters here - tokenize possible strings, then
+            // change the tokens into correct eol
+            csOut.Replace("\r\n","\x1");    // using '1' as a token code
+            csOut.Replace('\r', '\x1');
+            csOut.Replace('\n', '\x1');
+            csOut.Replace("\x1", "\r\n");
+        }
 
 		// now copy into a global buffer and give it to the clipboard
 		hGlob = GlobalAlloc(GMEM_MOVEABLE, csOut.GetLength()+1);
@@ -429,6 +440,16 @@ FileInfo *ClipboardDisk::Open(FileInfo *pFile) {
 		pFile->RecordLength=254;
 	}
 
+    // check for CR/LF options (we treat NOCR or NOLF as the option in question)
+    // only ONE may be provided. There's only one clipboard so I suppose this
+    // global flag for this open should be okay. ;)
+    if ((pFile->csName=="NOCR") || (pFile->csName=="NOLF")) {
+        debug_write("Clipboards writes will suppress end of line");
+        suppressCR = true;
+    } else {
+        suppressCR = false;
+    }
+
 	// let's see what we are doing here...
 	switch (pFile->Status & FLAG_MODEMASK) {
 		case FLAG_OUTPUT:
@@ -448,6 +469,8 @@ FileInfo *ClipboardDisk::Open(FileInfo *pFile) {
 						// Still no? Error out then (save error already set)
 						goto error;
 					}
+                    // don't buffer a newly created file, handle like OUTPUT
+                    break;
 				} else {
 					goto error;
 				}

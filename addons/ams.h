@@ -90,5 +90,6 @@ Byte* WriteMemoryBlock(Word address, void* vData, Word length);
 
 /* state management - simple for now */
 void RestoreAMS(unsigned char *pData, int nLen);
+void PreloadAMS(unsigned char *pData, int nLen);
 
 #endif // AMS_H

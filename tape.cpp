@@ -94,6 +94,23 @@ void setTapeMotor(bool isOn) {
     }
 }
 
+void forceTapeMotor(bool isOn) {
+    // this one come via user command and so overrides the bit
+    // That makes sense for stop, but whether it makes sense
+    // for start depends on whether our suppression is active
+    // Either way, we do it and just report what it was.
+    // I set Motor state same as above, but not sure if that's right
+    if (!isOn) {
+        tape_motor_on = false;
+        tape_motor_state = 1;
+        debug_write("CS1 tape motor off by user command.");
+    } else {
+        tape_motor_on = true;
+        tape_motor_state = 0;
+        debug_write("CS1 tape motor on by user command, console bit is %s.", CRU[22] ? "on":"off");
+    }
+}
+
 void updateTape(int nCPUCycles) {
 	static int totalCycles = 0;
 

@@ -331,10 +331,20 @@ void SetTVValues(double hue, double sat, double cont, double bright, double shar
 
 //////////////////////////////////////////////////////////
 // Get table addresses from Registers
-// We pass in VDP reg 0 so the bitmap filtering can be external
+// We return reg0 since we do the bitmap filter here now
 //////////////////////////////////////////////////////////
-void gettables(int reg0)
+int gettables()
 {
+	int reg0 = VDPREG[0];
+	if (nSystem == 0) {
+		// disable bitmap for 99/4
+		reg0&=~0x02;
+	}
+	if (!bEnable80Columns) {
+		// disable 80 columns if not enabled
+		reg0&=~0x04;
+	}
+
 	/* Screen Image Table */
 	if ((bEnable80Columns) && (reg0 & 0x04)) {
 		// in 80-column text mode, the two LSB are some kind of mask that we here ignore - the rest of the register is larger
@@ -377,6 +387,8 @@ void gettables(int reg0)
 		CTsize=32;
 		PDTsize=2048;
 	}
+
+    return reg0;
 }
 
 // called from tiemul
@@ -531,25 +543,12 @@ void VDPmain()
 	CloseHandle(BlitEvent);
 }
 
-// Passed Windows mouse based X and Y, figure out the char under
-// the pointer. If it's not a text mode or it's not printable, then
-// return -1. Due to screen borders, we have a larger area than
-// the TI actually displays.
-char VDPGetChar(int x, int y, int width, int height) {
-	double nCharWidth=34.0;	// default for graphics mode (32 chars plus 2 chars of border)
-	int ch;
+// used by the GetChar and capture functions
+// returns 32, 40 or 80, or -1 if invalid
+int getCharsPerLine() {
 	int nCharsPerLine=32;	// default for graphics mode
-	int reg0 = VDPREG[0];
 
-	if (nSystem == 0) {
-		// disable bitmap for 99/4
-		reg0&=~0x02;
-	}
-	if (!bEnable80Columns) {
-		// disable 80 columns if not enabled
-		reg0&=~0x04;
-	}
-	gettables(reg0);
+	int reg0 = gettables();
 
 	if (!(VDPREG[1] & 0x40))		// Disable display
 	{
@@ -567,11 +566,9 @@ char VDPGetChar(int x, int y, int width, int height) {
 			return -1;
 		}
 		
-		nCharWidth=45.3;			// text mode (40 chars plus 5 chars of border)
 		nCharsPerLine=40;
 		if (reg0&0x04) {
 			// 80 column text (512+16 pixels across instead of 256+16)
-			nCharWidth = 88.0;
 			nCharsPerLine = 80;
 		}
 	}
@@ -584,6 +581,30 @@ char VDPGetChar(int x, int y, int width, int height) {
 	if (reg0 & 0x02) {			// BITMAP MODE BIT
 		return -1;
 	}
+
+    return nCharsPerLine;
+}
+
+
+// Passed Windows mouse based X and Y, figure out the char under
+// the pointer. If it's not a text mode or it's not printable, then
+// return -1. Due to screen borders, we have a larger area than
+// the TI actually displays.
+char VDPGetChar(int x, int y, int width, int height) {
+	double nCharWidth=34.0;	// default for graphics mode (32 chars plus 2 chars of border)
+	int ch;
+	int nCharsPerLine=getCharsPerLine();
+
+    if (nCharsPerLine == -1) {
+        return -1;
+    }
+
+    // update chars width (number of chars across entire screen)
+    if (nCharsPerLine == 40) {
+		nCharWidth=45.3;			// text mode (40 chars plus 5 chars of border)
+    } else if (nCharsPerLine == 80) {
+    	nCharWidth = 88.0;
+    }
 
 	// If it wasn't text and we got here, then it's multicolor
 	// nCharWidth now has the number of columns across. There are
@@ -641,18 +662,9 @@ void VDPdisplay(int scanline)
 	int idx;
 	DWORD longcol;
 	DWORD *plong;
-	int reg0 = VDPREG[0];
 	int nMax;
 
-	if (nSystem == 0) {
-		// disable bitmap for 99/4
-		reg0&=~0x02;
-	}
-	if (!bEnable80Columns) {
-		// disable 80 columns if not enabled
-		reg0&=~0x04;
-	}
-	gettables(reg0);
+	int reg0 = gettables();
 
 	int gfxline = scanline - 27;	// skip top border
 
@@ -2464,4 +2476,28 @@ unsigned char getF18AStatus() {
 	debug_write("Warning - bad register value %d", F18AStatusRegisterNo);
 	return 0;
 }
+
+// captures a text or graphics mode screen (will do bitmap too, assuming graphics mode)
+CString captureScreen(int offset) {
+    CString csout;
+    int stride = getCharsPerLine();
+    if (stride == -1) {
+        return "";
+    }
+
+    gettables();
+
+    for (int row = 0; row<24; ++row) {
+        for (int col=0; col < stride; ++col) {
+            int index = SIT+row*stride+col;
+            if (index >= sizeof(VDP)) { row=25; break; }   // check for unlikely overrun case
+            int c = VDP[index] + offset; 
+            if ((c>=' ')&&(c < 127)) csout+=(char)c; else csout+='.';
+        }
+        csout+="\r\n";
+    }
+
+    return csout;
+}
+
 

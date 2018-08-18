@@ -10,9 +10,13 @@
 #include "tiemul.h"
 #include "ams.h"
 
-// define sizes for memory arrays
-static const int MaxMapperPages	= 0x1000;
-static const int MaxPageSize	= 0x1000;		// TODO: wait.. this is 16MB, but we only support a maximum of 1MB. Why so much data?
+// temporary hack - might be right, needs testing
+// This will enable 32MB AMS (or whatever is configured below!)
+#define ENABLE_HUGE_AMS 
+
+// define sizes for memory arrays 
+static const int MaxMapperPages	= 0x2000;       // MUST be a power of 2
+static const int MaxPageSize	= 0x1000;		// TODO: wait.. this is 32MB, but we only support a maximum of 1MB. Why so much data?
 
 // define sizes for register arrays
 static const int MaxMapperRegisters = 0x10;
@@ -33,7 +37,12 @@ extern bool bWarmBoot;
 void InitializeMemorySystem(EmulationMode cardMode)
 {
 	// Classic99 specific debug call
-	debug_write("Initializing AMS mode %d, size %dk", cardMode, 128*(1<<memorySize));
+#ifdef ENABLE_HUGE_AMS
+	debug_write("Initializing AMS mode %d, size %dk", cardMode, MaxMapperPages*4096);
+#else
+    // it's hard-coded below to 1MB no matter what the rest says...
+	debug_write("Initializing AMS mode %d, size %dk", cardMode, 256*4096);
+#endif
 
 	// 1. Save chosen card mode
 	emulationMode = cardMode;
@@ -46,6 +55,11 @@ void InitializeMemorySystem(EmulationMode cardMode)
 		// the passthrough settings are also wrong. ;)
 		mapperRegisters[reg] = (reg << 8);
 	}
+
+#ifdef ENABLE_HUGE_AMS
+        // todo: this is also wrong, it's for testing Ralph's project
+        mapperRegisters[10] = 0;    // map first page of AMS to 0xA000
+#endif
 
 	if (!bWarmBoot) {
 		memrnd(systemMemory, sizeof(systemMemory));
@@ -192,6 +206,10 @@ Byte ReadMemoryByte(Word address, bool bTrueAccess)
 	bool bIsRAM = (!ROMMAP[address]) && (((pageOffset >= 0x2) && (pageOffset <= 0x3)) || ((pageOffset >= 0xA) && (pageOffset <= 0xF)));
 	bool bIsMappable = (((pageOffset >= 0x2) && (pageOffset <= 0x3)) || ((pageOffset >= 0xA) && (pageOffset <= 0xF)));
 
+#ifdef ENABLE_HUGE_AMS
+    wMask = MaxMapperPages-1;
+#endif
+
 #if 0
 	// little hack to dump AMS memory for making loader files
 	// we do a quick RLE to save some memory. Step debugger in
@@ -221,15 +239,28 @@ Byte ReadMemoryByte(Word address, bool bTrueAccess)
 #endif
 
 	if (bIsMapMode && bIsMappable)
-	{			
+	{
+#ifdef ENABLE_HUGE_AMS
+        // use all 16 bits, but byte swapped (for compatibility)
+        DWORD value = ((mapperRegisters[pageOffset]&0xff)<<8)|((mapperRegisters[pageOffset]&0xff00)>>8);
+        // mask it down to only the actually valid bits
+        pageExtension = (value & wMask);
+#else
+        // regular AMS is just the upper byte - wMask of 0xff gives 256x4k or 1MB
 		pageExtension = (DWord)((mapperRegisters[pageOffset] & wMask) >> 8);
+#endif
 	}
 	
 	DWord mappedAddress = (pageExtension << 12) | pageBase;
 
 	if (bIsRAM || bIsMappable)
 	{
-		return systemMemory[mappedAddress];
+        if (mappedAddress <= sizeof(systemMemory)) {
+    		return systemMemory[mappedAddress];
+        } else {
+            debug_write("AMS is asking for out of range memory...");
+            return 0;
+        }
 	}
 
 	// this only works with the console RAM, not the AMS RAM
@@ -254,16 +285,33 @@ void WriteMemoryByte(Word address, Byte value, bool allowWrite)
 	bool bIsRAM = (((pageOffset >= 0x2) && (pageOffset <= 0x3)) || ((pageOffset >= 0xA) && (pageOffset <= 0xF)));
 	bool bIsMappable = (((pageOffset >= 0x2) && (pageOffset <= 0x3)) || ((pageOffset >= 0xA) && (pageOffset <= 0xF)));
 
+#ifdef ENABLE_HUGE_AMS
+    wMask = MaxMapperPages-1;
+#endif
+
 	if (bIsMapMode && bIsMappable)
 	{			
+#ifdef ENABLE_HUGE_AMS
+        // use all 16 bits, but byte swapped (for compatibility)
+        DWORD value = ((mapperRegisters[pageOffset]&0xff)<<8)|((mapperRegisters[pageOffset]&0xff00)>>8);
+        // mask it down to only the actually valid bits
+        pageExtension = (value & wMask);
+#else
+        // regular AMS is just the upper byte - wMask of 0xff gives 256x4k or 1MB
 		pageExtension = (DWord)((mapperRegisters[pageOffset] & wMask) >> 8);
+#endif
 	}
 	
 	DWord mappedAddress = (pageExtension << 12) | pageBase;
 
 	if (bIsMapMode && bIsMappable)
 	{
-		systemMemory[mappedAddress] = value;			
+        if (mappedAddress <= sizeof(systemMemory)) {
+    		systemMemory[mappedAddress] = value;
+        } else {
+            debug_write("AMS is writing out of range memory...");
+            return;
+        }
 	}
 	else
 	{
@@ -332,3 +380,10 @@ void RestoreAMS(unsigned char *pData, int nLen) {
 		pData++;
 	}
 }
+
+void PreloadAMS(unsigned char *pData, int nLen) {
+    // another hack, but doesn't do RLE. Not sure this will have long term use
+    if (nLen > sizeof(systemMemory)) nLen = sizeof(systemMemory);
+    memcpy(systemMemory, pData, nLen);
+}
+

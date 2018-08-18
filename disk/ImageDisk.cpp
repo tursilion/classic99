@@ -825,7 +825,6 @@ CString ImageDisk::GetDiskName() {
 }
 
 // Open a file with a particular mode, creating it if necessary
-// TODO: no write modes are supported today
 FileInfo *ImageDisk::Open(FileInfo *pFile) {
 	FileInfo *pNewFile=NULL;
 	CString csTmp;
@@ -999,6 +998,8 @@ FileInfo *ImageDisk::Open(FileInfo *pFile) {
 							// Still no? Error out then (save error already set)
 							goto error;
 						}
+                        // don't try to buffer the new file, it's empty (see OUTPUT)
+                        break;
 					} else {
 						goto error;
 					}
@@ -1839,8 +1840,12 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 		int nSector;
 
 		// we're going to write to RAM for now
-
-		pFile->LengthSectors = 1;		// at least one so far
+        if (pFile->NumberRecords == 0) {
+            // empty file case
+            pFile->LengthSectors = 0;
+        } else {
+    		pFile->LengthSectors = 1;		// at least one so far
+        }
 
 		nSector=256;
 		for (int idx=0; idx<pFile->NumberRecords; idx++) {
@@ -1902,17 +1907,19 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 		// this goes BEFORE the >FF byte is written on variable files
 		pFile->BytesInLastSector = 256-nSector;
 
-		if (pFile->Status & FLAG_VARIABLE) {
-			// done writing - if this is variable, then we need to close the sector
-			*(pOut++)=0xff;
-			nSector--;
-		}
+        if (pFile->NumberRecords > 0) {
+		    if (pFile->Status & FLAG_VARIABLE) {
+			    // done writing - if this is variable, then we need to close the sector
+			    *(pOut++)=0xff;
+			    nSector--;
+		    }
 		
-		// don't forget to pad the file to a full sector!
-		while (nSector > 0) {
-			*(pOut++)=0;
-			nSector--;
-		}
+		    // don't forget to pad the file to a full sector!
+		    while (nSector > 0) {
+			    *(pOut++)=0;
+			    nSector--;
+		    }
+        }
 	}
 
 	bool ret = WriteOutFile(pFile, fp, pBuffer, pOut - pBuffer);
@@ -1921,7 +1928,7 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 
 	if (ret) {
 		pFile->LastError = ERR_NOERROR;
-		debug_write("Flushed %s (%d records) as %s FIAD", (LPCSTR)csFileName, pFile->NumberRecords, pFile->ImageType == IMAGE_V9T9?"V9T9":"TIFILES");
+		debug_write("Flushed %s (%d records) to ImageDisk", (LPCSTR)csFileName, pFile->NumberRecords);
 		pFile->bDirty = false;
 	}
 
@@ -1953,7 +1960,7 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 	memcpy(buf, (LPCSTR)pFile->csName, pFile->csName.GetLength());
 	//pFile->LengthSectors = (cnt+255)/256;
 	
-	buf[0x0c] = pFile->FileType;		// TODO: is this right?
+	buf[0x0c] = pFile->FileType;
 	buf[0x0d] = pFile->RecordsPerSector;
 	buf[0x0e] = pFile->LengthSectors>>8;
 	buf[0x0f] = pFile->LengthSectors&0xff;

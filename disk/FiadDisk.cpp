@@ -404,12 +404,17 @@ bool FiadDisk::TryOpenFile(FileInfo *pFile) {
 
 		case FLAG_APPEND:
 			pMode="append";
-			fp=fopen(csFileName, "ab");
+            // we have to check explicitly for existence first, because 'append' will always create
+            // the file for us, but we behave slightly differently when we create it! We need to fail
+            // in this case so our caller will create a new file
+            if (PathFileExists(csFileName)) {
+    			fp=fopen(csFileName, "ab");
+            }
 			break;
 
 		case FLAG_INPUT:
 			pMode="input";
-			fp=fopen(csFileName, "r");
+			fp=fopen(csFileName, "rb");
 			break;
 
 		default:
@@ -1702,6 +1707,8 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 							// Still no? Error out then (save error already set)
 							goto error;
 						}
+                        // don't try to buffer the empty file - same as OUTPUT
+                        break;
 					} else {
 						goto error;
 					}

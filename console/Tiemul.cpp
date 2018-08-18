@@ -1275,7 +1275,7 @@ void SetupSams(int sams_mode, int sams_size) {
 	EmulationMode emuMode = None;
 	AmsMemorySize amsSize = Mem128k;
 	
-	// We don't really NEED this translation layer, but we can remove it later.
+	// TODO: We don't really NEED this translation layer, but we can remove it later.
 	if (sams_mode) {
 		// currently only SuperAMS, so if anything set use that
 		emuMode = Sams;
@@ -2829,6 +2829,9 @@ void readroms() {
 				} else {
 					BIGARRAYSIZE = fread(BIGARRAY, 1, x, fp);
 					debug_write("Read %d bytes", BIGARRAYSIZE);
+
+                    debug_write("Copying hack to AMS...");
+                    PreloadAMS(BIGARRAY, BIGARRAYSIZE);
 				}
 				fclose(fp);
 			}
@@ -3070,6 +3073,41 @@ void do1()
 		}
 	}
 
+    // some shortcut keys that are always active...
+    // these all require control to be active
+    // launch debug dialog (with control)
+	if (key[VK_HOME]) 
+	{
+		if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+		    if (NULL == dbgWnd) {
+			    PostMessage(myWnd, WM_COMMAND, ID_EDIT_DEBUGGER, 0);
+			    // the dialog focus switch may cause a loss of the up event, so just fake it now
+			    decode(0xe0);	// extended key
+			    decode(0xf0);
+			    decode(VK_HOME);
+		    }
+    		key[VK_HOME]=0;
+        }
+	}
+
+	// edit->paste (with control)
+	if (key[VK_F1]) {
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            PostMessage(myWnd, WM_COMMAND, ID_EDITPASTE, 0);
+            key[VK_F1] = 0;
+        }
+    }
+
+    // copy screen to clipboard (with control)
+	if (key[VK_F2]) {
+        // we'll try to use the screen offset byte - 0x83d3
+        // we'll explicitly check for only 0x60, otherwise 0
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            PostMessage(myWnd, WM_COMMAND, ID_EDIT_COPYSCREEN, 0);
+            key[VK_F2]=0;
+        }
+	}
+
 	// Control keys - active only with the debug view open in PS/2 mode
 	// nopFrame must be set before now!
 	if ((!gDisableDebugKeys) && (NULL != dbgWnd) && (!nopFrame)) {
@@ -3134,19 +3172,6 @@ void do1()
 					TriggerBreakPoint();
 				}
 			}
-		}
-
-		// old debug screen launch key
-		if (key[VK_HOME]) 
-		{
-			if (NULL == dbgWnd) {
-				PostMessage(myWnd, WM_COMMAND, ID_EDIT_DEBUGGER, 0);
-				// the dialog focus switch may cause a loss of the up event, so just fake it now
-				decode(0xe0);	// extended key
-				decode(0xf0);
-				decode(VK_HOME);
-			}
-			key[VK_HOME]=0;
 		}
 
 		// pause/play
