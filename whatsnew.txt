@@ -1817,6 +1817,17 @@ Cartridge System:
 -----------------------------------------------
 18 August 2018
 
+-Added 'invert' option to cartridge builder and made default non-inverted
+-Changed automatic extensions from "3.BIN" to "_8.BIN" and "_9.BIN"
+-added delayed breakpoint on F1 when running GPU and CPU but only debugging one of them
+-change speech write timing
+-change GROM write timing
+-change timing scheduler (timeBeginPeriod)
+-add debug if the waitable timer fails
+-wait timer no longer relies on timeout for timing
+-change default clock speed to remove certain rounding errors
+-improve VDP loop during blit events
+-added measured timing information for sound, GROM, speech
 -Added hotkeys for Paste (control-F1), Debugger (control-Home), and copy screen (Control-F2) 
 -added copy screen function (hold SHIFT for BASIC offset) 
 -added Tape menu and added STOP and PLAY functions (sorry, not tested) 
@@ -1824,8 +1835,7 @@ Cartridge System:
 -fix display of active GRAM pages when opening dialog 
 -32MB AMS implemented - enabled it for now (we already used to reserve 16MB as it was) 
 -re-arranged VDP gettables to be more convenient and less redundant 
--added NOCR or NOLF options to clipboard - if you open it as "CLIP.NOLF" or "CLIP.NOCR", automatic line endings will NOT be appended, 
- you must add them yourself. NOCR and NOLF are identical, only one may be specified, and you can use either CR (13) or LF (10) when you write. 
+-added NOCR or NOLF options to clipboard - if you open it as "CLIP.NOLF" or "CLIP.NOCR", automatic line endings will NOT be appended, you must add them yourself. NOCR and NOLF are identical, only one may be specified, and you can use either CR (13) or LF (10) when you write. 
 -fix opening new files in APPEND mode for image disks and FIAD disks - should work okay now
 
 
