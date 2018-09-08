@@ -1838,6 +1838,14 @@ Cartridge System:
 -added NOCR or NOLF options to clipboard - if you open it as "CLIP.NOLF" or "CLIP.NOCR", automatic line endings will NOT be appended, you must add them yourself. NOCR and NOLF are identical, only one may be specified, and you can use either CR (13) or LF (10) when you write. 
 -fix opening new files in APPEND mode for image disks and FIAD disks - should work okay now
 
+-----------------------------------------------
+7 September 2018
+
+-fiddled with AVI audio, but no improvements. AVIs updated to 60hz otherwise.
+-fix strange speedups - code that read the VDP status register was giving about 50% bonus cycles to the VDP. The more often you read it, the faster you went ;)
+-change waitable timer to a smaller value
+-remove the forced time on CPU_MAXIMUM. Now it actually runs maximum speed. And stays in sync.
+-add some comments to remind myself what the heck I was thinking in the 'full frame' update for overdrive
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
