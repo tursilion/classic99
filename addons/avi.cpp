@@ -113,7 +113,7 @@ int InitAvi(bool bWithAudio)
 	si.wPriority=0;
 	si.wLanguage=NULL;
 	si.dwScale=1;
-	si.dwRate=15;																// 15 fps
+	si.dwRate=60;																// 60 fps (even if it's not true)
 	si.dwStart=0;
 	si.dwLength=0;																// how long?
 	si.dwInitialFrames=0;
@@ -145,11 +145,11 @@ int InitAvi(bool bWithAudio)
 		ai.dwCaps=NULL;
 		ai.wPriority=0;
 		ai.wLanguage=NULL;
-		ai.dwScale=2;																// equals blockalign in wave format
-		ai.dwRate=AudioSampleRate*ai.dwScale;										// data rate (used for positioning stream?
+		ai.dwScale=2;							            						// time scale
+		ai.dwRate=AudioSampleRate*ai.dwScale;  										// data rate (used for positioning stream?
 		ai.dwStart=0;
 		ai.dwLength=0;																// how long?
-		ai.dwInitialFrames=0;
+		ai.dwInitialFrames=DWORD(AudioSampleRate*0.75);                             // normally 0.75 seconds, per MSDN
 		ai.dwSuggestedBufferSize=0;
 		ai.dwQuality=-1;															// default quality, else 0-10000
 		ai.dwSampleSize=2;															// 16-bit samples
@@ -273,14 +273,7 @@ void WriteFrame()
 	EnterCriticalSection(&csAVI);
 
 	// write a frame to the AVI
-	// I want only every 4th frame.
-	RecordFrame++;
-	if (RecordFrame < 4) {
-		LeaveCriticalSection(&csAVI);
-		return;
-	}
-	RecordFrame=0;
-
+	// Try every frame ;)
 	if ((myStream) && (framedata))
 	{
 		// frame is 272*208
@@ -305,46 +298,23 @@ void WriteFrame()
 }
 
 // pointer to audio buffer, nLen is number of bytes (not samples)
+// since we write every frame now, don't need all the complex and broken buffer stuff...
+// Still doesn't work though - I get a block of data, then a block of silence, repeated
+// Most likely the problem is that we are taking the entire audio buffer, and it's not
+// fully written yet.
 void WriteAudioFrame(void *pData, int nLen)
 {
-	static unsigned char *pBuffer = NULL;
-	static int nBufferLen = 0;
-	static int nBufferPos = 0;
-
 	if (!bUsingAudio) return;
 
 	EnterCriticalSection(&csAVI);
-
-	// we also use the record frame counting here, it ranges from 0-3, and we should only write when it's zero
-	if (NULL == pBuffer) {
-		nBufferLen = nLen*4;
-		pBuffer=(unsigned char*)malloc(nBufferLen);
-		nBufferPos=0;
-	}
-	if (nBufferPos + nLen >= nBufferLen) {
-		nBufferLen = nLen*4;
-		pBuffer=(unsigned char*)realloc(pBuffer, nBufferLen);
-		if (nBufferPos + nLen >= nBufferLen) {
-			// coding error!! don't crash
-			LeaveCriticalSection(&csAVI);
-			return;
-		}
-	}
-	memcpy(pBuffer+nBufferPos, pData, nLen);
-	nBufferPos+=nLen;
-	if (RecordFrame != 0) {
-		LeaveCriticalSection(&csAVI);
-		return;
-	}
 
 	if (myAudioStream)
 	{
 		// 16-bit samples
 		LONG wrSamp, wrByte;
-		HRESULT ret = AVIStreamWrite(myAudioStream, audioframe, nBufferPos/2, pBuffer, nBufferPos, 0, &wrSamp, &wrByte);	// write 1 frame
-		audioframe+=nBufferPos/2;
-//		debug_write("Asked for %d samp, %d byte -- got %d samp, %d byte", nLen/2, nLen, wrSamp, wrByte);
-		nBufferPos = 0;
+		HRESULT ret = AVIStreamWrite(myAudioStream, audioframe, nLen/2, pData, nLen, 0, &wrSamp, &wrByte);	// write 1 frame
+		audioframe+=wrSamp;
+		//debug_write("Asked for %d samp, %d byte -- got %d samp, %d byte", nLen/2, nLen, wrSamp, wrByte);
 		if (ret != 0) {
 			debug_write("Failed to write to audio stream, code %d", ret);
 		}

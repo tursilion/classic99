@@ -202,6 +202,11 @@ char digpat[10][5][3] = {
 	1,1,1
 };
 
+// this draws a full frame for overdrive. It must be negative and more than
+// a reasonable number of CPU instructions, cause smaller magnitude negative
+// numbers mean the half-instruction update that we do...
+#define FULLFRAME (-1000000)
+
 // TODO: this is only for tiles, and only for ECM0
 #define GETPALETTEVALUE(n) F18APalette[(bF18AActive?((VDPREG[0x18]&03)<<4)+(n) : (n))]
 
@@ -786,16 +791,36 @@ void updateVDP(int cycleCount)
 	double newCycles;
 
 	// handle overdrive
-	if (SystemThrottle != VDP_CPUSYNC) {
-		if (cycleCount != -1) {
-			// pass -1 to draw a full frame
+    if (SystemThrottle != VDP_CPUSYNC) {
+        // overdrive ONLY draws full frames, so if it's not FULLFRAME, ignore it
+        // the reason for this is to keep the VDP running 60fps when we don't
+        // actually have a preset clockspeed to know how many cycles make a
+        // single scanline. We can fix this later when we do timing properly.
+		if (cycleCount != FULLFRAME) {
 			return;
 		} else {
+            // when it is time to draw a fullframe, then we just force the full cycle
+            // per frame count to get it out.
 			cycleCount = max_cpf;
 			newCycles = cycleCount;
 		}
 	} else {
-		newCycles = nCycles + cycleCount;
+        // in other, normal modes, we add the number of cycles received and
+        // then we go ahead and process below
+        // If it's a negative number (and FULLFRAME needs to be way too
+        // negative to count), then we discount it after processing so
+        // when the full instruction count comes in, we account for the
+        // cycles already dealt with.
+        if (cycleCount == FULLFRAME) {
+            // should never happen....
+            return;
+        } else {
+            if (cycleCount < 0) {
+    		    newCycles = nCycles - cycleCount;   // add a negative number
+            } else {
+    		    newCycles = nCycles + cycleCount;
+            }
+        }
 	}
 
 	while (newCycles > cyclesPerLine) {
@@ -843,11 +868,16 @@ void updateVDP(int cycleCount)
 	}
 	// save remainder
 	nCycles = newCycles;
+    
+    // if it was a half cycle, then subtract it again so we don't double up
+    if ((cycleCount < 0) && (cycleCount != FULLFRAME)) {
+        nCycles += cycleCount;  // subtract a negative number
+    }
 }
 
 // for the sake of overdrive, force out a single frame
 void vdpForceFrame() {
-	updateVDP(-1);
+	updateVDP(FULLFRAME);
 }
 
 //////////////////////////////////////////////////////

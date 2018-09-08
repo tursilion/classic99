@@ -4254,7 +4254,7 @@ Byte rvdpbyte(Word x, bool rmw)
 		// against the updated VDP state. This allows Lee's fbForth random number
 		// code to function, which worked by watching for the interrupt bit while
 		// leaving interrupts enabled.
-		updateVDP(pCurrentCPU->GetCycleCount());
+		updateVDP(-pCurrentCPU->GetCycleCount());
 
 		// The F18A turns off DPM if any status register is read
 		if ((bF18AActive)&&(bF18ADataPortMode)) {
@@ -5692,7 +5692,7 @@ void __cdecl TimerThread(void *)
 		if (hzRate != oldHzRate) {
 			LARGE_INTEGER due;
 			due.QuadPart=-1;		// now, essentially
-			if (!SetWaitableTimer(timer, &due, 10, NULL, NULL, FALSE)) {	// we can wake up at any speed, the loop below works out real time
+			if (!SetWaitableTimer(timer, &due, 8, NULL, NULL, FALSE)) {	// we can wake up at any speed, the loop below works out real time
                 debug_write("The waitable timer failed - code %d", GetLastError());
             }
 			oldHzRate = hzRate;
@@ -5719,7 +5719,7 @@ void __cdecl TimerThread(void *)
 					break;
 				case CPU_MAXIMUM:
 					// We do the exchange here since the loop below may not run
-					InterlockedExchange((LONG*)&cycles_left, max_cpf*50);
+					//InterlockedExchange((LONG*)&cycles_left, max_cpf*100);
 					break;
 			}
 

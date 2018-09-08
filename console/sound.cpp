@@ -726,34 +726,28 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	// as noted, the goal is to get it on a per-scanline basis
 	while (nWriteAhead < pDat->nJitterFrames) {
 		if (SUCCEEDED(soundbuf->Lock(pDat->nLastWrite, CalculatedAudioBufferSize/(hzRate), (void**)&ptr1, &len1, (void**)&ptr2, &len2, 0))) {
-			if ((Recording)&&(pRecordBuffer)) {
-				// this way the overhead of the extra copy ONLY happens when recording
-				sound_update((short*)pRecordBuffer, nDACLevel, (len1+len2)/2);
+			if (len1 > 0) {
+				sound_update(ptr1, nDACLevel, len1/2);		// divide by 2 for 16 bit samples
+			}
+			if (len2 > 0) {
+				sound_update(ptr2, nDACLevel, len2/2);		// divide by 2 for 16 bit samples
+			}
 
+			if ((Recording)&&(pRecordBuffer)) {
 				if (len1>0) {
-					memcpy(ptr1, pRecordBuffer, len1);
+					memcpy(pRecordBuffer, ptr1, len1);
 				}
 				if (len2>0) {
-					memcpy(ptr2, pRecordBuffer+len1, len2);
+					memcpy(pRecordBuffer+len1, ptr2, len2);
 				}
-			} else {
-				if (len1 > 0) {
-					sound_update(ptr1, nDACLevel, len1/2);		// divide by 2 for 16 bit samples
-				}
-				if (len2 > 0) {
-					sound_update(ptr2, nDACLevel, len2/2);		// divide by 2 for 16 bit samples
-				}
+                
+                // TODO: not sure what's wrong.. if I write a fake buffer full of audio samples, it works fine.
+				// but this audio is jittery and full of gaps!
+				WriteAudioFrame(pRecordBuffer, len1+len2);
 			}
 
 			// carry on
 			soundbuf->Unlock(ptr1, len1, ptr2, len2);
-
-			if (Recording) {
-				// TODO: not sure what's wrong.. if I write a fake buffer full of audio samples, it works fine.
-				// but this audio is jittery and full of gaps! (Probably because the video is at 15fps and this
-				// is at 60fps??)
-				WriteAudioFrame(pRecordBuffer, len1+len2);
-			}
 
 //			debug_write("Wrote %d bytes to nLastWrite %d (%x)", len1, pDat->nLastWrite, ptr1);
 

@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.2"
+#define VERSION "QI399.003"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -296,7 +296,7 @@ void VDPmain(void);
 void vdpReset();
 HRESULT InitDirectDraw( HWND hWnd );
 void VDPdisplay(int scanline);
-void updateVDP(int scanline);
+void updateVDP(int cycleCount);
 void vdpForceFrame();
 int  gettables();
 void draw_debug(void);
