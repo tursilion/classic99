@@ -2639,10 +2639,25 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 							xb=1023;
 						} else if (xb<=2048) {	// 1025-2048 banks are 11 bits (result 2047)
 							xb=2047;
-						} else {
-							// else maximum size - 12 bits (result 4095)
-							xb=4095;
-							debug_write("Maximum cartridge bank size limit reached");
+						} else if (xb<=4096) {  // 2049-4096 banks are 12 bits (result 4095)
+                            // maximum size for address latching
+                            xb=4095;
+                        } else if (xb<=8192) {  // 4097-8192 banks are 13 bits (result 8191)
+							debug_write("Maximum address bank size limit exceeded");
+                            xb=8191;
+                        } else {
+							// else maximum size - 14 bits (result 16383)
+							xb=16383;
+							debug_write("Enable gigacart 128MB with 256 bytes GROM");
+                            // copy the GROM data into the GROM space
+
+                            // copy to all banks - only 256 bytes, repeated over and over
+					        for (int idx=0; idx<PCODEGROMBASE; idx++) {
+                                for (int adr=0x8000; adr<0xa000; adr+=256) {
+                                    // last 256 bytes of range
+    						        memcpy(&GROMBase[idx].GROM[adr], &CPU2[128*1024*1024-256], 256);
+                                }
+					        }
 						}
 						break;
 				}
@@ -3886,13 +3901,15 @@ void wcpubyte(Word x, Byte c)
 #endif
 		
 		if ((xb) && (ROMMAP[x])) {		// trap ROM writes and check for XB bank switch
+            // collect bits from address and data buses - x is address, c is data
+            int bits = (c<<16)|x;
 			if (bInvertedBanks) {
 				// uses inverted address lines!
-				xbBank=(((~x)>>1)&xb);		// XB bank switch, up to 4096 banks
+				xbBank=(((~bits)>>1)&xb);		// XB bank switch, up to 4096 banks
 			} else if (bUsesMBX) {
 				// MBX is weird. The lower 4k is fixed, but the top 1k of that is RAM
 				// The upper 4k is bank switched. Address >6FFE has a bank switch
-				// register updated from the data bus.
+				// register updated from the data bus. (Doesn't use 'bits')
 				if ((x>=0x6C00)&&(x<0x6FFE)) {
 					mbx_ram[x-0x6c00] = c;
 				} else if (x==0x6ffe) {
@@ -3902,7 +3919,7 @@ void wcpubyte(Word x, Byte c)
 				}
 				// anything else is ignored
 			} else {
-				xbBank=(((x)>>1)&xb);		// XB bank switch, up to 4096 banks
+				xbBank=(((bits)>>1)&xb);		// XB bank switch, up to 4096 banks
 			}
 			goto checkmem;
 		}

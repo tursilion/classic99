@@ -3712,7 +3712,7 @@ void DebugUpdateThread(void*) {
 						case 3: sprintf(buf1, "  PC  %04X\r\n", pCurrentCPU->GetPC()); break;
 						case 4: sprintf(buf1, "  WP  %04X\r\n", pCurrentCPU->GetWP()); break;
 						case 5: sprintf(buf1, "  ST  %04X\r\n", pCurrentCPU->GetST()); break;
-						case 6: sprintf(buf1, " Bank %06X\r\n", ((xb&0xfff)<<12)|(xbBank&0xfff)); break;
+						case 6: sprintf(buf1, " Bank %08X\r\n", ((xb&0xffff)<<16)|(xbBank&0xffff)); break;
 						case 7: sprintf(buf1, " DSR  %04X\r\n", nCurrentDSR&0xffff); break;
 						default: strcpy(buf1, "\r\n");
 					}
