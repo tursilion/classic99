@@ -2349,8 +2349,12 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 		// figure out what it should be by filename, and flag the length to be filled in
 		char *pPos = strrchr(pImg->szFileName, '.');
 		if ((NULL == pPos) || (pPos == pImg->szFileName)) {
-			debug_write("AUTO type not supported for filename '%s' (no extension)", pImg->szFileName);
-			return;
+            // there's no extension at all. Since the advent of the FinalROM, this has become
+            // a defacto standard of non-inverted ROM cartridge, so it's time to get with the times!
+			debug_write("No extension for filename '%s', assuming non-inverted ROM.", pImg->szFileName);
+			nLen = -1;		// flag to fill in after loading
+			pImg->nType = TYPE_378;
+			pImg->nLoadAddr = 0x0000;
 		} else {
 			nLen = -1;		// flag to fill in after loading
 			pImg->nLoadAddr = 0x6000;		// default except for 379 and NVRAM, fixed below
@@ -4770,6 +4774,9 @@ Byte ReadValidGrom(int nBase, Word x) {
 	// loaded (or zeros if no data was loaded there). I don't intend to reproduce
 	// this behaviour (but I can certainly conceive of using it for copy protection,
 	// if only real GROMs could still be manufactured...)
+    // TODO: actually, we can easily incorporate it by generating the extra 2k when we
+    // load a 6k grom... but it would only work if we loaded 6k groms instead of
+    // the combined banks lots of people use. But at least we'd do it.
 
 	// the -1 accounts for the prefetch to get the data we're going to read
 	if ((Word)(GROMBase[0].GRMADD-1) < 0x6000) {
@@ -4824,7 +4831,11 @@ Byte ReadValidGrom(int nBase, Word x) {
 		for (int idx=0; idx<PCODEGROMBASE; idx++) {
 			GROMBase[idx].grmdata=GROMBase[idx].GROM[GROMBase[0].GRMADD];
 		}
-		GROMBase[0].GRMADD++;
+
+        // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
+        // an 8-bit address latch and a 1 bit select (for GROM >8000)
+        // But it's enough to let me test some theories...
+   		GROMBase[0].GRMADD++;
 
         // GROM read data always adds about 19 cycles
 		pCurrentCPU->AddCycleCount(19);
@@ -4901,7 +4912,11 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 			for (int idx=0; idx<PCODEGROMBASE; idx++) {
 				GROMBase[idx].grmdata=GROMBase[idx].GROM[GROMBase[0].GRMADD];
 			}
-			GROMBase[0].GRMADD++;
+
+            // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
+            // an 8-bit address latch and a 1 bit select (for GROM >8000)
+            // But it's enough to let me test some theories...
+   		    GROMBase[0].GRMADD++;
 		} else {
             // first GROM address write adds about 15 cycles (verified)
     		pCurrentCPU->AddCycleCount(15);
@@ -4948,7 +4963,10 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 		for (int idx=0; idx<PCODEGROMBASE; idx++) {
 			GROMBase[idx].grmdata=GROMBase[idx].GROM[GROMBase[0].GRMADD];
 		}
-		GROMBase[0].GRMADD++;
+        // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
+        // an 8-bit address latch and a 1 bit select (for GROM >8000)
+        // But it's enough to let me test some theories...
+   		GROMBase[0].GRMADD++;
 
         // GROM data writes add about 22 cycles (verified)
    		pCurrentCPU->AddCycleCount(22);

@@ -680,6 +680,12 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			{
 			case ID_CART_USER_OPEN:
 			// Browse for user cartridge filename
+            // We can handle:
+            // name<LETTER>.bin - where <LETTER> is C, D, G, 3, 9 or 8
+            // name Part x of y <LETTER>.bin - where y is fixed and x counts from 1
+            // name (no restrictions, no other files searched for)
+            // name.bin (where none of the above conflict, other files searched for, possibly incorrectly)
+            // 
 			{
 				OPENFILENAME ofn;
 				char buf[MAX_PATH], buf2[MAX_PATH];
@@ -690,7 +696,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				memset(&ofn, 0, sizeof(OPENFILENAME));
 				ofn.lStructSize=sizeof(OPENFILENAME);
 				ofn.hwndOwner=hwnd;
-				ofn.lpstrFilter="V9T9 Carts\0*.bin;*.C;*.D;*.G;*.3\0\0";
+				ofn.lpstrFilter="V9T9 Carts\0*.bin;*.C;*.D;*.G;*.3\0All Files\0*\0\0";
 				strcpy(buf, "");
 				ofn.lpstrFile=buf;
 				ofn.nMaxFile=MAX_PATH;
@@ -718,11 +724,10 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					proceed = true;
 				} else {
 					proceed = GetOpenFileName(&ofn) != 0;
-					if (ofn.nFileExtension <= 1) proceed = false;
 				}
 
 				if (proceed) {
-					int nCnt, nIdx, nPart;
+					int nCnt, nIdx, nPart, nOriginalCharacter;
 
 					const int nUsr=0;		// we always use #0 now
 
@@ -731,54 +736,79 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					Users[nUsr].pDisk=NULL;
 					Users[nUsr].szMessage=NULL;
 					nCnt=0;
-					if (0 != _stricmp(&ofn.lpstrFile[ofn.nFileExtension], "bin")) nLetterOffset=0;	// newer ".C" type
+                            
+                    // we now have to support all the different legacy naming types, /AND/ a new concept with
+                    // no extension whatsoever. That confuses a lot of this code, so we skip over it in that case...
+                    if (ofn.nFileExtension <= 1) {
+                        // we have no extension to play with
+                        nLetterOffset = -1;
+                        pPartIdx = NULL;
+                    } else {
+                        // we have an extension to play with...
+    					if (0 != _stricmp(&ofn.lpstrFile[ofn.nFileExtension], "bin")) nLetterOffset=0;	// newer ".C" type
+                        nOriginalCharacter = ofn.lpstrFile[ofn.nFileExtension-nLetterOffset];
 
-					// Someone wrote one of those ROM rename tools, and thought it would be smart to put
-					// "(Part x of y)" in the filename. Since 'x' changes with every file, and the order
-					// is non-deterministic (possibly), this becomes a bit of a pain. We'll assume 1-3
-					// since only V9T9 carts should be indexed that way. Another good reason for the RPK carts...
-					// Anyway, we'll make a semi-honest effort for them...case must match!
-					pPartIdx = strstr(ofn.lpstrFile, "(Part ");
-					if (NULL != pPartIdx) {
-						pPartIdx+=6;
-						if ((!isdigit(*pPartIdx)) || (0 != memcmp(pPartIdx+1, " of ", 4))) {
-							// Not "(Part x of " - won't worry about the rest
-							pPartIdx=NULL;
-						}
-					}
+					    // Someone wrote one of those ROM rename tools, and thought it would be smart to put
+					    // "(Part x of y)" in the filename. Since 'x' changes with every file, and the order
+					    // is non-deterministic (possibly), this becomes a bit of a pain. We'll assume 1-3
+					    // since only V9T9 carts should be indexed that way. Another good reason for the RPK carts...
+					    // Anyway, we'll make a semi-honest effort for them...case must match!
+					    pPartIdx = strstr(ofn.lpstrFile, "(Part ");
 
+					    if (NULL != pPartIdx) {
+						    pPartIdx+=6;
+						    if ((!isdigit(*pPartIdx)) || (0 != memcmp(pPartIdx+1, " of ", 4))) {
+							    // Not "(Part x of " - won't worry about the rest
+							    pPartIdx=NULL;
+						    }
+					    }
+                    }
+
+                    // label for goto.
+                    tryagain:
 					for (nPart = 0; nPart<3; nPart++) {
+                        // if not doing "part" filenames, only process the first one
 						if ((pPartIdx == NULL) && (nPart > 0)) continue;
+                        
+                        // else update the part index
 						if (pPartIdx != NULL) {
 							*pPartIdx = nPart+'1';
 						}
+
+                        // now check for all the possible letter extensions, unless we have no letter extensions.
+                        // in that case, just process the one single file
 						for (nIdx=0; nIdx<6; nIdx++) {
-							switch (nIdx) {
-								case 0:	
-									ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='C'; 
-									Users[nUsr].Img[nCnt].nType=TYPE_ROM;
-									break;
-								case 1: 
-									ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='D'; // legacy
-									Users[nUsr].Img[nCnt].nType=TYPE_XB;
-									break;
-								case 2: 
-									ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='G'; 
-									Users[nUsr].Img[nCnt].nType=TYPE_GROM;
-									break;
-								case 3: 
-									ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='3'; // legacy mode
-									Users[nUsr].Img[nCnt].nType=TYPE_379;
-									break;
-								case 4: 
-									ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='9';
-									Users[nUsr].Img[nCnt].nType=TYPE_379;
-									break;
-								case 5: 
-									ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='8'; 
-									Users[nUsr].Img[nCnt].nType=TYPE_378;
-									break;
-							}
+                            if (nLetterOffset == -1) {
+                                // assume non-inverted possibly-banked ROM
+								Users[nUsr].Img[nCnt].nType=TYPE_378;
+                            } else {
+							    switch (nIdx) {
+								    case 0:	
+									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='C'; 
+									    Users[nUsr].Img[nCnt].nType=TYPE_ROM;
+									    break;
+								    case 1: 
+									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='D'; // legacy
+									    Users[nUsr].Img[nCnt].nType=TYPE_XB;
+									    break;
+								    case 2: 
+									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='G'; 
+									    Users[nUsr].Img[nCnt].nType=TYPE_GROM;
+									    break;
+								    case 3: 
+									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='3'; // legacy mode
+									    Users[nUsr].Img[nCnt].nType=TYPE_379;
+									    break;
+								    case 4: 
+									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='9';
+									    Users[nUsr].Img[nCnt].nType=TYPE_379;
+									    break;
+								    case 5: 
+									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='8'; 
+									    Users[nUsr].Img[nCnt].nType=TYPE_378;
+									    break;
+							    }
+                            }
 							if (nCnt < 5) {		// maximum number of autodetect types
 								FILE *fp=fopen(ofn.lpstrFile, "rb");
 								if (NULL != fp) {
@@ -798,9 +828,25 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 								} else {
 									Users[nUsr].Img[nCnt].nType=TYPE_NONE;
 								}
-							}
+							} else {
+                                debug_write("Impossible case - too many auto-detected files. Skipping %s", ofn.lpstrFile);
+                            }
+
+                            // if we aren't searching for extensions, then just break out
+                            if (nLetterOffset == -1) break;
 						}
 					}
+
+                    // oh, and sometimes they have a ".bin" anyway, so it's actually completely fdsafneqing impossible to
+                    // accurately determine if the last character is a tag or part of the filename, but if we didn't find
+                    // anything at all, then assume the user at least tried and go back and try as a raw name.
+                    if ((nCnt == 0) && (nLetterOffset != -1)) {
+                        ofn.lpstrFile[ofn.nFileExtension-nLetterOffset] = nOriginalCharacter;
+                        nLetterOffset = -1;
+                        // but if you mix that concept with a Part 1 of 2 filename, I give up. You're on your own.
+                        goto tryagain;  // %$@%^$@#. Bite me.
+                    }
+
 					nCartGroup=2;
 					nCart=nUsr;
 
