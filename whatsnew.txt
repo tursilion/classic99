@@ -1847,6 +1847,15 @@ Cartridge System:
 -remove the forced time on CPU_MAXIMUM. Now it actually runs maximum speed. And stays in sync.
 -add some comments to remind myself what the heck I was thinking in the 'full frame' update for overdrive
 
+-----------------------------------------------
+13 October 2018
+-reset more of CRU on menu-reset
+-add 9901 timer to the debug register pane
+-don't reset the 9901 timer every time you leave timer mode (fix for CamelForth)
+-more disk DSR warnings (hate that disk DSR so much...)
+-allow the disk corruption break option to catch the DSR warnings too
+-update manual for 9901 line
+
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
