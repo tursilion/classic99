@@ -53,7 +53,6 @@
 
 extern CPU9900 * volatile pCurrentCPU;
 extern bool bCorruptDSKRAM;
-extern void TriggerBreakPoint();
 
 // for now, we say there is only one controller card, so we share the CRU and registers
 unsigned char TICC_CRU[8];

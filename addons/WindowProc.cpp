@@ -965,9 +965,15 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				Sleep(50);								// wait for it...
 
 				memset(CRU, 1, 4096);					// reset 9901
-				CRU[0]=0;
-				CRU[2]=0;
-				CRU[3]=0;
+	            CRU[0]=0;	// timer control
+	            CRU[1]=0;	// peripheral interrupt mask
+	            CRU[2]=0;	// VDP interrupt mask
+	            CRU[3]=0;	// timer interrupt mask??
+            //  CRU[12-14]  // keyboard column select
+            //  CRU[15]     // Alpha lock 
+            //  CRU[24]     // audio gate (leave high)
+	            CRU[25]=0;	// mag tape out - needed for Robotron to work!
+	            CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
 				timer9901=0;
                 timer9901Read = 0;
 				timer9901IntReq=0;
@@ -3488,7 +3494,7 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
 // DEBUG TODOs:
 // - ability to spawn multiple debug windows
 // - register views for each device (rather than combined as today)
-//		-CPU state (registers and flags)
+//		-CPU and CRU state (registers and flags)
 //		-VDP state (registers, flags, tables, scanline, F18A extended registers)
 //		-Audio state (9919, Speech (with FIFO size), Audio Gate bit, SID)
 //		-Cartridge: GROM and UberGROM Configuration/status, ROM bank, DSR bank, pCode
@@ -3797,8 +3803,6 @@ void DebugUpdateThread(void*) {
 				}
 				csOut+=buf1;
 
-				csOut+="\r\n";
-
 				val=pCurrentCPU->GetST();
 				sprintf(buf1, "  ST : %s %s %s %s %s %s %s\r\n", (val&BIT_LGT)?"LGT":"   ", (val&BIT_AGT)?"AGT":"   ", (val&BIT_EQ)?"EQ":"  ",
 					(val&BIT_C)?"C":" ", (val&BIT_OV)?"OV":"  ", (val&BIT_OP)?"OP":"  ", (val&BIT_XOP)?"XOP":" ");
@@ -3807,6 +3811,13 @@ void DebugUpdateThread(void*) {
 				csOut+=buf1;
 
 				csOut+="\r\n";
+
+                // CRU
+                sprintf(buf1, " 9901 %04X %04X %04X %c %c %c %c\r\n",
+                        timer9901, timer9901Read, starttimer9901,
+                        CRU[0]?'1':'0', CRU[1]?'1':'0', 
+                        CRU[2]?'1':'0', CRU[3]?'1':'0' );
+                csOut += buf1;
 
 				// Sound chip
 				sprintf(buf1, " 9919 %03X %03X %03X %X\r\n", nRegister[0], nRegister[1], nRegister[2], nRegister[3]);

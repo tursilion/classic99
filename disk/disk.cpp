@@ -92,6 +92,8 @@ CRITICAL_SECTION csDriveType;
 
 extern struct DISKS *pMagicDisk;
 extern CPU9900 * volatile pCurrentCPU;
+extern bool BreakOnDiskCorrupt;
+
 
 // configuration option to configure blocks of RAM after DSR calls to make sure your
 // program isn't using illegal memory - either as storage OR trying to reach into
@@ -272,16 +274,30 @@ void do_dsrlnk() {
 	int nDrive, nLen;
 	bool bDiskByName = false;		// true for DSK.DISKNAME.FILE - only needed for TICC
 
+    if ((pCurrentCPU->GetST() & 0xF) != 0) {
+        debug_write("Warning: Calling DSR with interrupts enabled (LIMI %d) will randomly crash on hw!", (pCurrentCPU->GetST() & 0xF));
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
+        // TODO: don't check this change in...
+        pCurrentCPU->SetST((pCurrentCPU->GetST() & (~0xF)));
+    }
+
 	if (pCurrentCPU->GetWP() != 0x83E0) {
-		debug_write("Warning: Calling DSR without setting GPLWS may not work on hw (WP=0x04X)!", pCurrentCPU->GetWP());
+		debug_write("Warning: Calling DSR without setting GPLWS may not work on hw (WP=0x%04X)!", pCurrentCPU->GetWP());
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
 	if (romword(0x83d0) != 0x1100) {	// warning: hard-coded CRU base
 		debug_write("Warning: DSRLNK functions should store the CRU base of the device at >83D0! (Got >%04X)", romword(0x83d0));
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
+	}
+	if (romword(0x83f8) != 0x1100) {	// warning: hard-coded CRU base
+		debug_write("Warning: DSRLNK functions MUST store the CRU base of the device at >83F8 (GPLWS R12) to avoid a crash on hw! (Got >%04X)", romword(0x83f8));
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
 	// steal nLen for a quick test...
 	nLen = romword(0x83d2);
 	if (romword(nLen+2) != pCurrentCPU->GetPC()) {	// a hacky check that we are probably at the right place in the header
 		debug_write("Warning: DSRLNK functions should store the DSR address of the device name entry at >83D2! (Got >%04X)", romword(0x83d2));
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
 
 	// get the base address of PAB in VDP RAM
@@ -289,6 +305,7 @@ void do_dsrlnk() {
 	// since there must be 10 bytes before the name, we can do a quick early out here...
 	if (PAB < 13) {		// 10 bytes, plus three for shortest device name "DSK"
 		debug_write("Bad PAB address >%04X", PAB);		// not really what the TI would do, but it's wrong anyway.
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
 		// we can't set the error, because we'd underrun! (real TI would wrap around the address)
 		return;
 	}
@@ -301,6 +318,7 @@ void do_dsrlnk() {
 		int nLen = romword(0x8354);
 		if (nLen > 7) {
 			debug_write("Warning: bad DSR name length %d in >8354", nLen);
+            if (BreakOnDiskCorrupt) TriggerBreakPoint();
 			// this is supposed to tell us where to write the error!?
 			return;
 		}
@@ -318,6 +336,7 @@ void do_dsrlnk() {
 		int nNameLen = VDP[PAB-nLen-1];
 		if (PAB-nLen+nNameLen > 0x3fff) {
 			debug_write("PAB name too long (%d) for VDP >%04X", nNameLen, PAB);		// not really what the TI would do, but it's wrong anyway.
+            if (BreakOnDiskCorrupt) TriggerBreakPoint();
 			// since we don't have a structure yet, set it manually
 			VDP[PAB-nLen-10+1] &= 0x1f;					// no errors
 			VDP[PAB-nLen-10+1] |= ERR_BADATTRIBUTE<<5;	// file error
@@ -328,6 +347,7 @@ void do_dsrlnk() {
 			char buf[32];
 			if (nNameLen > 32) {
 				debug_write("Excessively long filename (%d bytes) probably won't work on all devices", nNameLen);
+                if (BreakOnDiskCorrupt) TriggerBreakPoint();
 				nNameLen=31;
 			}
 			memset(buf, 0, sizeof(buf));

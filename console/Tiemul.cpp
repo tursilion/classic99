@@ -2881,7 +2881,10 @@ void readroms() {
 	CRU[0]=0;	// timer control
 	CRU[1]=0;	// peripheral interrupt mask
 	CRU[2]=0;	// VDP interrupt mask
-	CRU[3]=0;	// todo: what is this?
+	CRU[3]=0;	// timer interrupt mask??
+//  CRU[12-14]  // keyboard column select
+//  CRU[15]     // Alpha lock 
+//  CRU[24]     // audio gate (leave high)
 	CRU[25]=0;	// mag tape out - needed for Robotron to work!
 	CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
 	memset(DSR, 0, 16*16384);	// not normally RAM
@@ -5277,10 +5280,17 @@ void wcru(Word ad, int bt)
 					// all I/O pins to pure input, but does not affect the timer
 					// it only has this effect in timer mode, but is not a timer function.
 				} else if (ad == 0) {
-					// Turning off timer mode - start timer
+					// Turning off timer mode - start timer (but don't reset it, as proven by camelForth)
 					CRU[ad]=0;
-					timer9901=starttimer9901;
-                    timer9901Read = timer9901;
+                    if (timer9901 == 0) {
+                        // real hardware would have a clock gate, but since we use
+                        // timer9901!=0, I have to set it here, but only if it's not
+                        // already set.
+                        // TODO: in this initial case, would the interrupt flag be set?
+                        timer9901=starttimer9901;
+                    }
+//					timer9901=starttimer9901;
+//                  timer9901Read=timer9901;
 					CRUTimerTicks=0;
 //					debug_write("Starting 9901 timer at %d ticks", timer9901);
 				} else {
