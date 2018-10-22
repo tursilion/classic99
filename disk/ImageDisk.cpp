@@ -1097,7 +1097,7 @@ bool ImageDisk::Load(FileInfo *pFile) {
 	}
 
 	// now we run through the sectors and load the data up to the maximum requested,
-	// or the end of the file, whichever comes first. The last sector only needs to
+	// or the end of the file, whichever comes first. Only the last sector needs to
 	// honor the BytesInLastSector field.
 	read_bytes = 0;
 	int VDPOffset = pFile->DataBuffer;
@@ -1143,7 +1143,7 @@ bool ImageDisk::Load(FileInfo *pFile) {
 	}
 
 	free(pSectors);
-	debug_write("loading 0x%X bytes", read_bytes);	// do we need to give this value to the user?
+	debug_write("loaded 0x%X bytes", read_bytes);	// do we need to give this value to the user?
 	fclose(fp);										// all done
 
 	// handle DSK1 automapping (AutomapDSK checks whether it's enabled)

@@ -54,7 +54,9 @@
 //However, because the file is closed, the first byte was zeroed out. So the first bytes in 
 //VDP for the filename "ABCD" are "<00>BCD".
 //
-//That explains behavior and why the (dino animation) program duplicates the first character. 
+//That explains behavior and why the (dino animation, not caveman) program duplicates the first character. 
+//When building a new filename, it assumes the first two characters will be the same and copies the second
+//character into the first character position.
 //I would have to guess the author didn't know that >8354 pointed at the original PAB (where the 
 //full device+filename still lives) and didn't want to hard code it. (Seems to me there are documented 
 //addresses in low RAM that also have DSRLNK results, aren't there?)
@@ -93,7 +95,6 @@ CRITICAL_SECTION csDriveType;
 extern struct DISKS *pMagicDisk;
 extern CPU9900 * volatile pCurrentCPU;
 extern bool BreakOnDiskCorrupt;
-
 
 // configuration option to configure blocks of RAM after DSR calls to make sure your
 // program isn't using illegal memory - either as storage OR trying to reach into
@@ -489,6 +490,23 @@ void do_dsrlnk() {
 	// split name into options and name
 	tmpFile.SplitOptionsFromName();
 
+    // after a call, >8356 points to the filename (usually with the first byte zeroed) in the disk
+    // buffer structures. Some software tries to read the filename back for name tracking, but as
+    // the buffer is technically freed, that's a bad practice. Also only the TI controller (and clones)
+    // actually use the VDP buffers exactly this way... Ray Kazar's animations are a prime example - see
+    // discussion of Dino above...
+    // this stupid hack makes those animations work. But please don't use that...
+    // I'm just using a fixed buffer, below the 6 bytes needed for CF7, and NONE of the
+    // other disk structures are present.
+    // search for 0x3FE1 to find the place in tiemul.h that prints the warning
+    // using an odd number since it's less likely to be a deliberately chosen address
+    memset(&VDP[0x3fe1], ' ', 10);  // limit to 10 because this hack is for TI disk controllers ONLY
+    memcpy(&VDP[0x3fe1], tmpFile.csName.GetString(), min(tmpFile.csName.GetLength(),10));
+    VDP[0x3fe1]=0;  // zero the first byte - this would not be correct if it was not closed!
+    wrword(0x8356, 0x3fe1);
+    // and 0x8354 is supposed to point to the PAB, again, TI specific...
+    wrword(0x8354, PAB);
+
 	// See if we can find an existing FileInfo for this request, and use it instead
 	pWorkFile=pDriveType[nDrive]->FindFileInfo(tmpFile.csName);
 	if (NULL == pWorkFile) {
@@ -561,6 +579,7 @@ void do_dsrlnk() {
 					setfileerror(pWorkFile);
 				} else {
 					// if the user didn't specify a RecordLength in the PAB, we should do that now
+                    // TODO: why am I missing pWorkFile, tmpFile, and pNewFile in here...?
 					if ((VDP[pWorkFile->PABAddress+4] == 0) && (pNewFile->RecordLength != 0)) {
 						VDP[pWorkFile->PABAddress+4]=pNewFile->RecordLength;
 					}

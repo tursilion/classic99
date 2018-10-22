@@ -2204,14 +2204,15 @@ void fail(char *x)
 /////////////////////////////////////////////////////////
 Word romword(Word x, bool rmw)
 { 
-	x&=0xfffe;		// drop LSB
+    x&=0xfffe;		// drop LSB
+
 	// This reads the LSB first. This is the correct order (verified)
     // although this line of code is not really guaranteed to do that...
 	return((rcpubyte(x,rmw)<<8)+rcpubyte(x+1,rmw));
 }
 
 /////////////////////////////////////////////////////////
-// Write a Word to CPU memory
+// Write a Word y to CPU memory x
 /////////////////////////////////////////////////////////
 void wrword(Word x, Word y)
 { 
@@ -4405,6 +4406,15 @@ void wvdpbyte(Word x, Byte c)
 			VDPADD = (VDPADD & 0x00FF) | (c<<8);
 			vdpaccess = 0;
 
+            // check if the user is probably trying to do DSR filename tracking
+            // This is a TI disk controller side effect and shouldn't be relied
+            // upon - particularly since it involved investigating freed buffers ;)
+            if (((VDPADD == 0x3fe1)||(VDPADD == 0x3fe2)) && (GetSafeCpuWord(0x8356,0) == 0x3fe1)) {
+                debug_write("Software may be trying to track filenames using deleted TI VDP buffers... (>8356)");
+                if (BreakOnDiskCorrupt) TriggerBreakPoint();
+            }
+
+            // check what to do with the write
 			if (VDPADD&0x8000) { 
 				int nReg = (VDPADD&0x3f00)>>8;
 				int nData = VDPADD&0xff;
@@ -5091,6 +5101,10 @@ void SetSuperBank() {
 	// Does not work with all CRU-based carts (different paging schemes?)
 	// TODO: May be because some (Red Baron) write to ROM, and I don't disable
 	// the ROM-based banking here, which I should.
+
+	// TODO: according to MAME, the Superspace pages at these addresses,
+	// but the comment blocks are pretty confusing. If I could get some
+	// superspace code, then maybe I could /try/ it...
 
 	// What SHOULD this do if multiple CRU bits were set?
 	// Right now we take the lowest one.
