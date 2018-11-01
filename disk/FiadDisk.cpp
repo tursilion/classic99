@@ -442,6 +442,19 @@ bool FiadDisk::TryOpenFile(FileInfo *pFile) {
 		return false;
 	}
 
+    // special case - a headerless file normally detects as DF128, but
+    // I'm going to allow software to open them as IF128 too.
+    // pFile is the request, lclInfo is the disk file
+    if (lclInfo.ImageType == IMAGE_IMG) {
+        if (((pFile->FileType & TIFILES_INTERNAL) == TIFILES_INTERNAL) && ((lclInfo.FileType & TIFILES_INTERNAL) == 0)) {
+            // it's a headerless file, which should be DF128, but the app wants IF128. Since there's
+            // no difference save the flag, we're going to allow it. ;)
+            debug_write("Changing headerless filetype to IF128 to match open request.");
+            lclInfo.FileType|=TIFILES_INTERNAL;
+            lclInfo.Status|=FLAG_INTERNAL;
+        }
+    }
+
 	// Verify the parameters as a last step before we OK it all, but only on open
 	if ((pFile->OpCode == OP_OPEN) || (pFile->OpCode == OP_LOAD)) {
 		if ((pFile->FileType&TIFILES_MASK) != (lclInfo.FileType&TIFILES_MASK)) {

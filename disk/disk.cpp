@@ -74,6 +74,18 @@
 // software that ONLY works in Classic99.
 
 
+// TODO: directories: The TI disk controller always returns 128 records. If there are fewer than
+// 128 files, then the additional records are filled with zeros. Here's the literal code:
+//  
+//A59CA  CLR  2                 no more files: filename size = 0
+//       CLR  6                 file size = 0
+//       CLR  3                 rec length = 0
+//       CLR  7                 type = 0
+//A59D2  JMP  A59F2             output that
+//
+// Probably should make my directories work the same way, dumb as it is.
+
+
 // Includes
 #include <stdio.h>
 #include <windows.h>
