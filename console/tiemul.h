@@ -70,7 +70,7 @@ typedef unsigned __int32 DWord;
 
 // note: not enough to change this - you also need to change the
 // paging/padding calculation in the loader!
-#define MAX_BANKSWITCH_SIZE (128*1024*1024)
+#define MAX_BANKSWITCH_SIZE (512*1024*1024)
 
 // VDP status flags
 #define VDPS_INT	0x80

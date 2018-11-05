@@ -2648,10 +2648,9 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                             // maximum size for address latching
                             xb=4095;
                         } else if (xb<=8192) {  // 4097-8192 banks are 13 bits (result 8191)
-							debug_write("Maximum address bank size limit exceeded");
+							debug_write("Enable gigacart 64MB");
                             xb=8191;
-                        } else {
-							// else maximum size - 14 bits (result 16383)
+                        } else if (xb<=16384) {  // 8193-16384 banks are 14 bits (result 16383)
 							xb=16383;
 							debug_write("Enable gigacart 128MB with 256 bytes GROM");
                             // copy the GROM data into the GROM space
@@ -2663,6 +2662,12 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
     						        memcpy(&GROMBase[idx].GROM[adr], &CPU2[128*1024*1024-256], 256);
                                 }
 					        }
+                        } else if (xb<=32768) {  // 16385-32768 banks are 15 bits (result 32767)
+							debug_write("Enable gigacart 256MB");
+                            xb=32767;
+                        } else {  // 32769-65536 banks are 16 bits (result 65535)
+							debug_write("Enable gigacart 512MB");
+                            xb=65535;
 						}
 						break;
 				}
@@ -3898,6 +3903,7 @@ void wcpubyte(Word x, Byte c)
 											// be right now that the CPU emulation does all Word accesses
 	}
 
+    // check for cartridge banking
 	if ((x>=0x6000)&&(x<0x8000)) {
 #ifdef USE_BIG_ARRAY
 		if ((x == 0x7ffd) && (BIGARRAYSIZE > 0)) {
@@ -3910,7 +3916,7 @@ void wcpubyte(Word x, Byte c)
 		
 		if ((xb) && (ROMMAP[x])) {		// trap ROM writes and check for XB bank switch
             // collect bits from address and data buses - x is address, c is data
-            int bits = (c<<16)|x;
+            int bits = (c<<13)|(x&0x1fff);
 			if (bInvertedBanks) {
 				// uses inverted address lines!
 				xbBank=(((~bits)>>1)&xb);		// XB bank switch, up to 4096 banks
