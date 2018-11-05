@@ -178,6 +178,8 @@ BEGIN
             MENUITEM "Disable Blanking",            ID_LAYERS_DISABLEBLANKING
             MENUITEM "Disable Sprites",             ID_LAYERS_DISABLESPRITES
             MENUITEM "Disable Background",          ID_LAYERS_DISABLEBACKGROUND
+            MENUITEM "Disable Bitmap Color Layer",  ID_LAYERS_DISABLEBITMAPCOLORLAYER
+            MENUITEM "Disable Bitmap Pattern Layer", ID_LAYERS_DISABLEBITMAPPATTERNLAYER
         END
         MENUITEM "50hz (60hz if Off)",          ID_VIDEO_50HZ
         MENUITEM "Show FPS",                    ID_VIDEO_SHOWFPS

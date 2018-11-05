@@ -294,6 +294,7 @@ int MaintainAspect;							// Flag for Aspect ratio
 int StretchMode;							// Setting for video stretching
 int bUse5SpriteLimit;						// whether the sprite flicker is on
 bool bDisableBlank, bDisableSprite, bDisableBackground;	// other layers :)
+bool bDisableColorLayer, bDisablePatternLayer;          // bitmap only layers
 
 extern int fontX, fontY;					// Font dimensions
 extern HANDLE hDebugWindowUpdateEvent;		// debug draw event
@@ -947,16 +948,25 @@ void VDPgraphicsII(int scanline)
 				ch=VDP[SIT+o];
 			}
 			
-			p_add=PDT+(((ch<<3)+Poffset)&PDTsize)+i3;
-			c_add=CT+(((ch<<3)+Coffset)&CTsize)+i3;
+    		p_add=PDT+(((ch<<3)+Poffset)&PDTsize)+i3;
+	    	c_add=CT+(((ch<<3)+Coffset)&CTsize)+i3;
 			o++;
 
 //			for (i3=0; i3<8; i3++)
 			{	
-				t=VDP[p_add];
-				fgc=VDP[c_add];
-				bgc=fgc&0x0f;
-				fgc>>=4;
+                if (bDisablePatternLayer) {
+                    t = 0xff;   // show foreground colors
+                } else {
+    				t=VDP[p_add];
+                }
+                if (bDisableColorLayer) {
+                    fgc=15; // white
+                    bgc=1;  // black
+                } else {
+    				fgc=VDP[c_add];
+	    			bgc=fgc&0x0f;
+    				fgc>>=4;
+                }
 				{
 					pixel(i2,i1+i3,(t&0x80 ? fgc : bgc ));
 					pixel(i2+1,i1+i3,(t&0x40 ? fgc : bgc ));

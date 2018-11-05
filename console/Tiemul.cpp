@@ -5219,6 +5219,13 @@ void wcru(Word ad, int bt)
 //                        debug_write("9901 timer interrupt off");
 						break;
 
+                    case 18:
+                    case 19:
+                    case 20:
+                        // keyboard column select
+//                        debug_write("Keyboard column now: %d", (CRU[0x14]==0 ? 1 : 0) | (CRU[0x13]==0 ? 2 : 0) | (CRU[0x12]==0 ? 4 : 0));
+                        break;
+
                     case 22:
                         // CS1 motor on
                         setTapeMotor(true);
@@ -5265,6 +5272,13 @@ void wcru(Word ad, int bt)
 						timer9901IntReq=0;
 //                        debug_write("9901 timer request cleared");
 						break;
+
+                    case 18:
+                    case 19:
+                    case 20:
+                        // keyboard column select
+//                        debug_write("Keyboard column now: %d", (CRU[0x14]==0 ? 1 : 0) | (CRU[0x13]==0 ? 2 : 0) | (CRU[0x12]==0 ? 4 : 0));
+                        break;
 
                     case 22:
                         // CS1 motor off
