@@ -116,6 +116,7 @@ extern Byte CPUSpeechHaltByte;
 extern int cpucount, cpuframes;					// CPU counters for timing
 extern int timercount;							// Used to estimate runtime
 extern bool bDisableBlank, bDisableSprite, bDisableBackground;
+extern bool bDisableColorLayer, bDisablePatternLayer;
 extern int bEnable80Columns, bEnable128k, bF18Enabled, bInterleaveGPU;
 extern int bShowFPS;
 // sams config
@@ -1118,7 +1119,29 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				} 
 				redraw_needed=REDRAW_LINES;
 				break;
-			
+
+			case ID_LAYERS_DISABLEBITMAPCOLORLAYER:
+				if (bDisableColorLayer) {
+					bDisableColorLayer=false;
+					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBITMAPCOLORLAYER, MF_UNCHECKED);
+				} else {
+					bDisableColorLayer=true;
+					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBITMAPCOLORLAYER, MF_CHECKED);
+				} 
+				redraw_needed=REDRAW_LINES;
+				break;
+
+            case ID_LAYERS_DISABLEBITMAPPATTERNLAYER:
+				if (bDisablePatternLayer) {
+					bDisablePatternLayer=false;
+					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBITMAPPATTERNLAYER, MF_UNCHECKED);
+				} else {
+					bDisablePatternLayer=true;
+					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBITMAPPATTERNLAYER, MF_CHECKED);
+				} 
+				redraw_needed=REDRAW_LINES;
+				break;
+
 			case ID_VIDEO_50HZ:
 				if (lParam != 1) {
 					hzRate=(hzRate==HZ60)?HZ50:HZ60;
