@@ -172,7 +172,7 @@ bool g_bCheckUninit = false;				// track reads from uninitialized RAM
 bool nvRamUpdated = false;					// if cartridge RAM is written to (also needs an NVRAM type to be saved)
 
 extern Byte staticCPU[0x10000];				// main memory
-Byte CPU2[MAX_BANKSWITCH_SIZE];				// Cartridge space bank-switched (ROM >6000 space, 8k blocks, XB, 379, SuperSpace and MBX ROM)
+Byte *CPU2=NULL;				            // Cartridge space bank-switched (ROM >6000 space, 8k blocks, XB, 379, SuperSpace and MBX ROM), sized by xbmask
 Byte mbx_ram[1024];							// MBX cartridge RAM (1k)
 Byte ROMMAP[65536];							// Write-protect map of CPU space
 Byte DumpMap[65536];						// map for data to dump to files
@@ -2336,7 +2336,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 	char *pData;
 	HRSRC hRsrc;
 	HGLOBAL hGlob;
-	static unsigned char DiskFile[MAX_BANKSWITCH_SIZE+6];	// ROM plus 6 byte kracker header max (static to get it off the stack)
+	unsigned char *DiskFile=NULL;	// ROM plus 6 byte kracker header max
 	char *pszFrom="resource";
 	char szFilename[MAX_PATH+3]="";		// extra for parenthesis and space
 
@@ -2423,8 +2423,24 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 			}
 			pszFrom="disk";
 			int nRealLen=0;
+            
+            // get filesize
+            fseek(fp, 0, SEEK_END);
+            int fSize = ftell(fp);
+            fseek(fp, 0, SEEK_SET);
+
+            if (NULL != DiskFile) free(DiskFile);
+            if (fSize > MAX_BANKSWITCH_SIZE+6) {
+                fSize = MAX_BANKSWITCH_SIZE+6;
+            }
+            DiskFile=(unsigned char*)malloc(fSize);
+            if (NULL == DiskFile) {
+                debug_write("Can't allocate memory for read of '%s'!", pImg->szFileName);
+                return;
+            }
+
 			while (!feof(fp)) {
-				int nTmp = fread(&DiskFile[nRealLen], 1, MAX_BANKSWITCH_SIZE+6-nRealLen, fp);
+				int nTmp = fread(&DiskFile[nRealLen], 1, fSize-nRealLen, fp);
 				if (nTmp == 0) {
 					debug_write("Failed to read entire file - too large or disk error. Max size = %dk!", MAX_BANKSWITCH_SIZE/1024);
 					break;
@@ -2469,6 +2485,8 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 		}
 	}
 
+    // Don't return without freeing DiskFile
+
 	if ((pImg->nType == TYPE_KEYS) || (pImg->nType == TYPE_OTHER) || (NULL != pData)) {
 		// finally ;)
 		debug_write("Loading file %sfrom %s: Type %c, Bank %d, Address 0x%04X, Length 0x%04X", szFilename,  pszFrom, pImg->nType, pImg->nBank, pImg->nLoadAddr, nLen);
@@ -2503,7 +2521,13 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 						debug_write("%s overwrites memory block - truncating.", pImg->szFileName);
 						nLen=0x8000-pImg->nLoadAddr;
 					}
-					// load into the first bank of paged memory
+                    // this is unlikely, but better safe than crashy
+                    if (NULL == CPU2) {
+                        CPU2=(Byte*)malloc(8192);
+                        xb=0;
+                        xbBank=0;
+                    }
+					// load into the first bank of paged memory (8k max)
 					memcpy(&CPU2[pImg->nLoadAddr-0x6000], pData, nLen);
 					// also load to main memory incase we aren't paging
 					WriteMemoryBlock(pImg->nLoadAddr, pData, nLen);
@@ -2546,6 +2570,12 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 							// becase we save this back out, fix up the size internally
 							pImg->nLength = nLen;
 						}
+                        // this is unlikely, but better safe than crashy
+                        if (NULL == CPU2) {
+                            CPU2=(Byte*)malloc(8192);
+                            xb=0;
+                            xbBank=0;
+                        }
 						// load into the first bank of paged memory
 						memcpy(&CPU2[pImg->nLoadAddr-0x6000], pData, nLen);
 						// also load to main memory incase we aren't paging
@@ -2570,6 +2600,10 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					debug_write("%s overwrites memory block - truncating.", pImg->szFileName);
 					nLen=8192-(pImg->nLoadAddr-0x6000);
 				}
+                // make sure we have enough space
+                if ((NULL == CPU2)||(xb<1)) {
+                    CPU2=(Byte*)realloc(CPU2, 8192*2);
+                }
 				// load it into the second bank of switched memory (2k in)
 				memcpy(&CPU2[pImg->nLoadAddr-0x4000], pData, nLen);
 				xb=1;		// one xb bank loaded
@@ -2581,6 +2615,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 			case TYPE_378:
 			case TYPE_379:
 			case TYPE_MBX:
+            {
 				// Non-inverted or Inverted XB style, but more than one bank! Up to 32MB mapped 8k at a time
 				// not certain the intended maximum for MBX, but it has a slightly different layout
 				// We still use the same loader here though.
@@ -2592,7 +2627,8 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 				if (pImg->nLoadAddr < 0x2000) {
 					memset(&ROMMAP[pImg->nLoadAddr+0x6000], 1, min(nLen, 0x2000-pImg->nLoadAddr));
 				}
-				memcpy(&CPU2[pImg->nLoadAddr], pData, nLen);
+
+                int oldXB = xb;
 				xb=(pImg->nLoadAddr+nLen+8191)/8192;	// round up, this many banks are loaded
 				// now we need to make it a power of 2 for masking
 				switch (xb) {
@@ -2653,15 +2689,6 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                         } else if (xb<=16384) {  // 8193-16384 banks are 14 bits (result 16383)
 							xb=16383;
 							debug_write("Enable gigacart 128MB with 256 bytes GROM");
-                            // copy the GROM data into the GROM space
-
-                            // copy to all banks - only 256 bytes, repeated over and over
-					        for (int idx=0; idx<PCODEGROMBASE; idx++) {
-                                for (int adr=0x8000; adr<0xa000; adr+=256) {
-                                    // last 256 bytes of range
-    						        memcpy(&GROMBase[idx].GROM[adr], &CPU2[128*1024*1024-256], 256);
-                                }
-					        }
                         } else if (xb<=32768) {  // 16385-32768 banks are 15 bits (result 32767)
 							debug_write("Enable gigacart 256MB");
                             xb=32767;
@@ -2671,8 +2698,26 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 						}
 						break;
 				}
-				xbBank=xb;	// not guaranteed on real console
+
+                // make sure we have enough space
+                if ((NULL == CPU2)||(oldXB<xb)) {
+                    CPU2=(Byte*)realloc(CPU2, 8192*(xb+1));
+                }
+				memcpy(&CPU2[pImg->nLoadAddr], pData, nLen);
+                xbBank=xb;	// not guaranteed on real console
 				//xbBank=rand()%xb;		// TODO: make an option
+
+                if (xb == 16383) {
+                    // copy the GROM data into the GROM space
+                    // copy to all banks - only 256 bytes, repeated over and over
+					for (int idx=0; idx<PCODEGROMBASE; idx++) {
+                        for (int adr=0x8000; adr<0xa000; adr+=256) {
+                            // last 256 bytes of range
+    						memcpy(&GROMBase[idx].GROM[adr], &CPU2[128*1024*1024-256], 256);
+                        }
+					}
+                }
+               
 				// TYPE_378 is non-inverted, non MBX
 				bInvertedBanks = false;
 				bUsesMBX = false;
@@ -2682,6 +2727,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					bUsesMBX=true;
 				}
 				debug_write("Loaded %d bytes, %sinverted, %sbank mask 0x%X", nLen, bInvertedBanks?"":"non-", bUsesMBX?"MBX, ":"", xb);
+            }
 				break;
 
 			case TYPE_RAM:
@@ -2819,6 +2865,10 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 	}
 	
 	// WIN32 does not require (or even permit!) us to unlock and release these objects
+    // But we do need to free DiskFile if set
+    if (NULL != DiskFile) {
+        free(DiskFile);
+    }
 }
 
 void readroms() { 
@@ -2877,10 +2927,18 @@ void readroms() {
 	// process the breakpoint list and re-open any listed files
 	ReloadDumpFiles();
 
+    // make sure there's at least a little memory at CPU2, since we are building on very old code
+    // the xb mask must now always be associated with CPU2
+    if (NULL == CPU2) {
+        CPU2=(Byte*)malloc(8192);
+        xb=0;
+        xbBank=0;
+    }
+
 	// now memory
 	memset(ROMMAP, 0, 65536);	// this is not RAM
 	if (!bWarmBoot) {
-		memrnd(CPU2, sizeof(CPU2));
+		memrnd(CPU2, 8192*(xb+1));
 		memrnd(VDP, 16384);
 	}
 	memset(CRU, 1, 4096);		// I think CRU is deterministic
@@ -3844,6 +3902,7 @@ Byte rcpubyte(Word x,bool rmw) {
 				// XB is supposed to only page the upper 4k, but some Atari carts seem to like it all
 				// paged. Most XB dumps take this into account so only full 8k paging is implemented.
 				if (xb) {
+                    // make sure xbBank never exceeds xb
 					return(CPU2[(xbBank<<13)+(x-0x6000)]);	// cartridge bank 2 and up
 				} else {
 					return ReadMemoryByte(x, !rmw);			// cartridge bank 1

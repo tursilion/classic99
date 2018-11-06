@@ -228,7 +228,7 @@ extern int nDSRBank[16];							// Is the DSR bank switched?
 
 extern char key[256];								// keyboard state buffer
 
-extern Byte CPU2[MAX_BANKSWITCH_SIZE];				// Cartridge space bank-switched
+extern Byte *CPU2;				                    // Cartridge space bank-switched (malloc'd, don't exceed xbmask)
 extern Byte ROMMAP[65536];							// Write-protect map of CPU space (todo: switch to bits to save RAM)
 extern Byte CRU[4096];								// CRU space
 extern Byte DSR[16][16384];							// 16 CRU bases, up to 16k each (ROM >4000 space)

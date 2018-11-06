@@ -34,6 +34,7 @@ Word GetSafeCpuWord(int x, int bank) {
 }
 
 // Read a byte withOUT triggering the hardware - for monitoring
+// make sure bank never exceeds xb
 Byte GetSafeCpuByte(int x, int bank) {
 	x&=0xffff;
 	switch (x & 0xe000) {
