@@ -985,7 +985,7 @@ void VDPgraphicsII(int scanline)
 //			for (i3=0; i3<8; i3++)
 			{	
                 if (bDisablePatternLayer) {
-                    t = 0xff;   // show foreground colors
+                    t = 0x00;   // show background colors
                 } else {
     				t=VDP[p_add];
                 }

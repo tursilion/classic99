@@ -978,6 +978,7 @@ bool FiadDisk::BufferTextFile(FileInfo *pFile) {
 	CString csFileName;
 	unsigned char *pData;
 	char *pTmp;
+    bool noCRLF = false;
 
 	csFileName=BuildFilename(pFile);
 	pFile->NumberRecords=0;		// we don't know how many records there are, so we just read
@@ -987,6 +988,20 @@ bool FiadDisk::BufferTextFile(FileInfo *pFile) {
 		debug_write("Failed to open %s", (LPCSTR)csFileName);
 		return false;
 	}
+
+    // xdt99 writes object files that don't contain carriage returns OR linefeed (for uncompressed),
+    // so to be able to support that, check for fixed mode and read in a few lines. If we don't see
+    // any carriage returns, assume we need to manually deblock (rather than just hunting for obj file format)
+    if ((pFile->FileType & TIFILES_VARIABLE) == 0) {
+        pTmp = (char*)malloc(512);
+        int len = fread(pTmp, 1, 512, fp);
+        if ((NULL == memchr(pTmp, '\r', len)) && (NULL == memchr(pTmp, '\n', len))) {
+            debug_write("No line endings detected, deblocking at %d cols", pFile->RecordLength);
+            noCRLF = true;
+        }
+        free(pTmp);
+        fseek(fp, 0, SEEK_SET);
+    }
 
 	// get a new buffer as well sized as we can figure
 	if (NULL != pFile->pData) {
@@ -1023,10 +1038,19 @@ bool FiadDisk::BufferTextFile(FileInfo *pFile) {
 
 		// The final +1 is so we can read a terminating NUL safely at the end
 		// NULs in the middle are overwritten by the next record
-		if (NULL == fgets((char*)(pData+2), pFile->RecordLength+1, fp)) {
-			// no data was read! Ensure no duplicates
-			*(pData+2)='\0';
-		}
+        if (noCRLF) {
+            // just read the record length directly
+            *(pData+2+pFile->RecordLength)='\0';
+            if (0 == fread((pData+2), 1, pFile->RecordLength, fp)) {
+			    // no data was read! Ensure no duplicates
+			    *(pData+2)='\0';
+		    }
+        } else {
+		    if (NULL == fgets((char*)(pData+2), pFile->RecordLength+1, fp)) {
+			    // no data was read! Ensure no duplicates
+			    *(pData+2)='\0';
+		    }
+        }
 		// remove and pad EOL
 		bool bEOLFound = false;
 		char *pEnd = strchr((char*)(pData+2), '\0');
@@ -1060,7 +1084,7 @@ bool FiadDisk::BufferTextFile(FileInfo *pFile) {
 		}
 		pData+=pFile->RecordLength+2;
 		pFile->NumberRecords++;
-		if (!bEOLFound) {
+		if ((!bEOLFound)&&(!noCRLF)) {
 			// we didn't read the whole line, so skim until we do
 			// in text translation mode, the end of line should be just
 			// 0x0a (\n)
