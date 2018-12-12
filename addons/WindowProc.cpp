@@ -816,11 +816,11 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 									fseek(fp, 0, SEEK_END);
 									Users[nUsr].Img[nCnt].dwImg=NULL;
 									if ((Users[nUsr].Img[nCnt].nType==TYPE_378)||(Users[nUsr].Img[nCnt].nType==TYPE_379)||(Users[nUsr].Img[nCnt].nType==TYPE_MBX)) {
-										Users[nUsr].Img[nCnt].nLoadAddr=(unsigned short)0x0000;
+										Users[nUsr].Img[nCnt].nLoadAddr=0x0000;
 									} else {
-										Users[nUsr].Img[nCnt].nLoadAddr=(unsigned short)0x6000;
+										Users[nUsr].Img[nCnt].nLoadAddr=0x6000;
 									}
-									Users[nUsr].Img[nCnt].nLength=(unsigned short)ftell(fp);
+									Users[nUsr].Img[nCnt].nLength=ftell(fp);
 									strncpy(Users[nUsr].Img[nCnt].szFileName, ofn.lpstrFile, 1024);
 									Users[nUsr].Img[nCnt].szFileName[1023]='\0';
 									nCnt++;
@@ -3765,11 +3765,15 @@ void DebugUpdateThread(void*) {
 			if (!bFrozenText) {
 				// prints the register information in a single edit control
 				// spacing: <5 label><1 space><4 value><4 spaces><5 label><1 space><4 value>
+				Word WP = pCurrentCPU->GetWP();
 				for (idx=0; idx<8; idx++) {
-					Word WP = pCurrentCPU->GetWP();
 					int val=pCurrentCPU->GetSafeWord(WP+idx*2, xbBank);
 					int val2=pCurrentCPU->GetSafeWord(WP+(idx+8)*2, xbBank);
-					sprintf(buf1, " R%2d  %04X   R%2d  %04X\r\n", idx, val, idx+8, val2);
+                    if (idx == 0) {
+    					sprintf(buf1, " R%2d  %04X   R%2d  %04X    %s\r\n", idx, val, idx+8, val2, (pCurrentCPU==pGPU)?"GPU":"CPU");
+                    } else {
+    					sprintf(buf1, " R%2d  %04X   R%2d  %04X\r\n", idx, val, idx+8, val2);
+                    }
 					csOut+=buf1;
 				}
 

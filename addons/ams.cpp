@@ -53,12 +53,13 @@ void InitializeMemorySystem(EmulationMode cardMode)
 		// TODO: this is wrong, it should be zeroed, but right now the rest of the
 		// emulation relies on these values being set. Which probably means that
 		// the passthrough settings are also wrong. ;)
-		mapperRegisters[reg] = (reg << 8);
+        // TODO: make an ini option to force the register config on startup when the zeros are in
+        mapperRegisters[reg] = (reg << 8);
 	}
 
 #ifdef ENABLE_HUGE_AMS
         // todo: this is also wrong, it's for testing Ralph's project
-        mapperRegisters[10] = 0;    // map first page of AMS to 0xA000
+//        mapperRegisters[10] = 0;    // map first page of AMS to 0xA000
 #endif
 
 	if (!bWarmBoot) {

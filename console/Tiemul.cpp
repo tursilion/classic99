@@ -2439,7 +2439,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                 return;
             }
 
-			while (!feof(fp)) {
+			while ((!feof(fp)) && (nRealLen < fSize)) {
 				int nTmp = fread(&DiskFile[nRealLen], 1, fSize-nRealLen, fp);
 				if (nTmp == 0) {
 					debug_write("Failed to read entire file - too large or disk error. Max size = %dk!", MAX_BANKSWITCH_SIZE/1024);
@@ -3727,6 +3727,11 @@ Byte rcpubyte(Word x,bool rmw) {
 	// is greater than 0. A custom DSR will be written to be loaded which
 	// will appear to the "TI" to support all valid devices, and it will
 	// be loaded into the DSR space.
+
+    // TODO HACK FOR PCODE RELOCATE
+//    if ((x<0x6000)&&(x>0x3fff)&&(nCurrentDSR==-1)) {
+//        TriggerBreakPoint();
+//    }
 
 	// no matter what kind of access, update the heat map
 	UpdateHeatmap(x);
