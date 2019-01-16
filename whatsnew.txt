@@ -1855,6 +1855,17 @@ Cartridge System:
 -more disk DSR warnings (hate that disk DSR so much...)
 -allow the disk corruption break option to catch the DSR warnings too
 -update manual for 9901 line
+-----------------------------------------------
+16 January 2019
+-fix user carts so more than 100 could be loaded
+-change cartridge memory from static to allocated
+-fix large cartridge types
+-minor AMS tweaks
+-add ability to disable bitmap layers
+-read windows text files without line feeds (like xas99 emits)
+-allow headerless files to open as DF128 or IF128
+-additional debug for some exotic disk tracking methods
+
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
