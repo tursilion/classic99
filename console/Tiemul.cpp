@@ -1027,8 +1027,12 @@ void ReadConfig() {
 		for (idx=0; idx<100; idx++) {
 			char buf[256], buf2[256];
 
+            // TODO: check for memory leaks on failed realloc
 			// it's not the most efficient to keep reallocing, but it will be fine in this limited use case
 			Users=(CARTS*)realloc(Users, (nTotalUserCarts+1) * sizeof(Users[0]));
+            if (NULL == Users) {
+                fail("Unable to allocate user cart memory!");
+            }
 			memset(&Users[nTotalUserCarts], 0, sizeof(CARTS));
 
 			sprintf(buf, "%s%d", UserGroupNames[cart], idx);
@@ -1079,9 +1083,12 @@ void ReadConfig() {
 				++idx2;
 				++nTotalUserCarts;
 				if (nTotalUserCarts+ID_USER_0 >= ID_SYSTEM_0) break;	// inner loop break
+                if (nTotalUserCarts >= MAXUSERCARTS) break;                 // system max
 			}
 			if (nTotalUserCarts+ID_USER_0 >= ID_SYSTEM_0) break;	// mid loop break
+            if (nTotalUserCarts >= MAXUSERCARTS) break;                 // system max
 		}
+        debug_write("Loaded %d user carts total.", nTotalUserCarts);
 		nLoadedUserCarts[cart]=idx2;
 		if (idx2 == 0) {
 			// there were no carts in this one, so just remove it from the list
@@ -1093,9 +1100,13 @@ void ReadConfig() {
 			nLoadedUserGroups--;
 		}
 		if (nTotalUserCarts+ID_USER_0 >= ID_SYSTEM_0) break;	// outer loop break
+        if (nTotalUserCarts >= MAXUSERCARTS) break;                 // system max (do we need this?)
 	}
 	if (nTotalUserCarts+ID_USER_0 >= ID_SYSTEM_0) {
-		debug_write("Exceeded maximum user cartridge count of %d (impressive!)", ID_SYSTEM_0 - ID_USER_0);
+		debug_write("User cartridge count exceeded available units of %d (tell Tursi!)", ID_SYSTEM_0 - ID_USER_0);
+	}
+	if (nTotalUserCarts >= 1000) {
+		debug_write("Exceeded maximum user cartridge count of %d (impressive!)", MAXUSERCARTS);
 	}
 
 skiprestofuser:
@@ -1424,6 +1435,10 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	framedata=(unsigned int*)malloc((512+16)*(192+16)*4);	// This is where we draw everything - 8 pixel border - extra room left for 80 column mode
 	framedata2=(unsigned int*)malloc((256+16)*4*(192+16)*4*4);// used for the filters - 16 pixel border on SAI and 8 horizontal on TV (x2), HQ4x is the largest
 
+    if ((framedata==NULL)||(framedata2==NULL)) {
+        fail("Unable to allocate framebuffers");
+    }
+
 	// create and register a class and open a window
 	if (NULL == hPrevInstance)
 	{
@@ -1517,6 +1532,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// create the default user0 cart (used for 'open')
 	Users=(CARTS*)malloc(sizeof(CARTS));
+    if (NULL == Users) {
+        fail("Failed to allocate user cart memory default");
+    }
 	ZeroMemory(Users, sizeof(CARTS));
 
 	for (idx=0; idx<=PCODEGROMBASE; idx++) {
@@ -2524,6 +2542,11 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                     // this is unlikely, but better safe than crashy
                     if (NULL == CPU2) {
                         CPU2=(Byte*)malloc(8192);
+                        if (NULL == CPU2) {
+                            // this will probably crash... maybe fail?
+                            debug_write("Failed to allocate base RAM for cartridge, aborting load.");
+                            break;
+                        }
                         xb=0;
                         xbBank=0;
                     }
@@ -2573,6 +2596,10 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                         // this is unlikely, but better safe than crashy
                         if (NULL == CPU2) {
                             CPU2=(Byte*)malloc(8192);
+                            if (NULL == CPU2) {
+                                debug_write("Failed to allocate base NVRAM for cartridge, aborting load.");
+                                break;
+                            }
                             xb=0;
                             xbBank=0;
                         }
@@ -2602,7 +2629,13 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 				}
                 // make sure we have enough space
                 if ((NULL == CPU2)||(xb<1)) {
-                    CPU2=(Byte*)realloc(CPU2, 8192*2);
+                    Byte *CNew = (Byte*)realloc(CPU2, 8192*2);
+                    if (NULL == CNew) {
+                        debug_write("Failed to reallocate RAM for XB cartridge, aborting load.");
+                        break;
+                    } else {
+                        CPU2 = CNew;
+                    }
                 }
 				// load it into the second bank of switched memory (2k in)
 				memcpy(&CPU2[pImg->nLoadAddr-0x4000], pData, nLen);
@@ -2701,7 +2734,15 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 
                 // make sure we have enough space
                 if ((NULL == CPU2)||(oldXB<xb)) {
-                    CPU2=(Byte*)realloc(CPU2, 8192*(xb+1));
+                    Byte *CNew=(Byte*)realloc(CPU2, 8192*(xb+1));
+                    if (NULL == CNew) {
+                        debug_write("Failed to reallocate RAM for cartridge, aborting load.");
+                        xb=0;
+                        xbBank=0;
+                        break;
+                    } else {
+                        CPU2 = CNew;
+                    }
                 }
 				memcpy(&CPU2[pImg->nLoadAddr], pData, nLen);
                 xbBank=xb;	// not guaranteed on real console
@@ -2794,9 +2835,13 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					memmove(p+1, p+2, strlen(p+1));
 				}
 				PasteString=(char*)malloc(strlen(pImg->szFileName)+1);
-				strcpy(PasteString, pImg->szFileName);
-				PasteCount=-1;		// give it time to come up!
-				PasteIndex=PasteString;
+                if (NULL != PasteString) {
+    				strcpy(PasteString, pImg->szFileName);
+	    			PasteCount=-1;		// give it time to come up!
+		    		PasteIndex=PasteString;
+                } else {
+                    debug_write("Paste string failed to allocate memory");
+                }
 				break;
 
 			case TYPE_MPD:
@@ -2931,6 +2976,9 @@ void readroms() {
     // the xb mask must now always be associated with CPU2
     if (NULL == CPU2) {
         CPU2=(Byte*)malloc(8192);
+        if (NULL == CPU2) {
+            fail("Failed to allocate initial RAM for cartridge");
+        }
         xb=0;
         xbBank=0;
     }

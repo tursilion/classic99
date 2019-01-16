@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.004"
+#define VERSION "QI399.005"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -67,6 +67,7 @@ typedef unsigned __int32 DWord;
 #define SPEECHBUFFER 16000
 #define MAX_BREAKPOINTS 10
 #define MAXROMSPERCART	32
+#define MAXUSERCARTS 1000
 
 // note: not enough to change this - you also need to change the
 // paging/padding calculation in the loader!

@@ -249,7 +249,14 @@ bool ClipboardDisk::BufferFile(FileInfo *pFile) {
 				// time to grow the buffer - add another 100 lines - the +1 is already in there
 				// so we don't need it here.
 				pFile->nDataSize += (100) * (pFile->RecordLength + 2);
-				pFile->pData  = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+                unsigned char *pTmp = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+                if (NULL == pTmp) {
+                    debug_write("Clipboard buffer failed to reallocate memory, failing.");
+		            // No, we failed - most likely reason is someone else has it open for write
+		            pFile->LastError = ERR_FILEERROR;
+		            return false;
+	            }
+				pFile->pData  = pTmp;
 				pData = pFile->pData + nOffset;
 			}
 

@@ -897,7 +897,15 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 					int nOffset = pData - pFile->pData;		// in case the buffer moves
 					// time to grow the buffer - add another 100 lines
 					pFile->nDataSize += (100) * (pFile->RecordLength + 2);
-					pFile->pData  = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+                    unsigned char *pTmp = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+                    if (NULL == pTmp) {
+                        debug_write("BufferFIAD failed to allocate memory for data, failing.");
+                        pFile->LastError = ERR_FILEERROR;
+                        fclose(fp);
+                        return false;
+                    }
+		            pFile->pData = pTmp;
+
 					pData = pFile->pData + nOffset;
 				}
 				
@@ -1029,8 +1037,15 @@ bool FiadDisk::BufferTextFile(FileInfo *pFile) {
 			// time to grow the buffer - add another 100 lines - the +1 is already in there
 			// so we don't need it here.
 			pFile->nDataSize += (100) * (pFile->RecordLength + 2);
-			pFile->pData  = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
-			pData = pFile->pData + nOffset;
+            unsigned char *pTmp = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+            if (NULL == pTmp) {
+                debug_write("BufferText failed to allocate memory for data, failing.");
+                pFile->LastError = ERR_FILEERROR;
+                fclose(fp);
+                return false;
+            }
+		    pFile->pData = pTmp;
+            pData = pFile->pData + nOffset;
 		}
 
 		// clear the buffer in case the read is short
@@ -1142,7 +1157,14 @@ bool FiadDisk::BufferImgFile(FileInfo *pFile) {
 			// time to grow the buffer - add another 100 lines - the +1 is already in there
 			// so we don't need it here.
 			pFile->nDataSize += (100) * (pFile->RecordLength + 2);
-			pFile->pData  = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+			unsigned char *pTmp = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+            if (NULL == pTmp) {
+                debug_write("BufferImg failed to allocate memory for data, failing.");
+                pFile->LastError = ERR_FILEERROR;
+                fclose(fp);
+                return false;
+            }
+		    pFile->pData = pTmp;
 			pData = pFile->pData + nOffset;
 		}
 
@@ -2033,11 +2055,12 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 				}
 
 				// else, allocate the next entry
-				Filenames = (FileInfo*)realloc(Filenames, sizeof(FileInfo)*(n+1));	// get one more
-				if (NULL == Filenames) {
+				FileInfo* pTmp = (FileInfo*)realloc(Filenames, sizeof(FileInfo)*(n+1));	// get one more
+				if (NULL == pTmp) {
 					debug_write("Couldn't realloc memory for directory after %d entries.", n);
 					return 0;
 				}
+                Filenames = pTmp;
 				new(&Filenames[n]) FileInfo;
 			}
 		} while (FindNextFile(fsrc, &myDat));

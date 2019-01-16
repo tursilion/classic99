@@ -456,7 +456,13 @@ bool BaseDisk::Write(FileInfo *pFile) {
 		// we need to grow the data buffer
 		int nOldSize = pFile->nDataSize;
 		pFile->nDataSize = (pFile->nCurrentRecord+10) * (pFile->RecordLength+2);
-		pFile->pData = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+        unsigned char *pTmp = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+        if (NULL == pTmp) {
+            debug_write("Write failed to allocate memory for data, failing.");
+            pFile->LastError = ERR_FILEERROR;
+            return false;
+        }
+		pFile->pData = pTmp;
 		memset(pFile->pData+nOldSize, 0, pFile->nDataSize - nOldSize);
 		// now set the real pointer
 		pDat = (pFile->nCurrentRecord * (pFile->RecordLength+2)) + pFile->pData;

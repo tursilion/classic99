@@ -712,7 +712,13 @@ bool ImageDisk::BufferSectorFile(FileInfo *pFile) {
 					int nOffset = pData - pFile->pData;		// in case the buffer moves
 					// time to grow the buffer - add another 100 lines
 					pFile->nDataSize += (100) * (pFile->RecordLength + 2);
-					pFile->pData  = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+					unsigned char *pTmp  = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+                    if (NULL == pTmp) {
+                        debug_write("BufferSector couldn't realloc memory for buffer, failing.");
+                        pFile->LastError = ERR_FILEERROR;
+                        return false;
+                    }
+                    pFile->pData = pTmp;
 					pData = pFile->pData + nOffset;
 				}
 				

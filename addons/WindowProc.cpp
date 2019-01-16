@@ -617,7 +617,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					SendMessage(hwnd, WM_COMMAND, ID_FILE_RESET, 0);
 				}
 			}
-			if ((wParam >= ID_USER_0) && (wParam < ID_USER_0+100)) {
+			if ((wParam >= ID_USER_0) && (wParam < ID_USER_0+MAXUSERCARTS)) {
 				// user requested to change cartridge (user)
 				int ret;
 				if (fKeyEverPressed) {
@@ -870,7 +870,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_CARTRIDGE_EJECT:
 				nCart=-1;
 
-				for (int idx=0; idx<100; idx++) {
+				for (int idx=0; idx<nTotalUserCarts; idx++) {
 					CheckMenuItem(GetMenu(myWnd), ID_USER_0+idx, MF_UNCHECKED);
 				}
 				for (int idx=0; idx<100; idx++) {
