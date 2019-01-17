@@ -1865,6 +1865,8 @@ Cartridge System:
 -read windows text files without line feeds (like xas99 emits)
 -allow headerless files to open as DF128 or IF128
 -additional debug for some exotic disk tracking methods
+---
+- then later the same day, fix the 9901 timer reset so CS1 works again
 
 
 

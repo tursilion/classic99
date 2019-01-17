@@ -5368,11 +5368,14 @@ void wcru(Word ad, int bt)
 					// writing 1 has no effect
 				} else {
 					// writing to CRU 9901 timer
+                    // V9T9 doesn't update starttimer9901 until release from clock mode (double-buffered), but it probably doesn't matter to most apps
                     int oldtimer = starttimer9901;
 					Word mask=0x01<<(ad-1);
 					starttimer9901|=mask;
                     if (oldtimer != starttimer9901) {
-//                        debug_write("9901 timer now set to %d", starttimer9901);
+//                      debug_write("9901 timer now set to %d", starttimer9901);
+                        // per adam doc, we start decrementing now (non-zero value)
+                        timer9901=starttimer9901;
                     }
 				}
 			} else {
@@ -5380,6 +5383,9 @@ void wcru(Word ad, int bt)
 				switch (ad) {
                     case 0:
                         // timer mode (update readback reg)
+                        // Adam doc says that the read register also gets a copy every decrement,
+                        // (ie: it just stops updating), but since we can't read it otherwise anyway,
+                        // this should have the same effect.
                         timer9901Read = timer9901;
                         break;
 
@@ -5420,25 +5426,30 @@ void wcru(Word ad, int bt)
 					// it only has this effect in timer mode, but is not a timer function.
 				} else if (ad == 0) {
 					// Turning off timer mode - start timer (but don't reset it, as proven by camelForth)
+                    // Not sure this matters to this emulation, but Adam doc notes that the 9901 will exit
+                    // clock mode if it even sees "a 1 on select line S0", even when chip select is not active.
+                    // this may be the bit I mention below that Thierry noted as well.
 					CRU[ad]=0;
-                    if (timer9901 == 0) {
-                        // real hardware would have a clock gate, but since we use
-                        // timer9901!=0, I have to set it here, but only if it's not
-                        // already set.
+                    if (timer9901 != starttimer9901) {
                         // TODO: in this initial case, would the interrupt flag be set?
+                        // BUT: this change breaks tape. To read tape, I /must/ set timer9901=starttimer9901
+                        // So who's right? How does the damn timer work?
+                        // V9T9 (DOS) DOES this reset every time it exits clock mode
                         timer9901=starttimer9901;
                     }
 //					timer9901=starttimer9901;
-//                  timer9901Read=timer9901;
+//                  timer9901Read=timer9901;    // V9T9 DOS updates timer9901Read ONLY when setting to clock mode (bit set is 1), so this is never right here
 					CRUTimerTicks=0;
 //					debug_write("Starting 9901 timer at %d ticks", timer9901);
 				} else {
 					// writing to CRU 9901 timer
+                    // V9T9 doesn't update starttimer9901 until release from clock mode (double-buffered), but it probably doesn't matter to most apps
 					Word mask=0x01<<(ad-1);
                     int oldtimer = starttimer9901;
 					starttimer9901&=~mask;
                     if (oldtimer != starttimer9901) {
-//                        debug_write("9901 timer now set to %d", starttimer9901);
+//                      debug_write("9901 timer now set to %d", starttimer9901);
+                        // per adam doc, restart decrementing on any non-zero write to the timer register (this was zero)
                     }
 				}
 			} else {
