@@ -1867,6 +1867,12 @@ Cartridge System:
 -additional debug for some exotic disk tracking methods
 ---
 - then later the same day, fix the 9901 timer reset so CS1 works again
+-----------------------------------------------
+10 February 2019
+-Add MRU to disk and cart opens
+-Add basic CF7 support (external BIOS required)
+-Make TI disk controller a config option (I think it works...)
+-some work on the audio clicks but it didn't really help
 
 
 
