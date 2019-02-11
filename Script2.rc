@@ -88,6 +88,10 @@ BEGIN
         POPUP "User"
         BEGIN
             MENUITEM "&Open...",                    ID_CART_USER_OPEN
+            POPUP "Recent"
+            BEGIN
+                MENUITEM ".",                           ID_RECENT_
+            END
             MENUITEM SEPARATOR
         END
         MENUITEM "Eject",                       ID_CARTRIDGE_EJECT
@@ -680,7 +684,6 @@ BEGIN
     COMBOBOX        IDC_LSTTYPE,45,7,79,62,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Disk Type:",IDC_STATIC,7,9,34,8
     GROUPBOX        "File Options",IDC_STATIC,7,28,302,106
-    EDITTEXT        IDC_PATH,158,7,134,14,ES_AUTOHSCROLL
     LTEXT           "Path:",IDC_STATIC,138,9,18,8
     PUSHBUTTON      "...",IDC_BROWSE,292,7,15,12
     CONTROL         "Write V9T9 headers",IDC_FIAD_WRITEV9T9,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,54,79,10
@@ -711,6 +714,7 @@ BEGIN
     GROUPBOX        "Global Options",IDC_STATIC,7,174,302,40
     CONTROL         "Automap DSK1",IDC_DISK_AUTOMAPDSK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,192,63,10
     CONTROL         "Write Protect",IDC_DISK_WRITEPROTECT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,192,59,10
+    COMBOBOX        IDC_PATH,160,7,132,63,CBS_DROPDOWN | CBS_SORT | WS_VSCROLL | WS_TABSTOP
 END
 
 IDD_OPTGRAM DIALOGEX 0, 0, 198, 110
@@ -873,6 +877,11 @@ BEGIN
 END
 
 IDD_OPTGRAM AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_DISKCFG AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

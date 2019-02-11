@@ -1170,6 +1170,7 @@ void do_files(int n)				/* call files(n) */
 {
 	// check to see if any of the configured drives are a TICC, if so,
 	// we let it manage this instead of faking it.
+    // We also skip if we're using the CF7 emulation
 	bool bTICC = false;
 	for (int idx=0; idx<MAX_DRIVES; idx++) {
 		if (NULL != pDriveType[idx]) {

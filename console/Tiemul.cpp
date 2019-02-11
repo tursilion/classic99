@@ -78,11 +78,14 @@
 #include "..\disk\fiaddisk.h"
 #include "..\disk\imagedisk.h"
 #include "..\disk\TICCDisk.h"
+#include "..\disk\cf7Disk.h"
 #include "sound.h"
 #include "..\debugger\bug99.h"
 #include "..\addons\mpd.h"
 #include "..\addons\ubergrom.h"
 #include "..\debugger\dbghook.h"
+
+extern void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce up/down clicks
 
 ////////////////////////////////////////////
 // Globals
@@ -105,6 +108,11 @@ bool bWindowInitComplete = false;           // just a little sync so we ignore s
 extern BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 extern void DebugUpdateThread(void*);
 extern void UpdateMakeMenu(HWND hwnd, int enable);
+
+// User interface
+CString csLastDiskImage[MAX_MRU];
+CString csLastDiskPath[MAX_MRU];
+CString csLastUserCart[MAX_MRU];
 
 // audio
 extern int AudioSampleRate;				// in hz
@@ -150,6 +158,9 @@ extern bool bWarmBoot;
 // disk
 extern bool bCorruptDSKRAM;
 int filesTopOfVram = 0x3fff;
+CString csCf7Bios = "";                     // not sure if I can include the CF7 BIOS, so not a top level feature yet
+CString csCf7Disk = ".\\cf7Disk.img";
+int nCf7DiskSize = 128*1024*1024;
 
 // Must remain compatible with LARGE_INTEGER - just here
 // to make QuadPart unsigned ;)
@@ -337,7 +348,7 @@ extern int TVScanLines;
 
 // ROMs to always load
 struct IMG AlwaysLoad[] = {
-	{	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0},
+    {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0},
 	{	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
 //	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0},
 	{	IDR_SPCHROM,	0x0000,	0x8000,	TYPE_SPEECH	, 0},
@@ -953,6 +964,20 @@ void ReadConfig() {
 	// the menu may have changed!
 	DrawMenuBar(myWnd);
 
+    // see if we're going to do anything with the CF7 - if it's set, we'll not use the disk DSR
+    {
+        char buf[1024];
+    	GetPrivateProfileString("CF7", "BIOS", "", buf, sizeof(buf), INIFILE);
+        if (buf[0] != '\0') {
+            csCf7Bios = buf;
+        }
+    	GetPrivateProfileString("CF7", "Disk", "", buf, sizeof(buf), INIFILE);
+        if (buf[0] != '\0') {
+            csCf7Disk = buf;
+        }
+        nCf7DiskSize = GetPrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
+    }
+
 	// Filename used to write recorded video
 	GetPrivateProfileString("emulation", "AVIFilename", AVIFileName, AVIFileName, 256, INIFILE);
 	// CPU Throttling? CPU_OVERDRIVE, CPU_NORMAL, CPU_MAXIMUM
@@ -1171,6 +1196,31 @@ skiprestofuser:
 	tmp=			GetPrivateProfileInt("tvfilter","sharpness",		100,			INIFILE);
 	tsharp=(tmp-100)/100.0;
 	SetTVValues(thue, tsat, tcont, tbright, tsharp);
+
+    // MRUs
+    for (int idx=1; idx<=MAX_MRU; ++idx) {
+        char buf[1024];
+        char str[80];
+        sprintf(str, "MRU%d", idx);
+        GetPrivateProfileString("LastDiskMRU", str, "", buf, sizeof(buf), INIFILE);
+        csLastDiskImage[idx-1] = buf;
+    }
+
+    for (int idx=1; idx<=MAX_MRU; ++idx) {
+        char buf[1024];
+        char str[80];
+        sprintf(str, "MRU%d", idx);
+        GetPrivateProfileString("LastPathMRU", str, "", buf, sizeof(buf), INIFILE);
+        csLastDiskPath[idx-1] = buf;
+    }
+     
+    for (int idx=1; idx<=MAX_MRU; ++idx) {
+        char buf[1024];
+        char str[80];
+        sprintf(str, "MRU%d", idx);
+        GetPrivateProfileString("LastCartMRU", str, "", buf, sizeof(buf), INIFILE);
+        csLastUserCart[idx-1] = buf;
+    }
 }
 
 // Wrapper function - not available in Win32?
@@ -1214,6 +1264,10 @@ void SaveConfig() {
 		}
 	}
 	LeaveCriticalSection(&csDriveType);
+
+    WritePrivateProfileString("CF7", "BIOS", csCf7Bios, INIFILE);
+    WritePrivateProfileString("CF7", "Disk", csCf7Disk, INIFILE);
+    WritePrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
 
 	WritePrivateProfileString(	"emulation",	"AVIFilename",			AVIFileName,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"cputhrottle",			CPUThrottle,				INIFILE);
@@ -1279,6 +1333,26 @@ void SaveConfig() {
 	tmp=(int)((tsharp+1.0)*100.0);
 	WritePrivateProfileInt(		"tvfilter",		"sharpness",			tmp,						INIFILE);
 	WritePrivateProfileInt(		"tvfilter",		"scanlines",			TVScanLines,				INIFILE);
+
+    // MRUs
+    for (int idx=1; idx<=MAX_MRU; ++idx) {
+        char str[80];
+        sprintf(str, "MRU%d", idx);
+        WritePrivateProfileString("LastDiskMRU", str, csLastDiskImage[idx-1], INIFILE);
+    }
+
+    for (int idx=1; idx<=MAX_MRU; ++idx) {
+        char str[80];
+        sprintf(str, "MRU%d", idx);
+        WritePrivateProfileString("LastPathMRU", str, csLastDiskPath[idx-1], INIFILE);
+    }
+     
+    for (int idx=1; idx<=MAX_MRU; ++idx) {
+        char str[80];
+        sprintf(str, "MRU%d", idx);
+        WritePrivateProfileString("LastCartMRU", str, csLastUserCart[idx-1], INIFILE);
+    }
+
 }
 
 // convert config into meaningful values for AMS system
@@ -1334,6 +1408,32 @@ void ReloadDumpFiles() {
 				sprintf(buf, "dump%d.bin", BreakPoints[idx].Data);
 				debug_write("Opening dump file %d as %s\n", BreakPoints[idx].Data, buf);
 				DumpFile[BreakPoints[idx].Data] = fopen(buf, "wb");
+			}
+		}
+	}
+}
+
+// rewrite the user last used list of the user carts
+void UpdateUserCartMRU() {
+	HMENU hMenu=GetMenu(myWnd);   // root menu
+	if (hMenu) {
+		hMenu=GetSubMenu(hMenu, 3);     // cartridge menu
+		if (hMenu) {
+			hMenu=GetSubMenu(hMenu, 2);     // user menu
+			if (hMenu) {
+                hMenu=GetSubMenu(hMenu, 1);     // recent menu
+                if (hMenu) {
+                    // we're all set now...
+                    // just a dumb blind wipe of MAX_MRU items...
+                    for (int idx=0; idx<MAX_MRU; ++idx) {
+                        if (!DeleteMenu(hMenu, 0, MF_BYPOSITION)) break;
+                    }
+                    // now add the MRU list in
+                    for (int idx=0; idx<MAX_MRU; ++idx) {
+                        if (csLastUserCart[idx].GetLength() == 0) break;
+    					AppendMenu(hMenu, MF_STRING, ID_USERCART_MRU+idx, csLastUserCart[idx]);
+                    }
+				}
 			}
 		}
 	}
@@ -1655,11 +1755,11 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	ShowWindow(myWnd, nCmdShow);
 
 	// Update user menu - this will be a function later
-	hMenu=GetMenu(myWnd);
+	hMenu=GetMenu(myWnd);   // root menu
 	if (hMenu) {
-		hMenu=GetSubMenu(hMenu, 3);
+		hMenu=GetSubMenu(hMenu, 3);     // cartridge menu
 		if (hMenu) {
-			hMenu=GetSubMenu(hMenu, 2);
+			hMenu=GetSubMenu(hMenu, 2);     // user menu
 			if (hMenu) {
 				// User ROMs are a bit different, since we have to read them
 				// from the configuration - now nested two deep!
@@ -1680,6 +1780,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 			}
 		}
 	}
+    UpdateUserCartMRU();
 	DrawMenuBar(myWnd);
 	
 	// set temp stuff
@@ -1807,6 +1908,8 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	SetFocus(myWnd);
 	WindowThread();
 
+    // quiet down the audio
+    MuteAudio();
 	// save out our config
 	SaveConfig();
 	// save any previous NVRAM
@@ -1843,7 +1946,7 @@ void GenerateToneBuffer() {
 
 	// if we already have one, get rid of it
 	if (NULL != soundbuf) {
-		soundbuf->SetVolume(DSBVOLUME_MIN);
+		rampVolume(soundbuf, DSBVOLUME_MIN);
 		Sleep(1);
 		soundbuf->Stop();
 		soundbuf->Release();
@@ -1919,7 +2022,7 @@ void GenerateSIDBuffer() {
 
 	// if we already have one, get rid of it
 	if (NULL != sidbuf) {
-		sidbuf->SetVolume(DSBVOLUME_MIN);
+		rampVolume(sidbuf, DSBVOLUME_MIN);
 		Sleep(1);
 		sidbuf->Stop();
 		sidbuf->Release();
@@ -3024,6 +3127,26 @@ void readroms() {
 		LoadOneImg(&AlwaysLoad[idx], "ROMS");
 	}
 
+    // reconfigure for CF7 if necessary
+    if (csCf7Bios.GetLength() > 0) {
+        FILE *fp = fopen(csCf7Bios, "rb");
+        if (NULL != fp) {
+//            DSR[1][0] = 0x00;       // disable Classic99 DSR - not positive how important that is...
+            debug_write("Replacing DSK1-3 with CF7 emulation at CRU >1000.");
+            fread(DSR[0], 1, 8192, fp);
+            fclose(fp);
+            // make sure DSK 1-3 is a cf7Disk object, which does nothing
+            for (int idx = 1; idx < 4; ++idx) {
+                if (NULL != pDriveType[idx]) {
+                    free(pDriveType[idx]);
+                }
+                pDriveType[idx] = new Cf7Disk;
+            }
+        } else {
+            debug_write("Failed to read CF7 BIOS '%s'", csCf7Bios.GetString());
+        }
+    }
+
 	// load the appropriate system ROMs - each system is a cart structure that contains MAXROMSPERCART ROMs
 	for (idx=0; idx<MAXROMSPERCART; idx++) {
 		LoadOneImg(&Systems[nSystem].Img[idx], "ROMS");
@@ -3917,6 +4040,12 @@ Byte rcpubyte(Word x,bool rmw) {
 				return ReadRS232Mem(x-0x4000);
 			}
 
+            // CF7
+            if ((nCurrentDSR == 0x00) && (csCf7Bios.GetLength() > 0) && (x>=0x5e00) && (x<0x5f00)) {
+                return read_cf7(x);
+            }
+
+            // just access memory
 			if (nDSRBank[nCurrentDSR]) {
 				return DSR[nCurrentDSR][x-0x2000];	// page 1: -0x4000 for base, +0x2000 for second page
 			} else {
@@ -4135,6 +4264,13 @@ void wcpubyte(Word x, Byte c)
 					write_sid(x, c);
 				}
 				break;
+
+            case 0x0:
+                // CF7, if it's loaded
+                if (csCf7Bios.GetLength() > 0) {
+                    write_cf7(x, c);
+                }
+                break;
 
 			case 0x1:
 				// TI Disk controller, if switched in

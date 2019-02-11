@@ -108,6 +108,7 @@ extern unsigned char UberGROM[120*1024];
 extern unsigned char UberRAM[15*1024];
 extern unsigned char UberEEPROM[4*1024];
 extern bool bWindowInitComplete;
+extern CString csCf7Bios;
 
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
@@ -148,6 +149,10 @@ extern void (*SetSidBanked)(bool);
 extern bool (*GetSidEnable)(void);
 extern SID* (*GetSidPointer)(void);
 
+extern CString csLastDiskImage[MAX_MRU];
+extern CString csLastDiskPath[MAX_MRU];
+extern CString csLastUserCart[MAX_MRU];
+
 const char *pCurrentHelpMsg=NULL;
 HWND hKBMap=NULL;
 HWND hHeatMap=NULL;
@@ -187,6 +192,180 @@ BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 void ConfigureDisk(HWND hwnd, int nDiskNum);
 BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 int EmitDebugLine(char cPrefix, struct history obj, CString &csOut);
+void UpdateUserCartMRU();
+
+// add a string to the MRU list
+void addMRU(CString *pList, CString newStr) {
+    // We move this string to the top of the list, then
+    // if the string is already there, remove it, else
+    // remove the last entry.
+
+    // first, we need to make room for this string
+    int remove;
+    for (remove=0; remove<MAX_MRU; ++remove) {
+        if (pList[remove] == newStr) break;
+    }
+
+    // if we fell off the end of the list, just remove the last
+    // element
+    if (remove >= MAX_MRU) {
+        for (int idx=MAX_MRU-1; idx>0; --idx) {
+            pList[idx] = pList[idx-1];
+        }
+    } else {
+        // else just remove THIS element
+        for (int idx=remove; idx>0; --idx) {
+            pList[idx] = pList[idx-1];
+        }
+    }
+
+    // and save this one in the first slot
+    pList[0] = newStr;
+}
+
+// ofn - reference to OPENFILENAME string with at least hwndOwner, lpstrFileTitle, lpstrFile, nFileExtension
+void OpenUserCart(OPENFILENAME &ofn) {
+    int nLetterOffset=2;
+    char *pPartIdx=NULL;
+	int nCnt, nIdx, nPart, nOriginalCharacter;
+
+	const int nUsr=0;		// we always use #0 now
+
+	strncpy(Users[nUsr].szName, ofn.lpstrFileTitle, sizeof(Users[nUsr].szName));
+	Users[nUsr].szName[sizeof(Users[nUsr].szName)-1]='\0';
+	Users[nUsr].pDisk=NULL;
+	Users[nUsr].szMessage=NULL;
+	nCnt=0;
+                            
+    // we now have to support all the different legacy naming types, /AND/ a new concept with
+    // no extension whatsoever. That confuses a lot of this code, so we skip over it in that case...
+    if (ofn.nFileExtension <= 1) {
+        // we have no extension to play with
+        nLetterOffset = -1;
+        pPartIdx = NULL;
+    } else {
+        // we have an extension to play with...
+    	if (0 != _stricmp(&ofn.lpstrFile[ofn.nFileExtension], "bin")) nLetterOffset=0;	// newer ".C" type
+        nOriginalCharacter = ofn.lpstrFile[ofn.nFileExtension-nLetterOffset];
+
+		// Someone wrote one of those ROM rename tools, and thought it would be smart to put
+		// "(Part x of y)" in the filename. Since 'x' changes with every file, and the order
+		// is non-deterministic (possibly), this becomes a bit of a pain. We'll assume 1-3
+		// since only V9T9 carts should be indexed that way. Another good reason for the RPK carts...
+		// Anyway, we'll make a semi-honest effort for them...case must match!
+		pPartIdx = strstr(ofn.lpstrFile, "(Part ");
+
+		if (NULL != pPartIdx) {
+			pPartIdx+=6;
+			if ((!isdigit(*pPartIdx)) || (0 != memcmp(pPartIdx+1, " of ", 4))) {
+				// Not "(Part x of " - won't worry about the rest
+				pPartIdx=NULL;
+			}
+		}
+    }
+
+    // label for goto.
+    tryagain:
+	for (nPart = 0; nPart<3; nPart++) {
+        // if not doing "part" filenames, only process the first one
+		if ((pPartIdx == NULL) && (nPart > 0)) continue;
+                        
+        // else update the part index
+		if (pPartIdx != NULL) {
+			*pPartIdx = nPart+'1';
+		}
+
+        // now check for all the possible letter extensions, unless we have no letter extensions.
+        // in that case, just process the one single file
+		for (nIdx=0; nIdx<6; nIdx++) {
+            if (nLetterOffset == -1) {
+                // assume non-inverted possibly-banked ROM
+				Users[nUsr].Img[nCnt].nType=TYPE_378;
+            } else {
+				switch (nIdx) {
+					case 0:	
+						ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='C'; 
+						Users[nUsr].Img[nCnt].nType=TYPE_ROM;
+						break;
+					case 1: 
+						ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='D'; // legacy
+						Users[nUsr].Img[nCnt].nType=TYPE_XB;
+						break;
+					case 2: 
+						ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='G'; 
+						Users[nUsr].Img[nCnt].nType=TYPE_GROM;
+						break;
+					case 3: 
+						ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='3'; // legacy mode
+						Users[nUsr].Img[nCnt].nType=TYPE_379;
+						break;
+					case 4: 
+						ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='9';
+						Users[nUsr].Img[nCnt].nType=TYPE_379;
+						break;
+					case 5: 
+						ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='8'; 
+						Users[nUsr].Img[nCnt].nType=TYPE_378;
+						break;
+				}
+            }
+			if (nCnt < 5) {		// maximum number of autodetect types
+				FILE *fp=fopen(ofn.lpstrFile, "rb");
+				if (NULL != fp) {
+					fseek(fp, 0, SEEK_END);
+					Users[nUsr].Img[nCnt].dwImg=NULL;
+					if ((Users[nUsr].Img[nCnt].nType==TYPE_378)||(Users[nUsr].Img[nCnt].nType==TYPE_379)||(Users[nUsr].Img[nCnt].nType==TYPE_MBX)) {
+						Users[nUsr].Img[nCnt].nLoadAddr=0x0000;
+					} else {
+						Users[nUsr].Img[nCnt].nLoadAddr=0x6000;
+					}
+					Users[nUsr].Img[nCnt].nLength=ftell(fp);
+					strncpy(Users[nUsr].Img[nCnt].szFileName, ofn.lpstrFile, 1024);
+					Users[nUsr].Img[nCnt].szFileName[1023]='\0';
+					nCnt++;
+					fclose(fp);
+					debug_write("Found %s...", ofn.lpstrFile);
+				} else {
+					Users[nUsr].Img[nCnt].nType=TYPE_NONE;
+				}
+			} else {
+                debug_write("Impossible case - too many auto-detected files. Skipping %s", ofn.lpstrFile);
+            }
+
+            // if we aren't searching for extensions, then just break out
+            if (nLetterOffset == -1) break;
+		}
+	}
+
+    // oh, and sometimes they have a ".bin" anyway, so it's actually completely fdsafneqing impossible to
+    // accurately determine if the last character is a tag or part of the filename, but if we didn't find
+    // anything at all, then assume the user at least tried and go back and try as a raw name.
+    if ((nCnt == 0) && (nLetterOffset != -1)) {
+        ofn.lpstrFile[ofn.nFileExtension-nLetterOffset] = nOriginalCharacter;
+        nLetterOffset = -1;
+        // but if you mix that concept with a Part 1 of 2 filename, I give up. You're on your own.
+        goto tryagain;  // %$@%^$@#. Bite me.
+    }
+
+	nCartGroup=2;
+	nCart=nUsr;
+
+	for (int idx=0; idx<100; idx++) {
+		CheckMenuItem(GetMenu(myWnd), ID_USER_0+idx, MF_UNCHECKED);
+	}
+	for (int idx=0; idx<100; idx++) {
+		CheckMenuItem(GetMenu(myWnd), ID_GAME_0+idx, MF_UNCHECKED);
+	}
+	for (int idx=0; idx<100; idx++) {
+		CheckMenuItem(GetMenu(myWnd), ID_APP_0+idx, MF_UNCHECKED);
+	}
+
+    // update the MRU
+    addMRU(csLastUserCart, Users[nUsr].Img[0].szFileName);
+    UpdateUserCartMRU();
+
+	SendMessage(ofn.hwndOwner, WM_COMMAND, ID_FILE_RESET, 0);
+}
 
 // return clipboard data, processed to ASCII.
 // Returns NULL if nothing found. Otherwise, the returned string must be freed.
@@ -675,6 +854,51 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MessageBox(hwnd, "There is no disk driver attached to open.", "Sorry!", MB_OK | MB_ICONINFORMATION);
 				}
 			}
+            if ((wParam >= ID_USERCART_MRU) && (wParam <= ID_USERCART_LASTMRU)) {
+                // request to open a previously opened cart
+                // we need to create an OPENFILENAME object with the filename
+                OPENFILENAME ofn;
+				char buf[MAX_PATH], buf2[MAX_PATH];
+
+                // get the string from the MRU
+                int idx = wParam - ID_USERCART_MRU;
+                if ((idx >= 0) && (idx < MAX_MRU)) {
+                    // we'll just fill it all in the same as the open below
+				    memset(&ofn, 0, sizeof(OPENFILENAME));
+				    ofn.lStructSize=sizeof(OPENFILENAME);
+				    ofn.hwndOwner=hwnd;
+				    ofn.lpstrFilter="V9T9 Carts\0*.bin;*.C;*.D;*.G;*.3\0All Files\0*\0\0";
+				    ofn.lpstrFile=buf;
+				    ofn.nMaxFile=MAX_PATH;
+				    ofn.lpstrFileTitle=buf2;
+				    ofn.nMaxFileTitle=MAX_PATH;
+				    ofn.Flags=OFN_HIDEREADONLY|OFN_FILEMUSTEXIST;
+
+                    // buf gets lpstrFile - this is the complete path
+				    strcpy(buf, csLastUserCart[idx]);
+
+                    // buf2 gets lpstrFileTitle - name and extension - no path
+                    int p = csLastUserCart[idx].GetLength() - 1;
+                    while ((p > 0) && (buf[p] != '\\')) --p;
+                    if (p == 0) {
+                        strcpy(buf2, buf);
+                    } else {
+                        strcpy(buf2, &buf[p+1]);
+                    }
+
+                    // also need to find nFileExtension - count in characters in lpstrFile to the extension (after the '.'), zero if none
+                    p = csLastUserCart[idx].GetLength() - 1;
+                    while ((p > 0) && (buf[p] != '.')) --p;
+                    if (buf[p] == '.') {
+                        ofn.nFileExtension = p+1;
+                    } else {
+                        ofn.nFileExtension = 0;
+                    }
+
+                    // now go ahead and request the open
+                    OpenUserCart(ofn);
+                }
+            }
 
 			// Any others?
 			switch (wParam)
@@ -690,8 +914,6 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			{
 				OPENFILENAME ofn;
 				char buf[MAX_PATH], buf2[MAX_PATH];
-				int nLetterOffset=2;
-				char *pPartIdx=NULL;
 				bool proceed = false;
 
 				memset(&ofn, 0, sizeof(OPENFILENAME));
@@ -728,142 +950,10 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 
 				if (proceed) {
-					int nCnt, nIdx, nPart, nOriginalCharacter;
+                    OpenUserCart(ofn);
+                }
 
-					const int nUsr=0;		// we always use #0 now
-
-					strncpy(Users[nUsr].szName, ofn.lpstrFileTitle, sizeof(Users[nUsr].szName));
-					Users[nUsr].szName[sizeof(Users[nUsr].szName)-1]='\0';
-					Users[nUsr].pDisk=NULL;
-					Users[nUsr].szMessage=NULL;
-					nCnt=0;
-                            
-                    // we now have to support all the different legacy naming types, /AND/ a new concept with
-                    // no extension whatsoever. That confuses a lot of this code, so we skip over it in that case...
-                    if (ofn.nFileExtension <= 1) {
-                        // we have no extension to play with
-                        nLetterOffset = -1;
-                        pPartIdx = NULL;
-                    } else {
-                        // we have an extension to play with...
-    					if (0 != _stricmp(&ofn.lpstrFile[ofn.nFileExtension], "bin")) nLetterOffset=0;	// newer ".C" type
-                        nOriginalCharacter = ofn.lpstrFile[ofn.nFileExtension-nLetterOffset];
-
-					    // Someone wrote one of those ROM rename tools, and thought it would be smart to put
-					    // "(Part x of y)" in the filename. Since 'x' changes with every file, and the order
-					    // is non-deterministic (possibly), this becomes a bit of a pain. We'll assume 1-3
-					    // since only V9T9 carts should be indexed that way. Another good reason for the RPK carts...
-					    // Anyway, we'll make a semi-honest effort for them...case must match!
-					    pPartIdx = strstr(ofn.lpstrFile, "(Part ");
-
-					    if (NULL != pPartIdx) {
-						    pPartIdx+=6;
-						    if ((!isdigit(*pPartIdx)) || (0 != memcmp(pPartIdx+1, " of ", 4))) {
-							    // Not "(Part x of " - won't worry about the rest
-							    pPartIdx=NULL;
-						    }
-					    }
-                    }
-
-                    // label for goto.
-                    tryagain:
-					for (nPart = 0; nPart<3; nPart++) {
-                        // if not doing "part" filenames, only process the first one
-						if ((pPartIdx == NULL) && (nPart > 0)) continue;
-                        
-                        // else update the part index
-						if (pPartIdx != NULL) {
-							*pPartIdx = nPart+'1';
-						}
-
-                        // now check for all the possible letter extensions, unless we have no letter extensions.
-                        // in that case, just process the one single file
-						for (nIdx=0; nIdx<6; nIdx++) {
-                            if (nLetterOffset == -1) {
-                                // assume non-inverted possibly-banked ROM
-								Users[nUsr].Img[nCnt].nType=TYPE_378;
-                            } else {
-							    switch (nIdx) {
-								    case 0:	
-									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='C'; 
-									    Users[nUsr].Img[nCnt].nType=TYPE_ROM;
-									    break;
-								    case 1: 
-									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='D'; // legacy
-									    Users[nUsr].Img[nCnt].nType=TYPE_XB;
-									    break;
-								    case 2: 
-									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='G'; 
-									    Users[nUsr].Img[nCnt].nType=TYPE_GROM;
-									    break;
-								    case 3: 
-									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='3'; // legacy mode
-									    Users[nUsr].Img[nCnt].nType=TYPE_379;
-									    break;
-								    case 4: 
-									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='9';
-									    Users[nUsr].Img[nCnt].nType=TYPE_379;
-									    break;
-								    case 5: 
-									    ofn.lpstrFile[ofn.nFileExtension-nLetterOffset]='8'; 
-									    Users[nUsr].Img[nCnt].nType=TYPE_378;
-									    break;
-							    }
-                            }
-							if (nCnt < 5) {		// maximum number of autodetect types
-								FILE *fp=fopen(ofn.lpstrFile, "rb");
-								if (NULL != fp) {
-									fseek(fp, 0, SEEK_END);
-									Users[nUsr].Img[nCnt].dwImg=NULL;
-									if ((Users[nUsr].Img[nCnt].nType==TYPE_378)||(Users[nUsr].Img[nCnt].nType==TYPE_379)||(Users[nUsr].Img[nCnt].nType==TYPE_MBX)) {
-										Users[nUsr].Img[nCnt].nLoadAddr=0x0000;
-									} else {
-										Users[nUsr].Img[nCnt].nLoadAddr=0x6000;
-									}
-									Users[nUsr].Img[nCnt].nLength=ftell(fp);
-									strncpy(Users[nUsr].Img[nCnt].szFileName, ofn.lpstrFile, 1024);
-									Users[nUsr].Img[nCnt].szFileName[1023]='\0';
-									nCnt++;
-									fclose(fp);
-									debug_write("Found %s...", ofn.lpstrFile);
-								} else {
-									Users[nUsr].Img[nCnt].nType=TYPE_NONE;
-								}
-							} else {
-                                debug_write("Impossible case - too many auto-detected files. Skipping %s", ofn.lpstrFile);
-                            }
-
-                            // if we aren't searching for extensions, then just break out
-                            if (nLetterOffset == -1) break;
-						}
-					}
-
-                    // oh, and sometimes they have a ".bin" anyway, so it's actually completely fdsafneqing impossible to
-                    // accurately determine if the last character is a tag or part of the filename, but if we didn't find
-                    // anything at all, then assume the user at least tried and go back and try as a raw name.
-                    if ((nCnt == 0) && (nLetterOffset != -1)) {
-                        ofn.lpstrFile[ofn.nFileExtension-nLetterOffset] = nOriginalCharacter;
-                        nLetterOffset = -1;
-                        // but if you mix that concept with a Part 1 of 2 filename, I give up. You're on your own.
-                        goto tryagain;  // %$@%^$@#. Bite me.
-                    }
-
-					nCartGroup=2;
-					nCart=nUsr;
-
-					for (int idx=0; idx<100; idx++) {
-						CheckMenuItem(GetMenu(myWnd), ID_USER_0+idx, MF_UNCHECKED);
-					}
-					for (int idx=0; idx<100; idx++) {
-						CheckMenuItem(GetMenu(myWnd), ID_GAME_0+idx, MF_UNCHECKED);
-					}
-					for (int idx=0; idx<100; idx++) {
-						CheckMenuItem(GetMenu(myWnd), ID_APP_0+idx, MF_UNCHECKED);
-					}
-
-					SendMessage(hwnd, WM_COMMAND, ID_FILE_RESET, 0);
-				}
-				SetCurrentDirectory(szTmpDir);
+                SetCurrentDirectory(szTmpDir);
 			}
 			break;
 
@@ -3861,6 +3951,11 @@ void DebugUpdateThread(void*) {
 
 // Some stuff for the disk configuration dialog
 void ConfigureDisk(HWND hwnd, int nDiskNum) {
+    if ((csCf7Bios.GetLength() > 0) && (nDiskNum > 0) && (nDiskNum < 4)) {
+        MessageBox(hwnd, "You can not configure DSK1-3 while CF7 emulation is active (CF7BIOS in Classic99.ini)", "Classic99", MB_OK);
+        return;
+    }
+
 	// this is a bit harsh, but we keep the disk system locked and make this dialog modal
 	EnterCriticalSection(&csDriveType);
 
@@ -4116,6 +4211,9 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								break;
 
 							case DISK_FIAD:
+                                if (buf[strlen(buf)-1] != '\\') {
+                                    strcat(buf, "\\");
+                                }
 								if ((NULL == pDriveType[nIndex]) || (DISK_FIAD != pDriveType[nIndex]->GetDiskType())) {
 									if (NULL != pDriveType[nIndex]) {
 										delete pDriveType[nIndex];
@@ -4124,6 +4222,7 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								}
 								GetDiskFiadOptions(hwnd, pDriveType[nIndex]);
 								pDriveType[nIndex]->SetPath(buf);
+                                addMRU(csLastDiskPath, buf);
 								break;
 
 							case DISK_SECTOR:
@@ -4135,17 +4234,28 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								}
 								GetDiskImageOptions(hwnd, pDriveType[nIndex]);
 								pDriveType[nIndex]->SetPath(buf);
+                                addMRU(csLastDiskImage, buf);
 								break;
 
-							case DISK_TICC:		// todo: it may someday have it's own options?
+							case DISK_TICC:
 								if ((NULL == pDriveType[nIndex]) || (DISK_TICC != pDriveType[nIndex]->GetDiskType())) {
-									if (NULL != pDriveType[nIndex]) {
+                                    // if this is the first one, we need to warn the user
+                                    int i;
+                                    for (i=1; i<4; ++i) {
+                                        if ((pDriveType[i] != NULL) && (pDriveType[i]->GetDiskType() == DISK_TICC)) break;
+                                    }
+                                    if (i < 4) {
+                                        MessageBox(hwnd, "You may need to reset the TI for the controller card to work! You may lose data if you do not. (Alt-Equals or File->Reset)", "Classic99", MB_OK | MB_ICONWARNING);
+                                    }
+                                    // now continue to set it up                                    
+                                    if (NULL != pDriveType[nIndex]) {
 										delete pDriveType[nIndex];
 									}
 									pDriveType[nIndex] = new TICCDisk();
 								}
 								GetDiskImageOptions(hwnd, pDriveType[nIndex]);	// still an image type
 								pDriveType[nIndex]->SetPath(buf);
+                                addMRU(csLastDiskImage, buf);
 								break;
 						}
 					}
@@ -4157,6 +4267,8 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				 case IDC_LSTTYPE:
 					 if (HIWORD(wParam) == CBN_SELCHANGE) {
 						 DisableAllDiskOptions(hwnd);
+                         SendDlgItemMessage(hwnd, IDC_PATH, CB_RESETCONTENT, 0, 0);
+
 						 switch (SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_GETCURSEL, 0, 0)) {
 							case 0:
 							default:
@@ -4177,6 +4289,10 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									EnableDiskFiadOptions(hwnd, &tmpFiad);
 									bFiadSet = true;
 								}
+                                for (int idx=0; idx<MAX_MRU; ++idx) {
+                                    if (csLastDiskPath[idx].GetLength() == 0) break;
+                                    SendDlgItemMessage(hwnd, IDC_PATH, CB_ADDSTRING, 0, (LPARAM)csLastDiskPath[idx].GetString());
+                                }
 								break;
 
 							case DISK_SECTOR:
@@ -4193,22 +4309,36 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									EnableDiskImageOptions(hwnd, &tmpImage);
 									bImageSet = true;
 								}
+                                for (int idx=0; idx<MAX_MRU; ++idx) {
+                                    if (csLastDiskImage[idx].GetLength() == 0) break;
+                                    SendDlgItemMessage(hwnd, IDC_PATH, CB_ADDSTRING, 0, (LPARAM)csLastDiskImage[idx].GetString());
+                                }
 								break;
 
 							case DISK_TICC:
-								EnableDlgItem(hwnd, IDC_PATH, TRUE);
-								if ((NULL != pDriveType[nIndex]) && (pDriveType[nIndex]->GetDiskType() == DISK_TICC)) {
-									SendDlgItemMessage(hwnd, IDC_PATH, WM_SETTEXT, 0, (LPARAM)pDriveType[nIndex]->GetPath());
-								} else {
-									SendDlgItemMessage(hwnd, IDC_PATH, WM_SETTEXT, 0, (LPARAM)"");
-								}
-								if (bImageSet) {
-									EnableDiskImageOptions(hwnd, NULL);
-								} else {
-									TICCDisk tmpImage;
-									EnableDiskImageOptions(hwnd, &tmpImage);
-									bImageSet = true;
-								}
+                                if ((nIndex < 1) || (nIndex > 3)) {
+                                    MessageBox(hwnd, "TI Disk controller only works on DSK1 through DSK3", "Classic99 Error", MB_OK);
+                                    SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_SETCURSEL, (WPARAM)DISK_SECTOR, 0);
+                                } else {
+                                    debug_write("WARNING: TI Controller is limited to 180k images and DSK1 through DSK3)");
+								    EnableDlgItem(hwnd, IDC_PATH, TRUE);
+								    if ((NULL != pDriveType[nIndex]) && (pDriveType[nIndex]->GetDiskType() == DISK_TICC)) {
+									    SendDlgItemMessage(hwnd, IDC_PATH, WM_SETTEXT, 0, (LPARAM)pDriveType[nIndex]->GetPath());
+								    } else {
+									    SendDlgItemMessage(hwnd, IDC_PATH, WM_SETTEXT, 0, (LPARAM)"");
+								    }
+								    if (bImageSet) {
+									    EnableDiskImageOptions(hwnd, NULL);
+								    } else {
+									    TICCDisk tmpImage;
+									    EnableDiskImageOptions(hwnd, &tmpImage);
+									    bImageSet = true;
+								    }
+                                }
+                                for (int idx=0; idx<MAX_MRU; ++idx) {
+                                    if (csLastDiskImage[idx].GetLength() == 0) break;
+                                    SendDlgItemMessage(hwnd, IDC_PATH, CB_ADDSTRING, 0, (LPARAM)csLastDiskImage[idx].GetString());
+                                }
 								break;
 						 }
 					 }
@@ -4325,6 +4455,7 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_ADDSTRING, 0, (LPARAM)"None");
 			SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_ADDSTRING, 0, (LPARAM)"Files (FIAD)");
 			SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_ADDSTRING, 0, (LPARAM)"Image (DSK)");
+			SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_ADDSTRING, 0, (LPARAM)"TI Controller (DSK)");
 			bFiadSet = false;
 			bImageSet = false;
 
@@ -4337,8 +4468,10 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			if (NULL == pDriveType[nIndex]) {
 				SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_SETCURSEL, 0, 0);
 				EnableDlgItem(hwnd, IDC_PATH, FALSE);
+                SendDlgItemMessage(hwnd, IDC_PATH, CB_RESETCONTENT, 0, 0);
 			} else {
 				EnableDlgItem(hwnd, IDC_PATH, TRUE);
+                SendDlgItemMessage(hwnd, IDC_PATH, CB_RESETCONTENT, 0, 0);
 				SendDlgItemMessage(hwnd, IDC_PATH, WM_SETTEXT, 0, (LPARAM)pDriveType[nIndex]->GetPath());
 
 				switch (pDriveType[nIndex]->GetDiskType()) {
@@ -4349,18 +4482,30 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 					case DISK_FIAD:
 						SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_SETCURSEL, DISK_FIAD, 0);
+                        for (int idx=0; idx<MAX_MRU; ++idx) {
+                            if (csLastDiskPath[idx].GetLength() == 0) break;
+                            SendDlgItemMessage(hwnd, IDC_PATH, CB_ADDSTRING, 0, (LPARAM)csLastDiskPath[idx].GetString());
+                        }
 						EnableDiskFiadOptions(hwnd, pDriveType[nIndex]);
 						bFiadSet = true;
 						break;
 
 					case DISK_SECTOR:
 						SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_SETCURSEL, DISK_SECTOR, 0);
+                        for (int idx=0; idx<MAX_MRU; ++idx) {
+                            if (csLastDiskImage[idx].GetLength() == 0) break;
+                            SendDlgItemMessage(hwnd, IDC_PATH, CB_ADDSTRING, 0, (LPARAM)csLastDiskImage[idx].GetString());
+                        }
 						EnableDiskImageOptions(hwnd, pDriveType[nIndex]);
 						bImageSet = true;
 						break;
 
 					case DISK_TICC:
 						SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_SETCURSEL, DISK_TICC, 0);
+                        for (int idx=0; idx<MAX_MRU; ++idx) {
+                            if (csLastDiskImage[idx].GetLength() == 0) break;
+                            SendDlgItemMessage(hwnd, IDC_PATH, CB_ADDSTRING, 0, (LPARAM)csLastDiskImage[idx].GetString());
+                        }
 						EnableDiskImageOptions(hwnd, pDriveType[nIndex]);
 						bImageSet = true;
 						break;

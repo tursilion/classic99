@@ -88,6 +88,9 @@
     <ClCompile Include="tape.cpp">
       <Filter>console</Filter>
     </ClCompile>
+    <ClCompile Include="disk\cf7Disk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -156,6 +159,9 @@
     </ClInclude>
     <ClInclude Include="addons\F18A.h">
       <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\cf7Disk.h">
+      <Filter>disk</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -6,7 +6,7 @@
 // The center point at output was closer to 1v, nevertheless, it's all positive.
 // Two interesting points - rather than a center point, the maximum voltage appeared
 // to be consistent, and the minimum voltage crept higher as attenuation increased.
-// The other interseting point is that MESS seems to output all negative voltage,
+// The other interesting point is that MESS seems to output all negative voltage,
 // but in the end where in the range it lands doesn't matter so much (in fact my
 // positive/negative swing probably doesn't even matter, but we can fix it).
 // I measured these approximate values. They are less accurate as they get smaller
@@ -107,6 +107,10 @@
 // (In truth, the time it takes to fetch the next instruction should make it
 // impossible to overrun.)
 //
+// Futher note: the TI CPU is halted by the sound chip during the write,
+// so not only is overrun impossible, but the system is halted for a significant
+// time. This is now emulated on the CPU side.
+//
 // Another neat tidbit from RL -- don't track the fractional loss from
 // the timing counters -- your ear can hear when they are added in, and
 // you get periodic noise, depending on the frequency being played!
@@ -126,6 +130,7 @@ extern int hzRate;		// 50 or 60 fps (HZ50 or HZ60)
 extern int Recording;
 extern int max_cpf;
 extern void WriteAudioFrame(void *pData, int nLen);
+void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce up/down clicks
 
 // hack for now - a little DAC buffer for cassette ticks and CPU modulation
 // fixed size for now
@@ -133,6 +138,7 @@ extern double nDACLevel;
 unsigned char dac_buffer[1024*1024];
 int dac_pos = 0;
 double dacupdatedistance = 0.0;
+double dacramp = 0.0;       // a little slider to ramp in the DAC volume so it doesn't click so loudly at reset
 
 // external debug helper
 void debug_write(char *s, ...);
@@ -217,7 +223,12 @@ void sound_init(int freq) {
 	}
 #endif
 
+    resetDAC();
+
+    // and set up the audio rate
 	AudioSampleRate=freq;
+
+    // and finally tell the SID plugin
 	if (NULL != SetSidFrequency) {
 		SetSidFrequency(freq);
 	}
@@ -265,7 +276,7 @@ void setvol(int chan, int vol) {
 // fill the output audio buffer with signed 16-bit values
 // nAudioIn contains a fixed value to add to all samples (used to mix in the casette audio)
 // (this emu doesn't run speech through there, though, speech gets its own buffer for now)
-// TODO: I don't use this anymore and I think it needs to be removed....
+// TODO: I don't use this anymore and I think it needs to be removed.... (what did I mean by this??)
 void sound_update(short *buf, double nAudioIn, int nSamples) {
 	// nClock is the input clock frequency, which runs through a divide by 16 counter
 	// The frequency does not divide exactly by 16
@@ -295,8 +306,9 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 			// SMS Power is wrong, however, or at least, it
 			// doesn't apply to the 9919. Testing with the real
 			// TI shows that 0 is the lowest pitch, and 1 is the highest.
+            // TODO: need to check whether a v2.2 console uses the SMS Power version of the sound chip
 			nCounter[idx]-=nClocksPerSample;
-			while (nCounter[idx] <= 0) {
+			while (nCounter[idx] <= 0) {    // TODO: should be able to do this without a loop, it would be faster (well, in the rare cases it needs to loop)!
 				nCounter[idx]+=(nRegister[idx]?nRegister[idx]:0x400);
 				nOutput[idx]*=-1.0;
 				nFade[idx]=1.0;
@@ -392,7 +404,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 				nOutput[1]*nVolumeTable[nVolume[1]]*nFade[1] +
 				nOutput[2]*nVolumeTable[nVolume[2]]*nFade[2] +
 				nOutput[3]*nVolumeTable[nVolume[3]]*nFade[3]
-				+ (dac_buffer[newdacpos++] / 255.0);
+				+ ((dac_buffer[newdacpos++] / 255.0)*dacramp);
 		// output is now between 0.0 and 5.0, may be positive or negative
 		output/=5.0;	// you aren't supposed to do this when mixing. Sorry. :)
 		if (newdacpos >= dac_pos) {
@@ -416,6 +428,10 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	if (inSamples < dac_pos) {
 		memmove(dac_buffer, &dac_buffer[newdacpos], dac_pos-newdacpos);
 		dac_pos-=newdacpos;
+        if (dacramp < 1.0) {
+            dacramp+=0.01;  // slow, slow ramp in
+            if (dacramp > 1.0) dacramp = 1.0;
+        }
 	} else {
 		dac_pos = 0;
 	}
@@ -562,13 +578,13 @@ void SetSoundVolumes() {
 
 	int nRange=(MIN_VOLUME*max_volume)/100;	// negative
 	if (NULL != soundbuf) {
-		soundbuf->SetVolume(MIN_VOLUME - nRange);
+		rampVolume(soundbuf, MIN_VOLUME - nRange);
 	}
 	if (NULL != sidbuf) {
-		sidbuf->SetVolume(MIN_VOLUME - nRange);
+		rampVolume(sidbuf, MIN_VOLUME - nRange);
 	}
 	if (NULL != speechbuf) {
-		speechbuf->SetVolume(MIN_VOLUME - nRange);
+		rampVolume(speechbuf, MIN_VOLUME - nRange);
 	}
 
 	LeaveCriticalSection(&csAudioBuf);
@@ -580,25 +596,62 @@ void MuteAudio() {
 	EnterCriticalSection(&csAudioBuf);
 
 	if (NULL != soundbuf) {
-		soundbuf->SetVolume(DSBVOLUME_MIN);
+		rampVolume(soundbuf, DSBVOLUME_MIN);
 	}
 	if (NULL != sidbuf) {
-		sidbuf->SetVolume(DSBVOLUME_MIN);
+		rampVolume(sidbuf, DSBVOLUME_MIN);
 	}
 	if (NULL != speechbuf) {
-		speechbuf->SetVolume(DSBVOLUME_MIN);
+		rampVolume(speechbuf, DSBVOLUME_MIN);
 	}
 
 	LeaveCriticalSection(&csAudioBuf);
 }
 
+void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol) {
+    // want to finish in this many steps, as few as possible
+    // There is probably no harm to this, but it does NOT affect the startup click...
+    // It makes some impact on reset (but the click on finishing reset still happens)
+    // and seems to resolve the shutdown click. It does slow things a bit.
+    // The main click is caused by the DAC, so, I've got to do a little extra ramp
+    // when the system first starts up just for that. That one we'll do live.
+    // TODO: still not convinced of this, causes a flutter when it fades out.
+    // Also causes a delay in processing, times every channel involved...
+    const long step = (DSBVOLUME_MAX-DSBVOLUME_MIN);    // todo: normally divide this by number of steps, with it set to one step it's doing pretty much nothing
+    long vol = newVol;
+    
+    if (NULL == ds) return;
+    if (newVol > DSBVOLUME_MAX) newVol = DSBVOLUME_MAX;
+    if (newVol < DSBVOLUME_MIN) newVol = DSBVOLUME_MIN;
+
+    ds->GetVolume(&vol);
+
+    // only one of these loops should run
+    while (vol > newVol) {
+        vol -= step;
+        if (vol < newVol) vol=newVol;
+        ds->SetVolume(vol);
+        Sleep(10);
+    }
+    while (vol < newVol) {
+        vol += step;
+        if (vol > newVol) vol=newVol;
+        ds->SetVolume(vol);
+        Sleep(10);
+    }
+}
+
 void resetDAC() { 
 	// empty the buffer and reset the pointers
+    // TODO: added the mutes, but still some clicks, reset is worst (cause buffer isn't being filled?)
+    MuteAudio();
 	EnterCriticalSection(&csAudioBuf);
 		memset(&dac_buffer[0], 0x00, sizeof(dac_buffer));
 		dac_pos=0;
 		dacupdatedistance=0.0;
+        dacramp=0.0;
 	LeaveCriticalSection(&csAudioBuf);
+    SetSoundVolumes();
 }
 
 void updateDACBuffer(int nCPUCycles) {

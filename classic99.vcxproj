@@ -249,6 +249,7 @@
     <ClCompile Include="addons\makecart.cpp" />
     <ClCompile Include="addons\mpd.cpp" />
     <ClCompile Include="debugger\dbghook.cpp" />
+    <ClCompile Include="disk\cf7Disk.cpp" />
     <ClCompile Include="disk\TICCDisk.cpp" />
     <ClCompile Include="keyboard\kb.cpp" />
     <ClCompile Include="keyboard\keyboard.cpp">
@@ -285,6 +286,7 @@
     <ClInclude Include="console\sound.h" />
     <ClInclude Include="console\tiemul.h" />
     <ClInclude Include="debugger\dbghook.h" />
+    <ClInclude Include="disk\cf7Disk.h" />
     <ClInclude Include="disk\TICCDisk.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="2xSaI\2xSaI.h" />

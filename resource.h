@@ -469,13 +469,17 @@
 #define ID_EDIT_COPYSCREEN              40166
 #define ID_LAYERS_DISABLEBITMAPCOLORLAYER 40167
 #define ID_LAYERS_DISABLEBITMAPPATTERNLAYER 40168
+#define ID_USER_RECENT                  40169
+#define ID_USERCART_MRU                 40170
+#define ID_USERCART_LASTMRU             40189
+#define ID_RECENT_                      40190
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        349
-#define _APS_NEXT_COMMAND_VALUE         40169
+#define _APS_NEXT_RESOURCE_VALUE        350
+#define _APS_NEXT_COMMAND_VALUE         40191
 #define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

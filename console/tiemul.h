@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.006"
+#define VERSION "QI399.007"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -68,6 +68,7 @@ typedef unsigned __int32 DWord;
 #define MAX_BREAKPOINTS 10
 #define MAXROMSPERCART	32
 #define MAXUSERCARTS 1000
+#define MAX_MRU 10
 
 // note: not enough to change this - you also need to change the
 // paging/padding calculation in the loader!
@@ -90,8 +91,6 @@ typedef unsigned __int32 DWord;
 
 // CPU halt sources (0-30)
 #define HALT_SPEECH 0
-
-
 
 // breakpoint types occupy the least significant byte (to allow the rest to hold data)
 enum {
