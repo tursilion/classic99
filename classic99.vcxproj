@@ -319,7 +319,7 @@
     <None Include="readme.md" />
     <None Include="roms\DISK.BIN" />
     <None Include="roms\EA_Utils.bin" />
-    <None Include="roms\fbForth200_3.bin" />
+    <None Include="roms\fbForth200_9.bin" />
     <None Include="roms\GPL%40LOADER" />
     <None Include="roms\RXBASSM1" />
     <None Include="roms\RXBASSM2" />

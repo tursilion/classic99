@@ -1873,6 +1873,9 @@ Cartridge System:
 -Add basic CF7 support (external BIOS required)
 -Make TI disk controller a config option (I think it works...)
 -some work on the audio clicks but it didn't really help
+-----------------------------------------------
+12 February 2019
+-Update fbForth
 
 
 

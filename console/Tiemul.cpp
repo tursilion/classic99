@@ -492,7 +492,7 @@ struct CARTS Apps[] = {
 	},
 
 	{	
-		"fbForth 2.09 by Lee Stewart",
+		"fbForth 2.0:11 by Lee Stewart",
 		{	
 			{	IDR_FBFORTH,	0x0000, 0x8000,	TYPE_379	, 0},
 		},

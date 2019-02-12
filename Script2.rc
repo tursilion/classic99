@@ -449,7 +449,7 @@ IDR_XB27GROM            ROMS                    "roms\\XB27_GROM_060315.bin"
 
 IDR_XB27ROM             ROMS                    "roms\\XB27_ROM_060315.bin"
 
-IDR_FBFORTH             ROMS                    "roms\\fbForth200_3.bin"
+IDR_FBFORTH             ROMS                    "roms\\fbForth200_9.bin"
 
 
 /////////////////////////////////////////////////////////////////////////////
