@@ -78,7 +78,7 @@
 // there are a crapton of actual commands you can give to a CF device. Rather than
 // emulate all of them, or even most of them, I'm only going to do the ones I
 // actually need to run the BIOS, which is mostly read sector and write sector in LBA mode...
-
+//
 // TODO: not even an attempt at emulating timing...
 
 #include <atlstr.h>
@@ -131,11 +131,110 @@ bool isReset = false;
 #define DC_RESET       0x04
 
 // commands we know
-#define CMD_READ        0x20
-#define CMD_WRITE       0x30
-#define CMD_FEATURES    0xef
+#define CMD_SENSE       0x03        // puts the last error code in the error register (TODO)
+#define CMD_READ        0x20        // reads a sector
+#define CMD_WRITE       0x30        // writes a sector
+#define CMD_IDENTIFY    0xec        // request identification
+#define CMD_FEATURES    0xef        // sets features
     #define CMD_FEATURES_8BITON 0x01
     #define CMD_FEATURES_8BITOFF 0x81
+
+// based on the SanDisk manual information
+// must be less than 512 bytes!
+const unsigned char identity[] = {
+    0x84,0x8a,  // disk information bits
+    0,99,       // number cylinders
+    0,0,        // reserved
+    0,1,        // number heads
+    0,0,        // unformatted bytes per track
+    0,0,        // unformatted bytes per sector
+    0,9,        // sectors per track
+    0,0,        // sectors per card, big endian
+    0,0,
+    0,0,        // reserved
+    32,32,      // serial number in ASCII, right justified
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    0x39,0x39,
+    0x34,65,
+    0,0,        // buffer type
+    0,0,        // buffer size
+    0,4,        // ECC size
+    'R','e',    // firmware revision
+    'v','.',
+    '1','.',
+    '0',' ',
+    'C','l',    // model number in ASCII, left justified
+    'a','s',
+    's','i',
+    'c','9',
+    '9',' ',
+    'C','F',
+    ' ','s',
+    'i','m',
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    32,32,
+    0,1,        // max sectors per read
+    0,0,        // double word
+    2,0,        // supports LBA, no DMA
+    0,0,        // reserved
+    2,0,        // PIO timing mode
+    0,0,        // DMA timing mode
+    0,3,        // field validity
+    0,0,        // current cylinders
+    0,0,        // current heads
+    0,0,        // current sectors per track
+    0,0,        // current LBA capacity (little endian word order)
+    0,0,
+    1,0,        // multiple sector valid
+    0,0,        // LBA addressable (little endian word order)
+    0,0,
+    0,0,        // single word DMA
+    0,0,        // DMA modes supported (0x07 in Sandisk)
+    0,3,        // PIO modes supported (not really)
+    0,0x78,     // min IDE DMA time ns
+    0,0x78,     // rec IDE DMA time ns
+    0,0x78,     // min PIO no flow control
+    0,0x78,     // min PIO with IORDY
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,0,        // reserved
+    0,1,        // major ATA version
+    0,0,        // minor ATA version
+    0,0,        // command sets supported
+    0x40,4,     // command sets supported
+    0x40,0,     // command sets supported
+    0,0,        // command sets supported
+    0,4,        // command sets supported
+    0x40,0,     // command sets supported
+    0,0,        // Ultra DMA
+    0,0,        // secure erase time
+    0,0,        // enhanced secure erase time
+    0,0,        // current power management value
+    // there's more, but mostly reserved...
+};
 
 // open the CF7 disk file and move the file pointer to the right place
 // note we always assume LBA
@@ -194,6 +293,35 @@ void readSector() {
     memset(sector, 0, sizeof(sector));
     fread(sector, 1, 512, fp);
     fclose(fp);
+}
+
+// load identity data into the buffer
+void readIdentity() {
+    memset(sector, 0, sizeof(sector));
+    memcpy(sector, identity, sizeof(identity));
+    int sectors = nCf7DiskSize/512;
+    // fill in some configurable data
+    sector[14]=(sectors>>24)&0xff;
+    sector[15]=(sectors>>16)&0xff;
+    sector[16]=(sectors>>8)&0xff;
+    sector[17]=(sectors)&0xff;
+    // byte order is weird on purpose
+    sector[116]=(sectors>>24)&0xff;
+    sector[117]=(sectors>>16)&0xff;
+    sector[114]=(sectors>>8)&0xff;
+    sector[115]=(sectors)&0xff;
+    // byte order is weird on purpose
+    sector[122]=(sectors>>24)&0xff;
+    sector[123]=(sectors>>16)&0xff;
+    sector[120]=(sectors>>8)&0xff;
+    sector[121]=(sectors)&0xff;
+    
+    // now byte flip the buffer
+    for (int idx=0; idx<512; idx+=2) {
+        unsigned char x = sector[idx];
+        sector[idx]=sector[idx+1];
+        sector[idx+1]=x;
+    }
 }
 
 // write a sector to the ondisk image
@@ -364,6 +492,12 @@ void write_cf7(Word adr, Byte c) {
                     status |= SBUSY;
                     memset(sector, 0, sizeof(sector));
                     writecnt = 0;
+                    break;
+
+                case CMD_IDENTIFY:
+                    status |= SBUSY;
+                    readIdentity();
+                    secpos = 0;
                     break;
 
                 case CMD_FEATURES:

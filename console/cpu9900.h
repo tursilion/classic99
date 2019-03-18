@@ -91,7 +91,7 @@ public:		// type protection later. Make work today.
 	/////////////////////////////////////////////////////////////////////
 	virtual Byte RCPUBYTE(Word src);
 	virtual void WCPUBYTE(Word dest, Byte c);
-	virtual Word ROMWORD(Word src);
+	virtual Word ROMWORD(Word src, bool rmw);
 	virtual void WRWORD(Word dest, Word val);
 
 	virtual Word GetSafeWord(int x, int bank);

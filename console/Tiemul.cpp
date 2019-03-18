@@ -820,6 +820,12 @@ struct CARTS Games[] = {
 	},
 };
 
+// another hack - hacks in the programming environment for Seahorse boards
+#define USE_GIGAFLASH
+#ifdef USE_GIGAFLASH
+#include "../addons/gigaflash.cpp"
+#endif
+
 // breakpoint helper 
 bool CheckRange(int nBreak, int x) {
 	// check bank first (assumes ranges are only for addresses, not data)
@@ -2328,8 +2334,9 @@ Word romword(Word x, bool rmw)
     x&=0xfffe;		// drop LSB
 
 	// This reads the LSB first. This is the correct order (verified)
-    // although this line of code is not really guaranteed to do that...
-	return((rcpubyte(x,rmw)<<8)+rcpubyte(x+1,rmw));
+    Word lsb = rcpubyte(x+1,rmw);
+    Word msb = rcpubyte(x,rmw);
+    return (msb<<8)+lsb;
 }
 
 /////////////////////////////////////////////////////////
@@ -3986,7 +3993,12 @@ Byte rcpubyte(Word x,bool rmw) {
 		case 0x2000:					// normal CPU RAM
 		case 0xa000:					// normal CPU RAM
 		case 0xc000:					// normal CPU RAM
+			return ReadMemoryByte(x, !rmw);
+
 		case 0xe000:					// normal CPU RAM
+#ifdef USE_GIGAFLASH
+            readE000(x,rmw);            // but never returns anything valid
+#endif
 			return ReadMemoryByte(x, !rmw);
 
 		case 0x4000:					// DSR ROM (with bank switching and CRU)
@@ -4054,6 +4066,12 @@ Byte rcpubyte(Word x,bool rmw) {
 			break;
 
 		case 0x6000:					// cartridge ROM
+#ifdef USE_GIGAFLASH
+        {
+            Byte xx = read6000(x,rmw);
+            return xx;
+        }
+#endif
 #ifdef USE_BIG_ARRAY
 			if (BIGARRAYSIZE > 0) {
 				// TODO BIG HACK - FAKE CART HARDWARE FOR VIDEO TEST
@@ -4144,6 +4162,7 @@ void wcpubyte(Word x, Byte c)
 											// be right now that the CPU emulation does all Word accesses
 	}
 
+#ifndef USE_GIGAFLASH
     // check for cartridge banking
 	if ((x>=0x6000)&&(x<0x8000)) {
 #ifdef USE_BIG_ARRAY
@@ -4180,6 +4199,7 @@ void wcpubyte(Word x, Byte c)
 		}
 		// else it's RAM there
 	}
+#endif
 
 	switch (x & 0xe000) {
 		case 0x8000:
@@ -4242,13 +4262,24 @@ void wcpubyte(Word x, Byte c)
 		case 0x2000:					// normal CPU RAM
 		case 0xa000:					// normal CPU RAM
 		case 0xc000:					// normal CPU RAM
-		case 0xe000:					// normal CPU RAM
+			if (!ROMMAP[x]) {
+				WriteMemoryByte(x, c, false);
+			}
+			break;
+
+        case 0xe000:					// normal CPU RAM
+#ifdef USE_GIGAFLASH
+            writeE000(x,c);
+#endif
 			if (!ROMMAP[x]) {
 				WriteMemoryByte(x, c, false);
 			}
 			break;
 
 		case 0x6000:					// Cartridge RAM (ROM is trapped above)
+#ifdef USE_GIGAFLASH
+            write6000(x,c);
+#endif
 			// but we test it anyway. Just in case. ;) I think the above is just for bank switches
 			if (!ROMMAP[x]) {
 				WriteMemoryByte(x, c, false);
@@ -6038,7 +6069,7 @@ void __cdecl TimerThread(void *)
 
 		// process debugger, if active
 		processDbgPackets();
-
+         
 		if ((PauseInactive)&&(myWnd != GetForegroundWindow())&&(dbgWnd != GetForegroundWindow())) {
 			// Reduce CPU usage when inactive (hack)
 			Sleep(100);

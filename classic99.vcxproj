@@ -207,6 +207,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="addons\F18A.cpp" />
+    <ClCompile Include="addons\gigaFlash.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="addons\loadsave_brk.cpp" />
     <ClCompile Include="addons\ubergrom.cpp" />
     <ClCompile Include="console\cpu9900.cpp">

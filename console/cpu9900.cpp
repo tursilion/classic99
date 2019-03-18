@@ -241,12 +241,13 @@ void CPU9900::WCPUBYTE(Word dest, Byte c) {
 	}
 }
 
-Word CPU9900::ROMWORD(Word src) {
+Word CPU9900::ROMWORD(Word src, bool rmw=false) {
 	// nothing special here yet
-	return romword(src);
+	return romword(src, rmw);
 }
 
 void CPU9900::WRWORD(Word dest, Word val) {
+    // todo: wait, where's the Read-before-write access?
 	wrword(dest, val);
 }
 
@@ -2062,7 +2063,7 @@ void CPU9900::op_mov()
 	post_inc(SRC);
 	
 	fixD();
-	ROMWORD(D);		// wasted read before write
+	ROMWORD(D, true);		// wasted read before write
 	WRWORD(D,x1);
 	post_inc(DST);
   
@@ -2090,7 +2091,7 @@ void CPU9900::op_movb()
 	post_inc(SRC);
 	
 	fixD();
-	ROMWORD(D);			// wasted read before write (always a word!) (hacky, this one is for timing, but WCPUBYTE needs to read again to build the word)
+	ROMWORD(D,true);			// wasted read before write (always a word!) (hacky, this one is for timing, but WCPUBYTE needs to read again to build the word)
 	WCPUBYTE(D,x1);
 	post_inc(DST);
 	
@@ -2271,7 +2272,7 @@ void CPU9900::op_clr()
 	AddCycleCount(10);
 
 	FormatVI;
-	ROMWORD(S);		// wasted read before write
+	ROMWORD(S, true);		// wasted read before write
 	WRWORD(S,0);
 	post_inc(SRC);
 }
@@ -2290,7 +2291,7 @@ void CPU9900::op_seto()
 	AddCycleCount(10);
 
 	FormatVI;
-	ROMWORD(S);			// wasted read before write
+	ROMWORD(S, true);			// wasted read before write
 	WRWORD(S,0xffff);
 	post_inc(SRC);
 }
