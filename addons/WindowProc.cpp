@@ -1065,10 +1065,10 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             //  CRU[24]     // audio gate (leave high)
 	            CRU[25]=0;	// mag tape out - needed for Robotron to work!
 	            CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
-				timer9901=0;
+				timer9901 = 0;
                 timer9901Read = 0;
+				starttimer9901 = 0;
 				timer9901IntReq=0;
-				starttimer9901=0;
 				wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
 				init_kb();								// Reset keyboard emulation
 				SetupSams(sams_enabled, sams_size);		// Prepare the AMS system

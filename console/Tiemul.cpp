@@ -821,7 +821,7 @@ struct CARTS Games[] = {
 };
 
 // another hack - hacks in the programming environment for Seahorse boards
-#define USE_GIGAFLASH
+//#define USE_GIGAFLASH
 #ifdef USE_GIGAFLASH
 #include "../addons/gigaflash.cpp"
 #endif
@@ -1664,10 +1664,10 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	quitflag=0;			// no quit yet
 	nCurrentDSR=-1;		// no DSR selected
 	memset(nDSRBank, 0, sizeof(nDSRBank));
-	timer9901=0;		// timer is idle
-    timer9901Read =0;
-	starttimer9901=0;
-	timer9901IntReq=0;
+	timer9901 = 0;
+    timer9901Read = 0;
+	starttimer9901 = 0;
+	timer9901IntReq = 0;
 	doLoadInt=false;			// no pending LOAD
 
 	// clear debugging strings
@@ -2333,7 +2333,9 @@ Word romword(Word x, bool rmw)
 { 
     x&=0xfffe;		// drop LSB
 
-	// This reads the LSB first. This is the correct order (verified)
+    // NOTE: putting a CRU timer mode reset here based on address breaks CS1, so must be wrong
+
+    // This reads the LSB first. This is the correct order (verified)
     Word lsb = rcpubyte(x+1,rmw);
     Word msb = rcpubyte(x,rmw);
     return (msb<<8)+lsb;
@@ -2351,6 +2353,8 @@ void wrword(Word x, Word y)
 	// now write the new data, LSB first
 	wcpubyte(x+1,(Byte)(y&0xff));
 	wcpubyte(x,(Byte)(y>>8));
+
+    // Putting a CRU timer reset based on address here seems to have no effect
 
 	// check breakpoints against what was written to where
 	for (int idx=0; idx<nBreakPoints; idx++) {
@@ -3306,18 +3310,36 @@ void do1()
 		// The 9901 timer decrements every 64 periods, with the TI having a 3MHz clock speed
 		// Thus, it decrements 46875 times per second. If CRU bit 3 is on, we trigger an
 		// interrupt when it expires. 
-		if (timer9901>0) {
-			int nTimerCnt=CRUTimerTicks>>6;		// /64
-			if (nTimerCnt) {
-				timer9901-=nTimerCnt;
-				CRUTimerTicks-=(nTimerCnt<<6);	// *64
+        // TODO: so if the timer is starting at zero, which I assume it does (though it's not
+        // clear, can we write a test program to find out?), then I assume the decrementer will
+        // wrap around. This is an oddball case but we'll try it.
+		int nTimerCnt=CRUTimerTicks>>6;		// /64
+		if (nTimerCnt) {
+            if (timer9901 == 0) {
+                // handle the wraparound.. since we /started/ at
+                // zero, we didn't yet count down TO it
+                // TODO: I have not confirmed whether starttimer9901 should start at 0 or 0x3fff,
+                //       if it's not 0, then this may be off by 1 tick on the initialized console.
+                // 14 bit timer
+			    timer9901=0x4000 - nTimerCnt;
+            } else {
+    			timer9901-=nTimerCnt;
+            }
+			CRUTimerTicks-=(nTimerCnt<<6);	// *64
 
-				if (timer9901 < 1) {
-					timer9901=starttimer9901+timer9901;
-// 					debug_write("9901 timer expired, int requested");
-					timer9901IntReq=1;	
-				}
+			if (timer9901 < 1) {
+				timer9901=starttimer9901+timer9901;
+                timer9901 &= 0x3fff;    // only 14 bits!
+// 				debug_write("9901 timer expired, int requested");
+				timer9901IntReq=1;	
 			}
+
+            // it's less stress on the emulator to do this on entry to clock mode,
+            // but it's more correct here. Decisions, decisions...
+            if (CRU[0] != 1) {
+                // transfer the timer when not in clock mode
+                timer9901Read = timer9901;
+            }
 		}
 
 		// Check if the VDP or CRU wants an interrupt (99/4A has only level 1 interrupts)
@@ -5420,6 +5442,49 @@ void SetSuperBank() {
 
 //////////////////////////////////////////////////////////////////
 // Write a bit to CRU
+// Better 9901 CRU notes:
+// There are 32 bits, from 0-31:
+//
+// 0     is a mode select - see below
+// 1-6   connect to pins !INT1 to !INT6. In interrupt mode, each bit as a dedicated input pin. (No output).
+// 7-15  share nine I/O pins with bits 23-31. These are pins 23 and 27-34. The order DECREMENTS with the pin number! Bits 7-15 support interrupts.
+// 16-22 are strict I/O pins
+// 23-31 share nine I/O pins with bits 7-15. These are pins 23 and 27-34. The order INCREMENTS with the pin number! Bits 23-31 are strict I/O.
+//
+// Bit 0:
+//  When set to 1, bits 1-15 enable clock logic.
+//  When set to 0, interrupt logic is enabled.
+//
+// Clock Logic:
+//  Bits 1-14 function as two 14-bit real time Clock Buffer registers - one read-only, one write-only.
+//  Note that interrupt and I/O logic continues as normal on other bits.
+//  Writes will go to the "clock load buffer" (startTimer9901)
+//  Reads will come from the "clock read buffer" (timer9901Read)
+//  There is also a "clock counter register" (timer9901)
+//  Clock counter /always/ decrements, no matter what else is going on. However, the interrupt is normally disabled.
+//  When you write any value into the clock load buffer, and the load buffer result is non-zero, the clock counter starts decrementing from that value.
+//  An interrupt is generated when the counter counts down TO zero, and this reloads the clock load buffer.
+//  The timer interrupt is level 3 (same as !INT3), thus the bit 3 interrupt mask must be set.
+//  In clock mode, bit 15 reflects the state of INTREQ - it will be high if any interrupt is pending.
+//  (TODO: this is a big emulation gotcha, since we could check all interrupts here, not only timer)
+//  Any write to !INT3 mask bit will clear the pending interrupt.
+//  Clock read buffer does not update while in clock mode, (either transferred on entry, or latched on entry)
+//  Explicitly in the doc, the clock read buffer is updated on exit from clock mode, and every decrement.
+//  Reset is done by a low signal on the !RST1 pin, or by writing 0 to bit 15 when in clock mode (CRU[0]==1)
+//  Reset clears all interrupts, and resets all bits to output (with no interrupt mask?)
+//
+// Interrupt Logic:
+//  When in interrupt mode, bits 1-15 access the interrupt pins. Reads return the state of the pin.
+//  Writes control the interrupt mask for that pin. (1 is enabled, and interrupts are active LOW).
+//  Enabling the interrupt mask when the pin in low will trigger an interrupt. (TODO: I sort of do this piecemeal....)
+//  The highest priority active interrupt (lowest index) is output on pins IC0-IC3. (TODO: does the TI99 use these? Probably not!)
+//
+// I/O:
+//  Bits 1-6 are input only.
+//  At reset, bits 7-15 (23-31) are in input mode.
+//  After any write to an I/O pin, the pin is switched to output mode (until reset!)
+//  Note that 7-15 are input-only bits, to change those pins you need to write to 23-31. Writing to 7-15 loads the interrupt mask (or the clock).
+//  Reading an output pin returns the current output value.
 //////////////////////////////////////////////////////////////////
 void wcru(Word ad, int bt)
 {
@@ -5534,13 +5599,14 @@ void wcru(Word ad, int bt)
 				if (ad == 15) {
 					// writing 1 has no effect
 				} else {
-					// writing to CRU 9901 timer
-                    // V9T9 doesn't update starttimer9901 until release from clock mode (double-buffered), but it probably doesn't matter to most apps
-                    int oldtimer = starttimer9901;
+					// writing to CRU 9901 timer. Any non-zero result starts the timer immediately
 					Word mask=0x01<<(ad-1);
+                    int oldtimer = starttimer9901;
 					starttimer9901|=mask;
                     if (oldtimer != starttimer9901) {
-//                      debug_write("9901 timer now set to %d", starttimer9901);
+//                        debug_write("9901 timer now set to %d", starttimer9901);
+                    }
+                    if (starttimer9901 != 0) {
                         // per adam doc, we start decrementing now (non-zero value)
                         timer9901=starttimer9901;
                     }
@@ -5550,16 +5616,15 @@ void wcru(Word ad, int bt)
 				switch (ad) {
                     case 0:
                         // timer mode (update readback reg)
-                        // Adam doc says that the read register also gets a copy every decrement,
-                        // (ie: it just stops updating), but since we can't read it otherwise anyway,
-                        // this should have the same effect.
-                        timer9901Read = timer9901;
+                        // We don't need to do anything here, since we update the read register when we're supposed to
                         break;
 
 					case 3:
 						// timer interrupt bit
-						timer9901IntReq=0;
-//                        debug_write("9901 timer interrupt off");
+                        if (timer9901IntReq) {
+    						timer9901IntReq=0;
+//                            debug_write("9901 timer interrupt cleared");
+                        }
 						break;
 
                     case 18:
@@ -5589,25 +5654,35 @@ void wcru(Word ad, int bt)
 			if ((ad>=0)&&(ad<16)&&(CRU[0]==1)) {
 				if (ad == 15) {
 					// writing 0 is a soft reset of the 9901 - it resets
-					// all I/O pins to pure input, but does not affect the timer
+					// all I/O pins to pure input, clears interrupts, but does not affect the timer
 					// it only has this effect in timer mode, but is not a timer function.
+                    // TODO: the docs don't say it doesn't affect the timer...?
+                    // TODO: need to track I/O pins, could affect keyboard/etc
+                    // But we should clear the interrupt masks
+                    debug_write("9901 soft reset");
+                    // TODO: should it exit clock mode?
+	                memset(CRU, 1, 4096);		// I think CRU is deterministic
+	                CRU[0]=0;	// timer control
+	                CRU[1]=0;	// peripheral interrupt mask
+	                CRU[2]=0;	// VDP interrupt mask
+	                CRU[3]=0;	// timer interrupt mask??
+                //  CRU[12-14]  // keyboard column select
+                //  CRU[15]     // Alpha lock 
+                //  CRU[24]     // audio gate (leave high)
+	                CRU[25]=0;	// mag tape out - needed for Robotron to work!
+	                CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
 				} else if (ad == 0) {
 					// Turning off timer mode - start timer (but don't reset it, as proven by camelForth)
                     // Not sure this matters to this emulation, but Adam doc notes that the 9901 will exit
-                    // clock mode if it even sees "a 1 on select line S0", even when chip select is not active.
+                    // clock mode if it ever sees "a 1 on select line S0", even when chip select is not active.
                     // this may be the bit I mention below that Thierry noted as well.
 					CRU[ad]=0;
-                    if (timer9901 != starttimer9901) {
-                        // TODO: in this initial case, would the interrupt flag be set?
-                        // BUT: this change breaks tape. To read tape, I /must/ set timer9901=starttimer9901
-                        // So who's right? How does the damn timer work?
-                        // V9T9 (DOS) DOES this reset every time it exits clock mode
-                        timer9901=starttimer9901;
-                    }
-//					timer9901=starttimer9901;
-//                  timer9901Read=timer9901;    // V9T9 DOS updates timer9901Read ONLY when setting to clock mode (bit set is 1), so this is never right here
+                    // We definitely do NOT reset the timer here - and doing so breaks both camelForth and fbForth
+                    // docs explicitly say to update the read register here, for no reason...
+                    // also updates every decrement
+                    timer9901Read=timer9901;
 					CRUTimerTicks=0;
-//					debug_write("Starting 9901 timer at %d ticks", timer9901);
+//					debug_write("Exitting 9901 timer mode at %d ticks", timer9901);
 				} else {
 					// writing to CRU 9901 timer
                     // V9T9 doesn't update starttimer9901 until release from clock mode (double-buffered), but it probably doesn't matter to most apps
@@ -5615,8 +5690,12 @@ void wcru(Word ad, int bt)
                     int oldtimer = starttimer9901;
 					starttimer9901&=~mask;
                     if (oldtimer != starttimer9901) {
-//                      debug_write("9901 timer now set to %d", starttimer9901);
-                        // per adam doc, restart decrementing on any non-zero write to the timer register (this was zero)
+//                        debug_write("9901 timer now set to %d", starttimer9901);
+                    }
+                    // restart if the resulting value is non-zero - this fixes the conflict I had with tape not
+                    // working if I didn't restart on exit from clock mode.
+                    if (starttimer9901 != 0) {
+                        timer9901 = starttimer9901;
                     }
 				}
 			} else {
@@ -5624,8 +5703,10 @@ void wcru(Word ad, int bt)
 				switch (ad) {
 					case 3:
 						// timer interrupt bit
-						timer9901IntReq=0;
-//                        debug_write("9901 timer request cleared");
+                        if (timer9901IntReq) {
+    						timer9901IntReq=0;
+                            debug_write("9901 timer request cleared");
+                        }
 						break;
 
                     case 18:
@@ -5649,15 +5730,22 @@ void wcru(Word ad, int bt)
 		}
 		if ((ad > 15) && (ad < 31) && (CRU[0] == 1)) {
 			// exit timer mode
+            debug_write("9901 exitting timer mode for CRU access");
 			wcru(0,0);
 		}
 		// There's another potential case for automatic exit of timer mode
 		// if a value from 16-31 appears on A10-A15 (remember A15 is LSB),
 		// Thierry Nouspikel says that the 9901 will see this and exit 
 		// timer mode as well, even though it's not a CRU operation.
-		// That would mean any address access to >xx1x, >xx5x, >xx9x, >xxdx
-		// should trigger it. Maybe we can test this on a real machine
-		// sometime? TODO.
+        // Looking more closely at the Osborne doc, it seems more picky than
+        // that. The 9901 will see a CRU access only when the 3 MSB of the address
+        // bus are zero AND MEMEN is inactive (ie: NOT a memory cycle) AND
+        // its CE line is active. I have not yet looked at the schematic to
+        // check the CE mapping, but probably it's based on the CRU control line.
+        // but, the Osborne doc /also/ says any memory address with A4 high will do
+        // this. That's 0x0800. But this is strange, since it means huge areas of 
+        // memory space would be unable to read the timer register on real hardware.
+        // Are we really just that lucky??
 	}
 }
 
@@ -5825,7 +5913,15 @@ int rcru(Word ad)
 
 	if ((CRU[0]==1)&&(ad<16)&&(ad>0)) {				// read elapsed time from timer
 		if (ad == 15) {
-			return timer9901IntReq;
+            // this reflects the state of the interrupt request PIN, so 
+            // it's a little more complex than just one interrupt. Technically, it's
+            // ALL interrupts that run through the 9901, and is affected by the mask.
+            // For now, we just have the VDP, eventually we'll have others.
+            return
+                (
+                    (timer9901IntReq && CRU[3]) ||  // timer interrupt !INT3
+                    (VDPINT && CRU[2])              // VDP Interrupt !INT2
+                );
 		}
 		Word mask=0x01<<(ad-1);
 		if (timer9901Read & mask) {
@@ -5866,6 +5962,7 @@ int rcru(Word ad)
 	ret=1;												// default return code (false)
 
 	// are we checking VDP interrupt?
+    // it should reflect on bit 15 in clock mode, too, IF !INT2 is enabled in the mask (done above)
 	if (ad == 0x02) {		// that's the only int we have
 		if (VDPINT) {
 			return 0;		
@@ -5873,6 +5970,7 @@ int rcru(Word ad)
 			return 1;
 		}
 	}
+    // TODO: it should reflect on bit 15 in clock mode, too, IF !INT2 is enabled in the mask
 	if (ad == 0x01) {		// this would be a peripheral card interrupt
 		// todo: we don't have any, though!
 		return 1;
