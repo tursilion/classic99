@@ -3529,7 +3529,8 @@ void GPUF18A::WCPUBYTE(Word dest, Byte c) {
 	if (dest < 0x4000) redraw_needed=REDRAW_LINES;		// to avoid redrawing because of GPU R0-R15 registers changing
 }
 
-Word GPUF18A::ROMWORD(Word src) {
+Word GPUF18A::ROMWORD(Word src, bool rmw=false) {
+    (void)rmw;
 	src&=0xfffe;
 	return (RCPUBYTE(src)<<8) | RCPUBYTE(src+1);
 //	return (VDP[(src)]<<8) | VDP[(src+1)];

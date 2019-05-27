@@ -4886,6 +4886,7 @@ void wvdpbyte(Word x, Byte c)
 				}
 				F18APaletteRegisterData = -1;
 			}
+            redraw_needed=REDRAW_LINES;
 			return;
 		}
 		// RasmusM added end
@@ -6605,9 +6606,21 @@ void UpdateHeatmap(int Address) {
 		myInfo.bmiHeader.biClrUsed=0;
 		myInfo.bmiHeader.biClrImportant=0;
 
+//		HDC myDC=GetDC(hHeatMap);
+//		SetDIBitsToDevice(myDC, 0, 0, 256, 256, 0, 0, 0, 256, nHeatMap, &myInfo, DIB_RGB_COLORS);
+//		ReleaseDC(hHeatMap, myDC);
+        
+        BITMAP structBitmapHeader;
+        memset( &structBitmapHeader, 0, sizeof(BITMAP) );
+
 		HDC myDC=GetDC(hHeatMap);
-		SetDIBitsToDevice(myDC, 0, 0, 256, 256, 0, 0, 0, 256, nHeatMap, &myInfo, DIB_RGB_COLORS);
-		ReleaseDC(hHeatMap, myDC);
+
+            HGDIOBJ hBitmap = GetCurrentObject(myDC, OBJ_BITMAP);
+            GetObject(hBitmap, sizeof(BITMAP), &structBitmapHeader);
+            // we use width twice to get a square output that preserves the Close button
+            StretchDIBits(myDC, 0, 0, structBitmapHeader.bmWidth, structBitmapHeader.bmWidth, 0, 0, 256, 256, nHeatMap, &myInfo, DIB_RGB_COLORS, SRCCOPY);
+
+        ReleaseDC(hHeatMap, myDC);
 	}
 }
 
