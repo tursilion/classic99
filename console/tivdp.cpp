@@ -339,7 +339,7 @@ void SetTVValues(double hue, double sat, double cont, double bright, double shar
 // Get table addresses from Registers
 // We return reg0 since we do the bitmap filter here now
 //////////////////////////////////////////////////////////
-int gettables()
+int gettables(int isLayer2)
 {
 	int reg0 = VDPREG[0];
 	if (nSystem == 0) {
@@ -392,23 +392,43 @@ int gettables()
 		PDT=((VDPREG[4]&0x07)<<11);
 		CTsize=32;
 		PDTsize=2048;
+
+        if (isLayer2) {
+            // get the F18A layer information
+            // TODO: bigger tables are possible with F18A
+		    /* Colour Table */
+		    CT=VDPREG[11]<<6;
+		    CTsize=32;
+            /* Screen Image Table */
+		    SIT=((VDPREG[10]&0x0f)<<10);
+
+            /* Pattern Descriptor Table */
+            // TODO: Matt says there's a second pattern table, but I don't see it in the docs.
+		    //PDT=((VDPREG[4]&0x07)<<11);
+		    //PDTsize=2048;
+        }
 	}
 
     return reg0;
 }
 
 // called from tiemul
-void vdpReset() {
-	// todo: move the other system-level init (what does the VDP do?) into here
-	memcpy(F18APalette, F18APaletteReset, sizeof(F18APalette));
-	// convert from 12-bit to 24-bit
-	for (int idx=0; idx<64; idx++) {
-		int r = (F18APalette[idx]&0xf00)>>8;
-		int g = (F18APalette[idx]&0xf0)>>4;
-		int b = (F18APalette[idx]&0xf);
-		F18APalette[idx] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
-	}
-	redraw_needed = REDRAW_LINES;		
+void vdpReset(bool isCold) {
+    // on cold reset, reload everything. On warm reset (F18A only), we don't reset the palette
+    if (isCold) {
+	    // todo: move the other system-level init (what does the VDP do?) into here
+	    memcpy(F18APalette, F18APaletteReset, sizeof(F18APalette));
+	    // convert from 12-bit to 24-bit
+	    for (int idx=0; idx<64; idx++) {
+		    int r = (F18APalette[idx]&0xf00)>>8;
+		    int g = (F18APalette[idx]&0xf0)>>4;
+		    int b = (F18APalette[idx]&0xf);
+		    F18APalette[idx] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
+	    }
+    }
+    bF18AActive = false;
+	redraw_needed = REDRAW_LINES;
+    memset(VDPREG, 0, sizeof(VDPREG));
 }
 
 ////////////////////////////////////////////////////////////
@@ -554,7 +574,7 @@ void VDPmain()
 int getCharsPerLine() {
 	int nCharsPerLine=32;	// default for graphics mode
 
-	int reg0 = gettables();
+	int reg0 = gettables(0);
 
 	if (!(VDPREG[1] & 0x40))		// Disable display
 	{
@@ -670,7 +690,7 @@ void VDPdisplay(int scanline)
 	DWORD *plong;
 	int nMax;
 
-	int reg0 = gettables();
+	int reg0 = gettables(0);
 
 	int gfxline = scanline - 27;	// skip top border
 
@@ -710,40 +730,42 @@ void VDPdisplay(int scanline)
 		}
 
 		if ((!bDisableBackground) && (gfxline < 192) && (gfxline >= 0)) {
-			if ((VDPREG[1] & 0x18)==0x18)	// MODE BITS 2 and 1
-			{
-				VDPillegal(gfxline);
-				return;
-			}
+            for (int isLayer2=0; isLayer2<2; ++isLayer2) {
+                reg0 = gettables(isLayer2);
 
-			if (VDPREG[1] & 0x10)			// MODE BIT 2
-			{
-				if (reg0 & 0x02) {			// BITMAP MODE BIT
-					VDPtextII(gfxline);	// undocumented bitmap text mode
-				} else if (reg0 & 0x04) {	// MODE BIT 4 (9938)
-					VDPtext80(gfxline);	// 80-column text, similar to 9938/F18A
-				} else {
-					VDPtext(gfxline);		// regular 40-column text
-				}
-				return;
-			}
+                if ((VDPREG[1] & 0x18)==0x18)	// MODE BITS 2 and 1
+			    {
+				    VDPillegal(gfxline, isLayer2);
+			    } else if (VDPREG[1] & 0x10)			// MODE BIT 2
+			    {
+				    if (reg0 & 0x02) {			// BITMAP MODE BIT
+					    VDPtextII(gfxline, isLayer2);	// undocumented bitmap text mode
+				    } else if (reg0 & 0x04) {	// MODE BIT 4 (9938)
+					    VDPtext80(gfxline, isLayer2);	// 80-column text, similar to 9938/F18A
+				    } else {
+					    VDPtext(gfxline, isLayer2);		// regular 40-column text
+				    }
+			    } else if (VDPREG[1] & 0x08)				// MODE BIT 1
+			    {
+				    if (reg0 & 0x02) {				// BITMAP MODE BIT
+					    VDPmulticolorII(gfxline, isLayer2);	// undocumented bitmap multicolor mode
+				    } else {
+					    VDPmulticolor(gfxline, isLayer2);
+				    }
+			    } else if (reg0 & 0x02) {					// BITMAP MODE BIT
+				    VDPgraphicsII(gfxline, isLayer2);		// documented bitmap graphics mode
+			    } else {
+				    VDPgraphics(gfxline, isLayer2);
+			    }
 
-			if (VDPREG[1] & 0x08)				// MODE BIT 1
-			{
-				if (reg0 & 0x02) {				// BITMAP MODE BIT
-					VDPmulticolorII(gfxline);	// undocumented bitmap multicolor mode
-				} else {
-					VDPmulticolor(gfxline);
-				}
-				return;
-			}
-
-			if (reg0 & 0x02) {					// BITMAP MODE BIT
-				VDPgraphicsII(gfxline);		// documented bitmap graphics mode
-			} else {
-				VDPgraphics(gfxline);
-			}
+                // Tile layer 2, if applicable
+                // TODO: sprite priority is not taken into account
+			    if ((!bF18AActive) || ((VDPREG[49]&0x80)==0)) {
+                    break;
+                }
+            }
 		} else {
+            // This case is hit if nothing else is being drawn, otherwise the graphics modes call DrawSprites
 			// as long as mode bit 2 is not set, sprites are okay
 			if ((VDPREG[1] & 0x10) == 0) {
 				DrawSprites(gfxline);
@@ -893,8 +915,9 @@ void draw_debug()
 
 /////////////////////////////////////////////////////////
 // Draw graphics mode
+// Layer 2 for F18A second tile layer!
 /////////////////////////////////////////////////////////
-void VDPgraphics(int scanline)
+void VDPgraphics(int scanline, int isLayer2)
 {
 	int t,o;				// temp variables
 	int i2;					// temp variables
@@ -911,29 +934,65 @@ void VDPgraphics(int scanline)
 		for (i2=0; i2<256; i2+=8)	// x loop
 		{ 
 			if (VDPDebug) {
-				ch=o&0xff;
+				ch=o&0xff;              // debug character simply increments
+                if (o&0x100) {
+                    // sprites in the second block
+                    p_add=SDT+(ch<<3)+i3;   // calculate pattern address
+                    fgc = 15-(VDPREG[7]&0x0f);  // color the opposite of the screen color
+                    bgc = 0;                // transparent background
+                } else {
+			        p_add=PDT+(ch<<3)+i3;   // calculate pattern address
+			        c = ch>>3;              // divide by 8 for color table
+			        fgc=VDP[CT+c];          // extract color
+			        bgc=fgc&0x0f;           // extract background color
+			        fgc>>=4;                // mask foreground color
+                }
 			} else {
-				ch=VDP[SIT+o];
+				ch=VDP[SIT+o];          // look up character
+			    p_add=PDT+(ch<<3)+i3;   // calculate pattern address
+			    c = ch>>3;              // divide by 8 for color table
+			    fgc=VDP[CT+c];          // extract color
+			    bgc=fgc&0x0f;           // extract background color
+			    fgc>>=4;                // mask foreground color
 			}
-			p_add=PDT+(ch<<3)+i3;
-			c = ch>>3;
-			fgc=VDP[CT+c];
-			bgc=fgc&0x0f;
-			fgc>>=4;
 			o++;
 
 			//for (i3=0; i3<8; i3++)
 			{	
 				t=VDP[p_add];
 	
-				pixel(i2,i1+i3,(t&0x80 ? fgc : bgc ));
-				pixel(i2+1,i1+i3,(t&0x40 ? fgc : bgc ));
-				pixel(i2+2,i1+i3,(t&0x20 ? fgc : bgc ));
-				pixel(i2+3,i1+i3,(t&0x10 ? fgc : bgc ));
-				pixel(i2+4,i1+i3,(t&0x08 ? fgc : bgc ));
-				pixel(i2+5,i1+i3,(t&0x04 ? fgc : bgc ));
-				pixel(i2+6,i1+i3,(t&0x02 ? fgc : bgc ));
-				pixel(i2+7,i1+i3,(t&0x01 ? fgc : bgc ));
+	            if ((isLayer2)&&((fgc==0)||(bgc==0))) {
+                    // for layer 2, we have to drop transparent pixels,
+                    // but I don't want to slow down the normal draw that much
+			        //for (i3=0; i3<8; i3++)
+			        {	
+                        // fix it so that bgc is transparent, then we only draw on that test
+                        if (fgc==0) {
+                            t=~t;
+                            fgc=bgc;
+                            //bgc=0;  // not needed, not going to use it
+                        }
+                        if (fgc != 0) {     // skip if fgc is also transparent
+				            if (t&80) pixel(i2,i1+i3,fgc);
+				            if (t&40) pixel(i2+1,i1+i3,fgc);
+				            if (t&20) pixel(i2+2,i1+i3,fgc);
+				            if (t&10) pixel(i2+3,i1+i3,fgc);
+				            if (t&8) pixel(i2+4,i1+i3,fgc);
+				            if (t&4) pixel(i2+5,i1+i3,fgc);
+				            if (t&2) pixel(i2+6,i1+i3,fgc);
+				            if (t&1) pixel(i2+7,i1+i3,fgc);
+                        }
+			        }
+                } else {
+    			    pixel(i2,i1+i3,(t&0x80 ? fgc : bgc ));
+				    pixel(i2+1,i1+i3,(t&0x40 ? fgc : bgc ));
+				    pixel(i2+2,i1+i3,(t&0x20 ? fgc : bgc ));
+				    pixel(i2+3,i1+i3,(t&0x10 ? fgc : bgc ));
+				    pixel(i2+4,i1+i3,(t&0x08 ? fgc : bgc ));
+				    pixel(i2+5,i1+i3,(t&0x04 ? fgc : bgc ));
+				    pixel(i2+6,i1+i3,(t&0x02 ? fgc : bgc ));
+				    pixel(i2+7,i1+i3,(t&0x01 ? fgc : bgc ));
+                }
 			}
 		}
 	}
@@ -945,7 +1004,7 @@ void VDPgraphics(int scanline)
 /////////////////////////////////////////////////////////
 // Draw bitmap graphics mode
 /////////////////////////////////////////////////////////
-void VDPgraphicsII(int scanline)
+void VDPgraphicsII(int scanline, int isLayer2)
 {
 	int t,o;				// temp variables
 	int i2;					// temp variables
@@ -955,6 +1014,11 @@ void VDPgraphicsII(int scanline)
 	unsigned char ch=0xff;
 	const int i1 = scanline&0xf8;
 	const int i3 = scanline&0x07;
+
+    if (isLayer2) {
+        // I don't think you can do bitmap layer 2??
+        return;
+    }
 
 	o=(scanline/8)*32;			// offset in SIT
 //	table=0; Poffset=0; Coffset=0;
@@ -1018,11 +1082,11 @@ void VDPgraphicsII(int scanline)
 ////////////////////////////////////////////////////////////////////////
 // Draw text mode 40x24
 ////////////////////////////////////////////////////////////////////////
-void VDPtext(int scanline)
+void VDPtext(int scanline, int isLayer2)
 { 
 	int t,o;
 	int i2;
-	int c1, c2, p_add;
+	int fgc, bgc, p_add;
 	unsigned char ch=0xff;
 	const int i1 = scanline&0xf8;
 	const int i3 = scanline&0x07;
@@ -1030,8 +1094,11 @@ void VDPtext(int scanline)
 	o=(scanline/8)*40;			// offset in SIT
 
 	t=VDPREG[7];
-	c1=t&0xf;
-	c2=t>>4;
+	bgc=t&0xf;
+	fgc=t>>4;
+    if (isLayer2) {
+        bgc=0;
+    }
 
 //	for (i1=0; i1<192; i1+=8)					// y loop
 	{ 
@@ -1043,19 +1110,49 @@ void VDPtext(int scanline)
 				ch=VDP[SIT+o];
 			}
 
+            if ((bF18AActive) && (VDPREG[50]&0x02)) {
+                // per-cell attributes, so update the colors
+                if (isLayer2) {
+                    t = VDP[VDPREG[11]*64 + o];
+                    // BG is transparent (todo is that true?)
+	                fgc=t>>4;
+                } else {
+                    t = VDP[VDPREG[3]*64 + o];
+                }
+	            bgc=t&0xf;
+	            fgc=t>>4;
+            }
+
 			p_add=PDT+(ch<<3)+i3;
 			o++;
 
-//			for (i3=0; i3<8; i3++)		// 6 pixels wide
-			{	
-				t=VDP[p_add];
-				pixel(i2,i1+i3,(t&0x80 ? c2 : c1 ));
-				pixel(i2+1,i1+i3,(t&0x40 ? c2 : c1 ));
-				pixel(i2+2,i1+i3,(t&0x20 ? c2 : c1 ));
-				pixel(i2+3,i1+i3,(t&0x10 ? c2 : c1 ));
-				pixel(i2+4,i1+i3,(t&0x08 ? c2 : c1 ));
-				pixel(i2+5,i1+i3,(t&0x04 ? c2 : c1 ));
-			}
+            if ((isLayer2)&&((fgc==0)||(bgc==0))) {
+                // for layer 2, we have to drop transparent pixels,
+                // but I don't want to slow down the normal draw that much
+			    //for (i3=0; i3<8; i3++)
+			    {	
+				    t=VDP[p_add];
+                    if (fgc != 0) {     // skip if fgc is also transparent
+				        if (t&0x80) pixel80(i2,i1+i3,fgc);
+				        if (t&0x40) pixel80(i2+1,i1+i3,fgc);
+				        if (t&0x20) pixel80(i2+2,i1+i3,fgc);
+				        if (t&0x10) pixel80(i2+3,i1+i3,fgc);
+				        if (t&0x8) pixel80(i2+4,i1+i3,fgc);
+				        if (t&0x4) pixel80(i2+5,i1+i3,fgc);
+                    }
+			    }
+            } else {
+    //			for (i3=0; i3<8; i3++)		// 6 pixels wide
+			    {	
+				    t=VDP[p_add];
+				    pixel(i2,i1+i3,  (t&0x80 ? fgc : bgc ));
+				    pixel(i2+1,i1+i3,(t&0x40 ? fgc : bgc ));
+				    pixel(i2+2,i1+i3,(t&0x20 ? fgc : bgc ));
+				    pixel(i2+3,i1+i3,(t&0x10 ? fgc : bgc ));
+				    pixel(i2+4,i1+i3,(t&0x08 ? fgc : bgc ));
+				    pixel(i2+5,i1+i3,(t&0x04 ? fgc : bgc ));
+			    }
+            }
 		}
 	}
 	// no sprites in text mode
@@ -1064,11 +1161,11 @@ void VDPtext(int scanline)
 ////////////////////////////////////////////////////////////////////////
 // Draw bitmap text mode 40x24
 ////////////////////////////////////////////////////////////////////////
-void VDPtextII(int scanline)
+void VDPtextII(int scanline, int isLayer2)
 { 
 	int t,o;
 	int i2;
-	int c1, c2, p_add;
+	int fgc,bgc, p_add;
 	int table, Poffset;
 	unsigned char ch=0xff;
 	const int i1 = scanline&0xf8;
@@ -1077,8 +1174,11 @@ void VDPtextII(int scanline)
 	o=(scanline/8)*40;							// offset in SIT
 
 	t=VDPREG[7];
-	c1=t&0xf;
-	c2=t>>4;
+	bgc=t&0xf;
+	fgc=t>>4;
+    if (isLayer2) {
+        bgc=0;
+    }
 
 	table=0; Poffset=0;
 
@@ -1102,16 +1202,33 @@ void VDPtextII(int scanline)
 			p_add=PDT+(((ch<<3)+Poffset)&PDTsize)+i3;
 			o++;
 
-//			for (i3=0; i3<8; i3++)		// 6 pixels wide
-			{	
-				t=VDP[p_add];
-				pixel(i2,i1+i3,(t&0x80 ? c2 : c1 ));
-				pixel(i2+1,i1+i3,(t&0x40 ? c2 : c1 ));
-				pixel(i2+2,i1+i3,(t&0x20 ? c2 : c1 ));
-				pixel(i2+3,i1+i3,(t&0x10 ? c2 : c1 ));
-				pixel(i2+4,i1+i3,(t&0x08 ? c2 : c1 ));
-				pixel(i2+5,i1+i3,(t&0x04 ? c2 : c1 ));
-			}
+            if ((isLayer2)&&((fgc==0)||(bgc==0))) {
+                // for layer 2, we have to drop transparent pixels,
+                // but I don't want to slow down the normal draw that much
+			    //for (i3=0; i3<8; i3++)
+			    {	
+				    t=VDP[p_add];
+                    if (fgc != 0) {     // skip if fgc is also transparent
+				        if (t&0x80) pixel80(i2,i1+i3,fgc);
+				        if (t&0x40) pixel80(i2+1,i1+i3,fgc);
+				        if (t&0x20) pixel80(i2+2,i1+i3,fgc);
+				        if (t&0x10) pixel80(i2+3,i1+i3,fgc);
+				        if (t&0x8) pixel80(i2+4,i1+i3,fgc);
+				        if (t&0x4) pixel80(i2+5,i1+i3,fgc);
+                    }
+			    }
+            } else {
+    //			for (i3=0; i3<8; i3++)		// 6 pixels wide
+			    {	
+				    t=VDP[p_add];
+				    pixel(i2,i1+i3,(t&0x80 ?   fgc : bgc ));
+				    pixel(i2+1,i1+i3,(t&0x40 ? fgc : bgc ));
+				    pixel(i2+2,i1+i3,(t&0x20 ? fgc : bgc ));
+				    pixel(i2+3,i1+i3,(t&0x10 ? fgc : bgc ));
+				    pixel(i2+4,i1+i3,(t&0x08 ? fgc : bgc ));
+				    pixel(i2+5,i1+i3,(t&0x04 ? fgc : bgc ));
+			    }
+            }
 		}
 	}
 	// no sprites in text mode
@@ -1120,11 +1237,11 @@ void VDPtextII(int scanline)
 ////////////////////////////////////////////////////////////////////////
 // Draw text mode 80x24 (note: 80x26.5 mode not supported, blink not supported)
 ////////////////////////////////////////////////////////////////////////
-void VDPtext80(int scanline)
+void VDPtext80(int scanline, int isLayer2)
 { 
 	int t,o;
 	int i2;
-	int c1, c2, p_add;
+	int fgc,bgc, p_add;
 	unsigned char ch=0xff;
 	const int i1 = scanline&0xf8;
 	const int i3 = scanline&0x07;
@@ -1132,8 +1249,11 @@ void VDPtext80(int scanline)
 	o=(scanline/8)*80;				// offset in SIT
 
 	t=VDPREG[7];
-	c1=t&0xf;
-	c2=t>>4;
+	bgc=t&0xf;
+	fgc=t>>4;
+    if (isLayer2) {
+        bgc=0;
+    }
 
 //	for (i1=0; i1<192; i1+=8)					// y loop
 	{ 
@@ -1145,19 +1265,47 @@ void VDPtext80(int scanline)
 				ch=VDP[SIT+o];
 			}
 
+            if ((bF18AActive) && (VDPREG[50]&0x02)) {
+                // per-cell attributes, so update the colors
+                if (isLayer2) {
+                    t = VDP[VDPREG[11]*64 + o];
+                } else {
+                    t = VDP[VDPREG[3]*64 + o];
+                }
+	            bgc=t&0xf;
+	            fgc=t>>4;
+            }
+
 			p_add=PDT+(ch<<3)+i3;
 			o++;
 
-//			for (i3=0; i3<8; i3++)		// 6 pixels wide
-			{	
-				t=VDP[p_add];
-				pixel80(i2,i1+i3,(t&0x80 ? c2 : c1 ));
-				pixel80(i2+1,i1+i3,(t&0x40 ? c2 : c1 ));
-				pixel80(i2+2,i1+i3,(t&0x20 ? c2 : c1 ));
-				pixel80(i2+3,i1+i3,(t&0x10 ? c2 : c1 ));
-				pixel80(i2+4,i1+i3,(t&0x08 ? c2 : c1 ));
-				pixel80(i2+5,i1+i3,(t&0x04 ? c2 : c1 ));
-			}
+            if ((isLayer2)&&((fgc==0)||(bgc==0))) {
+                // for layer 2, we have to drop transparent pixels,
+                // but I don't want to slow down the normal draw that much
+			    //for (i3=0; i3<8; i3++)
+			    {	
+				    t=VDP[p_add];
+                    if (fgc != 0) {     // skip if fgc is also transparent
+				        if (t&0x80) pixel80(i2,i1+i3,fgc);
+				        if (t&0x40) pixel80(i2+1,i1+i3,fgc);
+				        if (t&0x20) pixel80(i2+2,i1+i3,fgc);
+				        if (t&0x10) pixel80(i2+3,i1+i3,fgc);
+				        if (t&0x8) pixel80(i2+4,i1+i3,fgc);
+				        if (t&0x4) pixel80(i2+5,i1+i3,fgc);
+                    }
+			    }
+            } else {
+                //			for (i3=0; i3<8; i3++)		// 6 pixels wide
+			    {	
+				    t=VDP[p_add];
+				    pixel80(i2,i1+i3,(t&0x80   ? fgc : bgc ));
+				    pixel80(i2+1,i1+i3,(t&0x40 ? fgc : bgc ));
+				    pixel80(i2+2,i1+i3,(t&0x20 ? fgc : bgc ));
+				    pixel80(i2+3,i1+i3,(t&0x10 ? fgc : bgc ));
+				    pixel80(i2+4,i1+i3,(t&0x08 ? fgc : bgc ));
+				    pixel80(i2+5,i1+i3,(t&0x04 ? fgc : bgc ));
+			    }
+            }
 		}
 	}
 	// no sprites in text mode
@@ -1167,33 +1315,52 @@ void VDPtext80(int scanline)
 ////////////////////////////////////////////////////////////////////////
 // Draw Illegal mode (similar to text mode)
 ////////////////////////////////////////////////////////////////////////
-void VDPillegal(int scanline)
+void VDPillegal(int scanline, int isLayer2)
 { 
 	int t;
 	int i2;
-	int c1, c2;
+	int fgc,bgc;
 	const int i1 = scanline&0xf8;
 	const int i3 = scanline&0x07;
 	(void)scanline;		// scanline is irrelevant
 
 	t=VDPREG[7];
-	c1=t&0xf;
-	c2=t>>4;
+	bgc=t&0xf;
+	fgc=t>>4;
 
 	// Each character is made up of rows of 4 pixels foreground, 2 pixels background
 //	for (i1=0; i1<192; i1+=8)					// y loop
 	{ 
 		for (i2=8; i2<248; i2+=6)				// x loop
 		{ 
-//			for (i3=0; i3<8; i3++)				// 6 pixels wide
-			{	
-				pixel(i2,i1+i3,c2);
-				pixel(i2+1,i1+i3,c2);
-				pixel(i2+2,i1+i3,c2);
-				pixel(i2+3,i1+i3,c2);
-				pixel(i2+4,i1+i3,c1);
-				pixel(i2+5,i1+i3,c1);
-			}
+            if ((isLayer2)&&((fgc==0)||(bgc==0))) {
+                // for layer 2, we have to drop transparent pixels,
+                // but I don't want to slow down the normal draw that much
+			    //for (i3=0; i3<8; i3++)
+			    {	
+                    // fix it so that bgc is transparent, then we only draw on that test
+                    if (fgc!=0) {
+				        pixel(i2,i1+i3,fgc);
+				        pixel(i2+1,i1+i3,fgc);
+				        pixel(i2+2,i1+i3,fgc);
+				        pixel(i2+3,i1+i3,fgc);
+                    }
+                    if (bgc!=0) {
+				        pixel(i2+4,i1+i3,bgc);
+				        pixel(i2+5,i1+i3,bgc);
+                    }
+			    }
+            } else {
+    //			for (i3=0; i3<8; i3++)				// 6 pixels wide
+			    {	
+				    pixel(i2,i1+i3  ,fgc);
+				    pixel(i2+1,i1+i3,fgc);
+				    pixel(i2+2,i1+i3,fgc);
+				    pixel(i2+3,i1+i3,fgc);
+				    pixel(i2+4,i1+i3,bgc);
+				    pixel(i2+5,i1+i3,bgc);
+			    }
+            }
 		}
 	}
 	// no sprites in this mode
@@ -1202,7 +1369,7 @@ void VDPillegal(int scanline)
 /////////////////////////////////////////////////////
 // Draw Multicolor Mode
 /////////////////////////////////////////////////////
-void VDPmulticolor(int scanline) 
+void VDPmulticolor(int scanline, int isLayer2) 
 {
 	int o;				// temp variables
 	int i2;				// temp variables
@@ -1236,17 +1403,37 @@ void VDPmulticolor(int scanline)
 				bgc=fgc&0x0f;
 				fgc>>=4;
 	
-//				for (i4=0; i4<4; i4++) 
-				{
-					pixel(i2,i1+i3+i4,fgc);
-					pixel(i2+1,i1+i3+i4,fgc);
-					pixel(i2+2,i1+i3+i4,fgc);
-					pixel(i2+3,i1+i3+i4,fgc);
-					pixel(i2+4,i1+i3+i4,bgc);
-					pixel(i2+5,i1+i3+i4,bgc);
-					pixel(i2+6,i1+i3+i4,bgc);
-					pixel(i2+7,i1+i3+i4,bgc);
-				}
+                if ((isLayer2)&&((fgc==0)||(bgc==0))) {
+                    // for layer 2, we have to drop transparent pixels,
+                    // but I don't want to slow down the normal draw that much
+			        //for (i3=0; i3<8; i3++)
+			        {	
+                        if (fgc != 0) {     // skip if fgc is also transparent
+					        pixel(i2,i1+i3+i4,fgc);
+					        pixel(i2+1,i1+i3+i4,fgc);
+					        pixel(i2+2,i1+i3+i4,fgc);
+					        pixel(i2+3,i1+i3+i4,fgc);
+                        }
+                        if (bgc != 0) {
+					        pixel(i2+4,i1+i3+i4,bgc);
+					        pixel(i2+5,i1+i3+i4,bgc);
+					        pixel(i2+6,i1+i3+i4,bgc);
+					        pixel(i2+7,i1+i3+i4,bgc);
+                        }
+			        }
+                } else {
+    //				for (i4=0; i4<4; i4++) 
+				    {
+					    pixel(i2,i1+i3+i4,fgc);
+					    pixel(i2+1,i1+i3+i4,fgc);
+					    pixel(i2+2,i1+i3+i4,fgc);
+					    pixel(i2+3,i1+i3+i4,fgc);
+					    pixel(i2+4,i1+i3+i4,bgc);
+					    pixel(i2+5,i1+i3+i4,bgc);
+					    pixel(i2+6,i1+i3+i4,bgc);
+					    pixel(i2+7,i1+i3+i4,bgc);
+				    }
+                }
 			}
 		}
 //		off+=2;
@@ -1262,7 +1449,7 @@ void VDPmulticolor(int scanline)
 // Draw Bitmap Multicolor Mode
 // TODO not proven to be correct anymore
 /////////////////////////////////////////////////////
-void VDPmulticolorII(int scanline) 
+void VDPmulticolorII(int scanline, int isLayer2) 
 {
 	int o;						// temp variables
 	int i2;						// temp variables
@@ -1306,17 +1493,37 @@ void VDPmulticolorII(int scanline)
 				bgc=fgc&0x0f;
 				fgc>>=4;
 	
-//				for (i4=0; i4<4; i4++) 
-				{
-					pixel(i2,i1+i3+i4,fgc);
-					pixel(i2+1,i1+i3+i4,fgc);
-					pixel(i2+2,i1+i3+i4,fgc);
-					pixel(i2+3,i1+i3+i4,fgc);
-					pixel(i2+4,i1+i3+i4,bgc);
-					pixel(i2+5,i1+i3+i4,bgc);
-					pixel(i2+6,i1+i3+i4,bgc);
-					pixel(i2+7,i1+i3+i4,bgc);
-				}
+                if ((isLayer2)&&((fgc==0)||(bgc==0))) {
+                    // for layer 2, we have to drop transparent pixels,
+                    // but I don't want to slow down the normal draw that much
+			        //for (i3=0; i3<8; i3++)
+			        {	
+                        if (fgc != 0) {     // skip if fgc is also transparent
+					        pixel(i2,i1+i3+i4,fgc);
+					        pixel(i2+1,i1+i3+i4,fgc);
+					        pixel(i2+2,i1+i3+i4,fgc);
+					        pixel(i2+3,i1+i3+i4,fgc);
+                        }
+                        if (bgc != 0) {
+					        pixel(i2+4,i1+i3+i4,bgc);
+					        pixel(i2+5,i1+i3+i4,bgc);
+					        pixel(i2+6,i1+i3+i4,bgc);
+					        pixel(i2+7,i1+i3+i4,bgc);
+                        }
+			        }
+                } else {
+    //				for (i4=0; i4<4; i4++) 
+				    {
+					    pixel(i2,i1+i3+i4,fgc);
+					    pixel(i2+1,i1+i3+i4,fgc);
+					    pixel(i2+2,i1+i3+i4,fgc);
+					    pixel(i2+3,i1+i3+i4,fgc);
+					    pixel(i2+4,i1+i3+i4,bgc);
+					    pixel(i2+5,i1+i3+i4,bgc);
+					    pixel(i2+6,i1+i3+i4,bgc);
+					    pixel(i2+7,i1+i3+i4,bgc);
+				    }
+                }
 			}
 		}
 //		off+=2;
@@ -1705,6 +1912,10 @@ void DrawSprites(int scanline)
 			// magnified sprites
 			i3*=2;
 		}
+        int max = 5;                    // 9918A - fifth sprite is lost
+        if (bF18AActive) {
+            max = VDPREG[0x33];         // F18A - configurable value
+        }
 		for (i1=0; i1<=highest; i1++) {
 			curSAL=SAL+(i1<<2);
 			yy=VDP[curSAL]+1;				// sprite Y, it's stupid, cause 255 is line 0 
@@ -1713,7 +1924,7 @@ void DrawSprites(int scanline)
 			for (i2=0; i2<i3; i2++,t++) {
 				if ((t>=0) && (t<=191)) {
 					nLines[t]++;
-					if (nLines[t]>4) {
+					if (nLines[t]>=max) {
 						if (t == scanline) {
 							if (b5OnLine == -1) b5OnLine=i1;
 						}
@@ -2525,7 +2736,7 @@ CString captureScreen(int offset) {
         return "";
     }
 
-    gettables();
+    gettables(0);
 
     for (int row = 0; row<24; ++row) {
         for (int col=0; col < stride; ++col) {

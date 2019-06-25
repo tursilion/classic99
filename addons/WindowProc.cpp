@@ -706,6 +706,50 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			break;
 
+        case WM_DROPFILES:
+        {
+            HDROP hDrop = (HDROP)wParam;
+            char buf[1024];
+            // we only care about the first file - even if the user dropped multiple
+            if (DragQueryFile(hDrop, 0, buf, sizeof(buf))) {
+			    int ret;
+                DragFinish(hDrop);
+			    if (fKeyEverPressed) {
+				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
+			    } else {
+				    ret=IDYES;
+			    }
+			    if (IDYES == ret) {
+                    // Make a fake OPENFILENAME
+                    // hwndOwner, lpstrFileTitle, lpstrFile, nFileExtension
+                    OPENFILENAME ofn;
+                    memset(&ofn, 0, sizeof(ofn));
+                    ofn.hwndOwner = myWnd;                      // my window
+                    
+                    ofn.lpstrFileTitle = strrchr(buf, '\\');    // file name and extension
+                    if (ofn.lpstrFileTitle == NULL) {
+                        ofn.lpstrFileTitle=buf;
+                    } else {
+                        ++ofn.lpstrFileTitle;
+                    }
+
+                    ofn.lpstrFile = buf;                        // full filename
+
+                    char *p = strrchr(buf, '.');
+                    if (NULL == p) {
+                        ofn.nFileExtension = 0;
+                    } else {
+                        ofn.nFileExtension = p-buf+1;           // distance to extension
+                    }
+
+                    OpenUserCart(ofn);
+                }
+            } else {
+                DragFinish(hDrop);
+            }
+        }
+        break;
+
 		case WM_COMMAND:
 			// silence in case this takes a while
 			// Check for dynamic ones first, so we don't need a huge switch
@@ -1097,7 +1141,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				nCurrentDSR=-1;
 				memset(nDSRBank, 0, sizeof(nDSRBank));
 				doLoadInt=false;						// no pending LOAD
-				vdpReset();								// TODO: should move these vars into the reset function
+				vdpReset(true);	    					// TODO: should move these vars into the reset function
 				vdpaccess=0;							// No VDP address writes yet 
 				vdpwroteaddress=0;						// timer after a VDP address write to allow time to fetch
 				vdpscanline=0;

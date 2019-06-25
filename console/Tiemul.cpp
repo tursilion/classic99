@@ -64,6 +64,7 @@
 #include <dsound.h>
 #include <time.h>
 #include <math.h>
+#include <shellapi.h>
 #include <atlstr.h>
 
 #include "..\resource.h"
@@ -1583,6 +1584,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 		sprintf(temp, "Can't open window: %x", err);
 		fail(temp);
 	}
+    DragAcceptFiles( myWnd, TRUE );
 	ShowWindow(myWnd, SW_HIDE);
 	UpdateWindow(myWnd);
 	SetActiveWindow(myWnd);
@@ -1654,7 +1656,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
         GROMBase[idx].LastBase=0;
 	}
 		
-	vdpReset();			// TODO: should move these vars into the reset function
+	vdpReset(true);		// TODO: should move these vars into the reset function
 	vdpaccess=0;		// No VDP address writes yet 
 	vdpwroteaddress=0;
 	vdpscanline=0;
@@ -4771,7 +4773,9 @@ void wvdpbyte(Word x, Byte c)
 						return;
 					}
 					if (nReg == 49) {
-						// Enhanced color mode
+                        VDPREG[nReg] = nData;
+
+                        // Enhanced color mode
 						F18AECModeSprite = nData & 0x03;
 						F18ASpritePaletteSize = 1 << F18AECModeSprite;	
 						debug_write("F18A Enhanced Color Mode 0x%02X selected for sprites", nData & 0x03);
@@ -4779,6 +4783,23 @@ void wvdpbyte(Word x, Byte c)
 						return;
 					}
 					// RasmusM added end
+
+                    if (nReg == 50) {
+                        VDPREG[nReg] = nData;
+                        // TODO: other reg50 bits
+                        // 0x01 - Tile Layer 2 uses sprite priority (when 0, always on top of sprites)
+                        // 0x02 - use per-position attributes instead of per-name in text modes (DONE)
+                        // 0x04 - show virtual scanlines (regardless of jumper)
+                        // 0x08 - report max sprite (VR30) instead of 5th sprite
+                        // 0x10 - disable all tile 1 layers (GM1,GM2,MCM,T40,T80)
+                        // 0x20 - trigger GPU on VSYNC
+                        // 0x40 - trigger GPU on HSYNC
+                        // 0x80 - reset VDP registers to poweron defaults (DONE)
+                        if (nReg & 0x80) {
+                            debug_write("Resetting F18A registers");
+                            vdpReset(false);
+                        }
+                    }
 
 					if (nReg == 54) {
 						// GPU PC MSB
