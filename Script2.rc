@@ -149,10 +149,10 @@ BEGIN
             MENUITEM "Open DSK9",                   ID_DSK9_OPENDSK9
         END
         MENUITEM "Corrupt DSK RAM",             ID_DISK_CORRUPTDSKRAM
-        POPUP "Tape"
+        POPUP "SD Card"
         BEGIN
-            MENUITEM "Load/Rewind Tape",            ID_TAPE_LOADTAPE
-            MENUITEM "Stop Tape",                   ID_TAPE_STOPTAPE
+            MENUITEM "Load SD",                     ID_TAPE_LOADTAPE
+            MENUITEM "Eject SD",                    ID_TAPE_STOPTAPE
             MENUITEM "Play Tape",                   ID_TAPE_PLAYTAPE
         END
     END
@@ -589,7 +589,7 @@ BEGIN
     CONTROL         "&Disasm",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,273,253,38,10
     CONTROL         "&CPU",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON,319,253,29,10
     CONTROL         "&VDP",IDC_RADIO4,"Button",BS_AUTORADIOBUTTON,356,253,29,10
-    CONTROL         "&GROM",IDC_RADIO5,"Button",BS_AUTORADIOBUTTON,393,253,36,10
+    CONTROL         "&PortIO",IDC_RADIO5,"Button",BS_AUTORADIOBUTTON,393,253,36,10
     PUSHBUTTON      "Edit",IDC_EDITMEM,225,265,34,14,WS_DISABLED
     LTEXT           "Breakpoints",IDC_STATIC,373,12,38,8
     GROUPBOX        "",IDC_STATIC,214,248,221,36

@@ -78,6 +78,9 @@
     <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">C:\Program Files (x86)\Windows Kits\10\Lib\10.0.15063.0\um\x86;$(LibraryPath)</LibraryPath>
     <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">C:\Program Files (x86)\Windows Kits\10\Lib\10.0.15063.0\um\x86;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);;D:\work\phoenix\Z-master\Z-master\API</IncludePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Midl>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -93,7 +96,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DIRECTSOUND_VERSION=0x0800;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DIRECTSOUND_VERSION=0x0800;CPU_Z80_STATIC;CPU_Z80_USE_LOCAL_HEADER;_CRT_SECURE_NO_WARNINGS;CPU_Z80_DEPENDENCIES_H=myZ.h;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeaderOutputFile>.\Release/classic99.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
@@ -140,7 +143,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DIRECTSOUND_VERSION=0x0800;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_CRT_SECURE_NO_DEPRECATE;DIRECTSOUND_VERSION=0x0800;CPU_Z80_STATIC;CPU_Z80_USE_LOCAL_HEADER;_CRT_SECURE_NO_WARNINGS;CPU_Z80_DEPENDENCIES_H=myZ.h;_DZ80_EXCLUDE_SCRIPT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -203,6 +206,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">
     <ClCompile>
       <AdditionalIncludeDirectories>console</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>CPU_Z80_STATIC;CPU_Z80_USE_LOCAL_HEADER;_CRT_SECURE_NO_WARNINGS;CPU_Z80_DEPENDENCIES_H=myZ.h;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -213,6 +217,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="addons\loadsave_brk.cpp" />
+    <ClCompile Include="addons\SDCard.cpp" />
     <ClCompile Include="addons\ubergrom.cpp" />
     <ClCompile Include="console\cpu9900.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -240,6 +245,7 @@
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
+    <ClCompile Include="console\z80.c" />
     <ClCompile Include="debugger\9900dism.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
@@ -254,6 +260,9 @@
     <ClCompile Include="addons\makecart.cpp" />
     <ClCompile Include="addons\mpd.cpp" />
     <ClCompile Include="debugger\dbghook.cpp" />
+    <ClCompile Include="debugger\dz80\dissz80.c" />
+    <ClCompile Include="debugger\dz80\noscript.c" />
+    <ClCompile Include="debugger\dz80\tables.c" />
     <ClCompile Include="disk\cf7Disk.cpp" />
     <ClCompile Include="disk\TICCDisk.cpp" />
     <ClCompile Include="keyboard\kb.cpp" />
@@ -286,11 +295,18 @@
   <ItemGroup>
     <ClInclude Include="addons\F18A.h" />
     <ClInclude Include="addons\loadsave_brk.h" />
+    <ClInclude Include="addons\SDCard.h" />
     <ClInclude Include="addons\ubergrom.h" />
     <ClInclude Include="console\cpu9900.h" />
+    <ClInclude Include="console\myZ.h" />
     <ClInclude Include="console\sound.h" />
     <ClInclude Include="console\tiemul.h" />
+    <ClInclude Include="console\z80.h" />
     <ClInclude Include="debugger\dbghook.h" />
+    <ClInclude Include="debugger\dz80\dissz80.h" />
+    <ClInclude Include="debugger\dz80\dissz80p.h" />
+    <ClInclude Include="debugger\dz80\dz80.h" />
+    <ClInclude Include="debugger\dz80\types.h" />
     <ClInclude Include="disk\cf7Disk.h" />
     <ClInclude Include="disk\TICCDisk.h" />
     <ClInclude Include="resource.h" />

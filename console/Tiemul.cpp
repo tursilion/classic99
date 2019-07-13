@@ -64,6 +64,7 @@
 #include <dsound.h>
 #include <time.h>
 #include <math.h>
+#include <shellapi.h>
 #include <atlstr.h>
 
 #include "..\resource.h"
@@ -83,7 +84,12 @@
 #include "..\debugger\bug99.h"
 #include "..\addons\mpd.h"
 #include "..\addons\ubergrom.h"
+#include "..\addons\SDCard.h"
 #include "..\debugger\dbghook.h"
+#include "..\debugger\dz80\types.h"
+#include "..\debugger\dz80\dissz80.h"
+
+#include "z80.h"
 
 extern void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce up/down clicks
 
@@ -93,13 +99,9 @@ extern void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce 
 // not re-writing it all from scratch.
 ////////////////////////////////////////////
 
-// TODO HACK
-#define USE_BIG_ARRAY
-#ifdef USE_BIG_ARRAY
-unsigned char *BIGARRAY;
-unsigned int BIGARRAYADD;
-unsigned int BIGARRAYSIZE;
-#endif
+// Z80 hack
+Z80 myZ80;          // CPU state
+DISZ80 myZ80Dis;    // Disassembler
 
 // Win32 Stuff
 HINSTANCE hInstance;						// global program instance
@@ -348,57 +350,13 @@ extern int TVScanLines;
 
 // ROMs to always load
 struct IMG AlwaysLoad[] = {
-    {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0},
-	{	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
-//	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0},
-	{	IDR_SPCHROM,	0x0000,	0x8000,	TYPE_SPEECH	, 0},
-	{	IDR_PGROM,		0x0000, 0xF800, TYPE_PCODEG , 0},
-};
-
-// Extra files to support certain cartridges
-// These files, when the list is loaded, can be loaded as if they were
-// on the disk without the disk actually needing it
-// Currently these can only be loaded program image files!
-// They completely ignore the disk now so can override any disk (may be good or bad?)
-struct DISKS Disk_EA[] = {
-	{	"ASSM1",	IDR_ASSM1	},
-	{	"ASSM2",	IDR_ASSM2	},
-	{	"EDIT1",	IDR_EDIT1	},
-	{	"",				0			},
-};
-
-struct DISKS Disk_SSA[] = {
-	{	"ACER_C",	IDR_ACERC	},
-	{	"ACER_P",	IDR_ACERP	},
-	{	"SSD",		IDR_SSD		},
-	{	"SSE",		IDR_SSE		},
-	{	"",				0			},
-};
-
-struct DISKS Disk_Tunnels[] = {
-	{	"PENNIES",	IDR_PENNIES	},
-	{	"QUEST",	IDR_QUEST	},
-
-	{	"",				0			},
+    {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0}
 };
 
 // Actual cartridge definitions (broken into categories)
 struct CARTS *Users=NULL;		// these are loaded dynamically
 
 struct CARTS Systems[] = {
-	{	
-		"TI-99/4",	
-		{	
-			{	IDR_CON4R0,		0x0000, 0x2000,	TYPE_ROM	, -1},
-			{	IDR_CON4G0,		0x0000, 0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON4G1,		0x2000,	0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON4G2,		0x4000,	0x2000,	TYPE_GROM	, -1},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
 	{	
 		"TI-99/4A",	
 		{	
@@ -408,37 +366,10 @@ struct CARTS Systems[] = {
 		NULL,
 		NULL,
 		0
-	},
-
-	{	
-		"TI-99/4A V2.2",
-		{
-			{	IDR_CON22R0,	0x0000, 0x2000,	TYPE_ROM	, -1},
-			{	IDR_CON22G0,	0x0000,	0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON22G1,	0x2000,	0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON22G2,	0x4000,	0x2000,	TYPE_GROM	, -1},
-		},
-		NULL,
-		NULL,
-		0
-	},
+	}
 };
 
 struct CARTS Apps[] = {
-#if 0
-	// not working yet
-	{	
-		"AMS Test 2.0",
-		{
-			{	IDR_ROMS5,		0x6000,	0x0030,	TYPE_ROM	, 0},
-			{	0,				0x0000,	0x0000,	TYPE_AMS	, 0},	// address ignored on AMS cards, 0xffff flags no load, activate card
-		},
-		NULL,
-		"AMS Card will automatically be enabled.",
-		0
-	},
-#endif
-
 	{	
 		"Demonstration",
 		{
@@ -447,190 +378,7 @@ struct CARTS Apps[] = {
 		NULL,
 		NULL,
 		0
-	},
-
-	{	
-		"Diagnostics",
-		{	
-			{	IDR_DIAGNOSG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		"The maintenance tests are intended for use with external hardware, and are not supported. They will hang the emulator. Use File->Reset to bring it back. The checkerboard test will fail so long as the disk system is attached.",
-		0
-	},
-						
-	{	
-		"Editor/Assembler",
-		{
-			{IDR_TIEAG,		0x6000,	0x2000,	TYPE_GROM	, 0},
-		},
-		Disk_EA,
-		"The Editor and Assembler files are built-in.",
-		0
-	},
-
-	{	
-		"EPSGMOD Example",
-		{
-			{IDR_EPSGMODG,	0x6000,	0x60C8,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Extended BASIC",
-		{
-			{	IDR_TIEXTG,		0x6000,	0x8000,	TYPE_GROM	, 0},
-			{	IDR_TIEXTC,		0x6000,	0x2000,	TYPE_ROM	, 0},
-			{	IDR_TIEXTD,		0x6000,	0x2000,	TYPE_XB		, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"fbForth 2.0:11 by Lee Stewart",
-		{	
-			{	IDR_FBFORTH,	0x0000, 0x8000,	TYPE_379	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Home Finance",
-		{
-			{	IDR_HOMEG,		0x6000, 0x4000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"MegaMan2 Music",
-		{
-			{	IDR_TIPLAYERC,	0x6000, 0x2000,	TYPE_ROM	, 0},
-			{	IDR_TIMUSIC,	0x6000,	0xA000,	TYPE_GROM	, 0},
-			{	IDR_TIMUSID,	0x6000,	0xA000,	TYPE_GROM	, 1},
-			{	IDR_TIMUSIE,	0x6000,	0xA000,	TYPE_GROM	, 2},
-			{	IDR_TIMUSIF,	0x6000,	0x5A90,	TYPE_GROM	, 3},
-			{	IDR_TIMM2PICP,	0x6000,	0x1800,	TYPE_GROM	, 15},
-			{	IDR_TIMM2PICC,	0x8000,	0x1800,	TYPE_GROM	, 15},
-			{	IDR_DUMMYG,		0x6000,	0x0040,	TYPE_GROM	, 9},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Mini Memory",
-		{	
-			{	IDR_MINIMEMG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_MINIMEMC,	0x6000,	0x1000,	TYPE_ROM	, 0},
-			{	NULL,			0x7000,	0x1000,	TYPE_NVRAM	, 0, "minimemNV.bin"},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"P-Code Card",
-		{	
-			{	IDR_PCODEC,		0x1F00,	0x2000,	TYPE_DSR	, 0},
-			{	IDR_PCODED,		0x1F00, 0x2000,	TYPE_DSR2	, 0},
-		},
-		NULL,		// TODO: include the P-Code diskettes in the archive - convert from PC99 to standard V9T9 and check sectors
-		NULL,
-		0
-	},
-
-	{	
-		"RXB 2015E by Rich Gilbertson",
-		{
-			{	IDR_RXBG,		0x6000,	0xA000,	TYPE_GROM	, 0},
-			{	IDR_RXBC,		0x6000,	0x2000,	TYPE_ROM	, 0},
-			{	IDR_RXBD,		0x6000,	0x2000,	TYPE_XB		, 0},
-		},
-		Disk_EA,
-		"Editor and Assembler files are built in. Not loadable by REA2012 due to GROM base. RXB may rarely crash after loading the editor or assembler (just reset)!",
-		0
-	},
-
-#if 0
-	// don't have permission for some of the pics, will add it when I get time to rebuild the file
-	{	
-		"Slideshow",	
-		{	
-			{	IDR_TISLIDE128C,0x0000, 0x20000,TYPE_379	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-#endif
-
-	{	
-		"Terminal Emulator 2",
-		{
-			{	IDR_TE2G,	0x6000, 0xA000,	TYPE_GROM	, 0},
-			{	IDR_TE2C,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		"Serial is not supported yet, speech may sound poor.",
-		0
-	},
-
-	{	
-		"TI Logo ][",
-		{	
-			{	IDR_LOGOG,		0x6000, 0x6000,	TYPE_GROM	, 0},
-			{	IDR_LOGOC,		0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"TI Workshop (379)",
-		{	
-			{	IDR_TIWORKSHOP,	0x0000, 0x10000,TYPE_379	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"TurboForth 1.2.1 by Mark Wills",
-		{	
-			{	IDR_TURBOFORTHC,	0x6000, 0x2000,TYPE_ROM	, 0},
-			{	IDR_TURBOFORTHD,	0x6000, 0x2000,TYPE_XB	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"XB2.7 Suite",
-		{	
-			{	IDR_XB27GROM,		0x0000, 0x1E000,	TYPE_UBER_GROM		, 0},
-			{	IDR_XB27ROM,		0x0000, 0x80000,	TYPE_378			, 0},
-			{	IDR_XB27EEPROM,		0x0000, 0x1000,		TYPE_UBER_EEPROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
+	}
 };
 
 struct CARTS Games[] = {
@@ -643,188 +391,712 @@ struct CARTS Games[] = {
 		NULL,
 		NULL,
 		0
-	},
-	
-	{	
-		"A-Maze-Ing",
-		{	
-			{	IDR_AMAZEG,		0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"BlackJack&&Poker",
-		{
-			{IDR_BLACKJACK,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Car Wars",	
-		{	
-			{	IDR_CARWARS,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Chisholm Trail",
-		{
-			{	IDR_CHISHOLMG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_CHISHOLMC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Football",
-		{	
-			{	IDR_FOOTBALLG,	0x6000, 0x4000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Hustle",	
-		{	
-			{	IDR_HUSTLEG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Hunt the Wumpus",
-		{
-			{	IDR_WUMPUSG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
- 
-	{	
-		"Mind Challengers",
-		{
-			{	IDR_MINDG,		0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Munch Man",
-		{	
-			{	IDR_MUNCHMNG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_MUNCHMNC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-	
-	{	
-		"Parsec",	
-		{	
-			{	IDR_PARSECG,	0x6000, 0x6000,	TYPE_GROM	, 0},
-			{	IDR_PARSECC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Super Space Acer",
-		{
-			{	IDR_SSALOAD,	0x6000, 0x0030,	TYPE_ROM	, 0},
-			{	IDR_DEMQ,		0x2000,	0x0706,	TYPE_RAM	, 0},
-			{	IDR_SSARAM,		0xA000,	0x5A28,	TYPE_RAM	, 0},
-		},
-		Disk_SSA,
-		NULL,
-		0
-	},
-
-	{	
-		"TI Invaders",
-		{	
-			{	IDR_TIINVADG,	0x6000, 0x8000,	TYPE_GROM	, 0},
-			{	IDR_TIINVADC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-	
-#if 0
-	// not working yet
-	{	
-		"TI-Nopoly",
-		{	
-			{	IDR_ROMS4,		0x6000,	0x0030,	TYPE_ROM	, 0},
-			{	IDR_ROMS1,		0x0003, 0x0df2,	TYPE_AMS	, 0},	// both words used for size on AMS cards
-			{	IDR_ROMS2,		0x2000,	0x00BA,	TYPE_RAM	, 0},
-			{	IDR_ROMS6,		0x0000,	0x0005,	TYPE_KEYS	, 0},
-		},
-		NULL,
-		"AMS Card will automatically be enabled.",
-		0
-	},
-#endif
-
-	{	
-		"Tombstone City",
-		{
-			{	IDR_TOMBCITG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_TOMBCITC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Tunnels of Doom",
-		{
-			{	IDR_TUNDOOMG,	0x6000,	0xA000,	TYPE_GROM	, 0},
-		},
-		Disk_Tunnels,
-		"Select DSK1, and PENNIES for introductory quest, or QUEST for a full quest.",
-		0
-	},
-
-	{	
-		"Video Chess",
-		{	
-			{	IDR_CHESSG,		0x6000, 0x8000,	TYPE_GROM	, 0},
-			{	IDR_CHESSC,		0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
+	}
 };
 
-// another hack - hacks in the programming environment for Seahorse boards
-//#define USE_GIGAFLASH
-#ifdef USE_GIGAFLASH
-#include "../addons/gigaflash.cpp"
-#endif
+// Z80 support for the ColecoVision Emu
+
+unsigned char z80ram[64*1024];	// Z80 memory space
+unsigned char z80PortOut[256];  // copy of port writes
+unsigned char phoenixRAM[512*1024]; // phoenix RAM for backup (not always accessed directly, ROM stuff is copied)
+bool phoenixBios = true;        // phoenix BIOS is active
+extern "C" {
+extern int CallHits[65536];            // tracks CALL functions
+};
+ 
+//z80ram - 1k at 0x6000 just for colecoVision mode
+//0000	Phoenix Boot ROM (mapped in during boot loader)
+//2000	" "
+//4000	" "
+//6000	1k RAM for ColecoVision mode (first 1k mapped in both modes)
+//8000	ColecoVision Boot ROM (mapped at 0x0000 after boot loader)
+//A000	Unused
+//C000	" "
+//E000	" "
+//
+//phoenixRAM - 512k with the first 32k reserved for the SGM
+//00000	during BIOS, 8k at 6000 is enabled, else depends on SGM mappings
+//08000	first page of cartridge RAM space, pagabled
+//...
+//
+//CPU2 - cartridge ROM mapping (physical cartridge)
+//
+
+// 0x0000 - 8k BIOS ROM, or SGM RAM, or Phoenix Boot
+// 0x2000 - 16k unused space, or SGM RAM, or Phoenix Boot
+// 0x6000 - 1k RAM (repeats, or SGM RAM, or 1k coleco RAM and 7k SGM RAM in Phoenix Boot)
+// 0x8000 - 32k cartridge ROM (Phoenix can do bank switching)
+int z80GetPC() {
+    return myZ80.state.pc;
+}
+
+zuint8 z80Read(void *ignoreSideEffects, zuint16 adr) {
+	// Check for read or access breakpoints
+	for (int idx=0; idx<nBreakPoints; idx++) {
+		switch (BreakPoints[idx].Type) {
+			case BREAK_ACCESS:
+			case BREAK_READ:
+				if (CheckRange(idx, adr)) {
+					TriggerBreakPoint();
+				}
+				break;
+		}
+	}
+
+	if (!ignoreSideEffects) {
+        // update the heat map
+	    UpdateHeatmap(adr);
+    }
+
+    switch (adr&0xe000) {
+        case 0xe000:    
+        case 0xc000:
+        case 0xa000:
+        case 0x8000:    // the upper 32k always banks together
+            if ((z80PortOut[0x55]&0x03) == 0) {
+                // hardware cartridge access
+
+                // handle banking first, Coleco carts can't tell read from write
+                if (!ignoreSideEffects) {
+                    if (adr >= 0xffc0) {
+                        z80PortOut[0x54] = (0xffff-adr) & 0x1f; // max of 32 banks in 512k
+                        if ((0xffff-adr) > xb) {
+                            debug_write("Megacart bank to 0x%X, but mask is 0x%X", 0xffff-adr, xb);
+                        }
+                        // Wizard of Wor hacking... or any 512k cart really (todo: need in write as well?)
+                        if ((z80PortOut[0x54] == 0x1f)||(z80PortOut[0x54] == 0x1e)) {
+                            debug_write("Bank switch to 0x%02X, breakpoint.", z80PortOut[0x54]);
+                            //TriggerBreakPoint();
+                        }
+                    }
+                }
+
+                // small chance this might work...
+                // might work whether Megacart or not...?
+                // My emulation piggybacks on port 0x54. The real hardware doesn't and can't
+                // since the mapper is in the cart itself.
+                if (adr >= 0xc000) {
+                    return CPU2[adr-0xc000+(16384*(z80PortOut[0x54]&xb))];
+                } else {
+                    // we loaded and inverted, so this should work
+                    return CPU2[adr-0x8000];
+                }
+                break;
+
+            } else {
+                // apply a banking scheme to RAM
+                switch (z80PortOut[0x55]&0x30) {
+                    case 0x00:  // 32K upper internal RAM, ignores paging scheme, uses port >54 page
+                        {
+                            // first 32k is SGM RAM so can never be selected
+                            int base = z80PortOut[0x54]*(32*1024);
+                            if (base == 0) base = 32768;    // page 0 selects page 1
+                            return phoenixRAM[adr-0x8000+base];
+                        }
+
+                    case 0x10:  // 32k expansion ROM allows banking scheme (banked cart emulator)
+                    case 0x20:  // 32k upper expansion RAM, same as 0x10 but it's RAM (not emulating today)
+                        // TODO: all the cart banking schemes erroneously still set port 0x54
+                        // so I can just always use that
+                        switch (z80PortOut[0x55]&0x03) {
+                            case 0x00:  // no banking, original cart (page 1)
+                                return phoenixRAM[adr-0x8000+32*1024];
+
+                            case 0x01:  // Megacart
+                                // first 16k is fixed and is the LAST 16k of the cartridge
+                                // The rest is paged, we assume we can read the page from port 0x54
+                                // the Phoenix now assumes all carts are mapped to the top
+                                // of RAM and uses another register to set the mask
+                            
+                                // handle banking first, Coleco carts can't tell read from write
+                                if (!ignoreSideEffects) {
+                                    if (adr >= 0xffc0) {
+                                        z80PortOut[0x54] = (0xffff-adr) & 0x1f; // max of 32 banks in 512k
+                                        if ((0xffff-adr) > xb) {
+                                            debug_write("Megacart bank to 0x%X, but mask is 0x%X", 0xffff-adr, xb);
+                                        }
+                                    }
+                                }
+
+                                if (adr < 0xc000) {
+                                    // fixed bank  :  offset       top        page+1 (16k page)
+                                    return phoenixRAM[adr-0x8000 + 512*1024 - 1 * 16*1024];
+                                } else {
+                                    // paged bank - counts down from the top (256k allows 16 pages)
+                                    // the cart port write needs to adapt the bank number so that 0xffff is 0, 0xfffe is 1, etc
+                                    return phoenixRAM[adr-0xC000 + 512*1024 - (((z80PortOut[0x54]&xb)+1) * 16*1024)];
+                                }
+                                return 0;
+
+                            case 0x02:  // SGM - bank if data written to >FFFF. But is it split the same as the Megacart?
+                            case 0x03:  // Atari - >FF80, >FF90, >FFA0, etc. But then what?
+                                return 0x55;    // TODO: I don't know how to do these yet
+                        }
+                        break;
+
+                    case 0x30:  // 32k cartridge ROM
+                        // we still use page 0x54!
+                        return phoenixRAM[adr-0x8000 + (32*1024*z80PortOut[0x54])];
+                        break;
+                }
+            }
+            break;
+
+        case 0x6000:    // either Coleco 1k RAM or 8k SGM RAM (available at loader boot)
+            if (phoenixBios) {
+                // first 1k is the Coleco RAM
+                if (adr < 0x6400) {
+                    return z80ram[0x6000 + (adr&0x3ff)];
+                } else {
+                    // SGM RAM (first 32k in hardware)
+                    return phoenixRAM[0x6000 + (adr&0x1fff)];
+                }
+            } else if (z80PortOut[0x53]&0x01) {
+                // SGM RAM (first 32k in hardware)
+                return phoenixRAM[0x6000 + (adr&0x1fff)];
+            } else {
+                // base coleco RAM.
+		        // 1k RAM repeating
+		        return z80ram[0x6000 + (adr&0x3ff)];
+            }
+            break;
+
+        case 0x4000:    // either third half of boot BIOS, nothing, or SGM RAM
+        case 0x2000:    // either second half of boot BIOS, nothing, or SGM RAM
+            if (phoenixBios) {
+                // second and third parts of 24k boot BIOS
+                return z80ram[adr];
+            } else if (z80PortOut[0x53]&0x01) {
+                // SGM RAM (or boot BIOS is emulated there)
+                return phoenixRAM[adr];
+            } else {
+                // nothing
+                return 0;
+            }
+            break;
+
+        case 0x0000:    // either Phoenix BIOS or Coleco BIOS or SGM RAM
+            // TODO: where is the BIOS loaded when the SGM is not active?
+            if (phoenixBios) {
+                // Phoenix BIOS
+                return z80ram[adr];
+            } else if (z80PortOut[0x7f]&0x02) {
+                // ColecoVision BIOS
+                return z80ram[adr + 0x8000];
+            } else {
+                // SGM RAM
+                return phoenixRAM[adr];
+            }
+            break;
+    }
+
+    // I don't think we can get here
+    return 0;
+}
+
+void z80Write(void*, zuint16 adr, zuint8 data) {
+
+//	if (!ignoreSideEffects) {
+        // update the heat map
+	    UpdateHeatmap(adr);
+//    }
+
+    switch (adr&0xe000) {
+        case 0xe000:    
+        case 0xc000:
+        case 0xa000:
+        case 0x8000:    // the upper 32k always banks together
+            if ((z80PortOut[0x55]&0x03) == 0) {
+                // hardware cartridge access
+
+                // hack as above - just in case it's a megacart, save the written bank index, masked
+                // TODO: obviously this is wrong, the Phoenix doesn't track the page of a physical cart
+                if (adr >= 0xffc0) {
+                    z80PortOut[0x54] = (0xffff-adr) & 0x1f;
+                    if ((0xffff-adr) > xb) {
+                        debug_write("Megacart bank to 0x%X, but mask is 0x%X", 0xffff-adr, xb);
+                    }
+                }
+            } else {
+                switch (z80PortOut[0x55]&0x30) {
+                    case 0x00:  // 32K upper internal RAM, ignores banking scheme, uses >54 as the bank
+                        {
+                            // first 32k is SGM RAM so can never be selected
+                            int base = z80PortOut[0x54]*(32*1024);
+                            if (base == 0) base = 32768;    // page 0 selects page 1
+                            phoenixRAM[adr-0x8000+base] = data;
+                        }
+                        break;
+
+                    case 0x10:  // 32k expansion ROM allows banking scheme (banked cart emulator)
+                    case 0x20:  // this is the same as the above, but it's RAM instead of ROM. Not emulating that today
+                        // TODO: all the cart banking schemes (probably) erroneously still set port 0x54
+                        // so I can just always use that (that's probably not true, but they aren't developed yet)
+                        switch (z80PortOut[0x55]&0x03) {
+                            case 0x00:  
+                                // this is hardware and we can't actually hit this as it's tested above
+                                // Do nothing either way.
+                                break;
+
+                            case 0x01:  // Megacart
+                                // first 16k is fixed and is the LAST 16k of the cartridge
+                                // The rest is paged, we assume we can read the page from port 0x54
+                                // this is $#@%$@ed up because you need to know how big the
+                                // cart is to emulate it. How does Matt do it?? (answer, he doesn't yet)
+                                // TODO: we need to talk about the cart expansion schemes
+                                // The menu software for now will load all Megacarts to 256k,
+                                // therefore we will assume all Megacarts are 256k, starting
+                                // from Phoenix bank 1
+                                if (adr >= 0xffc0) {
+                                    z80PortOut[0x54] = (0xffff-adr) & 0x1f; // max of 32 (16k) banks in 512k
+                                    if ((0xffff-adr) > xb) {
+                                        debug_write("Megacart bank to 0x%X, but mask is 0x%X", 0xffff-adr, xb);
+                                    }
+                                }
+                                break;
+
+                            case 0x02:  // SGM - bank if data written to >FFFF. But is it split the same as the Megacart?
+                            case 0x03:  // Atari - >FF80, >FF90, >FFA0, etc. But then what?
+                                break;    // TODO: I don't know how to do these yet
+                        }
+                        break;
+
+                    case 0x30:  // 32k cartridge ROM (non-banked ROM)
+                        // we still use page 0x54!
+                        break;
+                }
+            }
+            break;
+
+        case 0x6000:    // either Coleco 1k RAM or 8k SGM RAM (available at loader boot)
+            if (phoenixBios) {
+                if (adr < 0x6400) {
+                    // first 1k is the Coleco RAM
+                    z80ram[0x6000 + (adr&0x3ff)] = data;
+                } else {
+                    // SGM RAM
+                    phoenixRAM[0x6000 + (adr&0x1fff)] = data;
+                }
+            } else if (z80PortOut[0x53]&0x01) {
+                // SGM RAM
+                phoenixRAM[0x6000 + (adr&0x1fff)] = data;
+            } else {
+                // base coleco RAM. I don't know why I'm doing this backwards
+		        // 1k RAM repeating
+		        z80ram[0x6000 + (adr&0x3ff)] = data;
+            }
+            break;
+
+        case 0x4000:    // either third half of boot BIOS (RO), nothing, or SGM RAM
+        case 0x2000:    // either second half of boot BIOS (RO), nothing, or SGM RAM
+            if (phoenixBios) {
+                // boot bios is read only
+                break;
+            } else if (z80PortOut[0x53]&0x01) {
+                // SGM RAM
+                phoenixRAM[adr] = data;
+            } else {
+                // nothing
+                break;
+            }
+            break;
+
+        case 0x0000:    // either Phoenix BIOS (RO) or Coleco BIOS (RO) or SGM RAM
+            if (phoenixBios) {
+                // Phoenix BIOS is read-only
+                break;
+            } else if (z80PortOut[0x7f]&0x02) {
+                // ColecoVision BIOS (read-only)
+                break;
+            } else {
+                // SGM RAM
+                phoenixRAM[adr] = data;
+            }
+            break;
+    }
+
+	// check breakpoints against what was written to where
+    int x=adr;
+    int y=data;
+	for (int idx=0; idx<nBreakPoints; idx++) {
+		switch (BreakPoints[idx].Type) {
+			case BREAK_EQUALS_BYTE:
+				if ((CheckRange(idx, x)) && ((y&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
+					TriggerBreakPoint();
+				}
+				break;
+
+            case BREAK_ACCESS:
+			case BREAK_WRITE:
+				if (CheckRange(idx, x)) {
+					TriggerBreakPoint();
+				}
+				break;
+
+			case BREAK_DISK_LOG:
+				if (CheckRange(idx, x)) {
+					if ((BreakPoints[idx].Data>0)&&(BreakPoints[idx].Data<10)) {
+						if (NULL != DumpFile[BreakPoints[idx].Data]) {
+							fputc(y, DumpFile[BreakPoints[idx].Data]);
+						}
+					}
+				}
+				break;
+		}
+	}
+}
+
+// 0x00 - unused
+// 0x20 - unused
+// 0x40 - extended port area (SGM/Phoenix)
+// 0x60 - mapper (todo)
+// 0x80 - OUT only - keypad mode
+// 0xA0 - VDP Interface
+//		  0 - READ/WRITE DATA
+//		  1 - READ STATUS/WRITE ADDRESS
+// 0xC0 - OUT only - joystick mode
+// 0xE0 - OUT - SOUND CHIP
+//		  IN  - 0 - Joystick 1
+//				1 - Joystick 2
+
+bool z80JoystickMode = true;
+
+// skipSideEffects is non-zero if we should not trigger side effects
+zuint8 z80In(void*skipSideEffects, zuint16 port) {
+    port&=0xff;
+
+	if (!skipSideEffects) {
+        // update the heat map
+	    UpdateHeatGROM(port*256+126);   // writes 4 pixels
+    }
+
+	if (!skipSideEffects) {
+		// Check for breakpoints
+		for (int idx=0; idx<nBreakPoints; idx++) {
+			switch (BreakPoints[idx].Type) {
+				case BREAK_READGROM:
+					if (CheckRange(idx, port)) {
+						TriggerBreakPoint();
+					}
+					break;
+			}
+		}
+	}
+
+	// read a byte from an I/O port
+	switch (port&0xe0) {
+        case 0x40:  // extended port area (SGM/Phoenix)
+            // partially decoded (?) I'm echoing 4x and 5x
+            // TODO: test, it might echo over 0x4x as well...?
+
+            switch (port&0x0f) {
+                case 0: // sound address write
+                    // write-only
+                    debug_write("Read from 0x50 (snd addr)");
+                    return 0;
+
+                case 1: // sound data write
+                    // write-only
+                    debug_write("Read from 0x51 (snd data write)");
+                    return 0;
+
+                case 2: // sound data read
+                    // TODO: implement sound chips
+                    debug_write("Read from 0x52 (snd data)");
+                    return z80PortOut[port-1];  // return written data for now
+
+                case 3: // SGM and sound chip enable
+                    // write-only
+                    debug_write("Read from 0x53 (SGM enable)");
+                    return 0;
+
+                case 4: // bank select
+                    return z80PortOut[0x54];
+
+                case 5: // on read, simply turns off the boot BIOS
+                    if (!skipSideEffects) {
+                        phoenixBios = false;
+                        debug_write("Disabling Phoenix BIOS...");
+                    }
+                    return 0;
+
+                case 6: // SD card detect
+                    {
+                        unsigned char x = 0;
+                        if (SDIsInserted()) {
+                            x |= 0x80;
+                        }
+                        // TODO: what are bits 0x01 and 0x02 for?
+                        return x;
+                    }
+                    break;
+
+                case 7: // SD card data read
+                    return SDRead();
+
+                case 8: // machine id
+                    return 8;   // Phoenix is 8, for some reason.
+
+                case 9: // megacart mask value
+                    // TODO MIKE: this is not confirmed on hardware yet
+                    // write only
+                    return 0;
+                    
+                default:
+                    // remainder unused
+                    return 0;
+            }
+            return 0;
+
+        case 0x60:  // SGM BIOS mapper
+            // write-only
+            return 0;
+
+        case 0x80:  // keypad mode select
+            // write-only
+            return 0;
+
+		case 0xa0:	// VDP
+            if (skipSideEffects) {
+			    if (port&1) {
+				    // read status
+				    return VDPS;
+                } else {
+				    // read data
+				    return vdpprefetch;
+			    }
+            } else {
+			    if (port&1) {
+				    // read status
+				    return rvdpbyte(0x8802, false);
+			    } else {
+				    // read data
+				    return rvdpbyte(0x8800, false);
+			    }
+            }
+
+        case 0xc0:  // joystick mode select
+            // write-only
+            return 0;
+			
+		case 0xe0:	// joystick
+			// todo: not doing joystick 2 right now
+            // Could use the Classic99 config...
+			if (port&0x1) {
+                if (z80JoystickMode) {
+                    return 0xff;
+                } else {
+                    return 0x7f;
+                }
+            }
+			
+			// keypad or stick?
+			if (z80JoystickMode) {
+				// TODO: also no roller controller
+				// read stick
+				zuint8 ret = 0xff;
+				if (key[VK_TAB]) ret &= ~0x40;	// fire 1
+				if (key[VK_LEFT]) ret &= ~0x08;
+				if (key[VK_RIGHT]) ret &=~0x02;
+				if (key[VK_UP]) ret &= ~0x01;
+				if (key[VK_DOWN]) ret &= ~0x04;
+				return ret;
+			} else {
+				// read keypad - returns values
+				zuint8 ret = 0x7f;
+				if (key['Q']) ret &= ~0x40;		// fire 2
+				// TODO: not sure if Coleco merges multiple keys like this
+				if (key['8']) ret = (ret&0xf0) | 1;
+				if (key['4']) ret = (ret&0xf0) | 2;
+				if (key['5']) ret = (ret&0xf0) | 3;
+				if (key['7']) ret = (ret&0xf0) | 5; 
+				if (key[VK_SUBTRACT]) ret = (ret&0xf0) | 6;		// dash for pound
+				if (key['2']) ret = (ret&0xf0) | 7;
+				if (key[VK_ADD]) ret = (ret&0xf0) | 9;		// equals for asterisk
+				if (key['0']) ret = (ret&0xf0) | 10;
+				if (key['9']) ret = (ret&0xf0) | 11;
+				if (key['3']) ret = (ret&0xf0) | 12;
+				if (key['1']) ret = (ret&0xf0) | 13;
+				if (key['6']) ret = (ret&0xf0) | 14;
+				return ret;
+			}
+	}
+	return 0;
+}
+
+void z80Out(void*, zuint16 port, zuint8 val) {
+    static char strout[128]="";
+    static int outpos = 0;
+
+    port&=0xff;
+
+    // save it even if not valid
+    z80PortOut[port] = val;
+
+//	if (!ignoreSideEffects) {
+        // update the heat map
+	    UpdateHeatGROM(port*256+126);   // writes 4 pixels
+//    }
+
+	// Check for breakpoints
+	for (int idx=0; idx<nBreakPoints; idx++) {
+		switch (BreakPoints[idx].Type) {
+			case BREAK_WRITEGROM:
+				if (CheckRange(idx, port)) {
+					TriggerBreakPoint();
+				}
+				break;
+		}
+	}
+
+    // write a byte to a Z80 port
+	switch (port&0xe0) {
+        case 0x00:  // Classic99/Rawhide debug port (Classic99 requires full strings)
+            // magic remapping for hex bytes (loses some punctuation)
+            if ((val > '9') && (val < '@')) {
+                val+=7;
+            }
+            if (val == 0x7f) {
+                strout[outpos] = 0;
+                debug_write("COLECO: %s", strout);
+                outpos = 0;
+                debug_write("COLECO requested breakpoint");
+                TriggerBreakPoint();
+            } else if (val < ' ') {
+                strout[outpos] = 0;
+                debug_write("COLECO: %s", strout);
+                outpos = 0;
+            } else {
+                strout[outpos++] = val;
+                if (outpos > 126) {
+                    strout[127]=0;
+                    debug_write("COLECO: %s", strout);
+                    outpos = 0;
+                }
+            }
+            break;
+
+        case 0x40:  // extended port area (SGM/Phoenix)
+            // These are fully decoded and do NOT mirror. 0x5x
+            switch (port&0x1f) {
+                case 0x10: // sound address write
+                    // TODO: implement sound chips
+                    debug_write("Write 0x%02X to 0x50 (snd addr)", val);
+                    return;
+
+                case 0x11: // sound data write
+                    // TODO: implement sound chips
+                    debug_write("Write 0x%02X to 0x51 (snd data)", val);
+                    return;
+
+                case 0x12: // sound data read
+                    // read-only
+                    debug_write("Write 0x%02X to 0x50 (snd data read)", val);
+                    break;
+
+                case 0x13: // SGM and sound chip enable
+                    // nothing to do beyond what is set in z80PortOut above
+                    debug_write("Write 0x%02X to 0x53 (SGM enable)", val);
+                    break;
+
+                case 0x14: // bank select
+                    // We always store what was written in 0x54, adjusted to the 4-bit range
+                    // '0' is illegal and ignored
+                    if ((val&0x1f) > 0) {
+                        z80PortOut[0x54] = val&0x1f;
+                        debug_write("Memory page set to 0x%X", val&0x1f);
+                    } else {
+                        debug_write("memory page write of 0 ignored");
+                    }
+                    break;
+
+                case 0x15: // on write, banking control
+                    // nothing to do beyond what is set in z80PortOut above
+                    switch (val&0x30) {
+                        case 0x00: debug_write("Paging set to 32k RAM port 0x54 mode"); break;
+                        case 0x10: debug_write("Paging set to hardware banked cartridge"); break;
+                        case 0x20: debug_write("Paging set to hardware banked RAM"); break;
+                        case 0x30: debug_write("Paging set to 32k fixed ROM"); break;
+                    }
+                    switch (val&0x03) {
+                        case 0: debug_write("Hardware scheme set to cartridge port"); break;
+                        case 1: debug_write("Hardware scheme set to Megacart"); break;
+                        case 2: debug_write("Hardware scheme set to SGM"); break;
+                        case 3: debug_write("Hardware scheme set to Atari"); break;
+                    }
+                    break;
+
+                case 0x16: // SD card CE and speed control
+                    SDSetCE((val&0x01) == 0);   // we pass in whether to enable (0) or disable (1)
+                    SDSetHighSpeed((val&0x02) == 0);
+                    return;
+
+                case 0x17: // SD card data write
+                    SDWrite(val);
+                    return;
+
+                case 0x18: // machine id
+                    // read-only
+                    break;
+
+                case 0x19: // Megacart bank mask (written as an inverted mask, but Classic99 inverted the megacart order on load)
+                {
+                    int newxb = (val)&0x1f;   // can't have more than 0x1f on Phoenix hardware
+                    if (newxb > xb) {
+                        // this is the most hacky thing ever, but the size of CPU2 is tied to xb (Classic99 issue)
+                        unsigned char *old = CPU2;
+                        CPU2 = (Byte*)realloc(CPU2, (newxb+1)*16384);
+                        if (NULL == CPU2) {
+                            debug_write("CPU2 memory allocation failure");
+                            CPU2 = old;
+                            TriggerBreakPoint();
+                        } else {
+                            xb = newxb;
+                        }
+                    }
+                    debug_write("Megacart mask set to 0x%02X", xb);
+                }
+                    break;
+
+                default:
+                    // remainder unused
+                    return;
+            }
+            break;
+
+        case 0x60:  // BIOS banking control
+            // nothing to do beyond what is set in z80PortOut above
+            // good to note that 0x7f is explicit on Phoenix
+            break;
+
+	    case 0x80:  // set keypad mode
+            z80JoystickMode=false; 
+            break;	// todo should be some bounce time and roller side effect
+	
+	    case 0xa0:  // write to VDP
+		    if (port&1) {
+			    wvdpbyte(0x8c02, val);
+		    } else {
+			    wvdpbyte(0x8c00, val);
+                // don't debug every data write
+		    }
+		    break;
+	
+	    case 0xc0:  // set joystick mode
+            z80JoystickMode=true; 
+            break;	// todo should be some bounce time and roller side effect
+	
+	    case 0xe0:  // write to Coleco sound chip
+		    wsndbyte(val);
+	}
+}
+
+// This should not work on Coleco without extra hardware
+// We should emit debug and/or breakpoint
+zuint32 z80IntData(void*) {
+	debug_write("Z80 requested int data - not valid.");
+	return 0;
+}
 
 // breakpoint helper 
 bool CheckRange(int nBreak, int x) {
@@ -1518,6 +1790,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 		}
 	}
 
+    // init the SD card
+    SDInitLibrary();
+
 	// build the CPU super early - lots of init functions write to its memory
 	debug_write("Building CPU");
 	pCPU = new CPU9900();							// does NOT reset
@@ -1525,6 +1800,24 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	pCurrentCPU = pCPU;
 	hWakeupEvent=CreateEvent(NULL, FALSE, FALSE, NULL);
 	InterlockedExchange((LONG*)&cycles_left, max_cpf);
+
+    // hack in the Z80 stuff. I guess I'll need to write my own eventually...
+    myZ80.context=NULL;   // arbitrary context pointer
+    myZ80.read = z80Read;
+    myZ80.write = z80Write;
+    myZ80.in = z80In;
+    myZ80.out = z80Out;
+    myZ80.int_data = z80IntData;
+    myZ80.halt = NULL;  // optional callback for Z80 HALT
+    // set up the Z80 disassembler
+    memset(&myZ80Dis, 0, sizeof(myZ80Dis));
+    dZ80_SetDefaultOptions(&myZ80Dis);
+    myZ80Dis.cpuType = DCPU_Z80;
+    myZ80Dis.mem0Start = z80Read;
+    myZ80Dis.flags |= DISFLAG_SINGLE | DISFLAG_OPCODEDUMP;
+
+    // myZ80.state has the data needed for the debugger
+    z80_power(&myZ80, FALSE);
 
 	// Get the default np font dimensions with a dummy dc
 	myDC=CreateCompatibleDC(NULL);
@@ -1583,6 +1876,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 		sprintf(temp, "Can't open window: %x", err);
 		fail(temp);
 	}
+    DragAcceptFiles( myWnd, TRUE );
 	ShowWindow(myWnd, SW_HIDE);
 	UpdateWindow(myWnd);
 	SetActiveWindow(myWnd);
@@ -1654,7 +1948,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
         GROMBase[idx].LastBase=0;
 	}
 		
-	vdpReset();			// TODO: should move these vars into the reset function
+	vdpReset(true);			// TODO: should move these vars into the reset function
 	vdpaccess=0;		// No VDP address writes yet 
 	vdpwroteaddress=0;
 	vdpscanline=0;
@@ -1725,7 +2019,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	CPUSpeechHaltByte=0;		// doesn't matter
 	doLoadInt=false;			// no pending LOAD
 	pCPU->enableDebug=1;		// whether breakpoints affect CPU
-	pGPU->enableDebug=1;		// whether breakpoints affect GPU
+	pGPU->enableDebug=0;		// whether breakpoints affect GPU
 
 	// initialize debugger links
 	InitBug99();
@@ -1859,6 +2153,8 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	// reset the CPU
 	pCPU->reset();
 	pGPU->reset();
+    z80_power(&myZ80, TRUE);
+    z80_reset(&myZ80);
 
 	// Initialize emulated keyboard
 	init_kb();
@@ -2271,6 +2567,14 @@ void fail(char *x)
 	OutputDebugString(buffer);
 	MessageBox(myWnd, buffer, "Classic99 Exit", MB_OK);
 
+    // output the call hit log for Z80
+    for (int idx=0; idx<65536; ++idx) {
+        if (CallHits[idx]) {
+            sprintf(buffer, "CALLS: %04X -> %d\n", idx, CallHits[idx]);
+            OutputDebugString(buffer);
+        }
+    }
+
 	Sleep(600);			// give the threads a little time to shut down
 
 	if (Recording) {
@@ -2441,9 +2745,13 @@ void __cdecl emulti(void *)
 			// GPU 
 			if (bInterleaveGPU) {
 				// todo: this is a hack for interleaving F18GPU with the 9900 - and it works, but.. not correct at all.
+                long oldCycles = cycles_left;
 				if (pGPU->GetIdle() == 0) {
 					pCurrentCPU = pGPU;
 					for (int nCnt = 0; nCnt < 20; nCnt++) {	// /instructions/ per 9900 instruction - approximation!!
+                        if (cycles_left > 1) {
+                            cycles_left = 200;
+                        }
 						do1();
 						if (pGPU->GetIdle()) {
 							break;
@@ -2454,6 +2762,7 @@ void __cdecl emulti(void *)
 						}
 					}
 					pCurrentCPU = pCPU;
+                    cycles_left = oldCycles;
 				}
 			}
 		}
@@ -2622,6 +2931,11 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 	if ((pImg->nType == TYPE_KEYS) || (pImg->nType == TYPE_OTHER) || (NULL != pData)) {
 		// finally ;)
 		debug_write("Loading file %sfrom %s: Type %c, Bank %d, Address 0x%04X, Length 0x%04X", szFilename,  pszFrom, pImg->nType, pImg->nBank, pImg->nLoadAddr, nLen);
+        // Coleco Hack for cart loading (ROM can only load 8k)
+        if ((pImg->nType == TYPE_ROM) && (pImg->nLoadAddr==0x6000))  {
+            pImg->nType = TYPE_378;
+            pImg->nLoadAddr = 0;
+        }
 
 		switch (pImg->nType) {
 			case TYPE_GROM:
@@ -2655,7 +2969,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					}
                     // this is unlikely, but better safe than crashy
                     if (NULL == CPU2) {
-                        CPU2=(Byte*)malloc(8192);
+                        CPU2=(Byte*)malloc(16384);
                         if (NULL == CPU2) {
                             // this will probably crash... maybe fail?
                             debug_write("Failed to allocate base RAM for cartridge, aborting load.");
@@ -2709,7 +3023,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 						}
                         // this is unlikely, but better safe than crashy
                         if (NULL == CPU2) {
-                            CPU2=(Byte*)malloc(8192);
+                            CPU2=(Byte*)malloc(16384);
                             if (NULL == CPU2) {
                                 debug_write("Failed to allocate base NVRAM for cartridge, aborting load.");
                                 break;
@@ -2743,12 +3057,13 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 				}
                 // make sure we have enough space
                 if ((NULL == CPU2)||(xb<1)) {
-                    Byte *CNew = (Byte*)realloc(CPU2, 8192*2);
+                    Byte *CNew = (Byte*)realloc(CPU2, 16384*2);
                     if (NULL == CNew) {
                         debug_write("Failed to reallocate RAM for XB cartridge, aborting load.");
                         break;
                     } else {
                         CPU2 = CNew;
+                        xb = 1;
                     }
                 }
 				// load it into the second bank of switched memory (2k in)
@@ -2776,10 +3091,10 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 				}
 
                 int oldXB = xb;
-				xb=(pImg->nLoadAddr+nLen+8191)/8192;	// round up, this many banks are loaded
+				xb=(pImg->nLoadAddr+nLen+16383)/16384;	// round up, this many banks are loaded
 				// now we need to make it a power of 2 for masking
 				switch (xb) {
-					case 0:			// should be impossible (result 0)
+					case 0:			// should be impossible (result 0) - unless not really banking
 					case 1:			// 1 bank, no switching (result 0)
 						xb=0;
 						break;
@@ -2848,7 +3163,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 
                 // make sure we have enough space
                 if ((NULL == CPU2)||(oldXB<xb)) {
-                    Byte *CNew=(Byte*)realloc(CPU2, 8192*(xb+1));
+                    Byte *CNew=(Byte*)realloc(CPU2, 16384*(xb+1));
                     if (NULL == CNew) {
                         debug_write("Failed to reallocate RAM for cartridge, aborting load.");
                         xb=0;
@@ -2862,26 +3177,34 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                 xbBank=xb;	// not guaranteed on real console
 				//xbBank=rand()%xb;		// TODO: make an option
 
-                if (xb == 16383) {
-                    // copy the GROM data into the GROM space
-                    // copy to all banks - only 256 bytes, repeated over and over
-					for (int idx=0; idx<PCODEGROMBASE; idx++) {
-                        for (int adr=0x8000; adr<0xa000; adr+=256) {
-                            // last 256 bytes of range
-    						memcpy(&GROMBase[idx].GROM[adr], &CPU2[128*1024*1024-256], 256);
-                        }
-					}
-                }
-               
 				// TYPE_378 is non-inverted, non MBX
 				bInvertedBanks = false;
 				bUsesMBX = false;
-				if (pImg->nType == TYPE_379) {
-					bInvertedBanks=true;
-				} else if (pImg->nType == TYPE_MBX) {
-					bUsesMBX=true;
-				}
-				debug_write("Loaded %d bytes, %sinverted, %sbank mask 0x%X", nLen, bInvertedBanks?"":"non-", bUsesMBX?"MBX, ":"", xb);
+
+                // check for megacart and invert bank order if so
+                if ((CPU2[0] != 0xaa) && (CPU2[0] != 0x55) && (nLen > 32768)) {
+                    // no header, try the last 16k block
+                    // first pad up to a proper multiple, just in case
+                    int tLen = nLen/16384 + (nLen%16384 ? 1 : 0);
+                    tLen *= 16384;
+                    if ((CPU2[tLen-16384]==0x55)||(CPU2[tLen-16384]==0xaa)) {
+                        debug_write("Looks like a ColecoVision Megacart, inverting bank order");
+                        Byte *CNew=(Byte*)malloc(tLen);
+                        if (NULL == CNew) {
+                            debug_write("Failed to reallocate RAM for cartridge, aborting load.");
+                            xb=0;
+                            xbBank=0;
+                        } else {
+                            for (int idx=0; idx<tLen; idx+=16384) {
+                                memcpy(&CNew[idx], &CPU2[tLen-idx-16384], 16384);
+                            }
+                            free(CPU2);
+                            CPU2 = CNew;
+                        }
+                    }
+                }
+
+                debug_write("Loaded %d bytes, %sinverted, %sbank mask 0x%X", nLen, bInvertedBanks?"":"non-", bUsesMBX?"MBX, ":"", xb);
             }
 				break;
 
@@ -3033,50 +3356,6 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 void readroms() { 
 	int idx;
 
-#ifdef USE_BIG_ARRAY
-	// TODO HACK
-	{
-		FILE *fp;
-		if (strlen(g_cmdLine) > 0) {
-			char *p=g_cmdLine;
-			// remove quotes
-			while (*p) {
-				if (*p == '\"') {
-					strcpy(p, p+1);
-				} else {
-					p++;
-				}
-			}
-			debug_write("Reading hack %s...", g_cmdLine);
-			fp = fopen(g_cmdLine, "rb");
-			if (NULL == fp) {
-				debug_write("Failed to open file, code %d", errno);
-				BIGARRAYSIZE = 0;
-			} else {
-				fseek(fp, 0, SEEK_END);
-				int x = ftell(fp);
-				fseek(fp, 0, SEEK_SET);
-				BIGARRAY = (unsigned char*)malloc(x);
-				if (BIGARRAY == NULL) {
-					debug_write("Failed to allocate memory for BIG ARRARY HACK");
-					BIGARRAYSIZE = 0;
-				} else {
-					BIGARRAYSIZE = fread(BIGARRAY, 1, x, fp);
-					debug_write("Read %d bytes", BIGARRAYSIZE);
-
-                    debug_write("Copying hack to AMS...");
-                    PreloadAMS(BIGARRAY, BIGARRAYSIZE);
-				}
-				fclose(fp);
-			}
-		} else {
-			BIGARRAYSIZE = 0;
-		}
-		BIGARRAYADD=0;
-	}
-	// end hack
-#endif
-
 	// save any previous NVRAM
 	saveroms();
 
@@ -3086,10 +3365,42 @@ void readroms() {
 	// process the breakpoint list and re-open any listed files
 	ReloadDumpFiles();
 
+    // ColecoVision Phoenix stuff
+    {
+        // reset the SD card
+        SDReset();
+
+        // clear the memories
+        memset(z80PortOut, 0, sizeof(z80PortOut));
+        memset(phoenixRAM, 0, sizeof(phoenixRAM));
+        memset(CallHits, 0, sizeof(CallHits));
+        // special port inits
+        z80PortOut[0x54] = 1;     // first bank selected ('0' is illegal)
+        z80PortOut[0x55] = 0x30;  // cartridge active, no banking
+        z80PortOut[0x56] = 0x03;  // disabled, 400Khz (no idea if this is right)
+        z80PortOut[0x7f] = 0x02;  // CV bios active, not SGM RAM
+
+        // TODO: technically, these memories /survive/ a reset, rather than reloading from bitstream
+        // For now I don't plan to write to them!
+
+        // read in the ColecoVision ROM at the Phoenix address of 0x4000
+        FILE *fp = fopen("D:\\emu\\COLECO\\COLECO.ROM", "rb");
+        fread(&z80ram[0x8000], 1, 8192, fp);
+        fclose(fp);
+        // read in the Phoenix ROM at the Phoenix address of 0x0000
+        fp = fopen("D:\\work\\phoenix\\repo\\collectorvision-game-system\\gameMenus\\coleco\\src\\phoenixBoot.rom", "rb");
+        fread(&z80ram[0x0000], 1, 3*8192, fp);
+        fclose(fp);
+        
+        // flag the bios mode
+        phoenixBios = true;
+        debug_write("Reloaded Phoenix BIOS...");
+    }
+
     // make sure there's at least a little memory at CPU2, since we are building on very old code
     // the xb mask must now always be associated with CPU2
     if (NULL == CPU2) {
-        CPU2=(Byte*)malloc(8192);
+        CPU2=(Byte*)malloc(16384);
         if (NULL == CPU2) {
             fail("Failed to allocate initial RAM for cartridge");
         }
@@ -3100,7 +3411,7 @@ void readroms() {
 	// now memory
 	memset(ROMMAP, 0, 65536);	// this is not RAM
 	if (!bWarmBoot) {
-		memrnd(CPU2, 8192*(xb+1));
+		memrnd(CPU2, 16384*(xb+1));
 		memrnd(VDP, 16384);
 	}
 	memset(CRU, 1, 4096);		// I think CRU is deterministic
@@ -3222,6 +3533,9 @@ void readroms() {
 			}
 		}
 	}
+
+    // Z80 hack - put the dummyROM back in place so the 9900 spins
+	WriteMemoryBlock(0x0000, DummyROM, 6);
 }
 
 void saveroms()
@@ -3404,7 +3718,12 @@ void do1()
 			static unsigned long nMax=0, nMin=0xffffffff;
 			static int nCount=0;
 			static unsigned long nTotal=0;
-			Word PC = pCurrentCPU->GetPC();
+            Word PC;
+            if (pCurrentCPU == pGPU) {
+    			PC = pCurrentCPU->GetPC();
+            } else {
+                PC = myZ80.state.pc;
+            }
 
 			for (int idx=0; idx<nBreakPoints; idx++) {
 				switch (BreakPoints[idx].Type) {
@@ -3710,11 +4029,14 @@ void do1()
 			if (pCurrentCPU->enableDebug) {
 				// Update the disassembly trace
 				memmove(&Disasm[0], &Disasm[1], 19*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
-				Disasm[19].pc=pCurrentCPU->GetPC();
 				if (pCurrentCPU == pGPU) {
+    				Disasm[19].pc=pCurrentCPU->GetPC();
 					Disasm[19].bank = -1;
+                    Disasm[19].cycles = 0;
 				} else {
 					Disasm[19].bank = xbBank;
+                    Disasm[19].pc = myZ80.state.pc;
+                    Disasm[19].cycles = 0;
 				}
 			}
 			// will fill in cycles below
@@ -3750,18 +4072,38 @@ void do1()
 			}
 		}
 
-		Word in = pCurrentCPU->ExecuteOpcode(nopFrame);
-		if (pCurrentCPU == pCPU) {
-            updateTape(pCurrentCPU->GetCycleCount());
-			updateDACBuffer(pCurrentCPU->GetCycleCount());
+        // Super hacky - but not too timing concerned...
+        Word in;
+        if (pCurrentCPU == pCPU) {
+            z80_run(&myZ80, 999999);    // I added 999999 to always run one instruction (anything > 900000)
+            {
+                static bool oldVDPINT = false;
+
+                if (VDPINT) {
+                    // we need to edge detect for the Z80, and the emulator only takes a pulse
+                    if (!oldVDPINT) {
+                        z80_nmi(&myZ80);
+                        oldVDPINT = true;
+                    }
+                } else {
+                    oldVDPINT = false;
+                }
+            }
+
+            // and run the TI to keep timing up. We need this here cause otherwise
+            // a switch to the GPU messes everything up pretty good.
+            in = pCPU->ExecuteOpcode(nopFrame);
+
+            updateTape(pCPU->GetCycleCount());
+			updateDACBuffer(pCPU->GetCycleCount());
 			// an instruction has executed, interrupts are again enabled
 			skip_interrupt=0;
 			// update VDP too
-			updateVDP(pCurrentCPU->GetCycleCount());
+			updateVDP(pCPU->GetCycleCount());
 
 			// and check for VDP address race
 			if (vdpwroteaddress > 0) {
-				vdpwroteaddress -= pCurrentCPU->GetCycleCount();
+				vdpwroteaddress -= pCPU->GetCycleCount();
 				if (vdpwroteaddress < 0) vdpwroteaddress=0;
 			}
 
@@ -3769,26 +4111,24 @@ void do1()
 			// TODO: this is probably not quite right (AMS?), but should work for now
 			int top = (staticCPU[0x8370] << 8) + staticCPU[0x8371];
 			if (top != filesTopOfVram) {
-				if ((pCurrentCPU->GetPC() < 0x4000) || (pCurrentCPU->GetPC() > 0x5FFF)) {
+				if ((pCPU->GetPC() < 0x4000) || (pCPU->GetPC() > 0x5FFF)) {
 					// top of VRAM changed, not in a DSR, so write a warning
 					// else this is in a DSR, so we'll assume it's legit
-					debug_write("(Non-DSR) Top of VRAM pointer at >8370 changed to >%04X by PC >%04X", top, pCurrentCPU->GetPC());
+					debug_write("(Non-DSR) Top of VRAM pointer at >8370 changed to >%04X by PC >%04X", top, pCPU->GetPC());
 				}
 				updateCallFiles(top);
 			}
-		}
 
-		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
-			if (pCurrentCPU->enableDebug) {
-				Disasm[19].cycles = pCurrentCPU->GetCycleCount();
-			}
-		}
+		    if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
+			    if (pCPU->enableDebug) {
+                    Disasm[19].cycles = myZ80.cycles;
+			    }
+		    }
 
-		if ((!nopFrame) && (nStepCount > 0)) {
-			nStepCount--;
-		}
+		    if ((!nopFrame) && (nStepCount > 0)) {
+			    nStepCount--;
+		    }
 
-		if (pCurrentCPU == pCPU) {
 			// Slow down autorepeat using a timer - requires 99/4A GROM
 			// We check if the opcode was "MOVB 2,*3+", (PC >025e, but we don't assume that) 
 			// the 99/4A keyboard is on, and the GROM Address
@@ -3807,10 +4147,8 @@ void do1()
 					WriteMemoryByte(0x8300, ReadMemoryByte(0x8300) - 1, false);
 				}
 			}
-		}
 
-		if (pCurrentCPU == pCPU) {
-			int nLocalCycleCount = pCurrentCPU->GetCycleCount();
+            int nLocalCycleCount = pCPU->GetCycleCount();
 			InterlockedExchangeAdd((LONG*)&cycles_left, -nLocalCycleCount);
 			unsigned long old=total_cycles;
 			InterlockedExchangeAdd((LONG*)&total_cycles, nLocalCycleCount);
@@ -3843,7 +4181,7 @@ void do1()
 			CRUTimerTicks+=nLocalCycleCount;
 
 			// see if we can resolve a halt condition
-			int bits = pCurrentCPU->GetHalt();
+			int bits = pCPU->GetHalt();
 			if (bits) {
 				// speech is blocking
 				if (bits & (1<<HALT_SPEECH)) {
@@ -3851,12 +4189,26 @@ void do1()
 					// 0x9400 is the speech base address
 					wspeechbyte(0x9400, CPUSpeechHaltByte);
 				}
-
 				// that's all we have
 			}
-		}
 
-		pCurrentCPU->ResetCycleCount();
+    		pCPU->ResetCycleCount();
+        } else {
+            // GPU cycle
+            in = pGPU->ExecuteOpcode(nopFrame);
+
+		    if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
+			    if (pGPU->enableDebug) {
+                    Disasm[19].cycles = pCurrentCPU->GetCycleCount();
+			    }
+		    }
+
+		    if ((!nopFrame) && (nStepCount > 0)) {
+			    nStepCount--;
+		    }
+
+    		pGPU->ResetCycleCount();
+        }
 
 		if ((!nopFrame) && (bDebugAfterStep)) {
 			bDebugAfterStep=false;
@@ -4018,9 +4370,6 @@ Byte rcpubyte(Word x,bool rmw) {
 			return ReadMemoryByte(x, !rmw);
 
 		case 0xe000:					// normal CPU RAM
-#ifdef USE_GIGAFLASH
-            readE000(x,rmw);            // but never returns anything valid
-#endif
 			return ReadMemoryByte(x, !rmw);
 
 		case 0x4000:					// DSR ROM (with bank switching and CRU)
@@ -4088,38 +4437,6 @@ Byte rcpubyte(Word x,bool rmw) {
 			break;
 
 		case 0x6000:					// cartridge ROM
-#ifdef USE_GIGAFLASH
-        {
-            Byte xx = read6000(x,rmw);
-            return xx;
-        }
-#endif
-#ifdef USE_BIG_ARRAY
-			if (BIGARRAYSIZE > 0) {
-				// TODO BIG HACK - FAKE CART HARDWARE FOR VIDEO TEST
-				if (x == 0x7fff) {
-					if (BIGARRAYADD >= BIGARRAYSIZE) {
-						// TODO: real hardware probably won't do this either.
-						BIGARRAYADD = 0;
-					}
-					Byte ret = BIGARRAY[BIGARRAYADD++];
-					return ret;
-				}
-				if (x == 0x7ffb) {
-					// destructive address read - MSB first for consistency
-					Byte ret = (BIGARRAYADD >> 24) & 0xff;
-					BIGARRAYADD <<= 8;
-					debug_write("(Read) Big array address now 0x%08X", BIGARRAYADD);
-					return ret;
-				}
-				if (x == 0x6000) {
-					// TODO: real hardware probably will not do this. Don't count on the address being reset.
-					debug_write("Reset big array address");
-					BIGARRAYADD = 0;
-				}
-				// END TODO
-			}
-#endif
 			if (!bUsesMBX) {
 				// XB is supposed to only page the upper 4k, but some Atari carts seem to like it all
 				// paged. Most XB dumps take this into account so only full 8k paging is implemented.
@@ -4183,45 +4500,6 @@ void wcpubyte(Word x, Byte c)
 		pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
 											// be right now that the CPU emulation does all Word accesses
 	}
-
-#ifndef USE_GIGAFLASH
-    // check for cartridge banking
-	if ((x>=0x6000)&&(x<0x8000)) {
-#ifdef USE_BIG_ARRAY
-		if ((x == 0x7ffd) && (BIGARRAYSIZE > 0)) {
-			// write the address register
-			BIGARRAYADD = (BIGARRAYADD<<8) | c;
-			debug_write("(Write) Big array address now 0x%08X", BIGARRAYADD);
-			goto checkmem;
-		} else
-#endif
-		
-		if ((xb) && (ROMMAP[x])) {		// trap ROM writes and check for XB bank switch
-            // collect bits from address and data buses - x is address, c is data
-            int bits = (c<<13)|(x&0x1fff);
-			if (bInvertedBanks) {
-				// uses inverted address lines!
-				xbBank=(((~bits)>>1)&xb);		// XB bank switch, up to 4096 banks
-			} else if (bUsesMBX) {
-				// MBX is weird. The lower 4k is fixed, but the top 1k of that is RAM
-				// The upper 4k is bank switched. Address >6FFE has a bank switch
-				// register updated from the data bus. (Doesn't use 'bits')
-				if ((x>=0x6C00)&&(x<0x6FFE)) {
-					mbx_ram[x-0x6c00] = c;
-				} else if (x==0x6ffe) {
-					xbBank = c&xb;
-					// the theory is this also writes to RAM
-					mbx_ram[x-0x6c00] = c;
-				}
-				// anything else is ignored
-			} else {
-				xbBank=(((bits)>>1)&xb);		// XB bank switch, up to 4096 banks
-			}
-			goto checkmem;
-		}
-		// else it's RAM there
-	}
-#endif
 
 	switch (x & 0xe000) {
 		case 0x8000:
@@ -4290,18 +4568,12 @@ void wcpubyte(Word x, Byte c)
 			break;
 
         case 0xe000:					// normal CPU RAM
-#ifdef USE_GIGAFLASH
-            writeE000(x,c);
-#endif
 			if (!ROMMAP[x]) {
 				WriteMemoryByte(x, c, false);
 			}
 			break;
 
 		case 0x6000:					// Cartridge RAM (ROM is trapped above)
-#ifdef USE_GIGAFLASH
-            write6000(x,c);
-#endif
 			// but we test it anyway. Just in case. ;) I think the above is just for bank switches
 			if (!ROMMAP[x]) {
 				WriteMemoryByte(x, c, false);
@@ -4752,7 +5024,7 @@ void wvdpbyte(Word x, Byte c)
 					// Added by RasmusM
 					if (nReg == 15) {
 						// Status register select
-						//debug_write("F18A status register 0x%02X selected", nData & 0x0f);
+						debug_write("F18A status register 0x%02X selected", nData & 0x0f);
 						F18AStatusRegisterNo = nData & 0x0f;
 						return;
 					}
@@ -4771,7 +5043,9 @@ void wvdpbyte(Word x, Byte c)
 						return;
 					}
 					if (nReg == 49) {
-						// Enhanced color mode
+                        VDPREG[nReg] = nData;
+
+                        // Enhanced color mode
 						F18AECModeSprite = nData & 0x03;
 						F18ASpritePaletteSize = 1 << F18AECModeSprite;	
 						debug_write("F18A Enhanced Color Mode 0x%02X selected for sprites", nData & 0x03);
@@ -4780,7 +5054,25 @@ void wvdpbyte(Word x, Byte c)
 					}
 					// RasmusM added end
 
-					if (nReg == 54) {
+                    if (nReg == 50) {
+                        VDPREG[nReg] = nData;
+                        // TODO: other reg50 bits
+                        // 0x01 - Tile Layer 2 uses sprite priority (when 0, always on top of sprites)
+                        // 0x02 - use per-position attributes instead of per-name in text modes (DONE)
+                        // 0x04 - show virtual scanlines (regardless of jumper)
+                        // 0x08 - report max sprite (VR30) instead of 5th sprite
+                        // 0x10 - disable all tile 1 layers (GM1,GM2,MCM,T40,T80)
+                        // 0x20 - trigger GPU on VSYNC
+                        // 0x40 - trigger GPU on HSYNC
+                        // 0x80 - reset VDP registers to poweron defaults (DONE)
+                        if (nData & 0x80) {
+                            debug_write("Resetting F18A registers");
+                            vdpReset(false);
+                        }
+                        return;
+                    }
+
+                    if (nReg == 54) {
 						// GPU PC MSB
 						VDPREG[nReg] = nData;
 						return;
@@ -4833,8 +5125,8 @@ void wvdpbyte(Word x, Byte c)
 					wVDPreg((Byte)(nReg&0x3f),(Byte)(nData));
 				} else {
 					if (nReg&0xf8) {
-						debug_write("Warning: writing >%02X to VDP register >%X ignored (PC=>%04X)", nData, nReg, pCPU->GetPC());
-						return;
+                        // Coleco can't ignore, need to mask. Lots of bad hardware.
+						debug_write("Warning: writing >%02X to VDP register >%X masked to >%X (PC=>%04X)", nData, nReg, nReg&7, pCPU->GetPC());
 					}
 					// verified correct against real hardware - register is masked to 3 bits
 					wVDPreg((Byte)(nReg&0x07),(Byte)(nData));
@@ -4886,6 +5178,8 @@ void wvdpbyte(Word x, Byte c)
 				}
 				F18APaletteRegisterData = -1;
 			}
+    
+            redraw_needed=REDRAW_LINES;
 			return;
 		}
 		// RasmusM added end
@@ -4897,6 +5191,7 @@ void wvdpbyte(Word x, Byte c)
 		VDP[RealVDP]=c;
 		VDPMemInited[RealVDP]=1;
 
+#if 0
 		// before the breakpoint, check and emit debug if we messed up the disk buffers
 		{
 			int nTop = (staticCPU[0x8370]<<8) | staticCPU[0x8371];
@@ -4914,6 +5209,7 @@ void wvdpbyte(Word x, Byte c)
 				}
 			}
 		}
+#endif
 
 		// check breakpoints against what was written to where - still assume internal address
 		for (int idx=0; idx<nBreakPoints; idx++) {
@@ -5990,6 +6286,9 @@ int rcru(Word ad)
         return 1;
     }
 
+    // Z80 hack - don't read anything else, then the TI will just spin on the title page
+    return 1;
+
 	// no other hardware devices at this time, check keyboard/joysticks
 
 	// keyboard reads as an array. Bits 24, 26 and 28 set the line to	
@@ -6467,7 +6766,8 @@ void DoMemoryDump() {
 		if (NULL != fp) {
 			unsigned char buf[8192];
 			for (int idx=0; idx<65536; idx++) {
-				buf[idx%8192]=ReadMemoryByte((Word)idx);
+                buf[idx%8192]=z80Read((void*)1, (Word)idx);
+				//buf[idx%8192]=ReadMemoryByte((Word)idx);
 				if (idx%8192 == 8191) {
 					fwrite(buf, 1, 8192, fp);
 				}
@@ -6481,6 +6781,11 @@ void DoMemoryDump() {
 			for (int idx=0; idx<8; idx++) {
 				fputc(VDPREG[idx], fp);
 			}
+			fclose(fp);
+		}
+		fp=fopen("PHOENIXDUMP.BIN", "wb");
+		if (NULL != fp) {
+			fwrite(phoenixRAM, 1, 512*1024, fp);
 			fclose(fp);
 		}
 		debug_write("Dumped memory to MEMDUMP.BIN and VDPDUMP.BIN");
@@ -6511,7 +6816,8 @@ void memrnd(void *pRnd, int nCnt) {
 			*((unsigned char *)pRnd+i) = rand()%256;
 		}
 	} else {
-		memset(pRnd, 0, nCnt);
+        // Phoenix powers up with all RAM at 0xff
+		memset(pRnd, 0xff, nCnt);
 	}
 }
 
@@ -6532,6 +6838,9 @@ void UpdateHeatGROM(int Address) {
 	// this helps with Windows liking upside down bitmaps
 	Address=(Address&0xff) | (0xff00-(Address&0xff00));
 	nHeatMap[Address]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
+	nHeatMap[Address+1]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
+	nHeatMap[Address+2]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
+	nHeatMap[Address+3]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
 }
 
 void UpdateHeatmap(int Address) {
@@ -6605,9 +6914,21 @@ void UpdateHeatmap(int Address) {
 		myInfo.bmiHeader.biClrUsed=0;
 		myInfo.bmiHeader.biClrImportant=0;
 
+//		HDC myDC=GetDC(hHeatMap);
+//		SetDIBitsToDevice(myDC, 0, 0, 256, 256, 0, 0, 0, 256, nHeatMap, &myInfo, DIB_RGB_COLORS);
+//		ReleaseDC(hHeatMap, myDC);
+        
+        BITMAP structBitmapHeader;
+        memset( &structBitmapHeader, 0, sizeof(BITMAP) );
+
 		HDC myDC=GetDC(hHeatMap);
-		SetDIBitsToDevice(myDC, 0, 0, 256, 256, 0, 0, 0, 256, nHeatMap, &myInfo, DIB_RGB_COLORS);
-		ReleaseDC(hHeatMap, myDC);
+
+            HGDIOBJ hBitmap = GetCurrentObject(myDC, OBJ_BITMAP);
+            GetObject(hBitmap, sizeof(BITMAP), &structBitmapHeader);
+            // we use width twice to get a square output that preserves the Close button
+            StretchDIBits(myDC, 0, 0, structBitmapHeader.bmWidth, structBitmapHeader.bmWidth, 0, 0, 256, 256, nHeatMap, &myInfo, DIB_RGB_COLORS, SRCCOPY);
+
+        ReleaseDC(hHeatMap, myDC);
 	}
 }
 

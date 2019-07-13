@@ -188,7 +188,7 @@ int nTappedBits=0x0003;
 // logarithmic scale (linear isn't right!)
 // the SMS Power example, (I convert below to percentages)
 int sms_volume_table[16]={
-   32767, 26028, 20675, 16422, 13045, 10362,  8231,  6568,
+   32767, 26028, 20675, 16422, 13045, 10362,  8231,  6538,
     5193,  4125,  3277,  2603,  2067,  1642,  1304,     0
 };
 double nVolumeTable[16];
@@ -276,7 +276,6 @@ void setvol(int chan, int vol) {
 // fill the output audio buffer with signed 16-bit values
 // nAudioIn contains a fixed value to add to all samples (used to mix in the casette audio)
 // (this emu doesn't run speech through there, though, speech gets its own buffer for now)
-// TODO: I don't use this anymore and I think it needs to be removed.... (what did I mean by this??)
 void sound_update(short *buf, double nAudioIn, int nSamples) {
 	// nClock is the input clock frequency, which runs through a divide by 16 counter
 	// The frequency does not divide exactly by 16
@@ -302,11 +301,19 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		// tone channels
 
 		for (int idx=0; idx<3; idx++) {
-			// SMS Power says 0 or 1 is a flat output
-			// SMS Power is wrong, however, or at least, it
-			// doesn't apply to the 9919. Testing with the real
-			// TI shows that 0 is the lowest pitch, and 1 is the highest.
-            // TODO: need to check whether a v2.2 console uses the SMS Power version of the sound chip
+            // Further Testing with the chip that SMS Power's doc covers (SN76489)
+            // 0 outputs a 1024 count tone, just like the TI, but 1 DOES output a flat line.
+            // On the TI (SN76494, I think), 1 outputs the highest pitch (count of 1)
+            // However, my 99/4 pics show THAT machine with an SN76489! 
+            // My plank TI has an SN94624 (early name? TMS9919 -> SN94624 -> SN76494 -> SN76489)
+            // And my 2.2 QI console has an SN76494!
+            // So maybe we can't say with certainty which chip is in which machine?
+            // Myths and legends:
+            // - SN76489 grows volume from 2.5v down to 0 (matches my old scopes of the 494), but SN76489A grows volume from 0 up.
+            // - SN76496 is the same as the SN7689A but adds the Audio In pin (all TI used chips have this)
+            // So right now, I believe there are two main versions, differing largely by the behaviour of count 0x001:
+            // Original (high frequency): TMS9919, SN94624, SN76494?
+            // New (flat line): SN76489, SN76489A, SN76496
 			nCounter[idx]-=nClocksPerSample;
 			while (nCounter[idx] <= 0) {    // TODO: should be able to do this without a loop, it would be faster (well, in the rare cases it needs to loop)!
 				nCounter[idx]+=(nRegister[idx]?nRegister[idx]:0x400);
@@ -318,6 +325,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 			// then mute it (we'll do that with the nFade value.) 
 			// Noises can't get higher than audible frequencies (even with high user defined rates),
 			// so we don't need to worry about them.
+            // TODO: Because of this, I don't need to currently emulate the Coleco's flat line on 0x001, but I will later
 			if ((nRegister[idx] != 0) && (nRegister[idx] <= (int)(111860.0/(double)(AudioSampleRate/2)))) {
 				// this would be too high a frequency, so we'll merge it into the DAC channel (elsewhere)
 				// and kill this channel. The reason is that the high frequency ends up
@@ -733,7 +741,7 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 		// this more likely means we actually fell behind!
 		if (pDat->nMinJitterFrames < 10) {
 #ifdef _DEBUG
-			debug_write("Fell behind, increasing minimum jitter to %d", pDat->nMinJitterFrames);
+//			debug_write("Fell behind, increasing minimum jitter to %d", pDat->nMinJitterFrames);
 #endif
 			pDat->nMinJitterFrames++;
 		} 
@@ -761,7 +769,7 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	} else if ((nWriteAhead > pDat->nMinJitterFrames/2+1) && (pDat->nMinJitterFrames > 2)) {
 		pDat->nMinJitterFrames--;
 #ifdef _DEBUG
-		debug_write("Shrink min jitter frames to %d (writeahead %d)", pDat->nMinJitterFrames, nWriteAhead);
+//		debug_write("Shrink min jitter frames to %d (writeahead %d)", pDat->nMinJitterFrames, nWriteAhead);
 #endif
 	}
 

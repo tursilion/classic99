@@ -423,8 +423,13 @@ void CPU9900::TriggerInterrupt(Word vector) {
 	skip_interrupt = 1;					// you get one instruction to turn interrupts back off
 										// this is true for all BLWP-like operations
 }
+extern int z80GetPC();
 Word CPU9900::GetPC() {
-	return PC;
+    if (this == pCPU) {
+        return z80GetPC();
+    } else {
+    	return PC;
+    }
 }
 void CPU9900::SetPC(Word x) {			// should rarely be externally used (Classic99 uses it for disk emulation)
 	if (x&0x0001) {
@@ -3529,7 +3534,8 @@ void GPUF18A::WCPUBYTE(Word dest, Byte c) {
 	if (dest < 0x4000) redraw_needed=REDRAW_LINES;		// to avoid redrawing because of GPU R0-R15 registers changing
 }
 
-Word GPUF18A::ROMWORD(Word src) {
+Word GPUF18A::ROMWORD(Word src, bool rmw=false) {
+    (void)rmw;
 	src&=0xfffe;
 	return (RCPUBYTE(src)<<8) | RCPUBYTE(src+1);
 //	return (VDP[(src)]<<8) | VDP[(src+1)];

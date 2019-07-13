@@ -264,26 +264,24 @@ public:		// type protection later. Make work today.
 };
 
 // a few overrides for the F18A GPU
+// Note that F18A specific versions of opcodes are up in the CPU9900 class
+// for function pointer reasons.
 class GPUF18A:public CPU9900 {
 public:		// type protection later. Make work today.
 	GPUF18A();
-	void reset();
+	void reset() override;
 
 	/////////////////////////////////////////////////////////////////////
 	// Wrapper functions for memory access
 	/////////////////////////////////////////////////////////////////////
-	Byte RCPUBYTE(Word src);
-	void WCPUBYTE(Word dest, Byte c);
-	Word ROMWORD(Word src);
-	void WRWORD(Word dest, Word val);
-	void TriggerInterrupt(Word vector);
+	Byte RCPUBYTE(Word src) override;
+	void WCPUBYTE(Word dest, Byte c) override;
+	Word ROMWORD(Word src, bool rmw) override;
+	void WRWORD(Word dest, Word val) override;
+	void TriggerInterrupt(Word vector) override;
 	
-	Word GetSafeWord(int x, int bank);
-	Byte GetSafeByte(int x, int bank);
-
-	// functions that are different on the F18A
-	// (there will be more than just this!)
-	void op_idleF18();
+	Word GetSafeWord(int x, int bank) override;
+	Byte GetSafeByte(int x, int bank) override;
 };
 
 

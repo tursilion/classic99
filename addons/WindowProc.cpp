@@ -64,7 +64,15 @@
 #include "..\disk\ImageDisk.h"
 #include "..\disk\TICCDisk.h"
 #include "loadsave_brk.h"
+#include "z80.h"
+#include "..\debugger\dz80\types.h"
+#include "..\debugger\dz80\dissz80.h"
 
+extern unsigned char z80ram[64*1024];	// Z80 memory space
+extern unsigned char z80PortOut[256];
+extern unsigned char phoenixRAM[512*1024];  // not used directly, copied into z80ram as needed, MAME style
+extern DISZ80 myZ80Dis;    // Disassembler
+extern Z80 myZ80;
 extern CPU9900 * volatile pCurrentCPU;
 extern CPU9900 *pCPU, *pGPU;
 extern const char *szDefaultWindowText;
@@ -140,6 +148,11 @@ extern void MuteAudio();
 extern void resetDAC();
 extern void ReloadDumpFiles();
 
+extern unsigned char z80In(void*skipSideEffects, zuint16 port);
+extern void z80Out(void*, zuint16 port, zuint8 val);
+extern unsigned char z80Read(void *ignoreSideEffects, zuint16 adr);
+extern void z80Write(void*, zuint16 adr, zuint8 data);
+
 extern void (*InitSid)();
 extern void (*sid_update)(short *buf, double nAudioIn, int nSamples);
 extern void (*write_sid)(Word ad, Byte dat);
@@ -179,11 +192,11 @@ static int nMemType=0;
 static bool bFrozenText=false;
 static int nDebugHexOffset=0;
 // top addresses for the memory banks
-static char szTopMemory[5][32] = { "", "", "8300", "0000", "0000" };		// CPU, VDP, GROM - hex address or Register number (Rx)
+static char szTopMemory[5][32] = { "", "", "6000", "0000", "0000" };		// CPU, VDP, GROM - hex address or Register number (Rx)
 // these match the array which matches the radio buttons 
 #define MEMCPU 2
 #define MEMVDP 3
-#define MEMGROM 4
+#define MEMPORT 4
 
 // references
 // CartDlgProc is in makecart.cpp
@@ -706,17 +719,61 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			break;
 
+        case WM_DROPFILES:
+        {
+            HDROP hDrop = (HDROP)wParam;
+            char buf[1024];
+            // we only care about the first file - even if the user dropped multiple
+            if (DragQueryFile(hDrop, 0, buf, sizeof(buf))) {
+			    int ret;
+                DragFinish(hDrop);
+//			    if (fKeyEverPressed) {
+//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
+//			    } else {
+				    ret=IDYES;
+//			    }
+			    if (IDYES == ret) {
+                    // Make a fake OPENFILENAME
+                    // hwndOwner, lpstrFileTitle, lpstrFile, nFileExtension
+                    OPENFILENAME ofn;
+                    memset(&ofn, 0, sizeof(ofn));
+                    ofn.hwndOwner = myWnd;                      // my window
+                    
+                    ofn.lpstrFileTitle = strrchr(buf, '\\');    // file name and extension
+                    if (ofn.lpstrFileTitle == NULL) {
+                        ofn.lpstrFileTitle=buf;
+                    } else {
+                        ++ofn.lpstrFileTitle;
+                    }
+
+                    ofn.lpstrFile = buf;                        // full filename
+
+                    char *p = strrchr(buf, '.');
+                    if (NULL == p) {
+                        ofn.nFileExtension = 0;
+                    } else {
+                        ofn.nFileExtension = p-buf+1;           // distance to extension
+                    }
+
+                    OpenUserCart(ofn);
+                }
+            } else {
+                DragFinish(hDrop);
+            }
+        }
+        break;
+
 		case WM_COMMAND:
 			// silence in case this takes a while
 			// Check for dynamic ones first, so we don't need a huge switch
 			if ((wParam >= ID_SYSTEM_0) && (wParam < ID_SYSTEM_0+100)) {
 				// user requested to change system
 				int ret;
-				if ((!lParam)&&(fKeyEverPressed)) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change System Type", MB_YESNO|MB_ICONQUESTION);
-				} else {
+//				if ((!lParam)&&(fKeyEverPressed)) {
+//					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change System Type", MB_YESNO|MB_ICONQUESTION);
+//				} else {
 					ret=IDYES;
-				}
+//				}
 				if (IDYES == ret) {
 					nSystem=wParam-ID_SYSTEM_0;
 					for (int idx=0; idx<100; idx++) {
@@ -743,11 +800,11 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if ((wParam >= ID_APP_0) && (wParam < ID_APP_0+100)) {
 				// user requested to change cartridge (apps)
 				int ret;
-				if (fKeyEverPressed) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
-				} else {
-					ret=IDYES;
-				}
+//			    if (fKeyEverPressed) {
+//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
+//			    } else {
+				    ret=IDYES;
+//			    }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=0;
@@ -771,11 +828,11 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if ((wParam >= ID_GAME_0) && (wParam < ID_GAME_0+100)) {
 				// user requested to change cartridge (games)
 				int ret;
-				if (fKeyEverPressed) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
-				} else {
-					ret=IDYES;
-				}
+//			    if (fKeyEverPressed) {
+//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
+//			    } else {
+				    ret=IDYES;
+//			    }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=1;
@@ -799,11 +856,11 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if ((wParam >= ID_USER_0) && (wParam < ID_USER_0+MAXUSERCARTS)) {
 				// user requested to change cartridge (user)
 				int ret;
-				if (fKeyEverPressed) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
-				} else {
-					ret=IDYES;
-				}
+//			    if (fKeyEverPressed) {
+//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
+//			    } else {
+				    ret=IDYES;
+//			    }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=2;
@@ -867,7 +924,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				    memset(&ofn, 0, sizeof(OPENFILENAME));
 				    ofn.lStructSize=sizeof(OPENFILENAME);
 				    ofn.hwndOwner=hwnd;
-				    ofn.lpstrFilter="V9T9 Carts\0*.bin;*.C;*.D;*.G;*.3\0All Files\0*\0\0";
+				    ofn.lpstrFilter="Coleco Carts\0*.bin;*.rom\0All Files\0*\0\0";
 				    ofn.lpstrFile=buf;
 				    ofn.nMaxFile=MAX_PATH;
 				    ofn.lpstrFileTitle=buf2;
@@ -919,7 +976,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				memset(&ofn, 0, sizeof(OPENFILENAME));
 				ofn.lStructSize=sizeof(OPENFILENAME);
 				ofn.hwndOwner=hwnd;
-				ofn.lpstrFilter="V9T9 Carts\0*.bin;*.C;*.D;*.G;*.3\0All Files\0*\0\0";
+        	    ofn.lpstrFilter="Coleco Carts\0*.bin;*.rom\0All Files\0*\0\0";
 				strcpy(buf, "");
 				ofn.lpstrFile=buf;
 				ofn.nMaxFile=MAX_PATH;
@@ -1089,6 +1146,8 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 				pCPU->reset();
 				pGPU->reset();
+                z80_reset(&myZ80);
+
 				pCurrentCPU = pCPU;
 				bF18AActive = 0;
 				for (int idx=0; idx<=PCODEGROMBASE; idx++) {
@@ -1097,7 +1156,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				nCurrentDSR=-1;
 				memset(nDSRBank, 0, sizeof(nDSRBank));
 				doLoadInt=false;						// no pending LOAD
-				vdpReset();								// TODO: should move these vars into the reset function
+				vdpReset(true);								// TODO: should move these vars into the reset function
 				vdpaccess=0;							// No VDP address writes yet 
 				vdpwroteaddress=0;						// timer after a VDP address write to allow time to fetch
 				vdpscanline=0;
@@ -1105,6 +1164,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				vdpprefetchuninited = true;
 				VDPREG[0]=0;
 				VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
+                VDPREG[0x33]=5;                         // F18A sprite limit register (with limit jumper on)
 				end_of_frame=0;							// No end of frame yet
 				CPUSpeechHalt=false;					// not halted for speech reasons
 				CPUSpeechHaltByte=0;					// byte pending for the speech hardware
@@ -1148,6 +1208,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
             case ID_TAPE_LOADTAPE:
+                // todo: overloaded for load SD
                 // uses the load dialog, so not really much of a 'rewind',
                 // but it does go back to zero
                 MuteAudio();
@@ -1156,6 +1217,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 break;
 
             case ID_TAPE_STOPTAPE:
+                // overloaded for eject SD
                 // stop the tape if it's playing
                 forceTapeMotor(false);
                 break;
@@ -3016,7 +3078,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							break;
 
 						case MEMVDP:		// VDP
-						case MEMGROM:		// GROM
+						case MEMPORT:		// Port
 							// step forward in memory 
 							{
 								int x;
@@ -3035,8 +3097,13 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 												x=0;
 											}
 										}
-									}
-									x &= 0xffff;
+									    x &= 0xffff;
+									} else {
+                                        if (x > 0x200) {
+                                            x = 0;
+                                        }
+                                        x &= 0x1ff;
+                                    }
 
 									sprintf(szTopMemory[nMemType], "%04X", x);
 									SetDlgItemText(hwnd, IDC_ADDRESS, szTopMemory[nMemType]);
@@ -3072,7 +3139,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							break;
 
 						case MEMVDP:		// VDP
-						case MEMGROM:		// GROM
+						case MEMPORT:		// Port
 							// step back in memory 
 							{
 								int x;
@@ -3088,9 +3155,12 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 											} else {
 												x=0x4000-(LINES_TO_STEP*8);
 											}
-										}
+        									x &= 0xffff;
+										} else {
+                                            x = 0x200 - (LINES_TO_STEP*8);
+                                            x &= 0x1ff;
+                                        }
 									}
-									x &= 0xffff;
 
 									sprintf(szTopMemory[nMemType], "%04X", x);
 									SetDlgItemText(hwnd, IDC_ADDRESS, szTopMemory[nMemType]);
@@ -3117,13 +3187,17 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						{
 							if (1 == sscanf(buf, "PC=%X", &x)) {
 								// make a change to the Program Counter
-								pCurrentCPU->SetPC(x);
+                                if (pCurrentCPU == pGPU) {
+    								pCurrentCPU->SetPC(x);
+                                } else {
+                                    myZ80.state.pc = x;
+                                }
 								// refresh the dialog
 								SetEvent(hDebugWindowUpdateEvent);
 								break;
 							}
 							if (1 == sscanf(buf, "WP=%X", &x)) {
-								// make a change to the Workspace Pointer
+								// make a change to the Workspace Pointer (9900 only)
 								pCurrentCPU->SetWP(x);
 								// refresh the dialog
 								SetEvent(hDebugWindowUpdateEvent);
@@ -3178,27 +3252,134 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								nCurMemType = MEMVDP;
 								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
 							}
-							if (buf[0] == 'G') {
-								nCurMemType = MEMGROM;
+							if (buf[0] == 'P') {    // PORT
+								nCurMemType = MEMPORT;
 								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
 							}
 							// now check for a register
 							if (buf[0] == 'R') {
-								if (nCurMemType == MEMGROM) {
+								if (nCurMemType == MEMPORT) {
 									MessageBox(hwnd, "No registers on this memory type", "Classic99 Debugger", MB_OK | MB_ICONSTOP);
 									break;
 								}
 								if (nCurMemType == 0) {
 									// means CPU then
-									nCurMemType = MEMCPU;
+									MessageBox(hwnd, "Specify CPU register name directly", "Classic99 Debugger", MB_OK | MB_ICONSTOP);
+									break;
 								}
 								bIsReg=true;
 								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
-							}
-
+							} else if ((buf[0]=='A')&&(buf[1]=='F')) {
+                                char *pEq = strchr(buf, '=');
+                                if (pEq) {
+								    if (1 != sscanf(pEq, "=%X", &y)) {
+									    // invalid read
+									    MessageBox(hwnd, "Use af=XXXX to set a value (in hex)\n", "Unrecognized string", MB_ICONASTERISK);
+									    break;
+								    }
+                                    if (buf[2]=='_') {
+                                        myZ80.state.af_.value_uint16 = y;
+                                    } else {
+                                        myZ80.state.af.value_uint16 = y;
+                                    }
+                                }
+						        // refresh the dialog
+						        SetEvent(hDebugWindowUpdateEvent);
+                                break;
+							} else if ((buf[0]=='B')&&(buf[1]=='C')) {
+                                char *pEq = strchr(buf, '=');
+                                if (pEq) {
+								    if (1 != sscanf(pEq, "=%X", &y)) {
+									    // invalid read
+									    MessageBox(hwnd, "Use bc=XXXX to set a value (in hex)\n", "Unrecognized string", MB_ICONASTERISK);
+									    break;
+								    }
+                                    if (buf[2]=='_') {
+                                        myZ80.state.bc_.value_uint16 = y;
+                                    } else {
+                                        myZ80.state.bc.value_uint16 = y;
+                                    }
+                                }
+						        // refresh the dialog
+						        SetEvent(hDebugWindowUpdateEvent);
+                                break;
+							} else if ((buf[0]=='D')&&(buf[1]=='E')) {
+                                char *pEq = strchr(buf, '=');
+                                if (pEq) {
+								    if (1 != sscanf(pEq, "=%X", &y)) {
+									    // invalid read
+									    MessageBox(hwnd, "Use de=XXXX to set a value (in hex)\n", "Unrecognized string", MB_ICONASTERISK);
+									    break;
+								    }
+                                    if (buf[2]=='_') {
+                                        myZ80.state.de_.value_uint16 = y;
+                                    } else {
+                                        myZ80.state.de.value_uint16 = y;
+                                    }
+                                }
+						        // refresh the dialog
+						        SetEvent(hDebugWindowUpdateEvent);
+                                break;
+							} else if ((buf[0]=='H')&&(buf[1]=='L')) {
+                                char *pEq = strchr(buf, '=');
+                                if (pEq) {
+								    if (1 != sscanf(pEq, "=%X", &y)) {
+									    // invalid read
+									    MessageBox(hwnd, "Use hl=XXXX to set a value (in hex)\n", "Unrecognized string", MB_ICONASTERISK);
+									    break;
+								    }
+                                    if (buf[2]=='_') {
+                                        myZ80.state.hl_.value_uint16 = y;
+                                    } else {
+                                        myZ80.state.hl.value_uint16 = y;
+                                    }
+                                }
+						        // refresh the dialog
+						        SetEvent(hDebugWindowUpdateEvent);
+                                break;
+							} else if ((buf[0]=='I')&&(buf[1]=='X')) {
+                                char *pEq = strchr(buf, '=');
+                                if (pEq) {
+								    if (1 != sscanf(pEq, "=%X", &y)) {
+									    // invalid read
+									    MessageBox(hwnd, "Use ix=XXXX to set a value (in hex)\n", "Unrecognized string", MB_ICONASTERISK);
+									    break;
+								    }
+                                    myZ80.state.ix.value_uint16 = y;
+                                }
+						        // refresh the dialog
+						        SetEvent(hDebugWindowUpdateEvent);
+                                break;
+							} else if ((buf[0]=='I')&&(buf[1]=='Y')) {
+                                char *pEq = strchr(buf, '=');
+                                if (pEq) {
+								    if (1 != sscanf(pEq, "=%X", &y)) {
+									    // invalid read
+									    MessageBox(hwnd, "Use iy=XXXX to set a value (in hex)\n", "Unrecognized string", MB_ICONASTERISK);
+									    break;
+								    }
+                                    myZ80.state.iy.value_uint16 = y;
+                                }
+						        // refresh the dialog
+						        SetEvent(hDebugWindowUpdateEvent);
+                                break;
+							} else if ((buf[0]=='S')&&(buf[1]=='P')) {
+                                char *pEq = strchr(buf, '=');
+                                if (pEq) {
+								    if (1 != sscanf(pEq, "=%X", &y)) {
+									    // invalid read
+									    MessageBox(hwnd, "Use sp=XXXX to set a value (in hex)\n", "Unrecognized string", MB_ICONASTERISK);
+									    break;
+								    }
+                                    myZ80.state.sp = y;
+                                }
+						        // refresh the dialog
+						        SetEvent(hDebugWindowUpdateEvent);
+                                break;
+                            }
 							// if we got nothing, warn the user that the syntax has changed
 							if (0 == nCurMemType) {
-								MessageBox(hwnd, "All memory writes must be prefixed with C (CPU), V (VDP) or G (GROM).", "Classic99 Debugger", MB_OK | MB_ICONINFORMATION);
+								MessageBox(hwnd, "All memory writes must be prefixed with C (CPU), V (VDP) or P (Port I/O).", "Classic99 Debugger", MB_OK | MB_ICONINFORMATION);
 								break;
 							}
 
@@ -3227,7 +3408,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								byte++;
 								p++;
 							}
-							if ((byte > 2) && ((nCurMemType == MEMCPU)||(nCurMemType==MEMVDP)||(nCurMemType==MEMGROM)) ) {
+							if ((byte > 2) && ((nCurMemType == MEMCPU)||(nCurMemType==MEMVDP)||(nCurMemType==MEMPORT)) ) {
 								byte = 0;		// no, multiple bytes (we won't use 'y')
 								y&=0xffff;
 							} else {
@@ -3241,7 +3422,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									if ((bIsReg) && (x > 15)) {
 										MessageBox(hwnd, "Out of range for CPU registers", "Classic99 Debugger", MB_ICONSTOP);
 										ok=IDNO;
-									} else if ((!bIsReg) && (ROMMAP[x])) {
+									} else if ((!bIsReg) && ((x>=0x8000)||(x<0x2000))) {
 										ok=MessageBox(hwnd, "Modify ROM? (Bank 0 only, non-permanent)\nif you answer no, the write will be performed normally.", "Classic99 Debugger", MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
 										if (ok == IDYES) {
 											romok=1;
@@ -3263,15 +3444,15 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 										ok=IDNO;
 									}
 									break;
-								case MEMGROM:		// GROM
-									ok=MessageBox(hwnd, "Modify GROM? (Base 0 only, non-permanent)", "Classic99 Debugger", MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+								case MEMPORT:		// GROM
+									ok=IDYES;
 									break;
 								default:
 									ok=IDNO;
 									break;
 							}
 							if (ok == IDYES) {
-								// CPU writes /are/ allowed to cause side effects!
+								// CPU writes /are/ allowed to cause side effects! (not helpful on z80...)
 								switch (nCurMemType) {
 									case MEMCPU:		// CPU again
 										if (bIsReg) {
@@ -3280,13 +3461,9 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 											bIsReg = false;		// not anymore
 										}
 										if (byte) {
-											if ((ROMMAP[x]) && (romok)) {
-												// need to be direct
-												staticCPU[x]=y;
-											} else {
-												// do this so side effects work
-												wcpubyte(x, y);
-											}
+                                            // TODO romok probably doesn't work
+											// do this so side effects work
+                                            z80Write(NULL, x, y);
 										} else {
                                             // parse the string and write each byte...
 							                char *p=strchr(buf,'=');
@@ -3302,13 +3479,9 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                                                 }
                                                 p+=2;
 
-											    if ((ROMMAP[x]) && (romok)) {
-												    // need to be direct
-												    staticCPU[x]=y;
-											    } else {
-												    // do this so side effects work
-												    wcpubyte(x, y);
-											    }
+											    // TODO romok probably doesn't work
+                                                // do this so side effects work
+                                                z80Write(NULL, x, y);
 
                                                 ++x;
                                                 if (x > 0xffff) {
@@ -3367,10 +3540,12 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 										redraw_needed=REDRAW_LINES;
 										break;
 
-									case MEMGROM:		// GROM 
-										// only base zero handled
+									case MEMPORT:		// Ports
+										// only output handled
                                         if (byte) {
-    										GROMBase[0].GROM[x]=y;
+                                            if (x >= 0x100) {
+                                                z80Out(NULL, x-0x100, y);
+                                            }
                                         } else {
                                             // parse the string and write each byte...
 							                char *p=strchr(buf,'=');
@@ -3386,7 +3561,9 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                                                 }
                                                 p+=2;
 
-                                                GROMBase[0].GROM[x]=y;
+                                                if (x >= 0x100) {
+                                                    z80Out(NULL, x-0x100, y);
+                                                }
 
                                                 ++x;
                                                 if (x>=0xffff) {
@@ -3573,7 +3750,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 // helper for DebugUpdateThread - updates csOut
 int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
-	char buf1[80], buf2[80];
+	char buf1[80];
 	CPU9900 *pLclCPU = pCPU;
 
 	// copy to local work variable
@@ -3587,21 +3764,34 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
 		pLclCPU = pGPU;
 	}
 
-	int nSize = Dasm9900(buf2, PC, obj.bank);
-	int nRet = nSize;
-	if (obj.cycles > 0) {
-		sprintf(buf1, "%c  %04X  %04X  %-27s (%d)\r\n", cPrefix, PC, pLclCPU->GetSafeWord(PC, obj.bank), buf2, obj.cycles);
-	} else {
-		sprintf(buf1, "%c  %04X  %04X  %-27s\r\n", cPrefix, PC, pLclCPU->GetSafeWord(PC, obj.bank), buf2);
-	}
-	csOut+=buf1;
-	while ((nSize-=2) > 0) {
-		PC+=2;
-		sprintf(buf1, "         %04X\r\n", pLclCPU->GetSafeWord(PC, obj.bank));
-		csOut+=buf1;
-	}
 
-	return nRet;
+    if (cPrefix == 'G') {
+        char buf2[80];
+	    int nSize = Dasm9900(buf2, PC, obj.bank);
+	    int nRet = nSize;
+	    if (obj.cycles > 0) {
+		    sprintf(buf1, "%c  %04X  %04X  %-27s (%d)\r\n", cPrefix, PC, pLclCPU->GetSafeWord(PC, obj.bank), buf2, obj.cycles);
+	    } else {
+		    sprintf(buf1, "%c  %04X  %04X  %-27s\r\n", cPrefix, PC, pLclCPU->GetSafeWord(PC, obj.bank), buf2);
+	    }
+    } else {
+        myZ80Dis.start = myZ80Dis.end = PC;
+        dZ80_Disassemble(&myZ80Dis);
+	    if (obj.cycles > 0) {
+		    sprintf(buf1, "%c %04X %-4.4s  %-27s (%d)\r\n", cPrefix, PC, myZ80Dis.hexDisBuf, myZ80Dis.disBuf, obj.cycles);
+	    } else {
+		    sprintf(buf1, "%c %04X %-4.4s  %-27s\r\n", cPrefix, PC, myZ80Dis.hexDisBuf, myZ80Dis.disBuf);
+	    }
+    }
+    csOut += buf1;
+
+    for (unsigned int idx=4; idx<strlen(myZ80Dis.hexDisBuf); idx+=4) {
+        sprintf(buf1, "       %-4.4s", &myZ80Dis.hexDisBuf[idx]);
+        csOut+=buf1;
+        csOut+="\r\n";
+    }
+
+	return myZ80Dis.bytesProcessed;
 }
 
 // DEBUG TODOs:
@@ -3636,11 +3826,11 @@ void DebugUpdateThread(void*) {
 		}
 
 		// Helps a bit -- not much can change unless the PC does ;)
-		if ((nOldCPC == pCPU->GetPC()) && (nOldGPC == pGPU->GetPC()) && (nOldMemType == nMemType) && (0 == memcmp(szOldMemory, szTopMemory, sizeof(szOldMemory)))) {
+		if ((nOldCPC == myZ80.state.pc) && (nOldGPC == pGPU->GetPC()) && (nOldMemType == nMemType) && (0 == memcmp(szOldMemory, szTopMemory, sizeof(szOldMemory)))) {
 			continue;
 		}
 
-		nOldCPC=pCPU->GetPC();
+		nOldCPC=myZ80.state.pc;
 		nOldGPC=pGPU->GetPC();
 		nOldMemType=nMemType;
 
@@ -3683,7 +3873,11 @@ void DebugUpdateThread(void*) {
 								nLineCnt--;
 							}
 
-							myHist.pc = pCurrentCPU->GetPC();
+            				if (pCurrentCPU == pGPU) {
+			    				myHist.pc = pCurrentCPU->GetPC();
+                            } else {
+                                myHist.pc = myZ80.state.pc;
+                            }
 							if (pCurrentCPU == pCPU) {
 								myHist.bank = xbBank;
 							} else {
@@ -3731,7 +3925,7 @@ void DebugUpdateThread(void*) {
 								sprintf(buf1, "%04X: ", tmpPC);
 								strcpy(buf3, "");
 								for (idx=0; idx<8; idx++) {
-									c=GetSafeCpuByte(tmpPC++, tmpBank);
+                                    c = z80Read((void*)1, tmpPC++);
 									tmpPC&=0xffff;
 									sprintf(buf2, "%02X ", c);
 									strcat(buf1, buf2);
@@ -3802,28 +3996,29 @@ void DebugUpdateThread(void*) {
 						}
 						break;
 
-					case MEMGROM:		// GROM
-							// VDP and GROM *must not* call the read functions, as it will
-							// change the address!! (But, since we don't do bank switching in them...)
-							// Bug: GROM base 0 only
-							char buf3[32];
+					case MEMPORT:		// ports - IN at 0x0000, OUT at 0x0100 (updated only when accessed by the CPU)
+                            char buf3[32];
 							int c;
 							strncpy(buf3, szTopMemory[nMemType], 32);
 							buf3[31]='\0';
 							if (1 != sscanf(buf3, "%X", &tmpPC)) {
 								tmpPC=0;
-								if (tolower(buf3[0])=='r') {
-									Word WP = pCurrentCPU->GetWP();
-									c=atoi(&buf3[1])*2;
-									tmpPC=GetSafeCpuByte(WP+c, xbBank)*256 + GetSafeCpuByte(WP+c+1, xbBank);
-								}
 							}
 							for (idx2=0; idx2<34; idx2++) {
-								sprintf(buf1, "%04X: ", tmpPC);
+                                if (tmpPC < 0x100) {
+    								sprintf(buf1, "I %02X: ", tmpPC);
+                                } else {
+    								sprintf(buf1, "O%03X: ", tmpPC);
+                                }
 								strcpy(buf3, "");
 								for (idx=0; idx<8; idx++) {
-									c=GROMBase[0].GROM[tmpPC++];
-									tmpPC&=0xffff;
+                                    if (tmpPC < 0x100) {
+                                        c = z80In((void*)1, tmpPC&0xff);
+                                    } else {
+                                        c = z80PortOut[tmpPC&0xff];
+                                    }
+                                    ++tmpPC;
+									tmpPC&=0x01ff;
 									sprintf(buf2, "%02X ", c);
 									strcat(buf1, buf2);
 									if ((c>=32)&&(c<=126)) {
@@ -3855,17 +4050,28 @@ void DebugUpdateThread(void*) {
 			if (!bFrozenText) {
 				// prints the register information in a single edit control
 				// spacing: <5 label><1 space><4 value><4 spaces><5 label><1 space><4 value>
-				Word WP = pCurrentCPU->GetWP();
-				for (idx=0; idx<8; idx++) {
-					int val=pCurrentCPU->GetSafeWord(WP+idx*2, xbBank);
-					int val2=pCurrentCPU->GetSafeWord(WP+(idx+8)*2, xbBank);
-                    if (idx == 0) {
-    					sprintf(buf1, " R%2d  %04X   R%2d  %04X    %s\r\n", idx, val, idx+8, val2, (pCurrentCPU==pGPU)?"GPU":"CPU");
-                    } else {
-    					sprintf(buf1, " R%2d  %04X   R%2d  %04X\r\n", idx, val, idx+8, val2);
-                    }
-					csOut+=buf1;
-				}
+                if (pCurrentCPU == pGPU) {
+				    Word WP = pCurrentCPU->GetWP();
+				    for (idx=0; idx<8; idx++) {
+					    int val=pCurrentCPU->GetSafeWord(WP+idx*2, xbBank);
+					    int val2=pCurrentCPU->GetSafeWord(WP+(idx+8)*2, xbBank);
+                        if (idx == 0) {
+    					    sprintf(buf1, " R%2d  %04X   R%2d  %04X    %s\r\n", idx, val, idx+8, val2, (pCurrentCPU==pGPU)?"GPU":"CPU");
+                        } else {
+    					    sprintf(buf1, " R%2d  %04X   R%2d  %04X\r\n", idx, val, idx+8, val2);
+                        }
+					    csOut+=buf1;
+				    }
+                } else {
+				    sprintf(buf1, " af   %04X   af_  %04X    %s\r\n", myZ80.state.af.value_uint16, myZ80.state.af_.value_uint16, "CPU"); csOut+=buf1;
+				    sprintf(buf1, " bc   %04X   bc_  %04X\r\n", myZ80.state.bc.value_uint16, myZ80.state.bc_.value_uint16); csOut+=buf1;
+				    sprintf(buf1, " de   %04X   de_  %04X\r\n", myZ80.state.de.value_uint16, myZ80.state.de_.value_uint16); csOut+=buf1;
+				    sprintf(buf1, " hl   %04X   hl_  %04X\r\n", myZ80.state.hl.value_uint16, myZ80.state.hl_.value_uint16); csOut+=buf1;
+				    sprintf(buf1, " ix   %04X   iy   %04X\r\n", myZ80.state.ix.value_uint16, myZ80.state.iy.value_uint16); csOut+=buf1;
+				    sprintf(buf1, " r    %02X     i    %02X\r\n", myZ80.state.r, myZ80.state.i); csOut+=buf1;
+				    sprintf(buf1, " memp %04X   pc   %04X\r\n", myZ80.state.memptr, myZ80.state.pc); csOut+=buf1;
+				    sprintf(buf1, "\r\n"); csOut+=buf1;
+                }
 
 				csOut+="\r\n";
 
@@ -3878,10 +4084,30 @@ void DebugUpdateThread(void*) {
 						case 0:	sprintf(buf1, " VDP  %04X\r\n", VDPADD); break;
 						case 1: sprintf(buf1, " GROM %04X (%04X.%1.1X)\r\n", GROMBase[0].GRMADD, GROMBase[0].LastRead, GROMBase[0].LastBase); break;
 						case 2: sprintf(buf1, "VDPST %02X\r\n", VDPS); break;
-						case 3: sprintf(buf1, "  PC  %04X\r\n", pCurrentCPU->GetPC()); break;
-						case 4: sprintf(buf1, "  WP  %04X\r\n", pCurrentCPU->GetWP()); break;
-						case 5: sprintf(buf1, "  ST  %04X\r\n", pCurrentCPU->GetST()); break;
-						case 6: sprintf(buf1, " Bank %08X\r\n", ((xb&0xffff)<<16)|(xbBank&0xffff)); break;
+						case 3: 
+                            if (pCurrentCPU == pGPU) {
+                                sprintf(buf1, "  PC  %04X\r\n", pCurrentCPU->GetPC()); break;
+                            } else {
+                                sprintf(buf1, "  PC  %04X\r\n", myZ80.state.pc); break;
+                            }
+                            break;
+
+						case 4: 
+                            if (pCurrentCPU == pGPU) {
+                                sprintf(buf1, "  WP  %04X\r\n", pCurrentCPU->GetWP()); break;
+                            } else {
+                                sprintf(buf1, "  SP  %04X\r\n", myZ80.state.sp); break;
+                            }
+                            break;
+
+						case 5: 
+                            if (pCurrentCPU == pGPU) {
+                                sprintf(buf1, "  ST  %04X\r\n", pCurrentCPU->GetST()); break;
+                            } else {
+                                sprintf(buf1, "  F   %02X\r\n", myZ80.state.af.values_uint8.index0); break;
+                            }
+                            break;
+						case 6: sprintf(buf1, " Bank %08X\r\n", ((xb&0xffff)<<16)|(z80PortOut[0x54]&0xffff)); break;
 						case 7: sprintf(buf1, " DSR  %04X\r\n", nCurrentDSR&0xffff); break;
 						default: strcpy(buf1, "\r\n");
 					}
@@ -3920,21 +4146,41 @@ void DebugUpdateThread(void*) {
 				}
 				csOut+=buf1;
 
-				val=pCurrentCPU->GetST();
-				sprintf(buf1, "  ST : %s %s %s %s %s %s %s\r\n", (val&BIT_LGT)?"LGT":"   ", (val&BIT_AGT)?"AGT":"   ", (val&BIT_EQ)?"EQ":"  ",
-					(val&BIT_C)?"C":" ", (val&BIT_OV)?"OV":"  ", (val&BIT_OP)?"OP":"  ", (val&BIT_XOP)?"XOP":" ");
-				csOut+=buf1;
-				sprintf(buf1, " MASK: %X\r\n", val&INTMASK);
-				csOut+=buf1;
+                if (pCurrentCPU == pGPU) {
+    				val=pCurrentCPU->GetST();
+				    sprintf(buf1, "  ST : %s %s %s %s %s %s %s\r\n", (val&BIT_LGT)?"LGT":"   ", (val&BIT_AGT)?"AGT":"   ", (val&BIT_EQ)?"EQ":"  ",
+					    (val&BIT_C)?"C":" ", (val&BIT_OV)?"OV":"  ", (val&BIT_OP)?"OP":"  ", (val&BIT_XOP)?"XOP":" ");
+				    csOut+=buf1;
+				    sprintf(buf1, " MASK: %X\r\n", val&INTMASK);
+				    csOut+=buf1;
+                } else {
+                    val=myZ80.state.af.values_uint8.index0;
+                    sprintf(buf1, "  F  : %s %s %s %s %s %s %s %s\r\n", 
+                            (val&128)?"S":" ",
+                            (val&64) ?"Z":" ",
+                            (val&32) ?"Y":" ",
+                            (val&16) ?"H":" ",
+                            (val&8) ? "X":" ",
+                            (val&4) ? "P":" ",
+                            (val&2) ? "N":" ",
+                            (val&1) ? "C":" ");
+				    csOut+=buf1;
+				    sprintf(buf1, " IM  : %X\r\n", myZ80.state.internal.im & 0x0f);
+				    csOut+=buf1;
+                }
 
 				csOut+="\r\n";
 
+#if 0
                 // CRU
                 sprintf(buf1, " 9901 %04X %04X %04X %c %c %c %c\r\n",
                         timer9901, timer9901Read, starttimer9901,
                         CRU[0]?'1':'0', CRU[1]?'1':'0', 
                         CRU[2]?'1':'0', CRU[3]?'1':'0' );
                 csOut += buf1;
+#else
+				csOut+="\r\n";
+#endif
 
 				// Sound chip
 				sprintf(buf1, " 9919 %03X %03X %03X %X\r\n", nRegister[0], nRegister[1], nRegister[2], nRegister[3]);
