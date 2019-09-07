@@ -767,7 +767,7 @@ void VDPdisplay(int scanline)
 		} else {
             // This case is hit if nothing else is being drawn, otherwise the graphics modes call DrawSprites
 			// as long as mode bit 2 is not set, sprites are okay
-			if ((VDPREG[1] & 0x10) == 0) {
+			if ((bF18AActive) || ((VDPREG[1] & 0x10) == 0)) {
 				DrawSprites(gfxline);
 			}
 		}
@@ -775,7 +775,7 @@ void VDPdisplay(int scanline)
 		// we have to redraw the sprites even if the screen didn't change, so that collisions are updated
 		// as the CPU may have cleared the collision bit
 		// as long as mode bit 2 (text) is not set, and the display is enabled, sprites are okay
-		if ((VDPREG[1] & 0x10) == 0) {
+		if ((bF18AActive) || ((VDPREG[1] & 0x10) == 0)) {
 			if ((bDisableBlank) || (VDPREG[1] & 0x40)) {
 				DrawSprites(gfxline);
 			}
@@ -1133,12 +1133,12 @@ void VDPtext(int scanline, int isLayer2)
 			    {	
 				    t=VDP[p_add];
                     if (fgc != 0) {     // skip if fgc is also transparent
-				        if (t&0x80) pixel80(i2,i1+i3,fgc);
-				        if (t&0x40) pixel80(i2+1,i1+i3,fgc);
-				        if (t&0x20) pixel80(i2+2,i1+i3,fgc);
-				        if (t&0x10) pixel80(i2+3,i1+i3,fgc);
-				        if (t&0x8) pixel80(i2+4,i1+i3,fgc);
-				        if (t&0x4) pixel80(i2+5,i1+i3,fgc);
+				        if (t&0x80) pixel(i2,i1+i3,fgc);
+				        if (t&0x40) pixel(i2+1,i1+i3,fgc);
+				        if (t&0x20) pixel(i2+2,i1+i3,fgc);
+				        if (t&0x10) pixel(i2+3,i1+i3,fgc);
+				        if (t&0x8) pixel(i2+4,i1+i3,fgc);
+				        if (t&0x4) pixel(i2+5,i1+i3,fgc);
                     }
 			    }
             } else {
@@ -1155,7 +1155,12 @@ void VDPtext(int scanline, int isLayer2)
             }
 		}
 	}
-	// no sprites in text mode
+
+    // no sprites in text mode, unless f18A unlocked
+    if ((bF18AActive) && (!isLayer2)) {
+        // todo: layer 2 has sprite dependency concerns
+	    DrawSprites(scanline);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -1308,8 +1313,12 @@ void VDPtext80(int scanline, int isLayer2)
             }
 		}
 	}
-	// no sprites in text mode
-	// TODO: except on the F18A
+    // no sprites in text mode, unless f18A unlocked
+    // TODO: sprites don't render correctly in the wider 80 column mode...
+    if ((bF18AActive) && (!isLayer2)) {
+        // todo: layer 2 has sprite dependency concerns
+	    DrawSprites(scanline);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -2183,7 +2192,13 @@ void pixel80(int x, int y, int c)
 void spritepixel(int x, int y, int c)
 {
 	if ((y>191)||(y<0)) return;
-	if ((x>255)||(x<0)) return;
+    if ((VDPREG[1] & 0x10) == 0) {
+        // normal modes
+        if ((x>255)||(x<0)) return;
+    } else {
+        // text mode - we only get here in the F18A case, and it truncates on the text coordinates
+        if ((x>=248)||(x<8)) return;
+    }
 	
 	if (SprColBuf[x][y]) {
 		SprColFlag=1;

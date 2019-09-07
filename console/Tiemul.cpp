@@ -5929,6 +5929,54 @@ int CheckJoysticks(Word ad, int col) {
 	return ret;
 }
 
+#if 0
+// ** BIG TODO - 9901 CRU IMPROVEMENTS **
+CRU Read test (Using Mizapf's XB test to read the first 32 bits)
+
+CALL INIT
+CALL LOAD(12288,4,224,131,196,2,1,27,10,6,1,22,254,4,204,2,1,50,200,52,49,2,44,0,32,52,49,4,91)
+CALL LOAD(-31804,48,0)
+CALL PEEK(13000,A,B,C,D)
+PRINT A;B;C;D
+
+
+BIT	HW	C99	Purpose						Status
+-------------------						----------------------
+0	0	0	9901 Control				Implemented
+1	1	1	External INT1				Partially implemented
+2	0	0	VDP sync					Implemented
+3	1	0	Clock, keyboard enter, fire	Implemented, but wrong?
+4	1	0	Keyboard l, left			Implemented, but wrong?
+5	1	1	Keyboard p, right			Implemented
+6	1	1	keyboard 0, down			Implemented
+7	1	1	keyboard shift, up			Implemented
+8	1	1	keyboard space				Implemented
+9	1	0	keyboard q					Implemented, but wrong?
+10	1	1	keyboard l					Implemented
+11	0	1	unused						Implemented as loopback, but wrong?
+12	1	1	reserved					Implemented as loopback
+13	0	1	unused						Implemented as loopback, but wrong?
+14	0	1	unused						Implemented as loopback, but wrong?
+15	1	1	unused						Implemented as loopback
+16	0	0	reserved					Implemented as loopback
+17	0	0	reserved					Implemented as loopback
+18	0	0	keyboard select bit 2		Implemented as loopback
+19	0	0	keyboard select bit 1		Implemented as loopback
+20	0	0	keyboard select bit 0		Implemented as loopback
+21	1	0	alpha lock					Implemented, but wrong?
+22	1	0	CS1 control					Hard coded to return 1, so why is it 0?
+23	1	0	CS2 control					Hard coded to return 1, so why is it 0?
+24	0	0	Audio gate					Hard coded to return 1, so why is it 0?
+25	0	0	Tape out					Implemented as loopback
+26	1	0	???							Skipped in E/A manual, but implemented as loopback, but wrong.
+27	0	0	Tape in						Implemented
+28	1	0	unused						Implemented as loopback, but wrong?
+29	1	0	unused						Implemented as loopback, but wrong?
+30	1	0	unused						Implemented as loopback, but wrong?
+31	1	0	unused						Implemented as loopback, but wrong?
+
+The loopback, but wrong ones may simply have never been written to, since I default all CRU to 1. Maybe these bits need to default to 0. We should properly characterize when we rewrite the 9901.
+#endif
 int rcru(Word ad)
 {
 	int ret,col;									// temp variables

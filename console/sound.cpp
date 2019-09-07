@@ -188,7 +188,7 @@ int nTappedBits=0x0003;
 // logarithmic scale (linear isn't right!)
 // the SMS Power example, (I convert below to percentages)
 int sms_volume_table[16]={
-   32767, 26028, 20675, 16422, 13045, 10362,  8231,  6568,
+   32767, 26028, 20675, 16422, 13045, 10362,  8231,  6538,
     5193,  4125,  3277,  2603,  2067,  1642,  1304,     0
 };
 double nVolumeTable[16];
@@ -302,11 +302,19 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		// tone channels
 
 		for (int idx=0; idx<3; idx++) {
-			// SMS Power says 0 or 1 is a flat output
-			// SMS Power is wrong, however, or at least, it
-			// doesn't apply to the 9919. Testing with the real
-			// TI shows that 0 is the lowest pitch, and 1 is the highest.
-            // TODO: need to check whether a v2.2 console uses the SMS Power version of the sound chip
+            // Further Testing with the chip that SMS Power's doc covers (SN76489)
+            // 0 outputs a 1024 count tone, just like the TI, but 1 DOES output a flat line.
+            // On the TI (SN76494, I think), 1 outputs the highest pitch (count of 1)
+            // However, my 99/4 pics show THAT machine with an SN76489! 
+            // My plank TI has an SN94624 (early name? TMS9919 -> SN94624 -> SN76494 -> SN76489)
+            // And my 2.2 QI console has an SN76494!
+            // So maybe we can't say with certainty which chip is in which machine?
+            // Myths and legends:
+            // - SN76489 grows volume from 2.5v down to 0 (matches my old scopes of the 494), but SN76489A grows volume from 0 up.
+            // - SN76496 is the same as the SN7689A but adds the Audio In pin (all TI used chips have this, even the older ones)
+            // So right now, I believe there are two main versions, differing largely by the behaviour of count 0x001:
+            // Original (high frequency): TMS9919, SN94624, SN76494?
+            // New (flat line): SN76489, SN76489A, SN76496
 			nCounter[idx]-=nClocksPerSample;
 			while (nCounter[idx] <= 0) {    // TODO: should be able to do this without a loop, it would be faster (well, in the rare cases it needs to loop)!
 				nCounter[idx]+=(nRegister[idx]?nRegister[idx]:0x400);
