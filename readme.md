@@ -14,6 +14,8 @@ Download the latest release zip here: [https://github.com/tursilion/classic99/ra
 - Tips and tricks video: [https://www.youtube.com/watch?v=dt50U5kPnTY](https://www.youtube.com/watch?v=dt50U5kPnTY)
 - Using the debugger: [https://www.youtube.com/watch?v=_qjZN6qf1wk](https://www.youtube.com/watch?v=_qjZN6qf1wk)
 
+Review commit history here: [https://github.com/tursilion/classic99/commits/master](https://github.com/tursilion/classic99/commits/master)
+
 Want to donate?
 ---------------
 
