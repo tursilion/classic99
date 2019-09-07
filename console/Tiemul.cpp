@@ -1679,7 +1679,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Print some initial debug
 	debug_write("---");
-	debug_write("Classic99 version %s (C)2002-2017 M.Brent", VERSION);
+	debug_write("Classic99 version %s (C)2002-2019 M.Brent", VERSION);
 	debug_write("ROM files included under license from Texas Instruments");
 
 	// copy out the command line
