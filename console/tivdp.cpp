@@ -1924,6 +1924,7 @@ void DrawSprites(int scanline)
         int max = 5;                    // 9918A - fifth sprite is lost
         if (bF18AActive) {
             max = VDPREG[0x33];         // F18A - configurable value
+            if (max == 0) max = 5;      // assume jumper set to 9918A mode
         }
 		for (i1=0; i1<=highest; i1++) {
 			curSAL=SAL+(i1<<2);
