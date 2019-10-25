@@ -247,6 +247,13 @@ FILE *FiadDisk::fopen(const char *szFile, char *szMode) {
 		}
 		p++;
 	}
+
+    // last check before the open, disallow moving up a folder... (AFTER all translations)
+    if (strstr(szLocalName, "..")) {
+        debug_write("Refusing to open file with previous folder path: %s", szLocalName);
+        return NULL;
+    }
+    // and now go for it
 	errno_t err=fopen_s(&pTmp, szLocalName, szMode); 
 	if (err != 0) pTmp=NULL; 
 
@@ -267,6 +274,12 @@ FILE *FiadDisk::fopen(const char *szFile, char *szMode) {
 				bTry=true;
 			}
 			if (bTry) {
+                // last check before the open, disallow moving up a folder... (AFTER all translations)
+                if (strstr(szLocalName, "..")) {
+                    debug_write("Refusing to open file with previous folder path: %s", szLocalName);
+                    return NULL;
+                }
+                // and now go for it
 				errno_t err=fopen_s(&pTmp, szLocalName, szMode); 
 				if (err != 0) pTmp=NULL; 
 			}

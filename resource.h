@@ -311,6 +311,8 @@
 #define IDC_DISK_WRITEPROTECT           1172
 #define IDC_BREAKCPU                    1172
 #define IDC_BREAKGPU                    1173
+#define IDC_BREAKGPU2                   1174
+#define IDC_IGNORECONSOLE               1174
 #define ID_USER_0                       30000
 #define ID_SYSTEM_0                     39000
 #define ID_APP_0                        39100

@@ -152,6 +152,7 @@ int nBreakPoints=0;
 bool BreakOnIllegal = false;
 bool BreakOnDiskCorrupt = false;
 bool gDisableDebugKeys = false;
+bool bIgnoreConsoleBreakpointHits = false;
 CRITICAL_SECTION debugCS;
 char g_cmdLine[512];
 extern bool bWarmBoot;
@@ -2364,7 +2365,9 @@ void wrword(Word x, Word y)
 			case BREAK_EQUALS_WORD:
 				if (CheckRange(idx, x)) {
 					if ((y&BreakPoints[idx].Mask) == BreakPoints[idx].Data) {		// value matches
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 				}
 				break;
@@ -2372,7 +2375,9 @@ void wrword(Word x, Word y)
 			case BREAK_EQUALS_REGISTER:
 				nTmp=pCurrentCPU->GetWP()+(BreakPoints[idx].A*2);
 				if ((nTmp == x) && ((y&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 		}
@@ -3945,7 +3950,9 @@ Byte rcpubyte(Word x,bool rmw) {
 				case BREAK_ACCESS:
 				case BREAK_READ:
 					if (CheckRange(idx, x)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}
@@ -4165,7 +4172,9 @@ void wcpubyte(Word x, Byte c)
 			case BREAK_ACCESS:
 			case BREAK_WRITE:
 				if (CheckRange(idx, x)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 
@@ -4388,7 +4397,9 @@ checkmem:
 		switch (BreakPoints[idx].Type) {
 			case BREAK_EQUALS_BYTE:
 				if ((CheckRange(idx, x)) && ((c&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 		}
@@ -4652,7 +4663,9 @@ Byte rvdpbyte(Word x, bool rmw)
 				switch (BreakPoints[idx].Type) {
 					case BREAK_READVDP:
 						if (CheckRange(idx, VDPADD-1)) {
-							TriggerBreakPoint();
+                            if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+	    						TriggerBreakPoint();
+                            }
 						}
 						break;
 				}
@@ -4942,13 +4955,17 @@ void wvdpbyte(Word x, Byte c)
 			switch (BreakPoints[idx].Type) {
 				case BREAK_EQUALS_VDP:
 					if ((CheckRange(idx, VDPADD)) && ((c&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 
 				case BREAK_WRITEVDP:
 					if (CheckRange(idx, VDPADD)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}
@@ -4982,7 +4999,9 @@ void wVDPreg(Byte r, Byte v)
 		switch (BreakPoints[idx].Type) {
 			case BREAK_EQUALS_VDPREG:
 				if ((r == BreakPoints[idx].A) && ((v&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 		}
@@ -5212,7 +5231,9 @@ Byte rgrmbyte(Word x, bool rmw)
 			switch (BreakPoints[idx].Type) {
 				case BREAK_READGROM:
 					if (CheckRange(idx, GROMBase[0].GRMADD-1)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}
@@ -5277,7 +5298,9 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 			switch (BreakPoints[idx].Type) {
 				case BREAK_WRITEGROM:
 					if (CheckRange(idx, GROMBase[0].GRMADD-1)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}

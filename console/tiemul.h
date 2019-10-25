@@ -1,5 +1,5 @@
 //
-// (C) 2004 Mike Brent aka Tursi aka HarmlessLion.com
+// (C) 2019 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
 // express or implied is provided.
 //
@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.009"
+#define VERSION "QI399.010"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;

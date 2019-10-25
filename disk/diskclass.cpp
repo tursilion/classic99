@@ -528,8 +528,10 @@ bool BaseDisk::Restore(FileInfo *pFile) {
 		pFile->nCurrentRecord = pFile->RecordNumber;
 	} else {
 		pFile->nCurrentRecord = 0;
+        // in case we need to write it back
+        pFile->RecordNumber = 0;
 	}
-	debug_write("Restore set record number to %d", pFile->nCurrentRecord);
+    debug_write("Restore set record number to %d", pFile->nCurrentRecord);
 	return true;
 }
 

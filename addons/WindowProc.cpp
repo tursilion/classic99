@@ -68,6 +68,7 @@
 extern CPU9900 * volatile pCurrentCPU;
 extern CPU9900 *pCPU, *pGPU;
 extern const char *szDefaultWindowText;
+extern bool bIgnoreConsoleBreakpointHits;
 extern HDC tmpDC;
 extern int VDPDebug;
 extern int CtrlAltReset;
@@ -2986,6 +2987,10 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				case IDC_BREAKGPU:
 					pGPU->enableDebug = (SendDlgItemMessage(hwnd, IDC_BREAKGPU, BM_GETCHECK, 0, 0)==BST_CHECKED) ? 1 : 0;
 					break;
+
+                case IDC_IGNORECONSOLE:
+                    bIgnoreConsoleBreakpointHits = !bIgnoreConsoleBreakpointHits;
+                    break;
 
 				case IDC_ADDBREAK:
 					{

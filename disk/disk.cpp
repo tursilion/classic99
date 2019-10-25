@@ -276,6 +276,22 @@ int FindDiskName(CString csDiskName) {
 	return -1;
 }
 
+const char* getOpcode(int opcode) {
+    switch (opcode) {
+        case OP_OPEN: return "OPEN";
+        case OP_CLOSE: return "CLOSE";
+        case OP_READ: return "READ";
+        case OP_WRITE: return "WRITE";
+        case OP_RESTORE: return "RESTORE";
+        case OP_LOAD: return "LOAD";
+        case OP_SAVE: return "SAVE";
+        case OP_DELETE: return "DELETE";
+        case OP_SCRATCH: return "SCRATCH";
+        case OP_STATUS: return "STATUS";
+        default: return "???";
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////
 // Base entry for standard DSR call
 ///////////////////////////////////////////////////////////////////////
@@ -365,7 +381,7 @@ void do_dsrlnk() {
 			}
 			memset(buf, 0, sizeof(buf));
 			memcpy(buf, &VDP[PAB-nLen], nNameLen);
-			debug_write("DSR opcode >%d on PAB >%04X, filename %s", nOpcode, PAB, buf);
+			debug_write("DSR opcode >%d (%s) on PAB >%04X, filename %s", nOpcode, getOpcode(nOpcode), PAB, buf);
 			nLastOp = nOpcode;
 			nLastPAB = PAB;
 		}
@@ -679,7 +695,7 @@ void do_dsrlnk() {
 			}
 			// the basics of this operation is copied in OPEN, so if you fix something,
 			// also look there.
-			HELPFULDEBUG1("Restoring record %d", pWorkFile->RecordNumber);
+			HELPFULDEBUG1("Restoring from record %d", pWorkFile->RecordNumber);
 			if (!pDriveType[nDrive]->Restore(pWorkFile)) {
 				setfileerror(pWorkFile);
 			} else {
