@@ -418,13 +418,19 @@ dodefault:
 				} else {
 					nThisChar=sc;
 				}
-					
+
 				// Up codes don't autorepeat, so don't check them
 				if ((is_up)||(nThisChar != nLastChar)) {
 					signed char row1,col1=-1;
 					signed char row2,col2=-1;
 					
-					nLastChar=nThisChar;
+                    if (!is_up) {
+					    nLastChar=nThisChar;
+                    } else if (nLastChar == nThisChar) {
+                        // was the last key, release it
+                        // otherwise the user is probably holding two keys
+                        nLastChar = 0x00ff;
+                    }
 
 					row1=*(pDat);
 					if (-1 != row1) {
@@ -551,8 +557,10 @@ dodefault:
 						abortCheat=0;
 					}
 				}
-			}
-			if (is_up) {
+
+//                debug_write("up:%d this:%3d last:%3d fctn:%3d", is_up, nThisChar, nLastChar, fctnrefcount);
+
+			} else if (is_up) {
 				lockedshiftstate=0;
 				nLastChar=0x00ff;	// clear last char - now that we've released we can press again ;)
 			}

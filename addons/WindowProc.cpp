@@ -121,6 +121,7 @@ extern bool bDisableBlank, bDisableSprite, bDisableBackground;
 extern bool bDisableColorLayer, bDisablePatternLayer;
 extern int bEnable80Columns, bEnable128k, bF18Enabled, bInterleaveGPU;
 extern int bShowFPS;
+extern int bShowKeyboard;
 // sams config
 extern int sams_enabled, sams_size;
 extern Byte staticCPU[0x10000];					// main memory for debugger
@@ -1395,6 +1396,17 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWFPS, MF_CHECKED);
 				} else {
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWFPS, MF_UNCHECKED);
+				}
+				break;
+
+            case ID_VIDEO_SHOWKEYBOARDDEBUG:
+				if (1 != lParam) {
+					bShowKeyboard = bShowKeyboard ? 0 : 1;
+				}
+				if (bShowKeyboard) {
+					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWKEYBOARDDEBUG, MF_CHECKED);
+				} else {
+					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWKEYBOARDDEBUG, MF_UNCHECKED);
 				}
 				break;
 

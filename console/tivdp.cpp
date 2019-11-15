@@ -140,66 +140,66 @@ const int F18APaletteReset[64] = {
 	0x0FFF   // 15 >FFFFFF (255 255 255) white
 };
 
-char digpat[10][5][3] = {
-	1,1,1,
-	1,0,1,
-	1,0,1,
-	1,0,1,
-	1,1,1,
+char *digpat[10][5] = {
+	"111",
+	"101",
+	"101",
+	"101",
+	"111",
 
-	0,1,0,
-	1,1,0,
-	0,1,0,
-	0,1,0,
-	1,1,1,
+    "010",
+	"110",
+	"010",
+	"010",
+	"111",
 
-	1,1,1,
-	0,0,1,
-	1,1,1,
-	1,0,0,
-	1,1,1,
+    "111",
+	"001",
+	"111",
+	"100",
+	"111",
 
-	1,1,1,
-	0,0,1,
-	0,1,1,
-	0,0,1,
-	1,1,1,
+    "111",
+	"001",
+	"011",
+	"001",
+	"111",
 
-	1,0,1,
-	1,0,1,
-	1,1,1,
-	0,0,1,
-	0,0,1,
+    "101",
+	"101",
+	"111",
+	"001",
+	"001",
 
-	1,1,1,
-	1,0,0,
-	1,1,1,
-	0,0,1,
-	1,1,1,
+    "111",
+	"100",
+	"111",
+	"001",
+	"111",
 
-	1,1,1,
-	1,0,0,
-	1,1,1,
-	1,0,1,
-	1,1,1,
+    "111",
+	"100",
+	"111",
+	"101",
+	"111",
 
-	1,1,1,
-	0,0,1,
-	0,0,1,
-	0,1,0,
-	0,1,0,
+    "111",
+	"001",
+	"001",
+	"010",
+	"010",
 
-	1,1,1,
-	1,0,1,
-	1,1,1,
-	1,0,1,
-	1,1,1,
+    "111",
+	"101",
+	"111",
+	"101",
+	"111",
 
-	1,1,1,
-	1,0,1,
-	1,1,1,
-	0,0,1,
-	1,1,1
+    "111",
+	"101",
+	"111",
+	"001",
+	"111"
 };
 
 // this draws a full frame for overdrive. It must be negative and more than
@@ -246,6 +246,15 @@ int bShowFPS=0;								// whether to show FPS
 int bEnable80Columns=1;						// Enable the beginnings of the 80 column mode - to replace someday with F18A
 int bEnable128k=0;							// disabled by default - it's a non-real-world combination of F18 and 9938, so HACK.
 #define TV_WIDTH (602+32)					// how wide is TV mode really?
+
+// keyboard debug - done inline like the FPS
+int bShowKeyboard=0;                        // when set, draw the keyboard debug
+extern unsigned char capslock, lockedshiftstate;
+extern unsigned char scrolllock,numlock;
+extern unsigned char ticols[8];
+extern int fJoystickActiveOnKeys;
+extern unsigned char ignorecount;
+extern unsigned char fctnrefcount,shiftrefcount,ctrlrefcount;
 
 sms_ntsc_t tvFilter;						// TV Filter structure
 sms_ntsc_setup_t tvSetup;					// TV Setup structure
@@ -1544,6 +1553,19 @@ void VDPmulticolorII(int scanline, int isLayer2)
 	return;
 }
 
+// renders a string to the buffer - '1' is white, anything else black
+// returns new pDat
+unsigned int* drawTextLine(unsigned int *pDat, const char *buf) {
+	for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+        if (buf[idx] == '1') {
+    		*(pDat++)=0xffffff;
+		} else {
+			*(pDat++)=0;
+		}
+	}
+    return pDat;
+}
+
 ////////////////////////////////////////////////////////////////
 // Stretch-blit the buffer into the active window
 //
@@ -1587,18 +1609,148 @@ void doBlit()
 		for (int i2=0; i2<5; i2++) {
 			unsigned int *pDat = framedata + (256+16)*(6-i2);
 			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
-				for (int i3 = 0; i3<3; i3++) {
-					int digit = buf[idx]-'0';
-					if (digpat[digit][i2][i3]) {
-						*(pDat++)=0xffffff;
-					} else {
-						*(pDat++)=0;
-					}
-				}
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
 				*(pDat++)=0;
 			}
 		}
 	}
+    if (bShowKeyboard) {
+		// draw digits
+        const char *caps[5] = {
+            "111  1  111",
+            "1   1 1 1 1",
+            "1   111 111",
+            "1   1 1 1  ",
+            "111 1 1 1  "   };
+        const char *lock[5] = {
+            "1   111 111 1 1",
+            "1   1 1 1   11 ",
+            "1   1 1 1   11 ",
+            "1   1 1 1   1 1",
+            "111 111 111 1 1"   };
+        const char *scrl[5] = {
+            "111 111 111 1  ",
+            "1   1   1 1 1  ",
+            "111 1   11  1  ",
+            "  1 1   1 1 1  ",
+            "111 111 1 1 111"   };
+        const char *num[5] = {
+            "1 1 1 1 1 1",
+            "111 1 1 111",
+            "111 1 1 111",
+            "111 1 1 1 1",
+            "1 1 111 1 1"   };
+        const char *joy[5] = {
+            "  1 111 1 1",
+            "  1 1 1 1 1",
+            "  1 1 1 111",
+            "1 1 1 1  1 ",
+            "111 111  1 "   };
+        const char *ign[5] = {
+            "111 111 1 1",
+            " 1  1   111",
+            " 1  1 1 111",
+            " 1  1 1 111",
+            "111 111 1 1"   };
+        const char *fctn[5] = {
+            "111 111 111 1 1",
+            "1   1    1  111",
+            "11  1    1  111",
+            "1   1    1  111",
+            "1   111  1  1 1"   };
+        const char *shift[5] = {
+            "111 1 1 111 111",
+            "1   1 1 1    1 ",
+            "111 111 11   1 ",
+            "  1 1 1 1    1 ",
+            "111 1 1 1    1 "   };
+        const char *ctrl[5] = {
+            "111 111 111 1  ",
+            "1    1  1 1 1  ",
+            "1    1  11  1  ",
+            "1    1  1 1 1  ",
+            "111  1  1 1 111"   };
+		char buf[32];
+
+		for (int i2=0; i2<5; i2++) {
+			unsigned int *pDat = framedata + (256+16)*(6-i2)+20;
+
+            if (capslock) {
+                drawTextLine(pDat, caps[i2]);
+			}
+            pDat += 20;
+
+            if (lockedshiftstate) {
+                drawTextLine(pDat, lock[i2]);
+			}
+            pDat += 20;
+
+            if (scrolllock) {
+                drawTextLine(pDat, scrl[i2]);
+			}
+            pDat += 20;
+
+            if (numlock) {
+                drawTextLine(pDat, num[i2]);
+			}
+            pDat += 20;
+        
+            if (fJoystickActiveOnKeys) {
+                drawTextLine(pDat, joy[i2]);
+			}
+            pDat += 20;
+
+            pDat = drawTextLine(pDat, ign[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", ignorecount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+            pDat+=4;
+
+            pDat = drawTextLine(pDat, fctn[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", fctnrefcount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+            pDat+=4;
+
+            pDat = drawTextLine(pDat, shift[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", shiftrefcount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+            pDat+=4;
+            
+            pDat = drawTextLine(pDat, ctrl[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", ctrlrefcount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+		}
+
+        for (int i2=0; i2<8; i2++) {
+			unsigned int *pDat = framedata + (256+16)*(9-i2)+220;
+            for (int mask=1; mask<0x100; mask<<=1) {
+                *(pDat++) = (ticols[i2]&mask) ? 0xffffff : 0;
+                *(pDat++) = 0xffffff;
+            }
+        }
+
+	}
+
 
 	if (!TryEnterCriticalSection(&VideoCS)) {
 		return;		// do it later

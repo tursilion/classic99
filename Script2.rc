@@ -187,6 +187,7 @@ BEGIN
         END
         MENUITEM "50hz (60hz if Off)",          ID_VIDEO_50HZ
         MENUITEM "Show FPS",                    ID_VIDEO_SHOWFPS
+        MENUITEM "Show Keyboard Debug",         ID_VIDEO_SHOWKEYBOARDDEBUG
         MENUITEM "Enable 80 Column Hack",       ID_VIDEO_ENABLE80COLUMNHACK
         MENUITEM "Enable F18A GPU (Incomplete!)", ID_VIDEO_ENABLEF18A
         MENUITEM "Interleave GPU",              ID_VIDEO_INTERLEAVEGPU

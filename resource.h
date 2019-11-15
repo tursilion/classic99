@@ -311,7 +311,6 @@
 #define IDC_DISK_WRITEPROTECT           1172
 #define IDC_BREAKCPU                    1172
 #define IDC_BREAKGPU                    1173
-#define IDC_BREAKGPU2                   1174
 #define IDC_IGNORECONSOLE               1174
 #define ID_USER_0                       30000
 #define ID_SYSTEM_0                     39000
@@ -475,13 +474,14 @@
 #define ID_USERCART_MRU                 40170
 #define ID_USERCART_LASTMRU             40189
 #define ID_RECENT_                      40190
+#define ID_VIDEO_SHOWKEYBOARDDEBUG      40191
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        350
-#define _APS_NEXT_COMMAND_VALUE         40191
+#define _APS_NEXT_COMMAND_VALUE         40192
 #define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
