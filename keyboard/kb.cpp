@@ -406,7 +406,7 @@ dodefault:
 					pDat=scan2ti994aextend[sc];
 				} else if ((bLastShift)||(lockedshiftstate)) {
 					pDat=scan2ti994ashift[sc];
-					lockedshiftstate=1;
+					lockedshiftstate=sc;
 				} else {
 					pDat=scan2ti994aflat[sc];
 				}
@@ -430,6 +430,10 @@ dodefault:
                         // was the last key, release it
                         // otherwise the user is probably holding two keys
                         nLastChar = 0x00ff;
+                        // if it matches the lock scan code, release lock
+                        if (lockedshiftstate == sc) {
+                            lockedshiftstate = 0;
+                        }
                     }
 
 					row1=*(pDat);
@@ -560,9 +564,6 @@ dodefault:
 
 //                debug_write("up:%d this:%3d last:%3d fctn:%3d", is_up, nThisChar, nLastChar, fctnrefcount);
 
-			} else if (is_up) {
-				lockedshiftstate=0;
-				nLastChar=0x00ff;	// clear last char - now that we've released we can press again ;)
 			}
 			isextended=0;
 			is_up=0;
