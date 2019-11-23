@@ -109,6 +109,7 @@ bool bWindowInitComplete = false;           // just a little sync so we ignore s
 extern BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 extern void DebugUpdateThread(void*);
 extern void UpdateMakeMenu(HWND hwnd, int enable);
+void SetMenuMode(bool showTitle, bool showMenu);
 
 // User interface
 CString csLastDiskImage[MAX_MRU];
@@ -157,7 +158,7 @@ int (*get_game_count)(void);                               // get the games coun
 int bEnableAppMode = 0;                                     // whether to enable App Mode
 int bSkipTitle = 0;                                         // whether to skip the master title page
 int nAutoStartCart = 0;                                     // Which cartridge to autostart on the selection screen (or 0 for none)
-CString csAppName;                                          // the title bar name to display instead of Classic99
+char AppName[128];                                          // the title bar name to display instead of Classic99
 
 // debug
 struct _break BreakPoints[MAX_BREAKPOINTS];
@@ -332,6 +333,7 @@ CPU9900 *pCPU, *pGPU;
 
 ATOM myClass;										// Window Class
 HWND myWnd;											// Handle to windows
+HMENU myMenu;                                       // Handle to menu (for full screen)
 volatile HWND dbgWnd;								// Handle to windows
 HDC myDC;											// Handle to Device Context
 int fontX, fontY;									// Non-proportional font x and y size
@@ -778,11 +780,7 @@ skiprestofuser:
     bEnableAppMode = GetPrivateProfileInt("AppMode", "EnableAppMode", bEnableAppMode, INIFILE);
     bSkipTitle = GetPrivateProfileInt("AppMode", "SkipTitle", bSkipTitle, INIFILE);
     nAutoStartCart = GetPrivateProfileInt("AppMode", "AutoStartCart", nAutoStartCart, INIFILE);
-    {
-        char buf[128];
-        GetPrivateProfileString("AppMode", "AppName", "Powered by Classic99", buf, sizeof(buf), INIFILE);
-        csAppName = buf;
-    }
+    GetPrivateProfileString("AppMode", "AppName", "Powered by Classic99", AppName, sizeof(AppName), INIFILE);
 
 	// get screen position
 	nVideoLeft = GetPrivateProfileInt("video",		"topX",				-1,					INIFILE);
@@ -1191,6 +1189,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	ShowWindow(myWnd, SW_HIDE);
 	UpdateWindow(myWnd);
 	SetActiveWindow(myWnd);
+    myMenu = ::GetMenu(myWnd);
 
 	// start the debug updater thread
 	if (-1 == _beginthread(DebugUpdateThread, 0, NULL)) {
@@ -1375,6 +1374,21 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Read configuration - uses above settings as default!
 	ReadConfig();
+
+    // right off the bat, if we are in App Mode, then we need to do some work
+    if (bEnableAppMode) {
+        // notify
+        debug_write("** Application Mode Enabled **");
+        debug_write("App: %s", AppName);
+        debug_write("Skip Title: %d  AutoStart Index: %d", bSkipTitle, nAutoStartCart);
+
+        // turn off the menu
+        SetMenuMode(true, false);
+    } else {
+        strcpy(AppName, "Classic99");
+    }
+    // set the title
+    szDefaultWindowText = AppName;
 
 	// assume both joysticks are there
 	installedJoysticks = 3;
@@ -2871,6 +2885,122 @@ void readroms() {
 			}
 		}
 	}
+
+    if (bEnableAppMode) {
+        // patch the boot GROMs as appropriate
+        // graphics are at 0x950
+        const unsigned char hlLogo[] = {
+            0x01,0x03,0x04,0x0c,0x14,0x03,0x21,0x02,
+            0xfc,0x83,0x80,0x80,0x41,0x20,0xd8,0x24,
+            0x00,0x00,0xc0,0x20,0x7e,0xc4,0x74,0x2a,
+            0x22,0x02,0x22,0x06,0x28,0x10,0x30,0x18,
+            0xd2,0x12,0xd1,0x89,0x08,0x05,0x04,0x05,
+            0x22,0x22,0x1c,0x08,0x88,0x08,0x88,0x10,
+            0x08,0x06,0x01,0x00,0x01,0x01,0x02,0x07,
+            0x06,0xfc,0xd5,0xae,0x58,0xa0,0x80,0x00,
+            0xa0,0x40,0x80,0x00,0x00,0x00,0x00,0x00
+        };
+        memcpy(&GROMBase[0].GROM[0x950], hlLogo, 9*8);
+        // This text is in the unused space
+        // TEXAS INSTRUMENTS -> POWERED BY
+        memcpy(&GROMBase[0].GROM[0x1800], "POWERED  BY", 11);
+        memcpy(&GROMBase[0].GROM[0x1900], "CLASSIC99", 9);
+        memcpy(&GROMBase[0].GROM[0x1A00], "HTTP://HARMLESSLION.COM", 23);
+
+        // patch the startup code to draw it
+        GROMBase[0].GROM[0x16A]=11;     // powered by - change length and start
+        GROMBase[0].GROM[0x16c]=0x2b;
+        GROMBase[0].GROM[0x16d]=0x18;
+        GROMBase[0].GROM[0x16e]=0x00;
+
+        GROMBase[0].GROM[0x178]=9;     // classic99 - change length and start
+        GROMBase[0].GROM[0x17a]=0x6c;
+        GROMBase[0].GROM[0x17b]=0x19;
+        GROMBase[0].GROM[0x17c]=0x00;
+
+        GROMBase[0].GROM[0x171]=23;     // url - change length and start
+        GROMBase[0].GROM[0x173]=0xc5;
+        GROMBase[0].GROM[0x174]=0x1A;
+        GROMBase[0].GROM[0x175]=0x00;
+
+        // patch the menu code, in case the author chose not to autostart
+        GROMBase[0].GROM[0x265]=11;     // powered by - change length
+        GROMBase[0].GROM[0x268]=0x18;
+        GROMBase[0].GROM[0x269]=0x00;
+
+        GROMBase[0].GROM[0x26c]=9;      // classic99 - change length
+        GROMBase[0].GROM[0x26f]=0x19;
+        GROMBase[0].GROM[0x270]=0x00;
+
+        // if skip title is set, patch the GROM to do that
+        if (bSkipTitle) {
+            // skip the initial beep (replace with a clr vdp@>0000)
+            GROMBase[0].GROM[0xb5]=0x86;
+            GROMBase[0].GROM[0xb6]=0xa0;
+            GROMBase[0].GROM[0xb7]=0x00;
+
+            // skip the format to post keypress (br >017d)
+            GROMBase[0].GROM[0x115]=0x41;
+            GROMBase[0].GROM[0x116]=0x7d;
+
+            // skip the keypress wait
+            GROMBase[0].GROM[0x1b1]=0x41;
+            GROMBase[0].GROM[0x1b2]=0xb7;
+        }
+
+        // if autostart is set, patch the GROM to do that
+        if (nAutoStartCart) {
+            // skip the formats
+            GROMBase[0].GROM[0x249]=0x42;
+            GROMBase[0].GROM[0x24a]=0x71;
+
+            // patch out the index number (4 bytes)
+            GROMBase[0].GROM[0x295]=0x86;
+            GROMBase[0].GROM[0x296]=0x74;
+            GROMBase[0].GROM[0x297]=0x86;
+            GROMBase[0].GROM[0x298]=0x74;
+
+            // patch out the FOR text
+            GROMBase[0].GROM[0x29d]=1;
+            GROMBase[0].GROM[0x2a0]=0x18;
+            GROMBase[0].GROM[0x2a1]=0x08;
+
+            // 8 bytes to patch out writing the cart name to the screen
+            // replacing it with clr @>8374 four times
+            GROMBase[0].GROM[0x2c6]=0x86;
+            GROMBase[0].GROM[0x2c7]=0x74;
+            GROMBase[0].GROM[0x2c8]=0x86;
+            GROMBase[0].GROM[0x2c9]=0x74;
+            GROMBase[0].GROM[0x2ca]=0x86;
+            GROMBase[0].GROM[0x2cb]=0x74;
+            GROMBase[0].GROM[0x2cc]=0x86;
+            GROMBase[0].GROM[0x2cd]=0x74;
+
+            // 7 bytes for an alternate copy (last is a scan)
+            GROMBase[0].GROM[0x2d9]=0x86;
+            GROMBase[0].GROM[0x2da]=0x74;
+            GROMBase[0].GROM[0x2db]=0x86;
+            GROMBase[0].GROM[0x2dc]=0x74;
+            GROMBase[0].GROM[0x2dd]=0x86;
+            GROMBase[0].GROM[0x2de]=0x74;
+            GROMBase[0].GROM[0x2df]=0x03;
+
+            // overwrite the scan with ST xx at @>8375 (BE 45 xx)
+            // we can overwrite the SUB, that makes it easier
+            // if it's invalid, well, you're going to get a lot of beeping ;)
+            GROMBase[0].GROM[0x2F9] = 0xBE;
+            GROMBase[0].GROM[0x2FA] = 0x75;
+            GROMBase[0].GROM[0x2FB] = nAutoStartCart+0x30;  // make ASCII minus 1
+
+#if 0
+            // and mute the accept beep, we just ALL >20, SCAN
+            // why does the console crash with this one?
+            GROMBase[0].GROM[0x30A] = 0x07;
+            GROMBase[0].GROM[0x30b] = 0x20;
+            GROMBase[0].GROM[0x30c] = 0x03;
+#endif
+        }
+    }
 }
 
 void saveroms()
@@ -6358,3 +6488,27 @@ void UpdateHeatmap(int Address) {
 	}
 }
 
+// set the window style to alter the menu and title bar settings
+// title is only hidden in full screen mode
+void SetMenuMode(bool showTitle, bool showMenu) {
+    DWORD dwRemove = WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+
+    // This should be kept for reverse operation
+    DWORD dwStyle = ::GetWindowLong(myWnd, GWL_STYLE);
+
+    // Hide the menu bar, change styles and position and redraw
+    ::LockWindowUpdate(myWnd); // prevent intermediate redrawing
+    if (showMenu) {
+        ::SetMenu(myWnd, myMenu);
+    } else {
+        ::SetMenu(myWnd, NULL);
+    }
+    if (showTitle) {
+        ::SetWindowLong(myWnd, GWL_STYLE, dwStyle | dwRemove);
+    } else {
+        ::SetWindowLong(myWnd, GWL_STYLE, dwStyle & ~dwRemove);
+    }
+    HDC hDC = ::GetWindowDC(NULL);
+    ::LockWindowUpdate(NULL); // allow redrawing
+    ::SetWindowPos(myWnd, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
+}

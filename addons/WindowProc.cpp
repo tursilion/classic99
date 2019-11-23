@@ -110,6 +110,8 @@ extern unsigned char UberRAM[15*1024];
 extern unsigned char UberEEPROM[4*1024];
 extern bool bWindowInitComplete;
 extern CString csCf7Bios;
+extern int bEnableAppMode;
+extern char AppName[];
 
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
@@ -1130,9 +1132,10 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					szDefaultWindowText="Classic99 - See Help->Known Issues for this cart";
 					SetWindowText(myWnd, szDefaultWindowText);
 				} else {
-					szDefaultWindowText="Classic99";
+                    szDefaultWindowText = AppName;
 					SetWindowText(myWnd, szDefaultWindowText);
 				}
+
 				pCPU->reset();
 				pGPU->reset();
 				pCurrentCPU = pCPU;
@@ -1323,7 +1326,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				if (Recording)
 				{
 					debug_write("Stoping AVI recording");
-					szDefaultWindowText="Classic99";
+                    szDefaultWindowText = AppName;
 					SetWindowText(myWnd, szDefaultWindowText);
 					CloseAVI();
 					Recording=0;
@@ -1478,7 +1481,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					// Now just used to set the check boxes correctly
 					if ((CPUThrottle == CPU_NORMAL) && (SystemThrottle == VDP_CPUSYNC) && (max_cpf > SLOW_CPF)) {
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_CHECKED);
-						szDefaultWindowText="Classic99";
+	                    szDefaultWindowText = AppName;
 					} else {
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
 					}
@@ -2031,7 +2034,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				MuteAudio();
 				StretchMode=2;
 				takedownDirectDraw();
-				SetupDirectDraw(false);
+				SetupDirectDraw(0);
 				SetSoundVolumes();
 			}
 			break;

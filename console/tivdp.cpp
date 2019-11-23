@@ -256,6 +256,10 @@ extern int fJoystickActiveOnKeys;
 extern unsigned char ignorecount;
 extern unsigned char fctnrefcount,shiftrefcount,ctrlrefcount;
 
+// menu display
+extern int bEnableAppMode;
+extern void SetMenuMode(bool showTitle, bool showMenu);
+
 sms_ntsc_t tvFilter;						// TV Filter structure
 sms_ntsc_setup_t tvSetup;					// TV Setup structure
 HMODULE hFilterDLL;							// Handle to Filter DLL
@@ -533,7 +537,7 @@ void VDPmain()
 	tmpDC=CreateCompatibleDC(myDC);
 	ReleaseDC(myWnd, myDC);
 
-	SetupDirectDraw(false);
+	SetupDirectDraw(0);
 
 	// now we create a waitable object and sit on it - the main thread
 	// will tell us when we should redraw the screen.
@@ -2502,6 +2506,9 @@ void SetupDirectDraw(int fullscreen) {
 				StretchMode=0;
 				goto optout;
 			}
+
+            // disable the menu
+            SetMenuMode(false, false);
 		} else {
 			if (lpdd->SetCooperativeLevel(myWnd, DDSCL_NORMAL)!=DD_OK) {
 				MessageBox(myWnd, "Unable to set cooperative level\nDX mode is not available", "Classic99 Error", MB_OK);
@@ -2510,6 +2517,9 @@ void SetupDirectDraw(int fullscreen) {
 				StretchMode=0;
 				goto optout;
 			}
+
+            // enable the menu
+            SetMenuMode(true, !bEnableAppMode);
 		}
 
 		ZeroMemory(&CurrentDDSD, sizeof(CurrentDDSD));
