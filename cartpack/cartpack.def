@@ -1,0 +1,5 @@
+EXPORTS
+	get_app_array		@1
+	get_game_array 		@2
+    get_app_count       @3
+    get_game_count      @4

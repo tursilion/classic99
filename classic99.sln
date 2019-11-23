@@ -1,6 +1,8 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27004.2009
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FilterDLL", "FilterDLL\FilterDLL.vcxproj", "{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SpeechDll", "SpeechDll\SpeechDll.vcxproj", "{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}"
@@ -9,29 +11,52 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "classic99", "classic99.vcxp
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hq4xdll", "hq4xDLL\hq4xdll.vcxproj", "{40349519-3DE3-4421-AFD7-0D0C9CDFE45B}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cartpack", "cartpack\cartpack.vcxproj", "{81CFA063-538B-4959-A981-0C09071876D8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
+		Debug|x64 = Debug|x64
 		Release|Win32 = Release|Win32
+		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}.Debug|Win32.ActiveCfg = Debug|Win32
 		{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}.Debug|Win32.Build.0 = Debug|Win32
+		{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}.Debug|x64.ActiveCfg = Debug|Win32
 		{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}.Release|Win32.ActiveCfg = Release|Win32
 		{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}.Release|Win32.Build.0 = Release|Win32
+		{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}.Release|x64.ActiveCfg = Release|Win32
 		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Debug|Win32.ActiveCfg = Debug|Win32
 		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Debug|Win32.Build.0 = Debug|Win32
+		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Debug|x64.ActiveCfg = Debug|Win32
 		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Release|Win32.ActiveCfg = Release|Win32
+		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Release|x64.ActiveCfg = Release|Win32
 		{CD39BEDB-A5B4-427D-9C21-3078DF1026CE}.Debug|Win32.ActiveCfg = Debug|Win32
 		{CD39BEDB-A5B4-427D-9C21-3078DF1026CE}.Debug|Win32.Build.0 = Debug|Win32
+		{CD39BEDB-A5B4-427D-9C21-3078DF1026CE}.Debug|x64.ActiveCfg = Debug|Win32
 		{CD39BEDB-A5B4-427D-9C21-3078DF1026CE}.Release|Win32.ActiveCfg = Release|Win32
 		{CD39BEDB-A5B4-427D-9C21-3078DF1026CE}.Release|Win32.Build.0 = Release|Win32
+		{CD39BEDB-A5B4-427D-9C21-3078DF1026CE}.Release|x64.ActiveCfg = Release|Win32
 		{40349519-3DE3-4421-AFD7-0D0C9CDFE45B}.Debug|Win32.ActiveCfg = Debug|Win32
 		{40349519-3DE3-4421-AFD7-0D0C9CDFE45B}.Debug|Win32.Build.0 = Debug|Win32
+		{40349519-3DE3-4421-AFD7-0D0C9CDFE45B}.Debug|x64.ActiveCfg = Debug|Win32
 		{40349519-3DE3-4421-AFD7-0D0C9CDFE45B}.Release|Win32.ActiveCfg = Release|Win32
 		{40349519-3DE3-4421-AFD7-0D0C9CDFE45B}.Release|Win32.Build.0 = Release|Win32
+		{40349519-3DE3-4421-AFD7-0D0C9CDFE45B}.Release|x64.ActiveCfg = Release|Win32
+		{81CFA063-538B-4959-A981-0C09071876D8}.Debug|Win32.ActiveCfg = Debug|Win32
+		{81CFA063-538B-4959-A981-0C09071876D8}.Debug|Win32.Build.0 = Debug|Win32
+		{81CFA063-538B-4959-A981-0C09071876D8}.Debug|x64.ActiveCfg = Debug|x64
+		{81CFA063-538B-4959-A981-0C09071876D8}.Debug|x64.Build.0 = Debug|x64
+		{81CFA063-538B-4959-A981-0C09071876D8}.Release|Win32.ActiveCfg = Release|Win32
+		{81CFA063-538B-4959-A981-0C09071876D8}.Release|Win32.Build.0 = Release|Win32
+		{81CFA063-538B-4959-A981-0C09071876D8}.Release|x64.ActiveCfg = Release|x64
+		{81CFA063-538B-4959-A981-0C09071876D8}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9FFA4790-2981-4A73-8067-A8E46DBAA718}
 	EndGlobalSection
 EndGlobal

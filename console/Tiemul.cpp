@@ -146,6 +146,19 @@ bool bWarmBoot = false;										// whether to leave memory alone on reset
 int HeatMapFadeSpeed = 25;									// how many pixels per access to fade - bigger = more CPU but faster fade
 int installedJoysticks = 3;									// bitmask - both joysticks are installed
 
+// Cartridge Pack
+HMODULE hCartPackDll;										// Handle to speech DLL
+struct CARTS* (*get_app_array)(void);                       // get the applications list
+struct CARTS* (*get_game_array)(void);                      // get the games list
+int (*get_app_count)(void);                                 // get the applications count
+int (*get_game_count)(void);                               // get the games count
+
+// AppMode
+int bEnableAppMode = 0;                                     // whether to enable App Mode
+int bSkipTitle = 0;                                         // whether to skip the master title page
+int nAutoStartCart = 0;                                     // Which cartridge to autostart on the selection screen (or 0 for none)
+CString csAppName;                                          // the title bar name to display instead of Classic99
+
 // debug
 struct _break BreakPoints[MAX_BREAKPOINTS];
 int nBreakPoints=0;
@@ -357,35 +370,10 @@ struct IMG AlwaysLoad[] = {
 	{	IDR_PGROM,		0x0000, 0xF800, TYPE_PCODEG , 0},
 };
 
-// Extra files to support certain cartridges
-// These files, when the list is loaded, can be loaded as if they were
-// on the disk without the disk actually needing it
-// Currently these can only be loaded program image files!
-// They completely ignore the disk now so can override any disk (may be good or bad?)
-struct DISKS Disk_EA[] = {
-	{	"ASSM1",	IDR_ASSM1	},
-	{	"ASSM2",	IDR_ASSM2	},
-	{	"EDIT1",	IDR_EDIT1	},
-	{	"",				0			},
-};
-
-struct DISKS Disk_SSA[] = {
-	{	"ACER_C",	IDR_ACERC	},
-	{	"ACER_P",	IDR_ACERP	},
-	{	"SSD",		IDR_SSD		},
-	{	"SSE",		IDR_SSE		},
-	{	"",				0			},
-};
-
-struct DISKS Disk_Tunnels[] = {
-	{	"PENNIES",	IDR_PENNIES	},
-	{	"QUEST",	IDR_QUEST	},
-
-	{	"",				0			},
-};
-
 // Actual cartridge definitions (broken into categories)
 struct CARTS *Users=NULL;		// these are loaded dynamically
+struct CARTS *Apps=NULL;
+struct CARTS *Games=NULL;
 
 struct CARTS Systems[] = {
 	{	
@@ -419,402 +407,6 @@ struct CARTS Systems[] = {
 			{	IDR_CON22G0,	0x0000,	0x2000,	TYPE_GROM	, -1},
 			{	IDR_CON22G1,	0x2000,	0x2000,	TYPE_GROM	, -1},
 			{	IDR_CON22G2,	0x4000,	0x2000,	TYPE_GROM	, -1},
-		},
-		NULL,
-		NULL,
-		0
-	},
-};
-
-struct CARTS Apps[] = {
-#if 0
-	// not working yet
-	{	
-		"AMS Test 2.0",
-		{
-			{	IDR_ROMS5,		0x6000,	0x0030,	TYPE_ROM	, 0},
-			{	0,				0x0000,	0x0000,	TYPE_AMS	, 0},	// address ignored on AMS cards, 0xffff flags no load, activate card
-		},
-		NULL,
-		"AMS Card will automatically be enabled.",
-		0
-	},
-#endif
-
-	{	
-		"Demonstration",
-		{
-			{	IDR_DEMOG,		0x6000, 0x8000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Diagnostics",
-		{	
-			{	IDR_DIAGNOSG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		"The maintenance tests are intended for use with external hardware, and are not supported. They will hang the emulator. Use File->Reset to bring it back. The checkerboard test will fail so long as the disk system is attached.",
-		0
-	},
-						
-	{	
-		"Editor/Assembler",
-		{
-			{IDR_TIEAG,		0x6000,	0x2000,	TYPE_GROM	, 0},
-		},
-		Disk_EA,
-		"The Editor and Assembler files are built-in.",
-		0
-	},
-
-	{	
-		"EPSGMOD Example",
-		{
-			{IDR_EPSGMODG,	0x6000,	0x60C8,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Extended BASIC",
-		{
-			{	IDR_TIEXTG,		0x6000,	0x8000,	TYPE_GROM	, 0},
-			{	IDR_TIEXTC,		0x6000,	0x2000,	TYPE_ROM	, 0},
-			{	IDR_TIEXTD,		0x6000,	0x2000,	TYPE_XB		, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"fbForth 2.0:11 by Lee Stewart",
-		{	
-			{	IDR_FBFORTH,	0x0000, 0x8000,	TYPE_379	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Home Finance",
-		{
-			{	IDR_HOMEG,		0x6000, 0x4000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"MegaMan2 Music",
-		{
-			{	IDR_TIPLAYERC,	0x6000, 0x2000,	TYPE_ROM	, 0},
-			{	IDR_TIMUSIC,	0x6000,	0xA000,	TYPE_GROM	, 0},
-			{	IDR_TIMUSID,	0x6000,	0xA000,	TYPE_GROM	, 1},
-			{	IDR_TIMUSIE,	0x6000,	0xA000,	TYPE_GROM	, 2},
-			{	IDR_TIMUSIF,	0x6000,	0x5A90,	TYPE_GROM	, 3},
-			{	IDR_TIMM2PICP,	0x6000,	0x1800,	TYPE_GROM	, 15},
-			{	IDR_TIMM2PICC,	0x8000,	0x1800,	TYPE_GROM	, 15},
-			{	IDR_DUMMYG,		0x6000,	0x0040,	TYPE_GROM	, 9},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Mini Memory",
-		{	
-			{	IDR_MINIMEMG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_MINIMEMC,	0x6000,	0x1000,	TYPE_ROM	, 0},
-			{	NULL,			0x7000,	0x1000,	TYPE_NVRAM	, 0, "minimemNV.bin"},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"P-Code Card",
-		{	
-			{	IDR_PCODEC,		0x1F00,	0x2000,	TYPE_DSR	, 0},
-			{	IDR_PCODED,		0x1F00, 0x2000,	TYPE_DSR2	, 0},
-		},
-		NULL,		// TODO: include the P-Code diskettes in the archive - convert from PC99 to standard V9T9 and check sectors
-		NULL,
-		0
-	},
-
-	{	
-		"RXB 2015E by Rich Gilbertson",
-		{
-			{	IDR_RXBG,		0x6000,	0xA000,	TYPE_GROM	, 0},
-			{	IDR_RXBC,		0x6000,	0x2000,	TYPE_ROM	, 0},
-			{	IDR_RXBD,		0x6000,	0x2000,	TYPE_XB		, 0},
-		},
-		Disk_EA,
-		"Editor and Assembler files are built in. Not loadable by REA2012 due to GROM base. RXB may rarely crash after loading the editor or assembler (just reset)!",
-		0
-	},
-
-#if 0
-	// don't have permission for some of the pics, will add it when I get time to rebuild the file
-	{	
-		"Slideshow",	
-		{	
-			{	IDR_TISLIDE128C,0x0000, 0x20000,TYPE_379	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-#endif
-
-	{	
-		"Terminal Emulator 2",
-		{
-			{	IDR_TE2G,	0x6000, 0xA000,	TYPE_GROM	, 0},
-			{	IDR_TE2C,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		"Serial is not supported yet, speech may sound poor.",
-		0
-	},
-
-	{	
-		"TI Logo ][",
-		{	
-			{	IDR_LOGOG,		0x6000, 0x6000,	TYPE_GROM	, 0},
-			{	IDR_LOGOC,		0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"TI Workshop (379)",
-		{	
-			{	IDR_TIWORKSHOP,	0x0000, 0x10000,TYPE_379	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"TurboForth 1.2.1 by Mark Wills",
-		{	
-			{	IDR_TURBOFORTHC,	0x6000, 0x2000,TYPE_ROM	, 0},
-			{	IDR_TURBOFORTHD,	0x6000, 0x2000,TYPE_XB	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"XB2.7 Suite",
-		{	
-			{	IDR_XB27GROM,		0x0000, 0x1E000,	TYPE_UBER_GROM		, 0},
-			{	IDR_XB27ROM,		0x0000, 0x80000,	TYPE_378			, 0},
-			{	IDR_XB27EEPROM,		0x0000, 0x1000,		TYPE_UBER_EEPROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-};
-
-struct CARTS Games[] = {
-	{	
-		"Alpiner",	
-		{	
-			{	IDR_ALPINERG,	0x6000, 0x8000,	TYPE_GROM	, 0},
-			{	IDR_ALPINERC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-	
-	{	
-		"A-Maze-Ing",
-		{	
-			{	IDR_AMAZEG,		0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"BlackJack&&Poker",
-		{
-			{IDR_BLACKJACK,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Car Wars",	
-		{	
-			{	IDR_CARWARS,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Chisholm Trail",
-		{
-			{	IDR_CHISHOLMG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_CHISHOLMC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Football",
-		{	
-			{	IDR_FOOTBALLG,	0x6000, 0x4000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Hustle",	
-		{	
-			{	IDR_HUSTLEG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Hunt the Wumpus",
-		{
-			{	IDR_WUMPUSG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
- 
-	{	
-		"Mind Challengers",
-		{
-			{	IDR_MINDG,		0x6000, 0x2000,	TYPE_GROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Munch Man",
-		{	
-			{	IDR_MUNCHMNG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_MUNCHMNC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-	
-	{	
-		"Parsec",	
-		{	
-			{	IDR_PARSECG,	0x6000, 0x6000,	TYPE_GROM	, 0},
-			{	IDR_PARSECC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Super Space Acer",
-		{
-			{	IDR_SSALOAD,	0x6000, 0x0030,	TYPE_ROM	, 0},
-			{	IDR_DEMQ,		0x2000,	0x0706,	TYPE_RAM	, 0},
-			{	IDR_SSARAM,		0xA000,	0x5A28,	TYPE_RAM	, 0},
-		},
-		Disk_SSA,
-		NULL,
-		0
-	},
-
-	{	
-		"TI Invaders",
-		{	
-			{	IDR_TIINVADG,	0x6000, 0x8000,	TYPE_GROM	, 0},
-			{	IDR_TIINVADC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-	
-#if 0
-	// not working yet
-	{	
-		"TI-Nopoly",
-		{	
-			{	IDR_ROMS4,		0x6000,	0x0030,	TYPE_ROM	, 0},
-			{	IDR_ROMS1,		0x0003, 0x0df2,	TYPE_AMS	, 0},	// both words used for size on AMS cards
-			{	IDR_ROMS2,		0x2000,	0x00BA,	TYPE_RAM	, 0},
-			{	IDR_ROMS6,		0x0000,	0x0005,	TYPE_KEYS	, 0},
-		},
-		NULL,
-		"AMS Card will automatically be enabled.",
-		0
-	},
-#endif
-
-	{	
-		"Tombstone City",
-		{
-			{	IDR_TOMBCITG,	0x6000, 0x2000,	TYPE_GROM	, 0},
-			{	IDR_TOMBCITC,	0x6000,	0x2000,	TYPE_ROM	, 0},
-		},
-		NULL,
-		NULL,
-		0
-	},
-
-	{	
-		"Tunnels of Doom",
-		{
-			{	IDR_TUNDOOMG,	0x6000,	0xA000,	TYPE_GROM	, 0},
-		},
-		Disk_Tunnels,
-		"Select DSK1, and PENNIES for introductory quest, or QUEST for a full quest.",
-		0
-	},
-
-	{	
-		"Video Chess",
-		{	
-			{	IDR_CHESSG,		0x6000, 0x8000,	TYPE_GROM	, 0},
-			{	IDR_CHESSC,		0x6000,	0x2000,	TYPE_ROM	, 0},
 		},
 		NULL,
 		NULL,
@@ -1181,6 +773,16 @@ skiprestofuser:
 	if (nXSize < 64) nXSize=64;
 	nYSize = GetPrivateProfileInt("video", "ScreenY", nYSize, INIFILE);
 	if (nYSize < 64) nYSize=64;
+
+    // the new application mode - this can only be set manually, it's not saved
+    bEnableAppMode = GetPrivateProfileInt("AppMode", "EnableAppMode", bEnableAppMode, INIFILE);
+    bSkipTitle = GetPrivateProfileInt("AppMode", "SkipTitle", bSkipTitle, INIFILE);
+    nAutoStartCart = GetPrivateProfileInt("AppMode", "AutoStartCart", nAutoStartCart, INIFILE);
+    {
+        char buf[128];
+        GetPrivateProfileString("AppMode", "AppName", "Powered by Classic99", buf, sizeof(buf), INIFILE);
+        csAppName = buf;
+    }
 
 	// get screen position
 	nVideoLeft = GetPrivateProfileInt("video",		"topX",				-1,					INIFILE);
@@ -1597,6 +1199,17 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 		debug_write("Debug update thread started.");
 	}
 
+    // Load the cartpack, if possible
+	hCartPackDll=LoadLibrary("cartpack.dll");
+	if (NULL == hCartPackDll) {
+		debug_write("Failed to load cartpack library.");
+	} else {
+        get_app_array=(struct CARTS* (*)(void))GetProcAddress(hCartPackDll, "get_app_array");
+        get_game_array=(struct CARTS* (*)(void))GetProcAddress(hCartPackDll, "get_game_array");
+        get_app_count=(int (*)(void))GetProcAddress(hCartPackDll, "get_app_count");
+        get_game_count=(int (*)(void))GetProcAddress(hCartPackDll, "get_game_count");
+	}
+
 	// Fill in the menus
 	HMENU hMenu;
 	// Systems
@@ -1610,34 +1223,51 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 			DeleteMenu(hMenu, 0, MF_BYPOSITION);	// remove temp separator
 		}
 	}
-	// Apps
-	hMenu=GetMenu(myWnd);
-	if (hMenu) {
-		hMenu=GetSubMenu(hMenu, 3);
-		if (hMenu) {
-			hMenu=GetSubMenu(hMenu, 0);
-			if (hMenu) {
-				for (idx=0; idx<sizeof(Apps)/sizeof(struct CARTS); idx++) {
-					AppendMenu(hMenu, MF_STRING, ID_APP_0+idx, Apps[idx].szName);
-				}
-				DeleteMenu(hMenu, 0, MF_BYPOSITION);	// remove temp separator
-			}
-		}
-	}
+	// Apps - loaded above (potentially)
+    if ((NULL != hCartPackDll) && (NULL != get_app_array())) {
+        Apps = get_app_array();
+        int cnt = get_app_count();
+        debug_write("Loaded %d applications", cnt);
+
+	    hMenu=GetMenu(myWnd);
+	    if (hMenu) {
+		    hMenu=GetSubMenu(hMenu, 3);
+		    if (hMenu) {
+			    hMenu=GetSubMenu(hMenu, 0);
+			    if (hMenu) {
+				    for (idx=0; idx<cnt; idx++) {
+					    AppendMenu(hMenu, MF_STRING, ID_APP_0+idx, Apps[idx].szName);
+				    }
+				    DeleteMenu(hMenu, 0, MF_BYPOSITION);	// remove temp separator
+			    }
+		    }
+	    }
+    } else {
+        debug_write("No applications loaded.");
+    }
+
 	// Games
-	hMenu=GetMenu(myWnd);
-	if (hMenu) {
-		hMenu=GetSubMenu(hMenu, 3);
-		if (hMenu) {
-			hMenu=GetSubMenu(hMenu, 1);
-			if (hMenu) {
-				for (idx=0; idx<sizeof(Games)/sizeof(struct CARTS); idx++) {
-					AppendMenu(hMenu, MF_STRING, ID_GAME_0+idx, Games[idx].szName);
-				}
-				DeleteMenu(hMenu, 0, MF_BYPOSITION);	// remove temp separator
-			}
-		}
-	}
+    if ((NULL != hCartPackDll) && (NULL != get_game_array())) {
+        Games = get_game_array();
+        int cnt = get_game_count();
+        debug_write("Loaded %d games", cnt);
+
+	    hMenu=GetMenu(myWnd);
+	    if (hMenu) {
+		    hMenu=GetSubMenu(hMenu, 3);
+		    if (hMenu) {
+			    hMenu=GetSubMenu(hMenu, 1);
+			    if (hMenu) {
+				    for (idx=0; idx<cnt; idx++) {
+					    AppendMenu(hMenu, MF_STRING, ID_GAME_0+idx, Games[idx].szName);
+				    }
+				    DeleteMenu(hMenu, 0, MF_BYPOSITION);	// remove temp separator
+			    }
+		    }
+	    }
+    } else {
+        debug_write("No games loaded.");
+    }
 
 	// create the default user0 cart (used for 'open')
 	Users=(CARTS*)malloc(sizeof(CARTS));
@@ -2325,6 +1955,10 @@ void fail(char *x)
 		FreeLibrary(hSpeechDll);
 		hSpeechDll=NULL;
 	}
+    if (hCartPackDll) {
+        FreeLibrary(hCartPackDll);
+        hCartPackDll = NULL;
+    }
 
 	exit(0);
 }
@@ -2539,16 +2173,24 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 
 	if ((TYPE_KEYS != pImg->nType) && (TYPE_OTHER != pImg->nType)) {
 		if (NULL != pImg->dwImg) {
-			hRsrc=FindResource(NULL, MAKEINTRESOURCE(pImg->dwImg), szFork);
+            HMODULE hModule = NULL;
+			hRsrc=FindResource(hModule, MAKEINTRESOURCE(pImg->dwImg), szFork);
+            if ((NULL == hRsrc)&&(NULL != hCartPackDll)) {
+                hModule = hCartPackDll;
+                hRsrc=FindResource(hModule, MAKEINTRESOURCE(pImg->dwImg), szFork);
+            }
 			if (hRsrc) {
-				int nRealLen=SizeofResource(NULL, hRsrc);
+				int nRealLen=SizeofResource(hModule, hRsrc);
 				if (nLen > nRealLen) nLen=nRealLen;
 
-				hGlob=LoadResource(NULL, hRsrc);
+				hGlob=LoadResource(hModule, hRsrc);
 				if (NULL != hGlob) {
 					pData=(char*)LockResource(hGlob);
 				}
-			}
+			} else {
+                // we can't offer very good debug at the moment...
+                debug_write("Resource for selected module was not found.");
+            }
 		} else {
 			// It's a disk file. Worse, it may be a disk file with a header. 
 			// But we may be able to determine that.

@@ -137,6 +137,7 @@ enum {
 #define TYPE_NONE		' '
 #define TYPE_UNSET		0
 
+// these structs are manually copied into the cartpack project
 struct IMG {
 	DWORD dwImg;			// resource ID, NULL for disk type
 	int  nLoadAddr;
