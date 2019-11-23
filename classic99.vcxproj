@@ -214,6 +214,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="addons\loadsave_brk.cpp" />
+    <ClCompile Include="addons\ubercombined.cpp" />
     <ClCompile Include="addons\ubergrom.cpp" />
     <ClCompile Include="console\cpu9900.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -221,6 +222,7 @@
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="console\sound.cpp" />
+    <ClCompile Include="console\tape.cpp" />
     <ClCompile Include="console\Tiemul.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MaxSpeed</Optimization>
@@ -281,8 +283,6 @@
     <ClCompile Include="disk\diskclass.cpp" />
     <ClCompile Include="disk\FiadDisk.cpp" />
     <ClCompile Include="disk\ImageDisk.cpp" />
-    <ClCompile Include="tape.cpp" />
-    <ClCompile Include="ubercombined.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="addons\F18A.h" />
@@ -321,49 +321,10 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
     </CustomBuildStep>
     <None Include="readme.md" />
-    <None Include="roms\ACERC.bin" />
-    <None Include="roms\ACERP.bin" />
-    <None Include="roms\ASSM1.bin" />
-    <None Include="roms\ASSM2.bin" />
     <None Include="roms\BASIC_ROM_header.bin" />
     <None Include="roms\chara1" />
     <None Include="roms\DISK.BIN" />
     <None Include="roms\EA_Utils.bin" />
-    <None Include="roms\EDIT1.BIN" />
-    <None Include="roms\mm2\TIMM2PIC_C" />
-    <None Include="roms\mm2\TIMM2PIC_P" />
-    <None Include="roms\mm2\timusic" />
-    <None Include="roms\mm2\timusid" />
-    <None Include="roms\mm2\timusie" />
-    <None Include="roms\mm2\timusif" />
-    <None Include="roms\PENNIES" />
-    <None Include="roms\QUEST" />
-    <None Include="roms\RXBC.Bin" />
-    <None Include="roms\RXBD.Bin" />
-    <None Include="roms\RXBG.Bin" />
-    <None Include="roms\SSALOAD.BIN" />
-    <None Include="roms\ssaram.bin" />
-    <None Include="roms\SSD.BIN" />
-    <None Include="roms\SSE.BIN" />
-    <None Include="roms\TE-IIC.BIN" />
-    <None Include="roms\TE-IIG.BIN" />
-    <None Include="roms\TI-InvaC.Bin" />
-    <None Include="roms\TI-InvaG.Bin" />
-    <None Include="roms\TIEAG.BIN" />
-    <None Include="roms\TIEXTC.BIN" />
-    <None Include="roms\TIEXTD.BIN" />
-    <None Include="roms\TIEXTG.BIN" />
-    <None Include="roms\TIPlayerC.BIN" />
-    <None Include="roms\tiworkshop379.bin" />
-    <None Include="roms\TOMBCITC.BIN" />
-    <None Include="roms\TOMBCITG.BIN" />
-    <None Include="roms\TunDoomG.Bin" />
-    <None Include="roms\TurboForthC.BIN" />
-    <None Include="roms\TurboForthD.BIN" />
-    <None Include="roms\WUMPUSG.BIN" />
-    <None Include="roms\XB27_EEPROM_060315.bin" />
-    <None Include="roms\XB27_GROM_060315.bin" />
-    <None Include="roms\XB27_ROM_060315.bin" />
     <None Include="whatsnew.txt" />
     <None Include="roms\994AGROM.BIN" />
     <None Include="roms\994AROM.BIN" />
