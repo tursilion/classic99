@@ -155,6 +155,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="cartpack.def" />
+    <None Include="roms1.bin" />
     <None Include="roms\ACERC.bin" />
     <None Include="roms\ACERP.bin" />
     <None Include="roms\ALPINERC.BIN" />
@@ -200,6 +201,20 @@
     <None Include="roms\RXBC.Bin" />
     <None Include="roms\RXBD.Bin" />
     <None Include="roms\RXBG.Bin" />
+    <None Include="roms\ScottAdams\ADVENTURE" />
+    <None Include="roms\ScottAdams\AdventurePatchedG.bin" />
+    <None Include="roms\ScottAdams\COUNT" />
+    <None Include="roms\ScottAdams\FUNHOUSE" />
+    <None Include="roms\ScottAdams\GHOSTTOWN" />
+    <None Include="roms\ScottAdams\MISSION" />
+    <None Include="roms\ScottAdams\ODYSSEY" />
+    <None Include="roms\ScottAdams\PIRATE" />
+    <None Include="roms\ScottAdams\PYRAMID" />
+    <None Include="roms\ScottAdams\SAVAGE1" />
+    <None Include="roms\ScottAdams\SAVAGE2" />
+    <None Include="roms\ScottAdams\SORCERER" />
+    <None Include="roms\ScottAdams\VOODOO" />
+    <None Include="roms\ScottAdams\VOYAGE" />
     <None Include="roms\SSALOAD.BIN" />
     <None Include="roms\ssaram.bin" />
     <None Include="roms\SSD.BIN" />

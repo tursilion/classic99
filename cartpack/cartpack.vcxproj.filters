@@ -253,6 +253,51 @@
     <None Include="roms\PCardC.ROM">
       <Filter>DataFiles\ROMS</Filter>
     </None>
+    <None Include="roms1.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ScottAdams\AdventurePatchedG.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ScottAdams\ADVENTURE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\COUNT">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\FUNHOUSE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\GHOSTTOWN">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\MISSION">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\ODYSSEY">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\PIRATE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\PYRAMID">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\SAVAGE1">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\SAVAGE2">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\SORCERER">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\VOODOO">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\VOYAGE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="cartpack.rc">

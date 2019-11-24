@@ -2,7 +2,22 @@
 // Microsoft Visual C++ generated include file.
 // Used by cartpack.rc
 //
+#define IDR_ADVENTUREG                  102
+#define IDR_ADVENTURE                   103
+#define IDR_COUNT                       104
+#define IDR_FUNHOUSE                    105
+#define IDR_GHOSTTOWN                   106
+#define IDR_MISSION                     107
 #define IDR_TIEXTG                      108
+#define IDR_ODYSSEY                     108
+#define IDR_PIRATE                      109
+#define IDR_PYRAMID                     110
+#define IDR_DISKFILES9                  111
+#define IDR_SAVAGE1                     111
+#define IDR_SAVAGE2                     112
+#define IDR_SORCERER                    113
+#define IDR_VOODOO                      114
+#define IDR_VOYAGE                      115
 #define IDR_TIEAG                       118
 #define IDR_TIEXTC                      119
 #define IDR_TIEXTD                      120
@@ -75,7 +90,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        101
+#define _APS_NEXT_RESOURCE_VALUE        116
 #define _APS_NEXT_COMMAND_VALUE         40001
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101

@@ -638,8 +638,8 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case WM_SYSKEYDOWN:				// returns from ALT and ALT+KEY (I use as FCTN)
-			// some system keys we want Windows to process, namely F4 (close)
-			if ((wParam != VK_F4) & (wParam != VK_RETURN))
+			// some system keys we want Windows to process, but we don't take F4 anymore
+			if (wParam != VK_RETURN)
 			{	
 				key[wParam]=1;
 				if (lParam&0x1000000) {
@@ -649,20 +649,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			else
 			{
-				switch (wParam)
-				{
-				case VK_F4:
-					if (!GetWindowRect(myWnd, &gWindowRect)) {
-						gWindowRect.left = -1;
-						gWindowRect.top = -1;
-					}
-					quitflag=1;
-					PostQuitMessage(0);
-					break;
-				
-				default:
-					return(DefWindowProc(hwnd, msg, wParam, lParam));
-				}
+				return(DefWindowProc(hwnd, msg, wParam, lParam));
 			}
 			break;
 

@@ -6492,23 +6492,35 @@ void UpdateHeatmap(int Address) {
 // title is only hidden in full screen mode
 void SetMenuMode(bool showTitle, bool showMenu) {
     DWORD dwRemove = WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-
-    // This should be kept for reverse operation
     DWORD dwStyle = ::GetWindowLong(myWnd, GWL_STYLE);
+    bool changed = false;
 
     // Hide the menu bar, change styles and position and redraw
-    ::LockWindowUpdate(myWnd); // prevent intermediate redrawing
+    //::LockWindowUpdate(myWnd); // prevent intermediate redrawing
     if (showMenu) {
-        ::SetMenu(myWnd, myMenu);
+        if (::GetMenu(myWnd) == NULL) {
+            ::SetMenu(myWnd, myMenu);
+            changed = true;
+        }
     } else {
-        ::SetMenu(myWnd, NULL);
+        if (::GetMenu(myWnd) != NULL) {
+            ::SetMenu(myWnd, NULL);
+            changed = true;
+        }
     }
     if (showTitle) {
-        ::SetWindowLong(myWnd, GWL_STYLE, dwStyle | dwRemove);
+        if ((dwStyle & dwRemove) == 0) {
+            ::SetWindowLong(myWnd, GWL_STYLE, dwStyle | dwRemove);
+            changed = true;
+        }
     } else {
-        ::SetWindowLong(myWnd, GWL_STYLE, dwStyle & ~dwRemove);
+        if ((dwStyle & dwRemove) != 0) {
+            ::SetWindowLong(myWnd, GWL_STYLE, dwStyle & ~dwRemove);
+            changed = true;
+        }
     }
-    HDC hDC = ::GetWindowDC(NULL);
-    ::LockWindowUpdate(NULL); // allow redrawing
-    ::SetWindowPos(myWnd, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
+    //::LockWindowUpdate(NULL); // allow redrawing
+    if (changed) {
+        ::SetWindowPos(myWnd, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
+    }
 }

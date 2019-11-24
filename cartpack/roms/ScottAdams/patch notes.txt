@@ -1,0 +1,28 @@
+1234567890123456789012345678901234567890
+Classic99 options:
+
+DSK1.ADVENTURE     DSK1.COUNT
+DSK1.FUNHOUSE      DSK1.GHOSTTOWN
+DSK1.MISSION       DSK1.ODYSSEY
+DSK1.PIRATE        DSK1.PYRAMID
+DSK1.SAVAGE1       DSK1.SAVAGE2
+DSK1.SORCEROR      DSK1.VOODOO
+DSK1.VOYAGE
+
+( WWW.CLOPAS.NET -- Adventureland XL )
+
+
+11 lines of 40 column text is 440 bytes.
+
+6334 - Where is the data base? (length 23 = >17)
+
+6900 - move 0017 to VDP@>0000 from GROM@>6334	31 00 17 a0 00 63 34
+(replace with)
+	   call grom@>7980                          06 79 80
+	   back >13                                 04 13
+	   back >13                                 04 13
+
+79D0 - move >0017 to VDP@>0000 from GROM@>6334	31 00 17 a0 00 63 34
+       move >01B8 to VDP@>0208 from GROM@>7800  31 01 68 a2 58 78 00
+       ret                                      00
+       
