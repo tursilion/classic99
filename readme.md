@@ -1,6 +1,6 @@
 This depot is not guaranteed to build at any given time - it's my bleeding edge repository.
 
-Classic99 v399.012
+Classic99 v399.013
 ==================
 
 ![Screenshot](https://github.com/tursilion/classic99/raw/master/dist/classic99_1.jpg)
