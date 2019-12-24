@@ -196,6 +196,12 @@ Byte ReadMapperRegisterByte(Byte reg, bool highByte)
 	return ReadMemoryByte(address);
 }
 
+// raw access to the array for the debugger
+Byte ReadRawAMS(int address) {
+    address &= 0xfffff;     // TODO: assumes 1MB limit
+    return systemMemory[address];
+}
+
 Byte ReadMemoryByte(Word address, bool bTrueAccess)
 {
 	DWord wMask = 0x0000FF00;  // TODO: set for appropriate memory size	

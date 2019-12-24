@@ -127,6 +127,7 @@ extern int bShowKeyboard;
 // sams config
 extern int sams_enabled, sams_size;
 extern Byte staticCPU[0x10000];					// main memory for debugger
+Byte ReadRawAMS(int address);
 // sound
 extern int nRegister[4];						// frequency registers
 extern int nVolume[4];							// volume attenuation
@@ -183,11 +184,12 @@ static int nMemType=0;
 static bool bFrozenText=false;
 static int nDebugHexOffset=0;
 // top addresses for the memory banks
-static char szTopMemory[5][32] = { "", "", "8300", "0000", "0000" };		// CPU, VDP, GROM - hex address or Register number (Rx)
+static char szTopMemory[6][32] = { "", "", "8300", "0000", "0000", "0000" };		// CPU, VDP, GROM, AMS - hex address or Register number (Rx)
 // these match the array which matches the radio buttons 
 #define MEMCPU 2
 #define MEMVDP 3
 #define MEMGROM 4
+#define MEMAMS 5
 
 // references
 // CartDlgProc is in makecart.cpp
@@ -2977,6 +2979,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				case IDC_RADIO3:
 				case IDC_RADIO4:
 				case IDC_RADIO5:
+                case IDC_RADIO6:
 					nMemType=LOWORD(wParam)-IDC_RADIO1;
 					SetDlgItemText(hwnd, IDC_ADDRESS, szTopMemory[nMemType]);
 					SetEvent(hDebugWindowUpdateEvent);
@@ -3068,6 +3071,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 						case MEMVDP:		// VDP
 						case MEMGROM:		// GROM
+                        case MEMAMS:        // AMS
 							// step forward in memory 
 							{
 								int x;
@@ -3076,18 +3080,23 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									// it is a number, not a register
 									x+=(LINES_TO_STEP*8);
 
-									if (nMemType == MEMVDP) {
-										if (bF18Enabled) {
-											if (x >= 0x4800) {
-												x=0;
-											}
-										} else {
-											if (x >= 0x4000) {
-												x=0;
-											}
-										}
-									}
-									x &= 0xffff;
+                                    if (nMemType == MEMAMS) {
+                                        // TODO: just assumes 1MB
+                                        x &= 0xfffff;
+                                    } else {
+									    if (nMemType == MEMVDP) {
+										    if (bF18Enabled) {
+											    if (x >= 0x4800) {
+												    x=0;
+											    }
+										    } else {
+											    if (x >= 0x4000) {
+												    x=0;
+											    }
+										    }
+									    }
+									    x &= 0xffff;
+                                    }
 
 									sprintf(szTopMemory[nMemType], "%04X", x);
 									SetDlgItemText(hwnd, IDC_ADDRESS, szTopMemory[nMemType]);
@@ -3124,6 +3133,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 						case MEMVDP:		// VDP
 						case MEMGROM:		// GROM
+                        case MEMAMS:        // AMS
 							// step back in memory 
 							{
 								int x;
@@ -3132,16 +3142,21 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									// it is a number, not a register
 									x-=(LINES_TO_STEP*8);
 
-									if (x < 0) {
-										if (nMemType == MEMVDP) {
-											if (bF18Enabled) {
-												x=0x4800-(LINES_TO_STEP*8);
-											} else {
-												x=0x4000-(LINES_TO_STEP*8);
-											}
-										}
-									}
-									x &= 0xffff;
+                                    if (nMemType == MEMAMS) {
+                                        // TODO: just assumes 1MB
+                                        x &= 0xfffff;
+                                    } else {
+									    if (x < 0) {
+										    if (nMemType == MEMVDP) {
+											    if (bF18Enabled) {
+												    x=0x4800-(LINES_TO_STEP*8);
+											    } else {
+												    x=0x4000-(LINES_TO_STEP*8);
+											    }
+										    }
+									    }
+									    x &= 0xffff;
+                                    }
 
 									sprintf(szTopMemory[nMemType], "%04X", x);
 									SetDlgItemText(hwnd, IDC_ADDRESS, szTopMemory[nMemType]);
@@ -3890,6 +3905,41 @@ void DebugUpdateThread(void*) {
 								csOut+="\r\n";
 							}
 							break;
+
+                    case MEMAMS:		// AMS Memory
+						{
+							// CPU must not call the read function, as it may call the memory
+							// mapped devices and affect them.
+							char buf3[32];
+							int c;
+							strncpy(buf3, szTopMemory[nMemType], 32);
+							buf3[31]='\0';
+							if (1 != sscanf(buf3, "%X", &tmpPC)) {
+								tmpPC=0;
+							}
+							tmpPC&=0xfffff; // todo: 1MB assumption
+							for (idx2=0; idx2<34; idx2++) {
+								sprintf(buf1, "%04X: ", tmpPC);
+								strcpy(buf3, "");
+								for (idx=0; idx<8; idx++) {
+									c=ReadRawAMS(tmpPC++);
+									tmpPC&=0xfffff;
+									sprintf(buf2, "%02X ", c);
+									strcat(buf1, buf2);
+									if ((c>=32)&&(c<=126)) {
+										buf2[0]=c;
+									} else {
+										buf2[0]='.';
+									}
+									buf2[1]='\0';
+									strcat(buf3, buf2);
+								}
+								strcat(buf1, buf3);
+								csOut+=buf1;
+								csOut+="\r\n";
+							}
+						}
+						break;
 				}
 				if (!csOut.IsEmpty()) {
 					SendMessage(hWnd, WM_SETTEXT, NULL, (LPARAM)(LPCSTR)csOut);

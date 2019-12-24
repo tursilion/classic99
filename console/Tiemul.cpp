@@ -1,3 +1,8 @@
+// TODO: add an I/O error reference to the help menu
+
+// TODO: add to the auto-cart loader a check for a like-named INI file
+// If present, treat it like it was part of Classic99.ini and read the cart that way
+
 //
 // (C) 2007-2014 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty

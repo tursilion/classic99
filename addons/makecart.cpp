@@ -1,3 +1,14 @@
+// TODO: add a block of startup code that sets the workspace pointer,
+// because I just spent far too long troubleshooting it. It can
+// just copy a trampoline to scratchpad with the workspace and a
+// jump.. it's only 4 bytes. ;)
+
+// TODO2: TI BASIC carts only store the boot code in the second page,
+// and then assume an inverted order when they jump from trampoline
+// back to the code. Since we now default to non-inverted, we need
+// to patch the code that calls the trampoline to set the other
+// return bank (in R3, I believe).
+
 //
 // (C) 2011 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
@@ -1482,8 +1493,9 @@ public:
     		fwrite(buf1, 1, 8192, fp);
 	    	fwrite(buf2, 1, 8192, fp);
         } else {
-    		fwrite(buf1, 1, 8192, fp);
-	    	fwrite(buf2, 1, 8192, fp);
+            MessageBox(hwnd, "Warning: the cartridge will write correctly, but Classic99 can't boot it because it must start in the first bank.", "Notice", MB_OK | MB_ICONINFORMATION);
+    		fwrite(buf2, 1, 8192, fp);
+	    	fwrite(buf1, 1, 8192, fp);
         }
 		fclose(fp);
 	}

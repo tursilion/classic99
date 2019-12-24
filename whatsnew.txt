@@ -1876,25 +1876,58 @@ Cartridge System:
 -----------------------------------------------
 12 February 2019
 -Update fbForth
-
-
+-----------------------------------------------
+7 September 2019
+-added emulation for CF7 and some gigaflash
+-updated XB256 with Isabella
+-Numberous TMS9901 improvements to make all current known apps work
+-fix for heatmap with display scaling
+-fix GPU instruction fetch
+-add drag and drop for cartridges
+-add numerous F18A graphic features
+-fix size of disk path dropdown
+-fix sound volume table typo
+-text mode sprites for F18A added (not 80 column)
+-----------------------------------------------
+26 September 2019
+-set F18A default sprite maximum to 5, not 0
+-----------------------------------------------
+25 October 2019
+-add debug option to ignore console hits for breakpoints
+-prevent upfolder navigation in FIAD paths
+-improve disk debug slightly
+-fix for restore/rewind not setting record number in sequential file PABs
+-----------------------------------------------
+15 November 2019
+-add keyboard debug to VDP settings
+-fix case with overlapping meta keys not releasing FCTN properly
+-----------------------------------------------
+18 November 2019
+-another fix for overlapping meta keys
+-----------------------------------------------
+25 November 2019
+-moved apps and games to external cartpack dll
+-added 'app mode'
+-remove menu and title bar in full screen mode
+-disable alt+f4 to close the window
+-add Scott Adam's Adventure and games
+-----------------------------------------------
+24 December 2019
+-add AMS to debug memory viewer
+-fix bank order of TI BASIC memory dump carts
+-update fbForth
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
--TODO: add ability to mount a CF7 compact flash card (including the VDP addresses for changing mount??)
 -TODO: Rewrite AMS code to bring it into the mainline memory system for improved debugging (ie: always run a 1MB memory space)
 -TODO: rewrite Speech Synth core to match original documentation
--TODO: Clean up the project so it's buildable - package the internal ROMs so they can be included again
 -TODO: Fix international keyboard support
--TODO: Add user cartridge manager (started)
 -TODO: Implement support for the MESS "RPK" format (extend to support all Classic99 memory types?)
 -TODO: Allow File->Open to load a TI BASIC, XB, EA#5 or EA#3 program (might be tricky to get BASIC vs XB)
 -TODO: remove AVI recording - there are better external packages these days
 -TODO: Add support for PIO (LPT) and RS232 (COM) access, possibly including low level
 -TODO: Fix multiple scanning of joysticks (scan on timer tick?)
 -TODO: Implement cassette ports on sound card? (would require precise timing!)
--TODO: Implement cassette load from audio CD? (some people are saving stuff there!)
 -TODO: Allow debugger to display in hex or decimal
--TODO: Implement psuedo-CS1 support that calls through the FIAD system from CS1 and CS2
 -TODO: F18A support (to some extent at least - CPU support partially in place)
 -TODO: support relative paths including '.' (part of a file system update I am documenting)

@@ -53,6 +53,21 @@
 // from the DSR's file tracking information.
 // Both are needed and used as described above.
 
+// CF7 notes. There's a hacky CF7 emulation present that takes over DSK1 through DSK3
+// and doesn't have any config in the GUI.
+//
+// The CF7 reserves an additional 8 bytes in VDP RAM, right at the top:
+// 3FF8: AA03 - header, 3 devices. TODO: Unclear if the 3 can be changed!
+// 3FFA: xxxx - 16-bit big endian value for volume number mounted on DSK1
+// 3FFC: xxxx - 16-bit big endian value for volume number mounted on DSK2
+// 3FFE: xxxx - 16-bit big endian value for volume number mounted on DSK3
+//
+// Thanks Lee!
+//
+// It /is/ enough for the CF DSR to just change these valuse in VDP RAM and thus
+// access different volumes, but bypassing the DSR this way may have side effects.
+// Never do it with open files, for instance! ;)
+
 #include <windows.h>
 #include <stdio.h>
 #include <atlstr.h>
@@ -237,7 +252,7 @@ bool BaseDisk::SetFiles(int n) {
 		// set up the header for disk buffers - P-Code Card crashes with Stack Overflow without these
 		VDP[++nNewTop] = 0xaa;		// valid header
 		VDP[++nNewTop] = 0x3f;		// top of VRAM, MSB
-		VDP[++nNewTop] = 0xff;		// top of VRAM, LSB (TODO: CF7 will change top of VRAM value by 6 bytes)
+		VDP[++nNewTop] = 0xff;		// top of VRAM, LSB (TODO: CF7 will change top of VRAM value by 8 bytes)
 		VDP[++nNewTop] = 0x11;		// CRU of this disk controller
 		VDP[++nNewTop] = n;		// number of files
 	} else {
