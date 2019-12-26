@@ -1916,6 +1916,14 @@ Cartridge System:
 -add AMS to debug memory viewer
 -fix bank order of TI BASIC memory dump carts
 -update fbForth
+-----------------------------------------------
+26 December 2019
+- Add AMS read/write/compare breakpoints
+- Add AMS register write from debugger
+- Add AMS register dump in debugger (type 'ams' and view debug log - hacky but functional)
+- Add 'help' to debugger for list of command syntax
+- Add masking to debugger memory accesses - was potential crash point
+- Changed CPU register access to require "CR" (like VDP's "VR" and new AMS "AR")
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
