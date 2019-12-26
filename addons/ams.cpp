@@ -34,6 +34,10 @@ static bool mapperRegistersEnabled = false;
 // references into C99
 extern bool bWarmBoot;
 
+// breakpoints
+extern struct _break BreakPoints[];
+extern int nBreakPoints;
+
 void InitializeMemorySystem(EmulationMode cardMode)
 {
 	// Classic99 specific debug call
@@ -109,6 +113,31 @@ void SetMemoryMapperMode(MapperMode mode)
 	}
 }
 
+// TODO: placeholder function - dump the registers to the debug log for now
+void dumpMapperRegisters() {
+    debug_write("AMS Mappers:");
+    for (int idx=0; idx<MaxMapperRegisters; ++idx) {
+        // TODO: all this addressing BS needs to be in a separate function too... ;) Copied from the read function...
+	    DWord wMask = 0x0000FF00;  // TODO: set for appropriate memory size	
+	    DWord pageExtension;
+
+        #ifdef ENABLE_HUGE_AMS
+            wMask = MaxMapperPages-1;
+            // use all 16 bits, but byte swapped (for compatibility)
+            DWORD value = ((mapperRegisters[idx]&0xff)<<8)|((mapperRegisters[idx]&0xff00)>>8);
+            // mask it down to only the actually valid bits
+            pageExtension = (value & wMask);
+        #else
+            // regular AMS is just the upper byte - wMask of 0xff gives 256x4k or 1MB
+		    pageExtension = (DWord)((mapperRegisters[idx] & wMask) >> 8);
+        #endif
+	
+        bool isRam = ((idx >= 2)&&(idx<=3)) || ((idx>=10)&&(idx<=15));
+        debug_write("%X: >%04X (%04X -> %06X) %c", idx, mapperRegisters[idx], 0x1000*idx, pageExtension<<12, isRam ? ' ' : '*');
+    }
+    debug_write("(* = not mappable)");
+}
+
 void EnableMapperRegisters(bool enabled)
 {
 	switch (emulationMode)
@@ -133,11 +162,11 @@ bool MapperRegistersEnabled()
 }
 
 // Only call if mapper registers enabled. Reg must be 0-F
-void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte)
+void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte, bool force)
 {
 	reg &= 0x0F;
 
-	if (mapperRegistersEnabled)
+	if ((mapperRegistersEnabled)||(force))
 	{
 		switch (emulationMode)
 		{
@@ -201,6 +230,10 @@ Byte ReadRawAMS(int address) {
     address &= 0xfffff;     // TODO: assumes 1MB limit
     return systemMemory[address];
 }
+void WriteRawAMS(int address, int value) {
+    address &= 0xfffff;     // TODO: assumes 1MB limit
+    systemMemory[address] = value&0xff;
+}
 
 Byte ReadMemoryByte(Word address, bool bTrueAccess)
 {
@@ -263,7 +296,19 @@ Byte ReadMemoryByte(Word address, bool bTrueAccess)
 	if (bIsRAM || bIsMappable)
 	{
         if (mappedAddress <= sizeof(systemMemory)) {
-    		return systemMemory[mappedAddress];
+		    if (bTrueAccess) {
+			    // Check for breakpoints
+			    for (int idx=0; idx<nBreakPoints; idx++) {
+				    switch (BreakPoints[idx].Type) {
+					    case BREAK_READAMS:
+						    if (CheckRange(idx, mappedAddress)) {
+	    						TriggerBreakPoint();
+						    }
+						    break;
+				    }
+			    }
+		    }
+            return systemMemory[mappedAddress];
         } else {
             debug_write("AMS is asking for out of range memory...");
             return 0;
@@ -314,6 +359,22 @@ void WriteMemoryByte(Word address, Byte value, bool allowWrite)
 	if (bIsMapMode && bIsMappable)
 	{
         if (mappedAddress <= sizeof(systemMemory)) {
+		    // duplicated code, refactor this...
+		    for (int idx=0; idx<nBreakPoints; idx++) {
+			    switch (BreakPoints[idx].Type) {
+				    case BREAK_EQUALS_AMS:
+					    if ((CheckRange(idx, mappedAddress)) && ((value&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
+    						TriggerBreakPoint();
+					    }
+					    break;
+
+				    case BREAK_WRITEAMS:
+					    if (CheckRange(idx, mappedAddress)) {
+    						TriggerBreakPoint();
+					    }
+					    break;
+			    }
+		    }
     		systemMemory[mappedAddress] = value;
         } else {
             debug_write("AMS is writing out of range memory...");
@@ -324,7 +385,24 @@ void WriteMemoryByte(Word address, Byte value, bool allowWrite)
 	{
 		if (bIsRAM || bIsMappable)
 		{
+            if ((mappedAddress&0xffff)!=mappedAddress) debug_write("Unexpected AMS memory write, continuing.");
 			CPUMemInited[mappedAddress&0xffff] = 1;
+		    // duplicated code, refactor this...
+		    for (int idx=0; idx<nBreakPoints; idx++) {
+			    switch (BreakPoints[idx].Type) {
+				    case BREAK_EQUALS_AMS:
+					    if ((CheckRange(idx, mappedAddress)) && ((value&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
+    						TriggerBreakPoint();
+					    }
+					    break;
+
+				    case BREAK_WRITEAMS:
+					    if (CheckRange(idx, mappedAddress)) {
+    						TriggerBreakPoint();
+					    }
+					    break;
+			    }
+		    }
 			systemMemory[mappedAddress] = value;
 		}
 		else if (allowWrite || (!ROMMAP[mappedAddress]))

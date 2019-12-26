@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.014"
+#define VERSION "QI399.015"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -110,6 +110,9 @@ enum {
 	BREAK_EQUALS_REGISTER,
 	BREAK_RUN_TIMER,
 	BREAK_DISK_LOG,
+    BREAK_READAMS,
+    BREAK_WRITEAMS,
+    BREAK_EQUALS_AMS
 };
 
 #define BlitEvent Video_hdl[0]

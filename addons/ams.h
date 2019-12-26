@@ -77,7 +77,7 @@ void EnableMapperRegisters(bool enable);
 bool MapperRegistersEnabled();
 
 /* Read/Write a value to the mapper register */
-void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte);
+void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte, bool force);
 Byte ReadMapperRegisterByte(Byte reg, bool highByte);
 
 /* Read/Write a single byte to AMS/SAMS memory */

@@ -4140,7 +4140,7 @@ void wcpubyte(Word x, Byte c)
 						// 0000 0000 000x xxx0
 						Byte reg = (x & 0x1e) >> 1;
 						bool hiByte = ((x & 1) == 0);	// registers are 16 bit!
-						WriteMapperRegisterByte(reg, c, hiByte);
+						WriteMapperRegisterByte(reg, c, hiByte, false);
 					}
 					return;
 				}

@@ -128,6 +128,9 @@ extern int bShowKeyboard;
 extern int sams_enabled, sams_size;
 extern Byte staticCPU[0x10000];					// main memory for debugger
 Byte ReadRawAMS(int address);
+void WriteRawAMS(int address, int value);
+void dumpMapperRegisters();
+void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte, bool force);
 // sound
 extern int nRegister[4];						// frequency registers
 extern int nVolume[4];							// volume attenuation
@@ -2549,7 +2552,7 @@ BOOL CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-// read a four digit hex address which might also be a range
+// read a one-five digit hex address which might also be a range
 bool ReadRange(int nType, int *A, int *B, int *Bank, char *str) {
 	*A=-1;		// set the failure state now
 	*Bank=-1;	// no bank specified by default
@@ -2560,8 +2563,8 @@ bool ReadRange(int nType, int *A, int *B, int *Bank, char *str) {
 			// invalid, ignore what we got
 			*A=-1;
 		} else {
-			*A &= 0xFFFF;
-			*B &= 0xFFFF;
+			*A &= 0xFFFFF;
+			*B &= 0xFFFFF;
 		}
 	} else {
 		// single value, B to 0
@@ -2572,14 +2575,14 @@ bool ReadRange(int nType, int *A, int *B, int *Bank, char *str) {
 				// invalid, ignore what we got
 				*A=-1;
 			} else {
-				*A &= 0xFFFF;
+				*A &= 0xFFFFF;
 			}
 		} else {
 			if (1 != sscanf(str, "%x", A)) {
 				// invalid, ignore what we got
 				*A=-1;
 			} else {
-				*A &= 0xFFFF;
+				*A &= 0xFFFFF;
 			}
 		}
 	}
@@ -2617,7 +2620,12 @@ const char *FormatBreakpoint(int idx) {
 				szTmp[pos++]='>';
 				break;
 
-			case BREAK_WRITEVDP:
+			case BREAK_WRITEAMS:
+				szTmp[pos++]='>';
+				szTmp[pos++]='A';
+				break;
+
+            case BREAK_WRITEVDP:
 				szTmp[pos++]='>';
 				szTmp[pos++]='V';
 				break;
@@ -2631,7 +2639,12 @@ const char *FormatBreakpoint(int idx) {
 				szTmp[pos++]='<';
 				break;
 
-			case BREAK_READVDP:
+			case BREAK_READAMS:
+				szTmp[pos++]='<';
+				szTmp[pos++]='A';
+				break;
+
+            case BREAK_READVDP:
 				szTmp[pos++]='<';
 				szTmp[pos++]='V';
 				break;
@@ -2761,6 +2774,9 @@ bool AddBreakpoint(char *buf1) {
 			} else if (toupper(buf1[1])=='G') {
 				nType=BREAK_WRITEGROM;
 				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
+            } else if (toupper(buf1[1])=='A') {
+				nType=BREAK_WRITEAMS;
+				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
 			} else {
 				nType=BREAK_WRITE;
 			}
@@ -2771,6 +2787,9 @@ bool AddBreakpoint(char *buf1) {
 				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
 			} else if (toupper(buf1[1])=='G') {
 				nType=BREAK_READGROM;
+				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
+			} else if (toupper(buf1[1])=='A') {
+				nType=BREAK_READAMS;
 				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
 			} else {
 				nType=BREAK_READ;
@@ -2785,6 +2804,7 @@ bool AddBreakpoint(char *buf1) {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
 				}
+                nData &= 0xffff;
 			}
 			break;
 		case 'M':	// Memory = 
@@ -2796,6 +2816,7 @@ bool AddBreakpoint(char *buf1) {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
 				}
+                nData &= 0xff;
 			}
 			break;
 		case 'U':	// VDP register =
@@ -2807,6 +2828,7 @@ bool AddBreakpoint(char *buf1) {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
 				}
+                nData &= 0xff;
 			}
 			break;
 		case 'V':	// VDP memory =
@@ -2818,6 +2840,19 @@ bool AddBreakpoint(char *buf1) {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
 				}
+                nData &= 0xff;
+			}
+			break;
+		case 'A':	// AMS memory =
+			nType=BREAK_EQUALS_AMS;
+			pTmp=strchr(buf1, '=');
+			if (NULL == pTmp) {
+				nType=BREAK_NONE;
+			} else {
+				if (1 != sscanf(pTmp+1, "%x", &nData)) {
+					nType=BREAK_NONE;
+				}
+                nData &= 0xff;
 			}
 			break;
 		case 'R':	// Register =
@@ -2856,6 +2891,11 @@ bool AddBreakpoint(char *buf1) {
 		if (nType != BREAK_NONE) {
 			if (ReadRange(nType, &A, &B, &bank, &buf1[1])) {
 				// eliminate a few special cases
+                // only AMS supports more than 64k
+                if ((nType != BREAK_READAMS) && (nType != BREAK_WRITEAMS) && (nType != BREAK_EQUALS_AMS)) {
+                    A&=0xffff;
+                    B&=0xffff;
+                }
 				switch (nType) {
 					case BREAK_RUN_TIMER:
 						if (B==0) {
@@ -2873,9 +2913,10 @@ bool AddBreakpoint(char *buf1) {
 						}
 						break;
 
+					case BREAK_EQUALS_AMS:
 					case BREAK_EQUALS_VDP:
 						if (bank != -1) {
-							nType = BREAK_NONE;		// bank not valid on VDP
+							nType = BREAK_NONE;		// bank not valid on VDP or AMS
 						}
 						break;
 
@@ -3179,7 +3220,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						GetDlgItemText(hwnd, IDC_ADDRESS, buf, 128);
 						_strupr(buf);								
 
-						// Special check for PC or WP
+						// Special check for PC or WP or AMS
 						{
 							if (1 == sscanf(buf, "PC=%X", &x)) {
 								// make a change to the Program Counter
@@ -3195,6 +3236,29 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								SetEvent(hDebugWindowUpdateEvent);
 								break;
 							}
+                            if (0 == _stricmp(buf, "AMS")) {
+                                dumpMapperRegisters();
+                                break;
+                            }
+                            if (0 == _stricmp(buf, "help")) {
+                                debug_write("==== debugger control ====");
+                                debug_write("xxxx                - set base address to view in CPU, AMS, VDP and GROM");
+                                debug_write("PC=xxxx             - set Program Counter to xxxx");
+                                debug_write("WP=xxxx             - set Workspace Pointer to xxxx");
+                                debug_write("Cxxxx=yy[yyyyyy...] - write byte or bytes to CPU memory");
+                                debug_write("Vxxxx=yy[yyyyyy...] - write byte or bytes to VDP memory");
+                                debug_write("Gxxxx=yy[yyyyyy...] - write byte or bytes to GROM");
+                                debug_write("Axxxxx=yy[yyyyyy...]- write byte or bytes to raw AMS");
+                                debug_write("CRxx=yy             - set CPU register xx to value yy");
+                                debug_write("VRxx=yy             - set VDP register xx to value yy");
+                                debug_write("ARxx=yy             - set AMS register xx to value yy");
+                                debug_write("DISASM=xxxx,yyyy    - write disasm.txt from addresses xxxx-yyyy");
+                                debug_write("AMS                 - dump AMS register summary to debug");
+                                debug_write(" ");
+                                debug_write("Note register indexes are always in DECIMAL, all other");
+                                debug_write("values are assumed to be hex");
+                                break;
+                            } 
 						}
 
 						// special check for disassembly req
@@ -3203,6 +3267,8 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								if (y<=x) {
 									MessageBox(hwnd, "Bad disassembly range", "Classic99 Debugger", MB_OK | MB_ICONSTOP);
 								} else {
+                                    x&=0xffff;
+                                    y&=0xffff;
 									FILE *fp = fopen("disasm.txt", "w");
 									if (NULL == fp) {
 										MessageBox(hwnd, "Failed to open file", "Classic99 Debugger", MB_OK | MB_ICONSTOP);
@@ -3248,6 +3314,10 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								nCurMemType = MEMGROM;
 								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
 							}
+							if (buf[0] == 'A') {
+								nCurMemType = MEMAMS;
+								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
+							}
 							// now check for a register
 							if (buf[0] == 'R') {
 								if (nCurMemType == MEMGROM) {
@@ -3255,8 +3325,8 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									break;
 								}
 								if (nCurMemType == 0) {
-									// means CPU then
-									nCurMemType = MEMCPU;
+									MessageBox(hwnd, "You must specify which register type, try 'help'", "Classic99 Debugger", MB_OK | MB_ICONSTOP);
+                                    break;
 								}
 								bIsReg=true;
 								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
@@ -3264,7 +3334,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 							// if we got nothing, warn the user that the syntax has changed
 							if (0 == nCurMemType) {
-								MessageBox(hwnd, "All memory writes must be prefixed with C (CPU), V (VDP) or G (GROM).", "Classic99 Debugger", MB_OK | MB_ICONINFORMATION);
+								MessageBox(hwnd, "All memory writes must be prefixed with a type.\r\nTry 'help' and view debug output.", "Classic99 Debugger", MB_OK | MB_ICONINFORMATION);
 								break;
 							}
 
@@ -3273,17 +3343,17 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								// register indexes are decimal, not hex
 								if (2 != sscanf(buf, "%d=%X", &x, &y)) {
 									// invalid read
-									MessageBox(hwnd, "Use XXXX=XX to set a value (both values in hex)\nor Rx=XX for a register (register index in decimal)\nPrefix with V for VDP (V or VR)\nPrefix with G for GROM (memory only)\nWP=xxxx and PC=xxxx are also legal.", "Unrecognized string", MB_ICONASTERISK);
+									MessageBox(hwnd, "Invalid syntax. Try 'help' and view debug output.", "Unrecognized string", MB_ICONASTERISK);
 									break;
 								}
 							} else {
 								if (2 != sscanf(buf, "%X=%X", &x, &y)) {
 									// invalid read
-									MessageBox(hwnd, "Use XXXX=XX to set a value (both values in hex)\nor Rx=XX for a register (register index in decimal)\nPrefix with V for VDP (V or VR)\nPrefix with G for GROM (memory only)\nWP=xxxx and PC=xxxx are also legal.", "Unrecognized string", MB_ICONASTERISK);
+									MessageBox(hwnd, "Invalid syntax. Try 'help' and view debug output.", "Unrecognized string", MB_ICONASTERISK);
 									break;
 								}
 							}
-							// check if more than a byte - VDP, GROM and CPU will allow long strings
+							// check if more than a byte - VDP, AMS, GROM and CPU will allow long strings
                             // (which in turn won't use 'y')
 							char *p=strchr(buf,'=');
 							p++;
@@ -3293,8 +3363,8 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								byte++;
 								p++;
 							}
-							if ((byte > 2) && ((nCurMemType == MEMCPU)||(nCurMemType==MEMVDP)||(nCurMemType==MEMGROM)) ) {
-								byte = 0;		// no, multiple bytes (we won't use 'y')
+							if ((byte > 2) && ((nCurMemType == MEMCPU)||(nCurMemType==MEMVDP)||(nCurMemType==MEMGROM)||(nCurMemType==MEMAMS)) ) {
+								byte = 0;		// no, multiple bytes (we won't use 'y') (TODO: so why are we masking it?)
 								y&=0xffff;
 							} else {
 								byte = 1;		// yes, byte
@@ -3304,6 +3374,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							ok=IDYES;
 							switch (nCurMemType) {
 								case MEMCPU:		// CPU
+                                    x&=0xffff;
 									if ((bIsReg) && (x > 15)) {
 										MessageBox(hwnd, "Out of range for CPU registers", "Classic99 Debugger", MB_ICONSTOP);
 										ok=IDNO;
@@ -3320,7 +3391,17 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 										ok=IDYES;
 									}
 									break;
+                                case MEMAMS:        // AMS
+                                    x&=0xfffff;
+									if ((bIsReg) && (x > 15)) {
+										MessageBox(hwnd, "Out of range for AMS registers", "Classic99 Debugger", MB_ICONSTOP);
+										ok=IDNO;
+                                    } else {
+                                        ok=IDYES;
+                                    }
+                                    break;
 								case MEMVDP:		// VDP
+                                    x&=0xffff;
 									if ((bIsReg) && (x > 7)) {
 										MessageBox(hwnd, "Out of range for VDP registers", "Classic99 Debugger", MB_ICONSTOP);
 										ok=IDNO;
@@ -3330,6 +3411,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									}
 									break;
 								case MEMGROM:		// GROM
+                                    x&=0xffff;
 									ok=MessageBox(hwnd, "Modify GROM? (Base 0 only, non-permanent)", "Classic99 Debugger", MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
 									break;
 								default:
@@ -3375,6 +3457,44 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 												    // do this so side effects work
 												    wcpubyte(x, y);
 											    }
+
+                                                ++x;
+                                                if (x > 0xffff) {
+                                                    // no wraparound
+                                                    break;
+                                                }
+                                            }
+										}
+										break;
+
+                                    case MEMAMS:        // AMS again
+										if (bIsReg) {
+                                            // it's a register - we assume it might be 8-bit or 16 bit, but the function
+                                            // only takes in bytes. The third argument is whether this is the MSB of a 16-bit value...
+                                            // we always write all 16 bits to avoid confusion
+                                            WriteMapperRegisterByte(x, y&0xff, false, true);
+                                            WriteMapperRegisterByte(x, (y>>8)&0xff, true, true);
+                                            dumpMapperRegisters();
+                                            break;
+										}
+										if (byte) {
+        									WriteRawAMS(x, y);
+										} else {
+                                            // parse the string and write each byte...
+							                char *p=strchr(buf,'=');
+							                p++;
+							                while (isspace(*p)) p++;
+							                while ((*p)&&(*(p+1))&&(isalnum(*p))) {
+                                                char tmp[3];
+                                                tmp[0]=*p;
+                                                tmp[1]=*(p+1);
+                                                tmp[2]='\0';
+                                                if (0 == sscanf(tmp, "%X", &y)) {
+                                                    break;
+                                                }
+                                                p+=2;
+
+    										    WriteRawAMS(x, y);
 
                                                 ++x;
                                                 if (x > 0xffff) {
@@ -3721,6 +3841,7 @@ void DebugUpdateThread(void*) {
 						if (bDebugDirty) {
 							for (idx=1; idx<34; idx++) {
 								csOut+=lines[idx];
+                                csOut.TrimRight();
 								csOut+="\r\n";
 							}
 							bDebugDirty=false;
