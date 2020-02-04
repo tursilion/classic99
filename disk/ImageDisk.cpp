@@ -567,6 +567,8 @@ int *ImageDisk::ParseClusterList(unsigned char *fdr) {
 	int nOff = 0x1c;
 	int nFilePos = 0;
 
+    debug_write("Cluster List:");
+
 	while (nOff < 0x100) {
 		int um, sn, of, num, ofs;
 
@@ -582,6 +584,8 @@ int *ImageDisk::ParseClusterList(unsigned char *fdr) {
 			break;
 		}
 
+        debug_write("  Sector: 0x%x, count %d\n", num, ofs);
+
 		for (int i=nFilePos; i<=ofs; i++) {
 			pList[nListPos++] = num++;
 			if (nListPos >= MAX_SECTORS) {
@@ -591,11 +595,20 @@ int *ImageDisk::ParseClusterList(unsigned char *fdr) {
 			}
 		}
 
-		nFilePos = ofs;
+		nFilePos = ofs+1;
 	}
 
 	pList[nListPos] = 0;
 
+    if (0) {
+        // todo debug
+        char str[4096];
+        str[0]=0;
+        for (int i=0; i<nListPos; ++i) {
+            sprintf(str, "%s%x,",str,pList[i]);
+        }
+        debug_write(str);
+    }
 	return pList;
 }
 

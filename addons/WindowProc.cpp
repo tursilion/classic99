@@ -1,3 +1,8 @@
+// TODO: add a hotkey to enable/disable the menu in full screen mode, 
+// otherwise we can't change disks or quit without exitting full screen mode,
+// which people want to use. Windows often uses f10, can we? It doesn't
+// really do anything useful for us...
+
 //
 // (C) 2011 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
