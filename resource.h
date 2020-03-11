@@ -115,6 +115,7 @@
 #define IDC_NEXT                        1064
 #define IDC_VDPSTART                    1064
 #define IDC_APPLY                       1065
+#define IDC_MIDSTART                    1065
 #define IDC_EDITMEM                     1067
 #define IDC_ADDBREAK                    1068
 #define IDC_REMOVEBREAK                 1069
@@ -129,6 +130,7 @@
 #define IDC_EDIT6                       1074
 #define IDC_NAME                        1074
 #define IDC_EDIT7                       1075
+#define IDC_MIDEND                      1075
 #define IDC_EDIT8                       1076
 #define IDC_EDIT9                       1077
 #define IDC_EDIT10                      1078
@@ -218,7 +220,9 @@
 #define IDC_FIAD_READTIFILES            1147
 #define IDC_INVERTBANKS                 1147
 #define IDC_FIAD_READV9T9               1148
+#define IDC_CHKCARTMEM                  1148
 #define IDC_FIAD_WRITEDV80ASTEXT        1149
+#define IDC_MODIFIEDHIGH2               1149
 #define IDC_FIAD_WRITEALLDVASTEXT       1150
 #define IDC_FIAD_WRITEDF80ASTEXT        1151
 #define IDC_FIAD_WRITEALLDFASTEXT       1152
@@ -412,7 +416,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        350
+#define _APS_NEXT_RESOURCE_VALUE        351
 #define _APS_NEXT_COMMAND_VALUE         40192
 #define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101

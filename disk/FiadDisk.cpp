@@ -1210,6 +1210,7 @@ CString FiadDisk::GetDiskName() {
 }
 
 // Write the disk buffer out to the file, with appropriate modes and headers
+// Warning: used by Makecart EA#3, don't access nDrive or nIndex members
 bool FiadDisk::Flush(FileInfo *pFile) {
 	// first make sure this is an open file!
 	if (!pFile->bDirty) {
@@ -1289,6 +1290,7 @@ bool FiadDisk::FlushWindowsText(FileInfo *pFile) {
 }
 
 // write out the file as a FIAD, including appropriate header
+// Warning: used by Makecart EA#3, don't access nDrive or nIndex members
 bool FiadDisk::FlushFiad(FileInfo *pFile) {
 	// make sure there's anything to flush here
 	if (!pFile->bDirty) {
@@ -1296,7 +1298,7 @@ bool FiadDisk::FlushFiad(FileInfo *pFile) {
 		return true;
 	}
 
-	CString csFileName = BuildFilename(pFile);
+	CString csFileName = BuildFilename(pFile);  // handles the -1 drive for makecart
 	FILE *fp = fopen(csFileName, "wb");
 	if (NULL == fp) {
 		debug_write("Unable to write file %s", (LPCSTR)csFileName);
@@ -1520,7 +1522,8 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 		// 
 		// 0x1E-0x21 - Creation Time
 		// 0x22-0x25 - Update time
-		//			Timestamps are 16 bit words formatted as hhhh.hmmm.mmms.ssss, yyyy.yyyM.MMMd.dddd. Resolution is 2 seconds, year of 70 means 1970.
+		//			Timestamps are 16 bit words formatted as hhhh.hmmm.mmms.ssss, yyyy.yyyM.MMMd.dddd. 
+        //          Resolution is 2 seconds, year of 70 means 1970.
 		//			I am not completely adverse to the timestamp fields, although they are an extension from
 		//			later systems like the Geneve which actually had a clock. However, the TI Disk Controller
 		//			didn't support them and as a result, very little software ever reads it. I'm slightly biased

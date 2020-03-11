@@ -378,6 +378,12 @@ CString BaseDisk::BuildFilename(FileInfo *pFile) {
 		return csTmp;
 	}
 
+    // handles the unset drive index for MakeCart
+    if (pFile->nDrive == -1) {
+        // filename is already set
+        return pFile->csName;
+    }
+
 	// get local path
 	csTmp = pDriveType[pFile->nDrive]->GetPath();
 	// check for ending backslash
@@ -443,6 +449,7 @@ bool BaseDisk::Read(FileInfo *pFile) {
 }
 
 // Writes (or overwrites) a record. May need to append data depending on record number
+// Warning: MakeCart EA#3 uses this function, don't reference disk number or open file index
 bool BaseDisk::Write(FileInfo *pFile) {
 	unsigned char *pDat;
 

@@ -40,6 +40,7 @@
 struct options {
 	options() {
 		StartHigh = EndHigh = 0;
+        StartMid = EndMid = 0;
 		StartLow = EndLow = 0;
 		StartVDP = EndVDP = 0;
 		Boot = 0;
@@ -50,6 +51,7 @@ struct options {
 	};
 
 	int StartHigh, EndHigh;
+    int StartMid, EndMid;
 	int StartLow, EndLow;
 	int StartVDP, EndVDP;
 	int Boot;
