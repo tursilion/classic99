@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.016"
+#define VERSION "QI399.017"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -53,11 +53,13 @@ typedef unsigned __int32 DWord;
 
 // 3MHz seems to be correct via measurement
 // But 5% slack is allowed. Raising it a bit so the /62 works out even
-#define CLOCK_MHZ 3000056
+//#define CLOCK_MHZ 3000056
+#define CLOCK_MHZ 3000000
 // note these actual timings as calculated from the VDP datasheet
 // TODO: try to measure on a real TI.
-// calculated it as 62.6
-#define HZ60 62
+// calculated it as 62.6 - but a long term interrupt count test gave 59.9
+// so back to 60 and fix the clock above
+#define HZ60 60
 // calculate it as 50.23
 #define HZ50 50
 #define DEFAULT_60HZ_CPF (CLOCK_MHZ/HZ60)

@@ -1924,6 +1924,15 @@ Cartridge System:
 - Add 'help' to debugger for list of command syntax
 - Add masking to debugger memory accesses - was potential crash point
 - Changed CPU register access to require "CR" (like VDP's "VR" and new AMS "AR")
+-----------------------------------------------
+3 Feb 2020
+- fix for image disk with fragmented files
+- Visual Studio project update
+-----------------------------------------------
+11 Mar 2020
+- added the ability to save cart (and DSR) space in MakeCart for EA#5 and EA#3
+- added the ability to write an EA#3 from MakeCart (uncompressed, with autostart if desired)
+- reset frame rate back to 60hz
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
