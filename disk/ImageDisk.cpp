@@ -834,6 +834,9 @@ CString ImageDisk::GetDiskName() {
 		return BAD_DISK_NAME;
 	}
 
+    // close the disk image ;)
+    fclose(fp);
+
 	// and parse out the diskname
 	for (int idx=0; idx<10; idx++) {
 		if (buf[idx] == ' ') break;

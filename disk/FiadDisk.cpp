@@ -1198,6 +1198,8 @@ bool FiadDisk::BufferImgFile(FileInfo *pFile) {
 
 // retrieve the disk name from a FIAD folder - in this case
 // we just match on the last part of the path (folder name)
+// It actually works to allow more than 10 characters, but
+// for compatibility I will restrict to the first 10.
 CString FiadDisk::GetDiskName() {
 	CString csDiskName=GetPath();
 	csDiskName.TrimRight('\\');
@@ -1205,6 +1207,7 @@ CString FiadDisk::GetDiskName() {
 	if (p != -1) {
 		csDiskName = csDiskName.Mid(p+1);
 	}
+    csDiskName = csDiskName.Left(10);
 
 	return csDiskName;
 }
@@ -1678,11 +1681,10 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 		// - The number of sectors on disk (minus 2 for the VIB and FDIR)
 		// - The number of free sectors on disk.
 		memset(pData, 0, pFile->RecordLength+2);
-		csTmp = pDriveType[pFile->nDrive]->GetPath();
 
 		// DiskName - first 10 bytes - we provide the local path (last 10 chars of it)
 		pStart=pData;
-		csTmp = csTmp.Right(10);
+		csTmp = GetDiskName();
 		*(unsigned short*)pData = (unsigned short)pFile->RecordLength;						// record length (2 bytes)
 		pData+=2;
 		*(pData++) = csTmp.GetLength();														// string length (strange, not very fixed length. My bug? TODO: probably this should always be 10 chars long)
@@ -1956,7 +1958,7 @@ bool FiadDisk::Save(FileInfo *pFile) {
 // Read the volume information block (sector 0)
 bool FiadDisk::ReadVIB(FileInfo *pFile) {
 	unsigned char *p;
-	CString csPath = pDriveType[pFile->nDrive]->GetPath();
+	CString csPath = pDriveType[pFile->nDrive]->GetDiskName();
 
 	// DiskName - first 10 bytes - we provide the local path (last 10 chars of it)
 	while (csPath.GetLength() < 10) {

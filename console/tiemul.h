@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.017"
+#define VERSION "QI399.018"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -56,7 +56,6 @@ typedef unsigned __int32 DWord;
 //#define CLOCK_MHZ 3000056
 #define CLOCK_MHZ 3000000
 // note these actual timings as calculated from the VDP datasheet
-// TODO: try to measure on a real TI.
 // calculated it as 62.6 - but a long term interrupt count test gave 59.9
 // so back to 60 and fix the clock above
 #define HZ60 60

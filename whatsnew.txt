@@ -1933,6 +1933,10 @@ Cartridge System:
 - added the ability to save cart (and DSR) space in MakeCart for EA#5 and EA#3
 - added the ability to write an EA#3 from MakeCart (uncompressed, with autostart if desired)
 - reset frame rate back to 60hz
+-----------------------------------------------
+19 Mar 2020
+- Make the disk name more consistent on FIAD disks - it wasn't always returning just the folder or just 10 chars
+- Make getting the disk name from a disk image not leak a file handle ;)
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
