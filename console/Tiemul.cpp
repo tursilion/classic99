@@ -1390,7 +1390,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
         // turn off the menu
         SetMenuMode(true, false);
     } else {
-        strcpy(AppName, "Classic99");
+        strcpy(AppName, "Classic99 " VERSION);
     }
     // set the title
     szDefaultWindowText = AppName;
