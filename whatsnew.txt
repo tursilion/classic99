@@ -1937,6 +1937,12 @@ Cartridge System:
 19 Mar 2020
 - Make the disk name more consistent on FIAD disks - it wasn't always returning just the folder or just 10 chars
 - Make getting the disk name from a disk image not leak a file handle ;)
+-----------------------------------------------
+29 Mar 2020
+- improve disk image debug
+- better testing for valid disk image
+- rewrite file creation to fix disk image create/overwrite bug that would corrupt the disk image
+- added version to the title bar
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
