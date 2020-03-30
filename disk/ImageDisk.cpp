@@ -44,12 +44,13 @@
 #include <io.h>
 #include <atlstr.h>
 #include <time.h>
+#include <errno.h>
 #include "tiemul.h"
 #include "diskclass.h"
 #include "imagedisk.h"
 
 // largest disk size
-#define MAX_SECTORS 1440
+#define MAX_SECTORS 1600
 
 //********************************************************
 // ImageDisk
@@ -106,43 +107,54 @@ CString ImageDisk::BuildFilename(FileInfo *pFile) {
 	return pDriveType[pFile->nDrive]->GetPath();
 }
 
-// Read a sector from an open file - true on success, false
-// if an error occurs. buf must be at least 256 bytes!
-bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
-	if (NULL == fp) return false;
-	if (NULL == buf) return false;
+// verify that a disk image is formatted in a way we can manage
+bool ImageDisk::VerifyFormat(FILE *fp, bool &bIsPC99, int &Gap1, int &PreIDGap, int &PreDatGap, int &SLength, int &SekTrack, int &TrkLen) {
+    char buf[256];
+
+    if (NULL == fp) {
+        debug_write("File not open to be verified.");
+        return false;
+    }
 
 	// PC99 detection routines adapted from code by Paolo Bagnaresi! Thanks for your research, Paolo!
 	// Need to add flags to disable PC99 detection (support weird disks)
 	if (fseek(fp, 0, SEEK_SET)) {
+        debug_write("Disk seek failed, code %d", errno);
 		return false;
 	}
 	if (256 != fread(buf, 1, 256, fp)) {		// read the first block of the file
+        debug_write("Can't read first sector of disk, corrupt file? Errno %d\n", errno);
 		return false;
 	}
-	bool bIsPC99 = (memcmp("DSK", &buf[13], 3) != 0);	// if we find DSK, then it's not PC99 for sure, if not, it probably is (or a weird disk format)
-	if (bIsPC99) {
+
+	bIsPC99 = (memcmp("DSK", &buf[13], 3) != 0);	// if we find DSK, then it's not PC99 for sure, if not, it probably is (or a weird disk format)
+    if (!bIsPC99) {
+        if (!detected) debug_write("Found DSK marker, treating as sector-based image.");
+        detected = true;
+        return true;
+    } else {
 		// data to find the sector - kind of bad that we do this every time we access
 		// a sector. TODO?
-		int Gap1, PreIDGap, PreDatGap, SLength, SekTrack, TrkLen;
+        if (!detected) debug_write("No DSK marker, assuming PC99 track-based image...");
+        detected = true;
 
 		// find the beginning of the sector by looking for 0xfe
 		int idx=0;
 		bool bDoubleDensity;
 
 		while ((idx<256)&&(buf[idx]!=0xfe)) idx++;
-		if (buf[idx] != 0xfe) {
-			debug_write("Can't find PC99 start of sector indicator.");
+		if ((idx >= 256) || (buf[idx] != 0xfe)) {
+			debug_write("Can't find PC99 start of sector indicator - corrupt dsk?");
 			return false;
 		}
 		if (buf[idx+4] != 0x01) {
-			debug_write("Can't find PC99 start of sector indicator!");
+			debug_write("Can't find PC99 start of sector indicator - corrupt dsk!");
 			return false;
 		}
 		if (memcmp("\xa1\xa1\xa1", &buf[idx-3], 3) == 0) {
 			bDoubleDensity = true;
 			if (idx != 53) {
-				debug_write("Unknown track data size on PC99 disk.");
+				debug_write("Unknown track data size on PC99 disk. Corrupt dsk?");
 				return false;
 			}
 			Gap1 = 40;
@@ -153,12 +165,12 @@ bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
 			TrkLen = 6872;
 		} else {
 			if (memcmp("\0\0\0", &buf[idx-3], 3) != 0) {
-				debug_write("Can't identify PC99 density marker");
+				debug_write("Can't identify PC99 density marker. Corrupt dsk?");
 				return false;
 			}
 			bDoubleDensity = false;
 			if (idx != 22) {
-				debug_write("Unknown track data size on PC99 disk");
+				debug_write("Unknown track data size on PC99 disk. Corrupt dsk?");
 				return false;
 			}
 			Gap1 = 16;
@@ -169,6 +181,29 @@ bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
 			TrkLen = 3253;
 		}
 
+        return true;
+    }
+
+    // shouldn't get here...
+    debug_write("Detection failed - disk type unknown.");
+    return false;
+}
+
+
+// Read a sector from an open file - true on success, false
+// if an error occurs. buf must be at least 256 bytes!
+bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
+	if (NULL == fp) return false;
+	if (NULL == buf) return false;
+
+    bool bIsPC99;
+    int Gap1, PreIDGap, PreDatGap, SLength, SekTrack, TrkLen;
+
+    if (!VerifyFormat(fp, bIsPC99, Gap1, PreIDGap, PreDatGap, SLength, SekTrack, TrkLen)) {
+        return false;
+    }
+
+	if (bIsPC99) {
 		// now find the sector in the file - convert to side/track/sector
 		int Trk = nSector / SekTrack;		// which track is it on?
 		int DskSide = 0;
@@ -185,12 +220,12 @@ bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
 		// if we do add Omniflop support someday. Probably should just live with it?
 		unsigned char *pTrk = (unsigned char*)malloc(TrkLen);
 		if (fseek(fp, nOffset, SEEK_SET)) {
-			debug_write("Seek failed for PC99 disk");
+			debug_write("Seek failed for PC99 disk, code %d", errno);
 			free(pTrk);
 			return false;
 		}
 		if (TrkLen != fread(pTrk, 1, TrkLen, fp)) {
-			debug_write("Read failed for PC99 disk");
+			debug_write("Read failed for PC99 disk, code %d", errno);
 			free(pTrk);
 			return false;
 		}
@@ -202,7 +237,7 @@ bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
 				return true;
 			}
 		}
-		debug_write("PC99 disk can't find side %d, track %d, sector %d", DskSide, Trk, nSector);
+		debug_write("PC99 disk can't find side %d, track %d, sector %d. Corrupt dsk?", DskSide, Trk, nSector);
 		return false;
 	} else {
 		// V9T9 disk
@@ -215,10 +250,12 @@ bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
 		}
 
 		if (fseek(fp, nSector*256, SEEK_SET)) {
+            debug_write("Sector seek to %d for read failed, errno %d", nSector, errno);
 			return false;
 		}
 
 		if (256 != fread(buf, 1, 256, fp)) {
+            debug_write("Read sector %d failed, errno %d", nSector, errno);
 			return false;
 		}
 
@@ -235,63 +272,14 @@ bool ImageDisk::PutSectorToDisk(FILE *fp, int nSector, unsigned char *wrbuf) {
 	if (NULL == fp) return false;
 	if (NULL == buf) return false;
 
-	// PC99 detection routines adapted from code by Paolo Bagnaresi! Thanks for your research, Paolo!
-	// Need to add flags to disable PC99 detection (support weird disks)
-	if (fseek(fp, 0, SEEK_SET)) {
-		return false;
-	}
-	if (256 != fread(buf, 1, 256, fp)) {		// read the first block of the file
-		return false;
-	}
-	bool bIsPC99 = (memcmp("DSK", &buf[13], 3) != 0);	// if we find DSK, then it's not PC99 for sure, if not, it probably is (or a weird disk format)
+    bool bIsPC99;
+    int Gap1, PreIDGap, PreDatGap, SLength, SekTrack, TrkLen;
+
+    if (!VerifyFormat(fp, bIsPC99, Gap1, PreIDGap, PreDatGap, SLength, SekTrack, TrkLen)) {
+        return false;
+    }
+
 	if (bIsPC99) {
-		// data to find the sector - kind of bad that we do this every time we access
-		// a sector. TODO?
-		int Gap1, PreIDGap, PreDatGap, SLength, SekTrack, TrkLen;
-
-		// find the beginning of the sector by looking for 0xfe
-		int idx=0;
-		bool bDoubleDensity;
-
-		while ((idx<256)&&(buf[idx]!=0xfe)) idx++;
-		if (buf[idx] != 0xfe) {
-			debug_write("WCan't find PC99 start of sector indicator.");
-			return false;
-		}
-		if (buf[idx+4] != 0x01) {
-			debug_write("Can't find PC99 start of sector indicator!");
-			return false;
-		}
-		if (memcmp("\xa1\xa1\xa1", &buf[idx-3], 3) == 0) {
-			bDoubleDensity = true;
-			if (idx != 53) {
-				debug_write("WUnknown track data size on PC99 disk.");
-				return false;
-			}
-			Gap1 = 40;
-			PreIDGap = 14;
-			PreDatGap = 58;
-			SLength = 340;
-			SekTrack = 18;
-			TrkLen = 6872;
-		} else {
-			if (memcmp("\0\0\0", &buf[idx-3], 3) != 0) {
-				debug_write("WCan't identify PC99 density marker");
-				return false;
-			}
-			bDoubleDensity = false;
-			if (idx != 22) {
-				debug_write("WUnknown track data size on PC99 disk");
-				return false;
-			}
-			Gap1 = 16;
-			PreIDGap = 7;
-			PreDatGap = 31;
-			SLength = 334;
-			SekTrack = 9;
-			TrkLen = 3253;
-		}
-
 		// now find the sector in the file - convert to side/track/sector
 		int Trk = nSector / SekTrack;		// which track is it on?
 		int DskSide = 0;
@@ -314,12 +302,12 @@ bool ImageDisk::PutSectorToDisk(FILE *fp, int nSector, unsigned char *wrbuf) {
 		// tradeoffs to balance.
 		unsigned char *pTrk = (unsigned char*)malloc(TrkLen);
 		if (fseek(fp, nOffset, SEEK_SET)) {
-			debug_write("WSeek failed for PC99 disk");
+			debug_write("WSeek failed for PC99 disk. Code %d", errno);
 			free(pTrk);
 			return false;
 		}
 		if (TrkLen != fread(pTrk, 1, TrkLen, fp)) {
-			debug_write("WRead failed for PC99 disk");
+			debug_write("WRead failed for PC99 disk, code %d", errno);
 			free(pTrk);
 			return false;
 		}
@@ -342,7 +330,7 @@ bool ImageDisk::PutSectorToDisk(FILE *fp, int nSector, unsigned char *wrbuf) {
 				return true;
 			}
 		}
-		debug_write("WPC99 disk can't find side %d, track %d, sector %d", DskSide, Trk, nSector);
+		debug_write("WPC99 disk can't find side %d, track %d, sector %d. Corrupt dsk?", DskSide, Trk, nSector);
 		return false;
 	} else {
 		// V9T9 disk
@@ -355,10 +343,12 @@ bool ImageDisk::PutSectorToDisk(FILE *fp, int nSector, unsigned char *wrbuf) {
 		}
 
 		if (fseek(fp, nSector*256, SEEK_SET)) {
+            debug_write("Seek to sector %d failed for write, errno %d", nSector, errno);
 			return false;
 		}
 
 		if (256 != fwrite(wrbuf, 1, 256, fp)) {
+            debug_write("Write sector %d failed, errno %d", nSector, errno);
 			return false;
 		}
 
@@ -584,7 +574,7 @@ int *ImageDisk::ParseClusterList(unsigned char *fdr) {
 			break;
 		}
 
-        debug_write("  Sector: 0x%x, count %d\n", num, ofs);
+        debug_write("  Sector start: 0x%x, file sectors %d-%d", num, nFilePos, ofs);
 
 		for (int i=nFilePos; i<=ofs; i++) {
 			pList[nListPos++] = num++;
@@ -710,7 +700,7 @@ bool ImageDisk::BufferSectorFile(FileInfo *pFile) {
 				}
 				// otherwise, read in the next sector in the list
 				if (pSectorList[nSectorPos] == 0) {
-					debug_write("Read past EOF - truncating read.");
+					debug_write("Read past EOF - truncating read at index %d.", idx);
 					pFile->NumberRecords = idx;
 					break;
 				}
@@ -740,7 +730,7 @@ bool ImageDisk::BufferSectorFile(FileInfo *pFile) {
 
 				// check again
 				if (256-nSector < nLen) {
-					debug_write("Corrupted file - truncating read.");
+					debug_write("Corrupted file - truncating read at record %d.", idx);
 					pFile->NumberRecords = idx;
 					break;
 				}
@@ -748,7 +738,7 @@ bool ImageDisk::BufferSectorFile(FileInfo *pFile) {
 				// we got some data, read it in and count off the record
 				// verify it (don't get screwed up by a bad file)
 				if (nLen > pFile->RecordLength) {
-					debug_write("Potentially corrupt file - skipping end of record.");
+					debug_write("Potentially corrupt file - skipping end of record %d.", idx);
 					
 					// store length data
 					*(unsigned short*)pData = pFile->RecordLength;
@@ -856,6 +846,9 @@ FileInfo *ImageDisk::Open(FileInfo *pFile) {
 		pFile->LastError = ERR_FILEERROR;
 		return NULL;
 	}
+
+    // allow debug for the first detection
+    detected = false;
 
 	// See if we can get a new file handle from the driver
 	pNewFile = pDriveType[pFile->nDrive]->AllocateFileInfo();
@@ -1572,6 +1565,9 @@ int ImageDisk::findFreeSector(FILE *fp, int lastFileSector) {
 #endif
 	}
 
+    // Note that 0 and 1 are special, and not always tagged as used, so skip them
+    if (lastFileSector < 2) lastFileSector = 2;
+
 	// now we search forward... we loop around as needed.
 	nSec = lastFileSector;
 	for (idx = 0; idx < nMax; idx++) {
@@ -1649,10 +1645,13 @@ bool ImageDisk::Delete(FileInfo *pFile) {
 			return false;
 		}
 
+#if 0
 		// Note: real controller doesn't wipe the sectors, but this helps debugging
+        // don't do this, better if old data is there to recover
 		if (!PutSectorToDisk(fp, *pTmp, sector)) {
 			debug_write("Can't write sector %d on %s.", *pTmp, (LPCSTR)csFileName);
 		}
+#endif
 		++pTmp;
 	}
 	// done with the sector list
@@ -1695,6 +1694,14 @@ bool ImageDisk::Delete(FileInfo *pFile) {
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
 	}
+    // and free it from the bitmap
+    if (!freeSectorFromBitmap(fp, pFile->nLocalData)) {
+		debug_write("Can't update bitmap on %s!", (LPCSTR)csFileName);
+		fclose(fp);
+		pFile->LastError = ERR_DEVICEERROR;
+		free(pSectorList);
+		return false;
+	}
 
 	// that's it baby! It's history
 	fclose(fp);
@@ -1725,11 +1732,7 @@ bool ImageDisk::CreateOutputFile(FileInfo *pFile) {
 			debug_write("Can't overwrite existing file with open mode 0x%02X", (pFile->Status & FLAG_MODEMASK));
 			return false;
 		}
-	}
-
-	// call delete so any existing file is removed
-	if (Delete(pFile)) {
-		debug_write("Removed existing file %s from %s", pFile->csName, csFileName);
+        // flush will remove any existing file if needed
 	}
 
 	// check if the user requested a default record length, and fill it in if so
@@ -1833,17 +1836,23 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 		return true;
 	}
 
+    // allow debug for the first detection
+    detected = false;
+
+    // get the disk name
 	CString csFileName = BuildFilename(pFile);
+
+    // delete the old file, if it exists
+	if (Delete(pFile)) {
+		debug_write("Deleted old file %s on %s", pFile->csName, csFileName);
+	}
+
+    // start to work on it
 	FILE *fp = fopen(csFileName, "r+b");
 	if (NULL == fp) {
 		debug_write("Unable to write file %s", (LPCSTR)csFileName);
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
-	}
-
-	// delete the old file, if it exists
-	if (Delete(pFile)) {
-		debug_write("Deleted old file %s on %s", pFile->csName, csFileName);
 	}
 
 	// create a buffer for the output file
@@ -1963,7 +1972,7 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 	int sectorList[1600];
 	int sectorCnt = 0;
 
-	// find a slot for the FDR
+	// find a slot for the FDR - deliberately start at 0 for the FDR
 	int fdr = findFreeSector(fp, 0);
 	if (fdr == -1) {
 		pFile->LastError = ERR_BUFFERFULL;
@@ -2132,6 +2141,7 @@ void ImageDisk::FreePartialFile(FILE *fp, int fdr, int *sectorList, int sectorCn
 	// it would be more efficient to do it with one read and one write, but that's okay
 	// we do a little sanity checking - no file can start less than sector 1, 0 and 1
 	// are reserved for other things.
+    
 	debug_write("Freeing %d sectors from partially allocated file.", sectorCnt+1);
 	if (fdr > 1) {
 		freeSectorFromBitmap(fp, fdr);

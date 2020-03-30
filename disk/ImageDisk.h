@@ -90,7 +90,7 @@ public:
 
 	// class-specific functions
 	bool BufferSectorFile(FileInfo *pFile);
-	bool ReadVIB(FileInfo *pFile);
+    bool VerifyFormat(FILE *fp, bool &bIsPC99, int &Gap1, int &PreIDGap, int &PreDatGap, int &SLength, int &SekTrack, int &TrkLen);
 	bool GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf);
 	bool PutSectorToDisk(FILE *fp, int nSector, unsigned char *buf);
 	bool FindFileFDR(FILE *fp, FileInfo *pFile, unsigned char *fdr);
@@ -107,5 +107,6 @@ public:
 
 	// configuration data
 	bool bUseV9T9DSSD;			// use the reverse sector order for DSSD disks that V9T9 did
+    bool detected;              // used to throttle the PC99 image detection debug a bit
 };
 

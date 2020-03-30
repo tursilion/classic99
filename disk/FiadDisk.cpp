@@ -878,7 +878,7 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 	// we need to let the embedded code decide the terminating rule
 	for (;;) {
 		if (feof(fp)) {
-			debug_write("Premature EOF - truncating read.");
+			debug_write("Premature EOF - truncating read at record %d.", idx);
 			pFile->NumberRecords = idx;
 			break;
 		}
@@ -887,7 +887,7 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 			// read a variable record
 			int nLen=fgetc(fp);
 			if (EOF == nLen) {
-				debug_write("Corrupt file - truncating read.");
+				debug_write("Corrupt file - truncating read at record %d.", idx);
 				pFile->NumberRecords = idx;
 				break;
 			}
@@ -935,7 +935,7 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 				// we got some data, read it in and count off the record
 				// verify it (don't get screwed up by a bad file)
 				if (nLen > pFile->RecordLength) {
-					debug_write("Potentially corrupt file - skipping end of record.");
+					debug_write("Potentially corrupt file - skipping end of record %d.", idx);
 					
 					// store length data
 					*(unsigned short*)pData = pFile->RecordLength;
