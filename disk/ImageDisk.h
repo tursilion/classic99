@@ -99,8 +99,8 @@ public:
 	int  GetDirectory(FileInfo *pFile, FileInfo *&Filenames);
 	const char* GetAttributes(int nType);
 	bool freeSectorFromBitmap(FILE *fp, int nSec);
-	bool lockSectorInBitmap(FILE *fp, int nSec);
-	bool WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, int cnt);
+    void WriteCluster(unsigned char *buf, int clusterOff, int startnum, int ofs);
+    bool WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, int cnt);
 	int findFreeSector(FILE *fp, int lastFileSector);
 	void FreePartialFile(FILE *fp, int fdr, int *sectorList, int sectorCnt);
 

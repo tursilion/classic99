@@ -2363,14 +2363,21 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 // and VARIABLE or FIXED. Static buffer, not thread safe
 const char* FiadDisk::GetAttributes(int nType) {
 	// this is a hacky way to allow up to 3 calls on a single line ;) not thread-safe though!
-	static char szBuf[3][3];
+	static char szBuf[3][4];
 	static int cnt=0;
 
 	if (++cnt == 3) cnt=0;
 
-	szBuf[cnt][0]=(nType&TIFILES_INTERNAL) ? 'I' : 'D';
-	szBuf[cnt][1]=(nType&TIFILES_VARIABLE) ? 'V' : 'F';
-	szBuf[cnt][2]='\0';
+    if (nType&TIFILES_PROGRAM) {
+        szBuf[cnt][0]='P';
+        szBuf[cnt][1]='R';
+        szBuf[cnt][2]='G';
+	    szBuf[cnt][3]='\0';
+    } else {
+	    szBuf[cnt][0]=(nType&TIFILES_INTERNAL) ? 'I' : 'D';
+	    szBuf[cnt][1]=(nType&TIFILES_VARIABLE) ? 'V' : 'F';
+	    szBuf[cnt][2]='\0';
+    }
 
 	return szBuf[cnt];
 }

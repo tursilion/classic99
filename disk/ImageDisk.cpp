@@ -1,6 +1,8 @@
 // TODO: check that all mallocs() in this file are freed()
 // TODO: check creation of save files don't overflow their buffers
 
+// I hate disk images. :)
+
 //
 // (C) 2011 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
@@ -1333,14 +1335,21 @@ bool ImageDisk::WriteSector(FileInfo *pFile) {
 // and VARIABLE or FIXED. Static buffer, not thread safe
 const char* ImageDisk::GetAttributes(int nType) {
 	// this is a hacky way to allow up to 3 calls on a single line ;) not thread-safe though!
-	static char szBuf[3][3];
+	static char szBuf[3][4];
 	static int cnt=0;
 
 	if (++cnt == 3) cnt=0;
 
-	szBuf[cnt][0]=(nType&TIFILES_INTERNAL) ? 'I' : 'D';
-	szBuf[cnt][1]=(nType&TIFILES_VARIABLE) ? 'V' : 'F';
-	szBuf[cnt][2]='\0';
+    if (nType&TIFILES_PROGRAM) {
+        szBuf[cnt][0]='P';
+        szBuf[cnt][1]='R';
+        szBuf[cnt][2]='G';
+	    szBuf[cnt][3]='\0';
+    } else {
+	    szBuf[cnt][0]=(nType&TIFILES_INTERNAL) ? 'I' : 'D';
+	    szBuf[cnt][1]=(nType&TIFILES_VARIABLE) ? 'V' : 'F';
+	    szBuf[cnt][2]='\0';
+    }
 
 	return szBuf[cnt];
 }
@@ -1461,35 +1470,7 @@ bool ImageDisk::freeSectorFromBitmap(FILE *fp, int nSec) {
 		return false;
 	}
 
-	return true;
-}
-
-// set a bit from the disk bitmap
-bool ImageDisk::lockSectorInBitmap(FILE *fp, int nSec) {
-	unsigned char sector[256];
-
-	if (!GetSectorFromDisk(fp, 0, sector)) {
-		debug_write("Can't read sector 0.");
-		return false;
-	}
-
-	// bitmap runs from 0x38 to 0xEB. Least significant bit is first.
-	int offset = nSec/8 + 0x38;	
-	int bit = 1<<(nSec%8);
-	// TI Disk Controller stops at 0xEB, but CF card goes to the end
-	if (offset > 0xff) {
-		debug_write("Bitmap offset for sector %d is larger than legal for TI disk image", nSec);
-		return false;
-	}
-
-	// now fix the bit
-	sector[offset] |= bit;
-
-	// write it back and we're done
-	if (!PutSectorToDisk(fp, 0, sector)) {
-		debug_write("Can't write sector 0.");
-		return false;
-	}
+    debug_write("Freeing sector 0x%03X", nSec);
 
 	return true;
 }
@@ -1570,7 +1551,7 @@ int ImageDisk::findFreeSector(FILE *fp, int lastFileSector) {
 
 	// now we search forward... we loop around as needed.
 	nSec = lastFileSector;
-	for (idx = 0; idx < nMax; idx++) {
+	for (idx = 0; idx < nMax-2; idx++) {    // omit the two protected sectors
 		offset = nSec/8 + 0x38;
 		bit = 1<<(nSec%8);
 
@@ -1578,7 +1559,7 @@ int ImageDisk::findFreeSector(FILE *fp, int lastFileSector) {
 
 		// next sector with wraparound
 		++nSec;
-		if (nSec >= nMax) nSec = 0;
+		if (nSec >= nMax) nSec = 2;     // dont' wrap around to protected sectors
 	}
 	if (idx >= nMax) {
 		debug_write("Disk is full.");
@@ -1593,6 +1574,8 @@ int ImageDisk::findFreeSector(FILE *fp, int lastFileSector) {
 		debug_write("Can't write sector 0.");
 		return -1;
 	}
+
+    debug_write("Allocating sector 0x%03X", nSec);
 
 	return nSec;
 }
@@ -1966,6 +1949,13 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 	return ret;
 }
 
+// write a single cluster
+void ImageDisk::WriteCluster(unsigned char *buf, int clusterOff, int startnum, int ofs) {
+    buf[clusterOff++] = startnum&0xff;
+	buf[clusterOff++] = ((startnum>>8)&0x0f) | ((ofs&0x0f)<<4);
+	buf[clusterOff]   = (ofs>>4)&0xff;
+}
+
 // this function actually writes the data back to the disk and updates the headers
 bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, int cnt) {
 	unsigned char buf[256], buf2[256];
@@ -2031,34 +2021,49 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 	}
 
 	// now store the sector list into the FDR
-	// Each entry has two 12-bit values:
-	// NUM - sector number to start at
-	// OFS - ending offset in sectors of the FILE
-	// So a two sector file in two clusters at >10 and >11
-	// Would have NUMs of >10 and >11, and an OFS of 0 and 1.
-	int num = sectorList[0];
-	int startnum = num;
-	int ofs = 0;
-	int clusterOff = 0x1c;
-	for (int idx=0; idx<sectorCnt; idx++) {
-		if ((sectorList[idx] != num) || (idx == sectorCnt-1)) {
-			// write it out - the nibbles are swizzled a bit
-			buf[clusterOff++] = startnum&0xff;
-			buf[clusterOff++] = ((startnum>>8)&0x0f) | ((ofs&0x0f)<<4);
-			buf[clusterOff++] = (ofs>>4)&0xff;
-			startnum = sectorList[idx];
-			num=startnum;
-			if ((sectorList[idx] != num) && (idx == sectorCnt-1)) {
-				// special case if the last sector is in a different cluster
-				++ofs;
-				buf[clusterOff++] = startnum&0xff;							// UM
-				buf[clusterOff++] = ((startnum>>8)&0x0f) | ((ofs&0x0f)<<4);	// SN
-				buf[clusterOff++] = (ofs>>4)&0xff;							// OF
-			}
-		} 
-		++num;
-		++ofs;
-	}
+    // todo: probably temp debug delete me too...
+    debug_write("Output Sector List:");
+    {
+        char outbuf[1024];
+        for (int idx=0; idx<sectorCnt; ++idx) {
+            sprintf(outbuf, "%s,%03X", outbuf, sectorList[idx]);
+        }
+        debug_write(outbuf);
+    }
+
+    if (sectorCnt > 0) {
+	    // Each entry has two 12-bit values:
+	    // NUM - disk sector number to start at
+	    // OFS - ending offset in sectors of the FILE (0-based!)
+	    // So a two sector file in two clusters at >10 and >14
+	    // Would have NUMs of >10 and >14, and an OFS of 0 and 1.
+        // if it wasn't fragmented, it would be NUMS >10 and OFS >01
+	    int num = sectorList[0];    // current NUMS
+        int startnum = num;         // beginning of cluster
+	    int clusterOff = 0x1c;      // position in the FDR for output
+        // what if we build the cluster list dynamically?
+        // set up the first one
+        WriteCluster(buf, clusterOff, startnum, 0);
+	    for (int ofs=0; ofs<sectorCnt; ++ofs,++num) {
+            if (sectorList[ofs] != num) {
+                // new cluster
+                clusterOff+=3;
+                startnum = sectorList[ofs];
+
+                if (clusterOff >= 0xfd) {
+		            debug_write("Cluster list full - defragment disk image!");
+		            FreePartialFile(fp, fdr, sectorList, sectorCnt);
+		            pFile->LastError = ERR_BUFFERFULL;
+		            return false;
+	            }
+            }
+
+            WriteCluster(buf, clusterOff, startnum, ofs);
+        }
+        // DEBUG - todo delete me
+        int *tmp = ParseClusterList(buf);
+        delete tmp;
+    }
 
 	// great, so now write it out
 	if (!PutSectorToDisk(fp, fdr, buf)) {

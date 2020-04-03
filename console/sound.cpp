@@ -682,7 +682,9 @@ void updateDACBuffer(int nCPUCycles) {
 	int distance = (int)dacupdatedistance;
 	dacupdatedistance -= distance;
 	if (dac_pos + distance >= sizeof(dac_buffer)) {
-		debug_write("DAC Buffer overflow...");
+        if (CPUThrottle != CPU_OVERDRIVE) {
+    		debug_write("DAC Buffer overflow...");
+        }
 		dac_pos=0;
 		return;
 	}
