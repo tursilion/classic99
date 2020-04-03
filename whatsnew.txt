@@ -1943,6 +1943,13 @@ Cartridge System:
 - better testing for valid disk image
 - rewrite file creation to fix disk image create/overwrite bug that would corrupt the disk image
 - added version to the title bar
+-----------------------------------------------
+3 Apr 2020
+- disable the DAC buffer overflow warning during overdrive
+- return PRG for program type in disk file type identification debug
+- add sector bitmap debug to disk images (probably temporary)
+- rewrite the cluster output routine to fix corruption of output fragmented files
+
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
