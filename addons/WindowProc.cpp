@@ -2627,7 +2627,7 @@ const char *FormatBreakpoint(int idx) {
 
 			case BREAK_WRITEAMS:
 				szTmp[pos++]='>';
-				szTmp[pos++]='A';
+				szTmp[pos++]='X';
 				break;
 
             case BREAK_WRITEVDP:
@@ -2646,7 +2646,7 @@ const char *FormatBreakpoint(int idx) {
 
 			case BREAK_READAMS:
 				szTmp[pos++]='<';
-				szTmp[pos++]='A';
+				szTmp[pos++]='X';
 				break;
 
             case BREAK_READVDP:
@@ -2675,7 +2675,11 @@ const char *FormatBreakpoint(int idx) {
 				szTmp[pos++]='U';
 				break;
 
-			case BREAK_EQUALS_REGISTER:
+			case BREAK_EQUALS_AMS:
+				szTmp[pos++]='X';
+				break;
+
+            case BREAK_EQUALS_REGISTER:
 				szTmp[pos++]='R';
 				break;
 
@@ -2725,6 +2729,7 @@ const char *FormatBreakpoint(int idx) {
 				break;
 
 			case BREAK_EQUALS_BYTE:
+			case BREAK_EQUALS_AMS:
 			case BREAK_EQUALS_VDP:
 			case BREAK_EQUALS_VDPREG:
 				// a byte
@@ -2779,7 +2784,7 @@ bool AddBreakpoint(char *buf1) {
 			} else if (toupper(buf1[1])=='G') {
 				nType=BREAK_WRITEGROM;
 				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
-            } else if (toupper(buf1[1])=='A') {
+            } else if (toupper(buf1[1])=='X') {
 				nType=BREAK_WRITEAMS;
 				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
 			} else {
@@ -2793,7 +2798,7 @@ bool AddBreakpoint(char *buf1) {
 			} else if (toupper(buf1[1])=='G') {
 				nType=BREAK_READGROM;
 				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
-			} else if (toupper(buf1[1])=='A') {
+			} else if (toupper(buf1[1])=='X') {
 				nType=BREAK_READAMS;
 				memmove(&buf1[1], &buf1[2], strlen(&buf1[1]));
 			} else {
@@ -2848,7 +2853,7 @@ bool AddBreakpoint(char *buf1) {
                 nData &= 0xff;
 			}
 			break;
-		case 'A':	// AMS memory =
+		case 'X':	// AMS memory =
 			nType=BREAK_EQUALS_AMS;
 			pTmp=strchr(buf1, '=');
 			if (NULL == pTmp) {
@@ -3253,7 +3258,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                                 debug_write("Cxxxx=yy[yyyyyy...] - write byte or bytes to CPU memory");
                                 debug_write("Vxxxx=yy[yyyyyy...] - write byte or bytes to VDP memory");
                                 debug_write("Gxxxx=yy[yyyyyy...] - write byte or bytes to GROM");
-                                debug_write("Axxxxx=yy[yyyyyy...]- write byte or bytes to raw AMS");
+                                debug_write("Xxxxxx=yy[yyyyyy...]- write byte or bytes to raw AMS (X=eXtended)");
                                 debug_write("CRxx=yy             - set CPU register xx to value yy");
                                 debug_write("VRxx=yy             - set VDP register xx to value yy");
                                 debug_write("ARxx=yy             - set AMS register xx to value yy");
@@ -3319,7 +3324,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								nCurMemType = MEMGROM;
 								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
 							}
-							if (buf[0] == 'A') {
+							if (buf[0] == 'X') {
 								nCurMemType = MEMAMS;
 								memmove(&buf[0], &buf[1], sizeof(buf)-1);	// delete the char
 							}
