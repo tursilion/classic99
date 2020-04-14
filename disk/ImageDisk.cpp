@@ -2025,6 +2025,7 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
     debug_write("Output Sector List:");
     {
         char outbuf[1024];
+        outbuf[0]='\0';
         for (int idx=0; idx<sectorCnt; ++idx) {
             sprintf(outbuf, "%s,%03X", outbuf, sectorList[idx]);
         }

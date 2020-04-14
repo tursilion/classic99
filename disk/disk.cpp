@@ -587,7 +587,7 @@ void do_dsrlnk() {
 
 				HELPFULDEBUG("Opening");
 
-				// check for disk write protection on output or append (update will come if a write is attempted)
+                // check for disk write protection on output or append (update will come if a write is attempted)
 				if (pDriveType[nDrive]->GetWriteProtect()) {
 					if (((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT) ||
 						((pWorkFile->Status & FLAG_MODEMASK) == FLAG_APPEND)) {
@@ -1203,6 +1203,8 @@ void do_files(int n)				/* call files(n) */
 		debug_write("Found TICC, letting it handle FILES");
 		nDSRBank[1] = 1;		// switch in the TICC
 
+        // this is a Classic99 implementation, not a TI one. It's
+        // always positive.
 		if (n >= 0) {
 			// positive value, 'CALL FILES' mode, so find that
 			strcpy(name, "FILES");
@@ -1229,7 +1231,7 @@ void do_files(int n)				/* call files(n) */
 		}
 
 		// get launch address and jump to it
-		debug_write("Handling FILES(%d) via TICC DSR", n);
+		debug_write("Handling FILES(%d) via TICC DSR", n<0 ? (-n):n);
 
 		p=DSR[1][0x2000+p+2-0x4000]*256 + DSR[1][0x2000+p+3-0x4000];
 		pCurrentCPU->SetPC(p);

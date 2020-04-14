@@ -1952,6 +1952,9 @@ Cartridge System:
 -----------------------------------------------
 8 Apr 2020
 - fix the debugger as regards AMS memory breakpoints - 'A' was preventing normal memory addresses starting with 'A'. It's 'X' now.
+-----------------------------------------------
+13 Apr 2020
+- Fix GROM address wrap at 8k boundary - needed to make SXB work right. Probably was biting Rich in RXB too ;)
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)

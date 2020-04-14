@@ -3943,6 +3943,10 @@ void wcpubyte(Word x, Byte c)
 	// no matter what kind of access, update the heat map
 	UpdateHeatmap(x);
 
+//    if ((x>=0x6000)&&(x<0x8000)) {
+//        debug_write("Cartridge bank switch >%04X = >%02X", x, c);
+//    }
+
 	// Check for write or access breakpoints
 	for (int idx=0; idx<nBreakPoints; idx++) {
 		switch (BreakPoints[idx].Type) {
@@ -4901,6 +4905,16 @@ void wsndbyte(Byte c)
 //////////////////////////////////////////////////////////////////
 // GROM base 0 (console GROMS) manage all address operations
 //////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////
+// Increment the GROM address - handle wraparound
+//////////////////////////////////////////////////////////////////
+void IncrementGROMAddress(Word &adrRef) {
+    int base = adrRef&0xe000;
+    adrRef = ((++adrRef)&0x1fff) | base;
+}
+
+//////////////////////////////////////////////////////////////////
 // Read a byte from GROM
 //////////////////////////////////////////////////////////////////
 Byte ReadValidGrom(int nBase, Word x) {
@@ -4973,7 +4987,7 @@ Byte ReadValidGrom(int nBase, Word x) {
         // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
         // an 8-bit address latch and a 1 bit select (for GROM >8000)
         // But it's enough to let me test some theories...
-   		GROMBase[0].GRMADD++;
+        IncrementGROMAddress(GROMBase[0].GRMADD);
 
         // GROM read data always adds about 19 cycles
 		pCurrentCPU->AddCycleCount(19);
@@ -5056,7 +5070,7 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
             // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
             // an 8-bit address latch and a 1 bit select (for GROM >8000)
             // But it's enough to let me test some theories...
-   		    GROMBase[0].GRMADD++;
+            IncrementGROMAddress(GROMBase[0].GRMADD);
 		} else {
             // first GROM address write adds about 15 cycles (verified)
     		pCurrentCPU->AddCycleCount(15);
@@ -5108,7 +5122,7 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
         // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
         // an 8-bit address latch and a 1 bit select (for GROM >8000)
         // But it's enough to let me test some theories...
-   		GROMBase[0].GRMADD++;
+   		IncrementGROMAddress(GROMBase[0].GRMADD);
 
         // GROM data writes add about 22 cycles (verified)
    		pCurrentCPU->AddCycleCount(22);
@@ -5174,7 +5188,7 @@ Byte rpcodebyte(Word x)
 
 		// update just this prefetch
 		GROMBase[PCODEGROMBASE].grmdata=GROMBase[PCODEGROMBASE].GROM[GROMBase[PCODEGROMBASE].GRMADD];
-		GROMBase[PCODEGROMBASE].GRMADD++;
+		IncrementGROMAddress(GROMBase[PCODEGROMBASE].GRMADD);
 		return(z);
 	}
 }
@@ -5202,7 +5216,7 @@ void wpcodebyte(Word x, Byte c)
 			
 			// update just this prefetch
 			GROMBase[PCODEGROMBASE].grmdata=GROMBase[PCODEGROMBASE].GROM[GROMBase[PCODEGROMBASE].GRMADD];
-			GROMBase[PCODEGROMBASE].GRMADD++;
+			IncrementGROMAddress(GROMBase[PCODEGROMBASE].GRMADD);
 		}
 		// GROM writes do not affect the prefetches, and have the same
 		// side effects as reads (they increment the address and perform a
@@ -5218,7 +5232,7 @@ void wpcodebyte(Word x, Byte c)
 
 		// update just this prefetch
 		GROMBase[PCODEGROMBASE].grmdata=GROMBase[PCODEGROMBASE].GROM[GROMBase[PCODEGROMBASE].GRMADD];
-		GROMBase[PCODEGROMBASE].GRMADD++;
+		IncrementGROMAddress(GROMBase[PCODEGROMBASE].GRMADD);
 	}
 }
 
