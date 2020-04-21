@@ -1028,9 +1028,9 @@ void do_sbrlnk(int nOpCode) {
 				CString csNewFile;
 
 				// rename a file - we are limited to 10 characters in this call
-				GetFilenameFromVDP(romword(0x8350), 10, &tmpFile);		// new filename
+				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
 				csNewFile = tmpFile.csName;
-				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// old filename
+				GetFilenameFromVDP(romword(0x8350), 10, &tmpFile);		// old filename
 
 				debug_write("Rename file, drive %d, from %s to %s", tmpFile.nDrive, (LPCSTR)tmpFile.csName, (LPCSTR)csNewFile);
 

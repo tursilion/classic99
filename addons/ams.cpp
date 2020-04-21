@@ -12,6 +12,7 @@
 
 // temporary hack - might be right, needs testing
 // This will enable 32MB AMS (or whatever is configured below!)
+// NOTE: AMSTEST4 can't handle this, we need a config option
 #define ENABLE_HUGE_AMS 
 
 // define sizes for memory arrays 
@@ -293,7 +294,7 @@ Byte ReadMemoryByte(Word address, bool bTrueAccess)
 	
 	DWord mappedAddress = (pageExtension << 12) | pageBase;
 
-	if (bIsRAM || bIsMappable)
+	if (bIsRAM && bIsMappable)
 	{
         if (mappedAddress <= sizeof(systemMemory)) {
 		    if (bTrueAccess) {

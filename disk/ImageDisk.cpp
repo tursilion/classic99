@@ -1443,6 +1443,56 @@ bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
 	return true;
 }
 
+// rename should be reasonably safe
+bool ImageDisk::RenameFile(FileInfo *pFile, const char *csNewFile) {
+	unsigned char fdr[256];	// work buffer
+
+    if (strlen(csNewFile) > 10) {
+        debug_write("New filename '%s' may not be longer than 10 characters on image disk.", csNewFile);
+        pFile->LastError = ERR_BADATTRIBUTE;
+        return false;
+    }
+
+    if (pFile->bOpen) {
+		// trying to open a file that is already open! Can't allow that!
+        debug_write("Can't rename an open file! Returning error.");
+		pFile->LastError = ERR_FILEERROR;
+		return false;
+	}
+
+	CString csFileName = BuildFilename(pFile);
+    FILE *fp=fopen(csFileName, "r+b");
+	if (NULL == fp) {
+		debug_write("Can't open %s for rename, errno %d.", (LPCSTR)csFileName, errno);
+		pFile->LastError = ERR_FILEERROR;
+		return false;
+	}
+
+	// we got the disk, now we need to find the file.
+	if (!FindFileFDR(fp, pFile, fdr)) {
+		return false;
+	}
+
+    // now in theory we just replace the filename
+    for (unsigned int idx=0; idx<10; ++idx) {
+        if (idx < strlen(csNewFile)) {
+            fdr[idx] = csNewFile[idx];
+        } else {
+            fdr[idx] = ' ';
+        }
+    }
+
+    // and write it back out
+    if (!PutSectorToDisk(fp, pFile->nLocalData, fdr)) {
+        pFile->LastError = ERR_DEVICEERROR;
+        return false;
+    }
+
+	fclose(fp);
+
+	return true;
+}
+
 // remove a bit from the disk bitmap
 bool ImageDisk::freeSectorFromBitmap(FILE *fp, int nSec) {
 	unsigned char sector[256];

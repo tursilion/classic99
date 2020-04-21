@@ -1955,6 +1955,11 @@ Cartridge System:
 -----------------------------------------------
 13 Apr 2020
 - Fix GROM address wrap at 8k boundary - needed to make SXB work right. Probably was biting Rich in RXB too ;)
+-----------------------------------------------
+21 Apr 2020
+- Added rename support to image disk
+- Fix AMS mapping RAM in non-mappable areas
+
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)

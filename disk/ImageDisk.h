@@ -66,27 +66,27 @@ public:
 	virtual CString GetDiskName();
 
 	// standard PAB opcodes
-	virtual FileInfo *Open(FileInfo *pFile);
-//	virtual bool Close(FileInfo *pFile);				// base class ok
-//	virtual bool Read(FileInfo *pFile);					// base class ok
-//	virtual bool Write(FileInfo *pFile);				// base class ok
-//	virtual bool Restore(FileInfo *pFile);				// base class ok
-	virtual bool Load(FileInfo *pFile);
-	virtual bool Save(FileInfo *pFile);
-	virtual bool Delete(FileInfo *pFile);
-//	virtual bool Scratch(FileInfo *pFile);				// not supported
-//	virtual void MapStatus(FileInfo *src, FileInfo *dest);// base class ok
-//	virtual bool GetStatus(FileInfo *pFile);			// base class ok
+	virtual FileInfo *Open(FileInfo *pFile) override;
+//	virtual bool Close(FileInfo *pFile) override;				// base class ok
+//	virtual bool Read(FileInfo *pFile) override;				// base class ok
+//	virtual bool Write(FileInfo *pFile) override;				// base class ok
+//	virtual bool Restore(FileInfo *pFile) override;				// base class ok
+	virtual bool Load(FileInfo *pFile) override;
+	virtual bool Save(FileInfo *pFile) override;
+	virtual bool Delete(FileInfo *pFile) override;
+//	virtual bool Scratch(FileInfo *pFile) override;				// not supported
+//	virtual void MapStatus(FileInfo *src, FileInfo *dest) override;// base class ok
+//	virtual bool GetStatus(FileInfo *pFile) override;			// base class ok
 
 	// SBRLNK opcodes (files is handled by shared handler)
-	virtual bool ReadSector(FileInfo *pFile);
-	virtual bool WriteSector(FileInfo *pFile);
-	virtual bool ReadFileSectors(FileInfo *pFile);
-//	virtual bool WriteFileSectors(FileInfo *pFile);		// TODO
-//	virtual bool FormatDisk(FileInfo *pFile);			// TODO - maybe someday
-//	virtual bool ProtectFile(FileInfo *pFile);			// not supported
-//	virtual bool UnProtectFile(FileInfo *pFile);		// not supported
-//	virtual bool RenameFile(FileInfo *pFile);			// TODO - maybe someday
+	virtual bool ReadSector(FileInfo *pFile) override;
+	virtual bool WriteSector(FileInfo *pFile) override;
+	virtual bool ReadFileSectors(FileInfo *pFile) override;
+//	virtual bool WriteFileSectors(FileInfo *pFile) override;    // TODO
+//	virtual bool FormatDisk(FileInfo *pFile) override;			// TODO - maybe someday
+//	virtual bool ProtectFile(FileInfo *pFile) override;			// not supported
+//	virtual bool UnProtectFile(FileInfo *pFile) override;		// not supported
+	virtual bool RenameFile(FileInfo *pFile, const char *csNewFile) override;
 
 	// class-specific functions
 	bool BufferSectorFile(FileInfo *pFile);
