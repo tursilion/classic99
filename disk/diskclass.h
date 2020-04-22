@@ -166,7 +166,8 @@ enum {
 #define OP_SCRATCH		8
 #define OP_STATUS		9
 
-// SBR opcodes
+// SBR opcodes - note: there is some assumption these do not overlap the File operation codes
+// Not that we can change them, since they are pre-defined by TI ;)
 #define SBR_SECTOR		0x10
 #define SBR_FORMAT		0x11
 #define SBR_PROTECT		0x12

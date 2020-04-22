@@ -464,7 +464,7 @@ CAPTION "Breakpoint Syntax"
 FONT 9, "Courier New", 400, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "Close",IDOK,135,238,50,14
-    LTEXT           "M0000=FF   - break when the CPU memory byte at 0000 equals FF\r\nW0000=FFFF - break when the CPU memory word at 0000 equals FFFF\r\nV0000=FF   - break when the VDP memory byte at 0000 equals FF\r\nX00000=FF  - break when the AMS (eXtended) memory byte at 00000 equals FF",IDC_STATIC,7,125,312,34
+    LTEXT           "M0000=FF   - break when the CPU memory byte at 0000 equals FF\r\nW0000=FFFF - break when the CPU memory word at 0000 equals FFFF\r\nV0000=FF   - break when the VDP memory byte at 0000 equals FF",IDC_STATIC,7,125,312,25
     LTEXT           "*0000      - break when address 0000 is accessed (read or write)\r\n>0000      - break when address 0000 is written to\r\n>V0000     - break when VDP address 0000 is written to",IDC_STATIC,7,19,312,33
     LTEXT           "U0=FF      - break when VDP register 0 equals FF\r\nR0=FFFF    - break when Register 0 equals FFFF",IDC_STATIC,7,103,312,17
     LTEXT           "T(0000-0001) Performs cycle counting between address 0000 and 0001 (PC)",IDC_STATIC,7,188,285,8
@@ -475,6 +475,7 @@ BEGIN
     LTEXT           "All compare operations may include {0000} after the address to indicate a mask",IDC_STATIC,7,175,313,8
     LTEXT           "L0000=#    - Log address to disk file # (1-9) (range okay)",IDC_STATIC,7,202,312,10
     LTEXT           ">G0000     - break when GROM address 0000 is written to\r\n>X00000    - break when AMS (eXtended) address 00000 is written to",IDC_STATIC,7,44,312,14
+    LTEXT           "X00000=FF  - break when the AMS (eXtended) memory byte at 00000 equals FF",IDC_STATIC,7,150,309,11
 END
 
 IDD_HEATMAP DIALOGEX 0, 0, 168, 186

@@ -1368,7 +1368,7 @@ bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
 
 	if (pFile->LengthSectors == 0) {
 		FileInfo lclFile;
-		lclFile.CopyFileInfo(pFile, true);
+		lclFile.CopyFileInfo(pFile, true);  // not that this is necessarily correct yet
 		if (!TryOpenFile(&lclFile)) {
 			pFile->LastError = ERR_FILEERROR;
 			return false;

@@ -913,6 +913,12 @@ void do_sbrlnk(int nOpCode) {
 		return;
 	}
 
+    // log the SBR opcode for later use
+    // Fortunately, they don't conflict with the PAB opcodes
+    tmpFile.OpCode = nOpCode;
+    // also, some DSRs expect the mode (in status) to be set correctly in order to open the file correctly
+    // we'll set them individually below
+
 	switch (nOpCode) {
 		case SBR_SECTOR:
 			{
@@ -922,12 +928,14 @@ void do_sbrlnk(int nOpCode) {
 
 				if (rcpubyte(0x834d)) {		// 0 = write, else read
 					debug_write("Sector read: drive %d, sector %d, VDP >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.DataBuffer);
+                    tmpFile.Status = FLAG_INPUT;
 					if (!pDriveType[tmpFile.nDrive]->ReadSector(&tmpFile)) {
 						// write the error code into >8350 (done below)
 						// wcpubyte(0x8350, tmpFile.LastError);
 					}
 				} else {
 					debug_write("Sector write: drive %d, sector %d, VDP >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.DataBuffer);
+                    tmpFile.Status = FLAG_OUTPUT;
 
 					// check for disk write protection
 					if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
@@ -958,6 +966,7 @@ void do_sbrlnk(int nOpCode) {
 			
 				debug_write("Format disk: drive %d, %d tracks, density %d, %d sides, VDP >%04X",
 					tmpFile.nDrive, tmpFile.NumberRecords, tmpFile.RecordsPerSector, tmpFile.LengthSectors, tmpFile.DataBuffer);
+                tmpFile.Status = FLAG_OUTPUT;
 
 				// check for disk write protection
 				if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
@@ -996,6 +1005,7 @@ void do_sbrlnk(int nOpCode) {
 				// (must be max 10 since 10 char filenames won't be padded)
 				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);	// address of filename in VDP - padded with spaces 
 				tmpFile.OpCode = romword(0x834d);		// 0 - unprotect, 0xff - protect
+                tmpFile.Status = FLAG_UPDATE;
 
 				// check for disk write protection
 				if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
@@ -1033,6 +1043,7 @@ void do_sbrlnk(int nOpCode) {
 				GetFilenameFromVDP(romword(0x8350), 10, &tmpFile);		// old filename
 
 				debug_write("Rename file, drive %d, from %s to %s", tmpFile.nDrive, (LPCSTR)tmpFile.csName, (LPCSTR)csNewFile);
+                tmpFile.Status = FLAG_UPDATE;
 
 				// check for disk write protection
 				if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
@@ -1074,6 +1085,8 @@ void do_sbrlnk(int nOpCode) {
 				if (SBR_FILEIN == nOpCode) {
 					// check whether it is just an info request
 					isInfoRequest = (tmpFile.LengthSectors == 0);
+                    debug_write("SBR_FILEIN request on drive %d %s%s", tmpFile.nDrive, tmpFile.csName, isInfoRequest?" for info":"");
+                    tmpFile.Status = FLAG_INPUT;
 					if (!pDriveType[tmpFile.nDrive]->ReadFileSectors(&tmpFile)) {
 						// write the error code into >8350 (done below)
 						// wcpubyte(0x8350, tmpFile.LastError);
@@ -1087,6 +1100,8 @@ void do_sbrlnk(int nOpCode) {
 						wrword  (nInfo+8, tmpFile.NumberRecords);
 					}
 				} else {
+                    debug_write("SBR_FILEOUT request on %s", tmpFile.csName);
+                    tmpFile.Status = FLAG_OUTPUT;
 					// check for disk write protection
 					if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
 						debug_write("Attempt to write to write-protected disk.");
