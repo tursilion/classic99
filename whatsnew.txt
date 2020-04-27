@@ -1959,6 +1959,18 @@ Cartridge System:
 21 Apr 2020
 - Added rename support to image disk
 - Fix AMS mapping RAM in non-mappable areas
+-----------------------------------------------
+27 Apr 2020
+- ** fix interrupt skip after context switch instructions ** - off by one meant we never really skipped
+- fix breakpoint loads for more complex breakpoints, was using a destructive string call
+- add level masking to interrupt calls, though I think it doesn't matter on the TI...
+- add ability to trigger breakpoints for WP and ST register changes
+- remove interrupt skip from X instruction that didn't work anyway but shouldn't have been there
+- BaseDisk::CloseAllFiles only closed files if they were not open. ;)
+- add debug warning when VDP accessed with interrupts active
+- make sure to check for open files on reset cases
+- fix for drawing border when 80 column mode is disabled but the bits are set anyway
+
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
