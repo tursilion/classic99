@@ -208,6 +208,39 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 int EmitDebugLine(char cPrefix, struct history obj, CString &csOut);
 void UpdateUserCartMRU();
 
+// checks for open files. Returns true to continue or false to abort
+bool VerifyOpenFiles(HWND hwnd) {
+	EnterCriticalSection(&csDriveType);
+
+    bool isOpen = false;
+
+	for (int idx=0; idx<MAX_DRIVES; idx++) {
+		if (NULL != pDriveType[idx]) {
+			if (pDriveType[idx]->CheckOpenFiles()) {
+                isOpen = true;
+            }
+		}
+	}
+
+    if (isOpen) {
+		if (IDYES != MessageBox(hwnd, "Please close all open files before changing disk configuration. If you are sure you want to override this and force files to close, click YES.", "Files open - data may be lost if you proceed.", MB_YESNO | MB_ICONASTERISK)) {
+			LeaveCriticalSection(&csDriveType);
+			return false;
+		}
+    }
+
+	for (int idx=0; idx<MAX_DRIVES; idx++) {
+		if (NULL != pDriveType[idx]) {
+			if (pDriveType[idx]->CheckOpenFiles()) {
+				pDriveType[idx]->CloseAllFiles();
+			}
+		}
+	}
+
+    LeaveCriticalSection(&csDriveType);
+    return true;
+}
+
 // add a string to the MRU list
 void addMRU(CString *pList, CString newStr) {
     // We move this string to the top of the list, then
@@ -713,13 +746,15 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             char buf[1024];
             // we only care about the first file - even if the user dropped multiple
             if (DragQueryFile(hDrop, 0, buf, sizeof(buf))) {
-			    int ret;
+			    int ret = IDNO;
                 DragFinish(hDrop);
-			    if (fKeyEverPressed) {
-				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
-			    } else {
-				    ret=IDYES;
-			    }
+                if (VerifyOpenFiles(hwnd)) {
+			        if (fKeyEverPressed) {
+				        ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
+			        } else {
+				        ret=IDYES;
+			        }
+                }
 			    if (IDYES == ret) {
                     // Make a fake OPENFILENAME
                     // hwndOwner, lpstrFileTitle, lpstrFile, nFileExtension
@@ -756,12 +791,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			// Check for dynamic ones first, so we don't need a huge switch
 			if ((wParam >= ID_SYSTEM_0) && (wParam < ID_SYSTEM_0+100)) {
 				// user requested to change system
-				int ret;
-				if ((!lParam)&&(fKeyEverPressed)) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change System Type", MB_YESNO|MB_ICONQUESTION);
-				} else {
-					ret=IDYES;
-				}
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if ((!lParam)&&(fKeyEverPressed)) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change System Type", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					nSystem=wParam-ID_SYSTEM_0;
 					for (int idx=0; idx<100; idx++) {
@@ -787,12 +824,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			if ((wParam >= ID_APP_0) && (wParam < ID_APP_0+100)) {
 				// user requested to change cartridge (apps)
-				int ret;
-				if (fKeyEverPressed) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
-				} else {
-					ret=IDYES;
-				}
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if (fKeyEverPressed) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=0;
@@ -815,12 +854,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			if ((wParam >= ID_GAME_0) && (wParam < ID_GAME_0+100)) {
 				// user requested to change cartridge (games)
-				int ret;
-				if (fKeyEverPressed) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
-				} else {
-					ret=IDYES;
-				}
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if (fKeyEverPressed) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=1;
@@ -843,12 +884,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			if ((wParam >= ID_USER_0) && (wParam < ID_USER_0+MAXUSERCARTS)) {
 				// user requested to change cartridge (user)
-				int ret;
-				if (fKeyEverPressed) {
-					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
-				} else {
-					ret=IDYES;
-				}
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if (fKeyEverPressed) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=2;
@@ -1073,101 +1116,103 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_FILE_WARMRESET:
 			case ID_FILE_SCRAMBLERESET:
 			case ID_FILE_ERASEUBERGROM:
-				// save roms before we wipe all the memory!
-				saveroms();
+                if (VerifyOpenFiles(hwnd)) {
+				    // save roms before we wipe all the memory!
+				    saveroms();
 				
-				// now erase memories as appropriate
-				if (LOWORD(wParam) == ID_FILE_ERASEUBERGROM) {
-					memrnd(UberGROM, sizeof(UberGROM));
-					memrnd(UberRAM, sizeof(UberRAM));
-					memrnd(UberEEPROM, sizeof(UberEEPROM));
-					bScrambleMemory=false;
-					bWarmBoot = false;
-				}
-				if (LOWORD(wParam) == ID_FILE_RESET) {
-					bScrambleMemory=false;
-					bWarmBoot = false;
-				}
-				if (LOWORD(wParam) == ID_FILE_WARMRESET) {
-					bScrambleMemory = false;
-					bWarmBoot = true;
-				}
-				if (LOWORD(wParam) == ID_FILE_SCRAMBLERESET) {
-					bScrambleMemory=true;
-					bWarmBoot = false;
-				}
+				    // now erase memories as appropriate
+				    if (LOWORD(wParam) == ID_FILE_ERASEUBERGROM) {
+					    memrnd(UberGROM, sizeof(UberGROM));
+					    memrnd(UberRAM, sizeof(UberRAM));
+					    memrnd(UberEEPROM, sizeof(UberEEPROM));
+					    bScrambleMemory=false;
+					    bWarmBoot = false;
+				    }
+				    if (LOWORD(wParam) == ID_FILE_RESET) {
+					    bScrambleMemory=false;
+					    bWarmBoot = false;
+				    }
+				    if (LOWORD(wParam) == ID_FILE_WARMRESET) {
+					    bScrambleMemory = false;
+					    bWarmBoot = true;
+				    }
+				    if (LOWORD(wParam) == ID_FILE_SCRAMBLERESET) {
+					    bScrambleMemory=true;
+					    bWarmBoot = false;
+				    }
 				
-				TriggerBreakPoint(true);				// halt the CPU
-				Sleep(50);								// wait for it...
+				    TriggerBreakPoint(true);				// halt the CPU
+				    Sleep(50);								// wait for it...
 
-				memset(CRU, 1, 4096);					// reset 9901
-	            CRU[0]=0;	// timer control
-	            CRU[1]=0;	// peripheral interrupt mask
-	            CRU[2]=0;	// VDP interrupt mask
-	            CRU[3]=0;	// timer interrupt mask??
-            //  CRU[12-14]  // keyboard column select
-            //  CRU[15]     // Alpha lock 
-            //  CRU[24]     // audio gate (leave high)
-	            CRU[25]=0;	// mag tape out - needed for Robotron to work!
-	            CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
-				timer9901 = 0;
-                timer9901Read = 0;
-				starttimer9901 = 0;
-				timer9901IntReq=0;
-				wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
-				init_kb();								// Reset keyboard emulation
-				SetupSams(sams_enabled, sams_size);		// Prepare the AMS system
-				if (NULL != InitSid) {
-					InitSid();							// reset the SID chip
-					if (NULL != SetSidBanked) {		
-						SetSidBanked(false);			// switch it out for now
-					}
-				}
-				resetDAC();
-				readroms();								// reload the real ROMs
-				if (NULL != pCurrentHelpMsg) {
-					szDefaultWindowText="Classic99 - See Help->Known Issues for this cart";
-					SetWindowText(myWnd, szDefaultWindowText);
-				} else {
-                    szDefaultWindowText = AppName;
-					SetWindowText(myWnd, szDefaultWindowText);
-				}
+				    memset(CRU, 1, 4096);					// reset 9901
+	                CRU[0]=0;	// timer control
+	                CRU[1]=0;	// peripheral interrupt mask
+	                CRU[2]=0;	// VDP interrupt mask
+	                CRU[3]=0;	// timer interrupt mask??
+                //  CRU[12-14]  // keyboard column select
+                //  CRU[15]     // Alpha lock 
+                //  CRU[24]     // audio gate (leave high)
+	                CRU[25]=0;	// mag tape out - needed for Robotron to work!
+	                CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
+				    timer9901 = 0;
+                    timer9901Read = 0;
+				    starttimer9901 = 0;
+				    timer9901IntReq=0;
+				    wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
+				    init_kb();								// Reset keyboard emulation
+				    SetupSams(sams_enabled, sams_size);		// Prepare the AMS system
+				    if (NULL != InitSid) {
+					    InitSid();							// reset the SID chip
+					    if (NULL != SetSidBanked) {		
+						    SetSidBanked(false);			// switch it out for now
+					    }
+				    }
+				    resetDAC();
+				    readroms();								// reload the real ROMs
+				    if (NULL != pCurrentHelpMsg) {
+					    szDefaultWindowText="Classic99 - See Help->Known Issues for this cart";
+					    SetWindowText(myWnd, szDefaultWindowText);
+				    } else {
+                        szDefaultWindowText = AppName;
+					    SetWindowText(myWnd, szDefaultWindowText);
+				    }
 
-				pCPU->reset();
-				pGPU->reset();
-				pCurrentCPU = pCPU;
-				bF18AActive = 0;
-				for (int idx=0; idx<=PCODEGROMBASE; idx++) {
-					GROMBase[idx].grmaccess=2;			// no GROM accesses yet
-				}
-				nCurrentDSR=-1;
-				memset(nDSRBank, 0, sizeof(nDSRBank));
-				doLoadInt=false;						// no pending LOAD
-				vdpReset(true);	    					// TODO: should move these vars into the reset function
-				vdpaccess=0;							// No VDP address writes yet 
-				vdpwroteaddress=0;						// timer after a VDP address write to allow time to fetch
-				vdpscanline=0;
-				vdpprefetch=0;
-				vdpprefetchuninited = true;
-				VDPREG[0]=0;
-				VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
-				end_of_frame=0;							// No end of frame yet
-				CPUSpeechHalt=false;					// not halted for speech reasons
-				CPUSpeechHaltByte=0;					// byte pending for the speech hardware
-				cpucount=0;
-				cpuframes=0;
-				fKeyEverPressed=false;					// No key pressed yet (to disable the warning on cart change)
-				memset(CPUMemInited, 0, sizeof(CPUMemInited));	// no CPU mem written to yet
-				memset(VDPMemInited, 0, sizeof(VDPMemInited));	// or VDP
-				bWarmBoot = false;						// if it was a warm boot, it's done now
-				// set both joysticks as active
-				installedJoysticks = 0x03;
-				// but don't reset g_bCheckUninit
-				DoPlay();
-				// these must come AFTER DoPlay()
-				max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
-				cfg_cpf=max_cpf;
-				InterlockedExchange((LONG*)&cycles_left, max_cpf);
+				    pCPU->reset();
+				    pGPU->reset();
+				    pCurrentCPU = pCPU;
+				    bF18AActive = 0;
+				    for (int idx=0; idx<=PCODEGROMBASE; idx++) {
+					    GROMBase[idx].grmaccess=2;			// no GROM accesses yet
+				    }
+				    nCurrentDSR=-1;
+				    memset(nDSRBank, 0, sizeof(nDSRBank));
+				    doLoadInt=false;						// no pending LOAD
+				    vdpReset(true);	    					// TODO: should move these vars into the reset function
+				    vdpaccess=0;							// No VDP address writes yet 
+				    vdpwroteaddress=0;						// timer after a VDP address write to allow time to fetch
+				    vdpscanline=0;
+				    vdpprefetch=0;
+				    vdpprefetchuninited = true;
+				    VDPREG[0]=0;
+				    VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
+				    end_of_frame=0;							// No end of frame yet
+				    CPUSpeechHalt=false;					// not halted for speech reasons
+				    CPUSpeechHaltByte=0;					// byte pending for the speech hardware
+				    cpucount=0;
+				    cpuframes=0;
+				    fKeyEverPressed=false;					// No key pressed yet (to disable the warning on cart change)
+				    memset(CPUMemInited, 0, sizeof(CPUMemInited));	// no CPU mem written to yet
+				    memset(VDPMemInited, 0, sizeof(VDPMemInited));	// or VDP
+				    bWarmBoot = false;						// if it was a warm boot, it's done now
+				    // set both joysticks as active
+				    installedJoysticks = 0x03;
+				    // but don't reset g_bCheckUninit
+				    DoPlay();
+				    // these must come AFTER DoPlay()
+				    max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
+				    cfg_cpf=max_cpf;
+				    InterlockedExchange((LONG*)&cycles_left, max_cpf);
+                }
 				break;
 
 			case ID_FILE_QUIT:
@@ -2203,8 +2248,10 @@ BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						}
 						if ((sams_enabled!=old_sams_enabled)||(sams_size!=old_sams_size)) {
 							// changing this in real time wipes memory, so don't do that!
-							int ret;
-							ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change AMS Memory size", MB_YESNO|MB_ICONQUESTION);
+				            int ret=IDNO;
+                            if (VerifyOpenFiles(hwnd)) {
+    							ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change AMS Memory size", MB_YESNO|MB_ICONQUESTION);
+                            }
 							if (IDYES == ret) {
 								PostMessage(myWnd, WM_COMMAND, ID_FILE_RESET, 0);
 							} else {
@@ -4191,17 +4238,9 @@ void ConfigureDisk(HWND hwnd, int nDiskNum) {
 	// this is a bit harsh, but we keep the disk system locked and make this dialog modal
 	EnterCriticalSection(&csDriveType);
 
-	for (int idx=0; idx<MAX_DRIVES; idx++) {
-		if (NULL != pDriveType[idx]) {
-			if (pDriveType[idx]->CheckOpenFiles()) {
-				if (IDYES != MessageBox(hwnd, "Please close all open files before changing disk configuration. If you are sure you want to override this and force files to close, click YES.", "Files open - data may be lost if you proceed.", MB_YESNO | MB_ICONASTERISK)) {
-					LeaveCriticalSection(&csDriveType);
-					return;
-				}
-				pDriveType[idx]->CloseAllFiles();
-			}
-		}
-	}
+    if (!VerifyOpenFiles(hwnd)) {
+        return;
+    }
 
 	// Create a dialog to reconfigure disk settings - note we hold the lock through this whole thing!
 	g_DiskCfgNum = nDiskNum;						// a bit hard to pass data to a modal dialog!

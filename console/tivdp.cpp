@@ -718,7 +718,7 @@ void VDPdisplay(int scanline)
 			if ((tmplin >= 0) && (tmplin < 192+16)) {
 				plong=(DWORD*)framedata;
 				longcol=GETPALETTEVALUE(VDPREG[7]&0xf);
-				if ((reg0&0x04)&&(VDPREG[1]&0x10)) {
+				if ((reg0&0x04)&&(VDPREG[1]&0x10)&&(bEnable80Columns)) {
 					// 80 column text
 					nMax = (512+16)/4;
 				} else {

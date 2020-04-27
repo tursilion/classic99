@@ -562,8 +562,10 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 				// must match the number of sectors
 				if (pFile->NumberRecords != pFile->LengthSectors) {
 					// check for byte swap (better debugging)
+                    // TODO: option to breakpoint on these warnings - sometimes they scroll off too quickly
+                    // Or maybe warnings should have their own output window? That would be handy!
 					if (((buf[14]<<8)|(buf[15])) == pFile->LengthSectors) {
-						debug_write("Var File had Number Records byte-swapped - will fix - recommend re-saving file");
+						debug_write("Warning: Var File had Number Records byte-swapped - will fix - recommend re-saving file");
 						pFile->NumberRecords = pFile->LengthSectors;
 					} else {
 						debug_write("Warning: Number Records doesn't match sector length on variable file.");
@@ -574,7 +576,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 				// see if it was byte swapped. We don't bother with using BytesInLastSector to get the actual count
 				if (pFile->NumberRecords > (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
 					if (((buf[14]<<8)|(buf[15])) <= (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
-						debug_write("Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
+						debug_write("Warning: Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
 						pFile->NumberRecords = ((buf[14]<<8)|(buf[15]));
 					}
 				}
@@ -643,7 +645,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 				if (pFile->NumberRecords != pFile->LengthSectors) {
 					// check for byte swap (better debugging)
 					if (((buf[18]<<8)|(buf[19])) == pFile->LengthSectors) {
-						debug_write("Var File had Number Records byte-swapped - will fix - recommend re-saving file");
+						debug_write("Warning: Var File had Number Records byte-swapped - will fix - recommend re-saving file");
 						pFile->NumberRecords = pFile->LengthSectors;
 					} else {
 						debug_write("Warning: Number Records doesn't match sector length on variable file.");
@@ -654,7 +656,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 				// see if it was byte swapped. We don't bother with using BytesInLastSector to get the actual count
 				if (pFile->NumberRecords > (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
 					if (((buf[18]<<8)|(buf[19])) <= (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
-						debug_write("Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
+						debug_write("Warning: Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
 						pFile->NumberRecords = ((buf[18]<<8)|(buf[19]));
 					}
 				}
