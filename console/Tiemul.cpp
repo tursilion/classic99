@@ -3642,6 +3642,26 @@ void do1()
 
 		pCurrentCPU->ResetCycleCount();
 
+        // check for breakpoints on WP and ST
+		for (int idx=0; idx<nBreakPoints; idx++) {
+			switch (BreakPoints[idx].Type) {
+				case BREAK_WP:
+				    if ((pCurrentCPU->GetWP()&BreakPoints[idx].Mask) == BreakPoints[idx].Data) {
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					    TriggerBreakPoint();
+                        }
+				    }
+					break;
+				case BREAK_ST:
+				    if ((pCurrentCPU->GetST()&BreakPoints[idx].Mask) == BreakPoints[idx].Data) {
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					    TriggerBreakPoint();
+                        }
+				    }
+					break;
+            }
+        }
+
 		if ((!nopFrame) && (bDebugAfterStep)) {
 			bDebugAfterStep=false;
 			draw_debug();
@@ -4370,6 +4390,10 @@ Byte rvdpbyte(Word x, bool rmw)
 		return(0);											// write address
 	}
 
+    if (pCurrentCPU->GetST()&0xf) {
+        debug_write("Warning: PC >%04X reading VDP with LIMI %d", pCurrentCPU->GetPC(), pCurrentCPU->GetST()&0xf);
+    }
+
 	if (x&0x0002)
 	{	/* read status */
 
@@ -4482,7 +4506,11 @@ void wvdpbyte(Word x, Byte c)
 		return;							/* not going to write at that block */
 	}
 
-	if (x&0x0002)
+    if (pCurrentCPU->GetST()&0xf) {
+        debug_write("Warning: PC >%04X writing VDP with LIMI %d", pCurrentCPU->GetPC(), pCurrentCPU->GetST()&0xf);
+    }
+
+    if (x&0x0002)
 	{	/* write address */
 		// count down access cycles to help detect write address/read vdp overruns (there may be others but we don't think so!)
 		// anyway, we need 8uS or we warn

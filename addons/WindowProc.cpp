@@ -2664,6 +2664,10 @@ const char *FormatBreakpoint(int idx) {
 	if (idx < MAX_BREAKPOINTS) {
 		// write the prefix, if any
 		switch (BreakPoints[idx].Type) {
+            case BREAK_PC:
+                // nothing to do here
+                break;
+
 			case BREAK_ACCESS:
 				szTmp[pos++]='*';
 				break;
@@ -2737,6 +2741,16 @@ const char *FormatBreakpoint(int idx) {
 			case BREAK_DISK_LOG:
 				szTmp[pos++]='L';
 				break;
+
+            case BREAK_WP:
+				szTmp[pos++]='W';
+				szTmp[pos++]='P';
+                break;
+
+            case BREAK_ST:
+				szTmp[pos++]='S';
+				szTmp[pos++]='T';
+                break;
 		}
 
 		// write the address or range
@@ -2745,6 +2759,11 @@ const char *FormatBreakpoint(int idx) {
 			case BREAK_EQUALS_REGISTER:
 				pos+=sprintf(&szTmp[pos], "%d", BreakPoints[idx].A);
 				break;
+
+            case BREAK_ST:
+            case BREAK_WP:
+                // these have no address
+                break;
 
 			default:
 				if (BreakPoints[idx].B != 0) {
@@ -2771,6 +2790,8 @@ const char *FormatBreakpoint(int idx) {
 		switch (BreakPoints[idx].Type) {
 			case BREAK_EQUALS_WORD:
 			case BREAK_EQUALS_REGISTER:
+            case BREAK_WP:
+            case BREAK_ST:
 				// a word
 				pos+=sprintf(&szTmp[pos], "=%04X", BreakPoints[idx].Data);
 				break;
@@ -2852,17 +2873,44 @@ bool AddBreakpoint(char *buf1) {
 				nType=BREAK_READ;
 			}
 			break;
-		case 'W':	// Word =
-			nType=BREAK_EQUALS_WORD;
-			pTmp=strchr(buf1, '=');
-			if (NULL == pTmp) {
-				nType=BREAK_NONE;
-			} else {
-				if (1 != sscanf(pTmp+1, "%x", &nData)) {
-					nType=BREAK_NONE;
-				}
-                nData &= 0xffff;
-			}
+		case 'W':	// Word =, or WP=
+            if (buf1[1] == 'P') {
+                nType=BREAK_WP;
+			    pTmp=strchr(buf1, '=');
+			    if (NULL == pTmp) {
+				    nType=BREAK_NONE;
+			    } else {
+				    if (1 != sscanf(pTmp+1, "%x", &nData)) {
+					    nType=BREAK_NONE;
+				    }
+                    nData &= 0xffff;
+			    }
+            } else {
+			    nType=BREAK_EQUALS_WORD;
+			    pTmp=strchr(buf1, '=');
+			    if (NULL == pTmp) {
+				    nType=BREAK_NONE;
+			    } else {
+				    if (1 != sscanf(pTmp+1, "%x", &nData)) {
+					    nType=BREAK_NONE;
+				    }
+                    nData &= 0xffff;
+			    }
+            }
+			break;
+		case 'S':	// ST
+            if (buf1[1] == 'T') {
+                nType=BREAK_ST;
+			    pTmp=strchr(buf1, '=');
+			    if (NULL == pTmp) {
+				    nType=BREAK_NONE;
+			    } else {
+				    if (1 != sscanf(pTmp+1, "%x", &nData)) {
+					    nType=BREAK_NONE;
+				    }
+                    nData &= 0xffff;
+			    }
+            }
 			break;
 		case 'M':	// Memory = 
 			nType=BREAK_EQUALS_BYTE;
@@ -2946,72 +2994,81 @@ bool AddBreakpoint(char *buf1) {
 		}
 
 		if (nType != BREAK_NONE) {
-			if (ReadRange(nType, &A, &B, &bank, &buf1[1])) {
-				// eliminate a few special cases
-                // only AMS supports more than 64k
-                if ((nType != BREAK_READAMS) && (nType != BREAK_WRITEAMS) && (nType != BREAK_EQUALS_AMS)) {
-                    A&=0xffff;
-                    B&=0xffff;
+            // WP and ST have no ranges
+            if ((nType != BREAK_WP)&&(nType != BREAK_ST)) {
+    			if (!ReadRange(nType, &A, &B, &bank, &buf1[1])) {
+                    // parse error
+                    nType = BREAK_NONE;
                 }
-				switch (nType) {
-					case BREAK_RUN_TIMER:
-						if (B==0) {
-							nType = BREAK_NONE;		// invalid without range
-						}
-						break;
+            }
+        }
 
-					case BREAK_EQUALS_REGISTER:
-					case BREAK_EQUALS_VDPREG:
-						if (B!=0) {
-							nType = BREAK_NONE;		// range not legal on registers
-						}
-						if (bank != -1) {
-							nType = BREAK_NONE;		// bank not valid on registers
-						}
-						break;
-
-					case BREAK_EQUALS_AMS:
-					case BREAK_EQUALS_VDP:
-						if (bank != -1) {
-							nType = BREAK_NONE;		// bank not valid on VDP or AMS
-						}
-						break;
-
-					case BREAK_WRITEVDP:
-					case BREAK_READVDP:
-						if ((A>0x47ff) || (B>0x47ff)) {
-							nType = BREAK_NONE;		// out of range for VDP RAM
-						}
-						break;
-				}
-
-				// check for a mask
-				Mask = 0xffff;
-				pTmp = strchr(buf1, '{');
-				if (NULL != pTmp) {
-					if (1 != sscanf(pTmp+1, "%x", &Mask)) {
-						nType = BREAK_NONE;
+        // if it's STILL good...
+        if (nType != BREAK_NONE) {
+			// eliminate a few special cases
+            // only AMS supports more than 64k
+            if ((nType != BREAK_READAMS) && (nType != BREAK_WRITEAMS) && (nType != BREAK_EQUALS_AMS)) {
+                A&=0xffff;
+                B&=0xffff;
+            }
+			switch (nType) {
+				case BREAK_RUN_TIMER:
+					if (B==0) {
+						nType = BREAK_NONE;		// invalid without range
 					}
-					if (Mask == 0) Mask = 0xffff;
-					if ((nData&Mask) != nData) {
-						// invalid data
-						nType = BREAK_NONE;
-					}
-				}
+					break;
 
-				if (nType != BREAK_NONE) {
-					// still valid, now we need to save and format it
-					BreakPoints[nBreakPoints].Type=nType;
-					BreakPoints[nBreakPoints].A=A;
-					BreakPoints[nBreakPoints].B=B;
-					BreakPoints[nBreakPoints].Bank=bank;
-					BreakPoints[nBreakPoints].Data=nData;
-					BreakPoints[nBreakPoints].Mask=Mask;
-					strcpy(buf1, FormatBreakpoint(nBreakPoints));
-					nBreakPoints++;
-					bRet=true;
-				}
+				case BREAK_EQUALS_REGISTER:
+				case BREAK_EQUALS_VDPREG:
+					if (B!=0) {
+						nType = BREAK_NONE;		// range not legal on registers
+					}
+					if (bank != -1) {
+						nType = BREAK_NONE;		// bank not valid on registers
+					}
+					break;
+
+				case BREAK_EQUALS_AMS:
+				case BREAK_EQUALS_VDP:
+					if (bank != -1) {
+						nType = BREAK_NONE;		// bank not valid on VDP or AMS
+					}
+					break;
+
+				case BREAK_WRITEVDP:
+				case BREAK_READVDP:
+					if ((A>0x47ff) || (B>0x47ff)) {
+						nType = BREAK_NONE;		// out of range for VDP RAM
+					}
+					break;
 			}
+		}
+
+        // check for a mask
+		Mask = 0xffff;
+		pTmp = strchr(buf1, '{');
+		if (NULL != pTmp) {
+			if (1 != sscanf(pTmp+1, "%x", &Mask)) {
+				nType = BREAK_NONE;
+			}
+			if (Mask == 0) Mask = 0xffff;
+			if ((nData&Mask) != nData) {
+				// invalid data
+				nType = BREAK_NONE;
+			}
+		}
+
+		if (nType != BREAK_NONE) {
+			// still valid, now we need to save and format it
+			BreakPoints[nBreakPoints].Type=nType;
+			BreakPoints[nBreakPoints].A=A;
+			BreakPoints[nBreakPoints].B=B;
+			BreakPoints[nBreakPoints].Bank=bank;
+			BreakPoints[nBreakPoints].Data=nData;
+			BreakPoints[nBreakPoints].Mask=Mask;
+			strcpy(buf1, FormatBreakpoint(nBreakPoints));
+			nBreakPoints++;
+			bRet=true;
 		}
 	}
 
@@ -3293,6 +3350,13 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								SetEvent(hDebugWindowUpdateEvent);
 								break;
 							}
+							if (1 == sscanf(buf, "ST=%X", &x)) {
+								// make a change to the Status register
+								pCurrentCPU->SetST(x);
+								// refresh the dialog
+								SetEvent(hDebugWindowUpdateEvent);
+								break;
+							}
                             if (0 == _stricmp(buf, "AMS")) {
                                 dumpMapperRegisters();
                                 break;
@@ -3302,6 +3366,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                                 debug_write("xxxx                - set base address to view in CPU, AMS, VDP and GROM");
                                 debug_write("PC=xxxx             - set Program Counter to xxxx");
                                 debug_write("WP=xxxx             - set Workspace Pointer to xxxx");
+                                debug_write("ST=xxxx             - set Status register to xxxx");
                                 debug_write("Cxxxx=yy[yyyyyy...] - write byte or bytes to CPU memory");
                                 debug_write("Vxxxx=yy[yyyyyy...] - write byte or bytes to VDP memory");
                                 debug_write("Gxxxx=yy[yyyyyy...] - write byte or bytes to GROM");

@@ -113,7 +113,9 @@ enum {
 	BREAK_DISK_LOG,
     BREAK_READAMS,
     BREAK_WRITEAMS,
-    BREAK_EQUALS_AMS
+    BREAK_EQUALS_AMS,
+    BREAK_WP,
+    BREAK_ST
 };
 
 #define BlitEvent Video_hdl[0]
