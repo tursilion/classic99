@@ -74,6 +74,10 @@ extern CPU9900 * volatile pCurrentCPU;
 extern CPU9900 *pCPU, *pGPU;
 extern int bInterleaveGPU;
 
+// we set skip_interrupt to 2 because it's decremented after every instruction - including
+// the one that sets it!
+#define SET_SKIP_INTERRUPT skip_interrupt=2
+
 /////////////////////////////////////////////////////////////////////
 // Status register defines
 /////////////////////////////////////////////////////////////////////
@@ -211,7 +215,7 @@ void CPU9900::reset() {
 	nPostInc[SRC]=0;
 	nPostInc[DST]=0;
 
-	TriggerInterrupt(0x000);				// reset vector is 22 cycles
+	TriggerInterrupt(0x0000,0);				// reset vector is 22 cycles
 	AddCycleCount(4);						// reset is slightly more work than a normal interrupt
 
 	X_flag=0;								// not currently executing an X instruction
@@ -393,7 +397,7 @@ int CPU9900::GetCycleCount() {
 void CPU9900::SetCycleCount(int x) {
 	InterlockedExchange((LONG*)&nCycleCount, x);
 }
-void CPU9900::TriggerInterrupt(Word vector) {
+void CPU9900::TriggerInterrupt(Word vector, Byte level) {
 	// Base cycles: 22
 	// 5 memory accesses:
 	//	Read WP
@@ -411,7 +415,13 @@ void CPU9900::TriggerInterrupt(Word vector) {
 	WRWORD(NewWP+26,WP);				// WP in new R13 
 	WRWORD(NewWP+28,PC);				// PC in new R14 
 	WRWORD(NewWP+30,ST);				// ST in new R15 
-	//ST=(ST&0xfff0);					// disable interrupts
+
+    // lower the interrupt level
+    if (level == 0) {
+        ST=(ST&0xfff0);
+    } else {
+        ST=(ST&0xfff0) | (level-1);
+    }
 
 	Word NewPC = ROMWORD(vector+2);
 
@@ -420,7 +430,7 @@ void CPU9900::TriggerInterrupt(Word vector) {
 	SetPC(NewPC);
 
 	AddCycleCount(22);
-	skip_interrupt = 1;					// you get one instruction to turn interrupts back off
+	SET_SKIP_INTERRUPT;					// you get one instruction to turn interrupts back off
 										// this is true for all BLWP-like operations
 }
 Word CPU9900::GetPC() {
@@ -1070,7 +1080,7 @@ void CPU9900::op_blwp()
 	// by placing the workspace and the vector such that they overlap, and then seeing
 	// where it actually jumps to on hardware?
 
-	skip_interrupt=1;
+	SET_SKIP_INTERRUPT;
 }
 
 void CPU9900::op_jeq()
@@ -1500,6 +1510,9 @@ void CPU9900::op_rtwp()
 	ST=ROMWORD(WP+30);
 	SetPC(ROMWORD(WP+28));
 	SetWP(ROMWORD(WP+26));		// needs to be last!
+
+    // TODO: does this need to skip interrupt? Datasheet doesn't say so
+    //SET_SKIP_INTERRUPT;
 }
 
 void CPU9900::op_x()
@@ -1529,7 +1542,9 @@ void CPU9900::op_x()
 	FormatVI;
 	in=ROMWORD(S);
 	post_inc(SRC);		// does this go before or after the eXecuted instruction??
-	skip_interrupt=1;	// (ends up having no effect because we call the function inline, but technically still correct)
+	
+    // we don't want to skip anymore - when we exit the X is complete. The original skip was because we recalled do1()
+    //SET_SKIP_INTERRUPT;	// (ends up having no effect because we call the function inline, but technically still correct)
 
 	X_flag=PC;			// set flag and save true post-X address for the JMPs (AFTER X's oprands but BEFORE the instruction's oprands, if any)
 
@@ -1575,7 +1590,7 @@ void CPU9900::op_xop()
 	SetPC(ROMWORD(0x0042+(D<<2)));
 	set_XOP;
 
-	skip_interrupt=1;
+	SET_SKIP_INTERRUPT;
 }
 
 void CPU9900::op_c()
@@ -3555,6 +3570,6 @@ Byte GPUF18A::GetSafeByte(int x, int) {
 	return RCPUBYTE(x);
 }
 
-void GPUF18A::TriggerInterrupt(Word /*vector*/) {
+void GPUF18A::TriggerInterrupt(Word /*vector*/, Byte /*level*/) {
 	// do nothing, there are no external interrupts
 }

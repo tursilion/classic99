@@ -97,7 +97,7 @@ public:		// type protection later. Make work today.
 	virtual Word GetSafeWord(int x, int bank);
 	virtual Byte GetSafeByte(int x, int bank);
 
-	virtual	void TriggerInterrupt(Word vector);
+	virtual	void TriggerInterrupt(Word vector, Byte level);
 
 	void post_inc(int nWhich);
 
@@ -278,7 +278,7 @@ public:		// type protection later. Make work today.
 	void WCPUBYTE(Word dest, Byte c) override;
 	Word ROMWORD(Word src, bool rmw) override;
 	void WRWORD(Word dest, Word val) override;
-	void TriggerInterrupt(Word vector) override;
+	void TriggerInterrupt(Word vector, Byte level) override;
 	
 	Word GetSafeWord(int x, int bank) override;
 	Byte GetSafeByte(int x, int bank) override;

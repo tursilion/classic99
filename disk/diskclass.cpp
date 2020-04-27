@@ -277,7 +277,7 @@ bool BaseDisk::CheckOpenFiles() {
 
 void BaseDisk::CloseAllFiles() {
 	for (int idx=0; idx<MAX_FILES; idx++) {
-		if (m_sFiles[idx].bOpen == false) {
+		if (m_sFiles[idx].bOpen == true) {
 			Close(&m_sFiles[idx]);
 		}
 	}

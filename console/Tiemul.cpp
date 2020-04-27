@@ -3130,7 +3130,7 @@ void do1()
 		// When we have peripheral card interrupts, they are masked on CRU[1]
 		if ((((VDPINT)&&(CRU[2]))||((timer9901IntReq)&&(CRU[3]))) && ((pCurrentCPU->GetST()&0x000f) >= 1) && (!skip_interrupt)) {
 //			if (cycles_left >= 22) {					// speed throttling
-				pCurrentCPU->TriggerInterrupt(0x0004);
+				pCurrentCPU->TriggerInterrupt(0x0004,2);    // TODO: what level do I want to throw here? They are all mask 2, right?
 //			}
             // the if cycles_left doesn't work because if we don't take it now, we'll
             // execute other instructions (at least one more!) instead of stopping...
@@ -3527,20 +3527,24 @@ void do1()
 		if ((pCurrentCPU == pCPU) && (!nopFrame)) {
 			// this is a bad pattern, this repeated pCurrentCPU == pCPU, we can clean this up a lot
 			if ((doLoadInt)&&(!skip_interrupt)) {
-				pCurrentCPU->TriggerInterrupt(0xfffc);
+				pCurrentCPU->TriggerInterrupt(0xfffc,0);    // non maskable, what does that do to the interrupt level?
 				doLoadInt=false;
 				// load interrupt also releases IDLE
 				pCurrentCPU->StopIdle();
 			}
 		}
 
+        Word oldWP = pCurrentCPU->GetWP();
+        Word oldST = pCurrentCPU->GetST();
 		Word in = pCurrentCPU->ExecuteOpcode(nopFrame);
-		if (pCurrentCPU == pCPU) {
+
+        if (pCurrentCPU == pCPU) {
             updateTape(pCurrentCPU->GetCycleCount());
 			updateDACBuffer(pCurrentCPU->GetCycleCount());
-			// an instruction has executed, interrupts are again enabled
-			skip_interrupt=0;
-			// update VDP too
+			// count down the skip
+            if (skip_interrupt > 0) --skip_interrupt;
+
+            // update VDP too
 			updateVDP(pCurrentCPU->GetCycleCount());
 
 			// and check for VDP address race
@@ -3643,17 +3647,19 @@ void do1()
 		pCurrentCPU->ResetCycleCount();
 
         // check for breakpoints on WP and ST
+        Word newWP = pCurrentCPU->GetWP();
+        Word newST = pCurrentCPU->GetST();
 		for (int idx=0; idx<nBreakPoints; idx++) {
 			switch (BreakPoints[idx].Type) {
 				case BREAK_WP:
-				    if ((pCurrentCPU->GetWP()&BreakPoints[idx].Mask) == BreakPoints[idx].Data) {
+				    if ((newWP != oldWP) && ((pCurrentCPU->GetWP()&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
                         if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
     					    TriggerBreakPoint();
                         }
 				    }
 					break;
 				case BREAK_ST:
-				    if ((pCurrentCPU->GetST()&BreakPoints[idx].Mask) == BreakPoints[idx].Data) {
+				    if ((newST != oldST) && ((pCurrentCPU->GetST()&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
                         if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
     					    TriggerBreakPoint();
                         }

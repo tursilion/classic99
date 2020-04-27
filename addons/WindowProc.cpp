@@ -4300,14 +4300,14 @@ void ConfigureDisk(HWND hwnd, int nDiskNum) {
         return;
     }
 
-	// this is a bit harsh, but we keep the disk system locked and make this dialog modal
-	EnterCriticalSection(&csDriveType);
-
     if (!VerifyOpenFiles(hwnd)) {
         return;
     }
 
-	// Create a dialog to reconfigure disk settings - note we hold the lock through this whole thing!
+    // this is a bit harsh, but we keep the disk system locked and make this dialog modal
+	EnterCriticalSection(&csDriveType);
+
+    // Create a dialog to reconfigure disk settings - note we hold the lock through this whole thing!
 	g_DiskCfgNum = nDiskNum;						// a bit hard to pass data to a modal dialog!
 	DialogBox(NULL, MAKEINTRESOURCE(IDD_DISKCFG), hwnd, DiskBoxProc);
 
