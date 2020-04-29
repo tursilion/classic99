@@ -1970,6 +1970,12 @@ Cartridge System:
 - add debug warning when VDP accessed with interrupts active
 - make sure to check for open files on reset cases
 - fix for drawing border when 80 column mode is disabled but the bits are set anyway
+-----------------------------------------------
+29 Apr 2020
+- add some missing closes to the disk image handling. should've RAI
+- add full directory sort when writing to a disk image to fix old broken images
+- all the fixes made to saving FIAD headers never made it into disk images: bytes in last header and number record field were both wrong for variable type files
+- added disk size verification to TICC handler because the TICC doesn't check like I thought it did and PEOPLE ARE NOT PAYING ATTENTION TO DOCUMENTED RESTRICTIONS.
 
 
 
