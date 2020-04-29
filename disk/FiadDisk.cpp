@@ -1460,7 +1460,7 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 			// not include the header sector).
 			tmpInfo.NumberRecords = tmpInfo.LengthSectors;
 		} else {
-			// Fred says EOF offset should be zero on fixed files, so do that
+			// Fred and Theirry say EOF offset should be zero on fixed files, so do that
 			tmpInfo.BytesInLastSector=0;
 		}
 	}

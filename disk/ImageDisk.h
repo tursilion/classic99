@@ -103,7 +103,7 @@ public:
     bool WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, int cnt);
 	int findFreeSector(FILE *fp, int lastFileSector);
 	void FreePartialFile(FILE *fp, int fdr, int *sectorList, int sectorCnt);
-
+    bool sortDirectory(FILE *fp, int newFDR);
 
 	// configuration data
 	bool bUseV9T9DSSD;			// use the reverse sector order for DSSD disks that V9T9 did

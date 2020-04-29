@@ -468,6 +468,7 @@ bool ImageDisk::TryOpenFile(FileInfo *pFile) {
 
 	// we got the disk, now we need to find the file.
 	if (!FindFileFDR(fp, pFile, fdr)) {
+    	fclose(fp);
 		return false;
 	}
 	fclose(fp);
@@ -1444,6 +1445,7 @@ bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
 }
 
 // rename should be reasonably safe
+// it needs to resort the index!
 bool ImageDisk::RenameFile(FileInfo *pFile, const char *csNewFile) {
 	unsigned char fdr[256];	// work buffer
 
@@ -1470,6 +1472,7 @@ bool ImageDisk::RenameFile(FileInfo *pFile, const char *csNewFile) {
 
 	// we got the disk, now we need to find the file.
 	if (!FindFileFDR(fp, pFile, fdr)) {
+        fclose(fp);
 		return false;
 	}
 
@@ -1485,8 +1488,12 @@ bool ImageDisk::RenameFile(FileInfo *pFile, const char *csNewFile) {
     // and write it back out
     if (!PutSectorToDisk(fp, pFile->nLocalData, fdr)) {
         pFile->LastError = ERR_DEVICEERROR;
+        fclose(fp);
         return false;
     }
+
+    // update the directory sort in sector 1
+    sortDirectory(fp, 0);
 
 	fclose(fp);
 
@@ -1736,9 +1743,13 @@ bool ImageDisk::Delete(FileInfo *pFile) {
 		return false;
 	}
 
+    // just so any write fixes broken disks
+    sortDirectory(fp, 0);
+
 	// that's it baby! It's history
 	fclose(fp);
 	pFile->LastError = ERR_NOERROR;
+
 	return true;
 }
 
@@ -1763,6 +1774,7 @@ bool ImageDisk::CreateOutputFile(FileInfo *pFile) {
 		if ((pFile->Status & FLAG_MODEMASK) != FLAG_OUTPUT) {
 			// no, we are not
 			debug_write("Can't overwrite existing file with open mode 0x%02X", (pFile->Status & FLAG_MODEMASK));
+            fclose(fp);
 			return false;
 		}
         // flush will remove any existing file if needed
@@ -1792,9 +1804,11 @@ bool ImageDisk::CreateOutputFile(FileInfo *pFile) {
 	// Since we opened it on the disk, we should flush it just to ensure there is valid data in it
 	if (!Flush(pFile)) {
 		pFile->LastError = ERR_FILEERROR;
+        fclose(fp);
 		return false;
 	}
 
+    fclose(fp);
 	return true;
 }
 
@@ -1905,7 +1919,7 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 
 		// we're going to write to RAM for now
         if (pFile->NumberRecords == 0) {
-            // empty file case
+            // empty file case - this is correct as the stored values does NOT include the FDR
             pFile->LengthSectors = 0;
         } else {
     		pFile->LengthSectors = 1;		// at least one so far
@@ -1969,7 +1983,7 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 
 		// is this right? I guess it can't be on a new sector with 0 bytes...
 		// this goes BEFORE the >FF byte is written on variable files
-		pFile->BytesInLastSector = 256-nSector;
+		pFile->BytesInLastSector = 0x100-nSector;
 
         if (pFile->NumberRecords > 0) {
 		    if (pFile->Status & FLAG_VARIABLE) {
@@ -2008,7 +2022,7 @@ void ImageDisk::WriteCluster(unsigned char *buf, int clusterOff, int startnum, i
 
 // this function actually writes the data back to the disk and updates the headers
 bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, int cnt) {
-	unsigned char buf[256], buf2[256];
+	unsigned char buf[256];
 	int sectorList[1600];
 	int sectorCnt = 0;
 
@@ -2029,18 +2043,26 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 
 	memset(buf, ' ', 10);
 	memcpy(buf, (LPCSTR)pFile->csName, pFile->csName.GetLength());
-	//pFile->LengthSectors = (cnt+255)/256;
 	
 	buf[0x0c] = pFile->FileType;
 	buf[0x0d] = pFile->RecordsPerSector;
 	buf[0x0e] = pFile->LengthSectors>>8;
 	buf[0x0f] = pFile->LengthSectors&0xff;
-	if (!(pFile->Status & FLAG_VARIABLE)) {
-		buf[0x10] = pFile->BytesInLastSector;
-	}
+	if (pFile->Status & FLAG_VARIABLE) {
+		buf[0x10] = pFile->BytesInLastSector&0xff;
+	} else {
+        buf[0x10] = 0;  // 0 for fixed
+    }
 	buf[0x11] = pFile->RecordLength;
-	buf[0x12] = pFile->NumberRecords&0xff;	// little endian
-	buf[0x13] = pFile->NumberRecords>>8;
+    if (pFile->Status & FLAG_VARIABLE) {
+        // variable file stores number of sectors again
+    	buf[0x12] = pFile->LengthSectors&0xff;	// little endian
+	    buf[0x13] = pFile->LengthSectors>>8;
+    } else {
+        // fixed file stores number records
+    	buf[0x12] = pFile->NumberRecords&0xff;	// little endian
+	    buf[0x13] = pFile->NumberRecords>>8;
+    }
 
 	// all right, it's set up, now write out the file itself
 	int lastFileSector = -(pFile->LengthSectors);
@@ -2069,6 +2091,8 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 		}
 		cnt-=256;
 	}
+
+    // now fill in the sector information into the FDR
 
 	// now store the sector list into the FDR
     // todo: probably temp debug delete me too...
@@ -2124,67 +2148,8 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 		return false;
 	}
 
-	// now we just need to add it to the disk index
-	if (!GetSectorFromDisk(fp, 1, buf)) {
-		debug_write("Can't read sector 1 for %s", pFile->csName);
-		FreePartialFile(fp, fdr, sectorList, sectorCnt);
-		pFile->LastError = ERR_DEVICEERROR;
-		return false;
-	}
-
-	// now read the existing directory, one at a time, until we figure out
-	// where THIS file should go
-	int pos = 0;
-	for (;;) {
-		CString csName;
-
-		int sec = buf[pos]*256 + buf[pos+1];
-		if (sec == 0) break;	// must go here!
-
-		if (!GetSectorFromDisk(fp, sec, buf2)) {
-			debug_write("Can't read sector %d for %s", sec, pFile->csName);
-			FreePartialFile(fp, fdr, sectorList, sectorCnt);
-			pFile->LastError = ERR_DEVICEERROR;
-			return false;
-		}
-
-		// copy out the name
-		csName="";
-		for (int idx=0; idx<10; idx++) {
-			if (buf2[idx] <= ' ') break;
-			csName+=buf2[idx];
-		}
-
-		// and compare
-		if (csName.Compare(pFile->csName) > 0) {
-			if (pos > 0) pos -= 2;
-			break;
-		}
-
-		pos+=2;
-	}
-
-	if (pos > 254) {
-		debug_write("Directory index full.");
-		FreePartialFile(fp, fdr, sectorList, sectorCnt);
-		pFile->LastError = ERR_BUFFERFULL;
-		return false;
-	}
-
-	if (pos < 254) {
-		memmove(&buf[pos+2], &buf[pos], 256-pos-2);
-	}
-
-	buf[pos] = ((fdr>>8)&0xff);
-	buf[pos+1] = (fdr&0xff);
-
-	// finally, just write it back
-	if (!PutSectorToDisk(fp, 1, buf)) {
-		debug_write("Can't write sector 1 for %s", pFile->csName);
-		FreePartialFile(fp, fdr, sectorList, sectorCnt);
-		pFile->LastError = ERR_DEVICEERROR;
-		return false;
-	}
+    // resort the directory and add the new entry
+    sortDirectory(fp, fdr);
 
 	// I think we're good then!
 	pFile->LastError = ERR_NOERROR;
@@ -2213,3 +2178,85 @@ void ImageDisk::FreePartialFile(FILE *fp, int fdr, int *sectorList, int sectorCn
 	}
 }
 
+// helper for the qsort below
+static int nameCmp(const void *p1, const void *p2)
+{
+   return strcmp((char*)p1,(char*)p2);
+}
+
+// because there are so many broken disk directories out there, some of which
+// we may have contributed to, resort the entire directory on a write. This
+// should fix the order even if it was broken before we started.
+// if newFDR is not 0, add it to the list as a new entry (saves extra writes)
+bool ImageDisk::sortDirectory(FILE *fp, int newFDR) {
+    unsigned char tmpbuf[256];
+    unsigned char tmpbuf2[256];
+    unsigned char tmpbuf3[256];
+    struct NAMELIST {
+        char name[11];
+        int fdr;
+    } nameList[128];
+    int nameCnt = 0;
+
+	// read in the directory index
+	if (!GetSectorFromDisk(fp, 1, tmpbuf)) {
+		debug_write("Warning: Failed to retrieve directory index from disk image for sorting.");
+		return false;
+	}
+
+    for (int idx=0; idx<255; idx+=2) {
+        int x = tmpbuf[idx]*256 + tmpbuf[idx+1];    // get entry
+
+        // check for new entry at end of list
+        if (x == 0) {
+            if (newFDR != 0) {
+                x = newFDR;
+                newFDR = 0; // so we don't detect it again
+                idx -= 2;   // so it doesn't move for the next loop
+            }
+        }
+        if (x == 0) break;                          // all done
+
+        nameList[nameCnt].fdr = x;                  // save index
+        if (!GetSectorFromDisk(fp, x, tmpbuf2)) {
+            debug_write("Warning: Failed to read sector %d for sorting.", x);
+            return false;
+        }
+        // make the filename nul terminate - we don't care about the rest
+        tmpbuf2[10] = '\0';
+        for (int i2=0; i2<10; i2++) {
+            if (tmpbuf2[i2] == ' ') {
+                tmpbuf2[i2] = '\0';
+                break;
+            }
+        }
+        strcpy(nameList[nameCnt].name, (char*)tmpbuf2);
+        ++nameCnt;
+    }
+
+    // sort the list
+    qsort(nameList, nameCnt, sizeof(nameList[0]), nameCmp);
+
+    // rebuild the directory index
+    memset(tmpbuf3, 0, 256);
+    int pos = 0;
+    for (int idx=0; idx<nameCnt; ++idx) {
+        tmpbuf3[pos] = nameList[idx].fdr / 256;
+        tmpbuf3[pos+1] = nameList[idx].fdr % 256;
+        pos += 2;
+    }
+
+    // debug
+    if (memcmp(tmpbuf, tmpbuf3, 256)) {
+        debug_write("Directory sorted.");
+    }
+
+    // and write it back out
+	if (!PutSectorToDisk(fp, 1, tmpbuf3)) {
+		debug_write("Warning: Failed to retrieve directory index from disk image for sorting.");
+		return false;
+	}
+
+    // all done
+    return true;
+}
