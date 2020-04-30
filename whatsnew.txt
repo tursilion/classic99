@@ -1973,7 +1973,7 @@ Cartridge System:
 -----------------------------------------------
 29 Apr 2020
 - add some missing closes to the disk image handling. should've RAI
-- add full directory sort when writing to a disk image to fix old broken images
+- add full directory sort when writing to a disk image to fix old broken images (this should also fix rename from the last update, but nobody had time to notice it was broken yet)
 - all the fixes made to saving FIAD headers never made it into disk images: bytes in last header and number record field were both wrong for variable type files
 - added disk size verification to TICC handler because the TICC doesn't check like I thought it did and PEOPLE ARE NOT PAYING ATTENTION TO DOCUMENTED RESTRICTIONS.
 

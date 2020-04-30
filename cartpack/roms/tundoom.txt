@@ -1,0 +1,19 @@
+Patch for Tunnels of Doom:
+
+CHANGE TO MY SUBROUTINE AT >9880 IN THE ROM - WHICH IS 9880 + 6000 = F880
+607b - 06 a0 5c (call a05c) - maybe a better hook?
+
+F800 - NEW TEXT (BORDERS WITH TWO A0 BYTES ON EACH SIDE)
+
+----------------------------
+CLASSIC99 OPTIONS: DISK 1
+AND THEN ENTER:
+ PENNIES     (EASY)
+ QUEST       (NORMAL)
+----------------------------
+
+F880: MOVE 128 FROM G@>F800 TO VDP@>0120      31 00 80 A1 20 F8 00
+      B G@>a05c                               05 a0 5c
+
+
+
