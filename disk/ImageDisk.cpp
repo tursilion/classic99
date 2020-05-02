@@ -595,10 +595,14 @@ int *ImageDisk::ParseClusterList(unsigned char *fdr) {
 
     if (0) {
         // todo debug
-        char str[4096];
+        char str[1024];
         str[0]=0;
         for (int i=0; i<nListPos; ++i) {
-            sprintf(str, "%s%x,",str,pList[i]);
+            snprintf(str, sizeof(str), "%s%x,",str,pList[i]);
+            str[sizeof(str)-4]='.';
+            str[sizeof(str)-3]='.';
+            str[sizeof(str)-2]='.';
+            str[sizeof(str)-1]='\0';
         }
         debug_write(str);
     }
@@ -1554,6 +1558,10 @@ int ImageDisk::findFreeSector(FILE *fp, int lastFileSector) {
 	// header to tell us what's valid.
 	//         sectors/track  tracks/side    number sides
 	int nMax = sector[0x0c] * sector[0x11] * sector[0x12];
+    if (nMax != sector[0xA]*256 + sector[0xb]) {
+        debug_write("Error: corrupt disk sector 0 - disk size %d doesn't match calculated %d\n", sector[0xA]*256 + sector[0xb], nMax);
+        return -1;
+    }
 	if (nMax > 1600) {
 		// 1600 sectors is the size of the 400k CF card, which is the biggest I know
 		// Bigger than that needs a different bitmask size
@@ -1618,7 +1626,7 @@ int ImageDisk::findFreeSector(FILE *fp, int lastFileSector) {
 		++nSec;
 		if (nSec >= nMax) nSec = 2;     // dont' wrap around to protected sectors
 	}
-	if (idx >= nMax) {
+	if (idx >= nMax-2) {
 		debug_write("Disk is full.");
 		return -1;
 	}
@@ -1990,6 +1998,7 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 			    // done writing - if this is variable, then we need to close the sector
 			    *(pOut++)=0xff;
 			    nSector--;
+                pFile->BytesInLastSector++;
 		    }
 		
 		    // don't forget to pad the file to a full sector!
@@ -2101,7 +2110,11 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
         char outbuf[1024];
         outbuf[0]='\0';
         for (int idx=0; idx<sectorCnt; ++idx) {
-            sprintf(outbuf, "%s,%03X", outbuf, sectorList[idx]);
+            snprintf(outbuf, sizeof(outbuf), "%s,%03X", outbuf, sectorList[idx]);
+            outbuf[sizeof(outbuf)-4] = '.';
+            outbuf[sizeof(outbuf)-3] = '.';
+            outbuf[sizeof(outbuf)-2] = '.';
+            outbuf[sizeof(outbuf)-1] = '\0';
         }
         debug_write(outbuf);
     }

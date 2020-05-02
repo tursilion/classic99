@@ -320,7 +320,7 @@ bool BaseDisk::Close(FileInfo *pFile) {
 	// because this is how we return the object to the pool
 
 	// derived classes can generally use this version
-	Flush(pFile);				// flush decides for itself if it is needed
+	bool bRet = Flush(pFile);	// flush decides for itself if it is needed
 	pFile->bOpen = false;		// whether it was set or not, just clear it
 
 	// this test is only here for the debug statement :) otherwise I'd just wipe it
@@ -336,7 +336,7 @@ bool BaseDisk::Close(FileInfo *pFile) {
 		pFile->nDataSize = 0;
 	}
 
-	return true;
+	return bRet;
 }
 
 // Use 'Close()' to release it.
@@ -452,6 +452,10 @@ bool BaseDisk::Read(FileInfo *pFile) {
 // Warning: MakeCart EA#3 uses this function, don't reference disk number or open file index
 bool BaseDisk::Write(FileInfo *pFile) {
 	unsigned char *pDat;
+
+    // TODO: for systems like disk images, this mechanism does not allow us to check for
+    // disk full conditions. Should we flush after every record, maybe? Call and ask for
+    // disk full status? Nobody has run into this case yet, but sheesh.
 
 	// figure out where to write to. We have a current record if we need it
 	if (0 == (pFile->Status & FLAG_VARIABLE)) {

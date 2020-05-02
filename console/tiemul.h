@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.026"
+#define VERSION "QI399.027"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;

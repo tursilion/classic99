@@ -544,6 +544,7 @@ void do_dsrlnk() {
 		// XB is bad about not closing its files, so if this is an open request,
 		// then just assume we should close the old file and do it again. Usually this
 		// happens only if an error occurs while loading a program. TODO: how did TI deal with this?
+        // Maybe this doesn't happen any more with the better emulation?
 		if (tmpFile.OpCode == OP_OPEN) {
 			// discard any changes to the old file, it was never closed
 			pWorkFile->bDirty = false;
