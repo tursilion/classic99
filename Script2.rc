@@ -261,6 +261,7 @@ BEGIN
     BEGIN
         MENUITEM "Detect &Uninitialized Memory", ID_DEBUG_DETECTUNINITMEM
         MENUITEM "&Reset Uninitialized Memory Tracking", ID_DEBUG_RESETUNINITMEM
+        MENUITEM "Reset &Timer Statistics",     ID_DEBUG_RESETTIMERSTATISTICS
         MENUITEM SEPARATOR
         MENUITEM "&Normal Speed",               ID_DEBUG_NORMALSPEED
         MENUITEM "&High Speed (F11)",           ID_DEBUG_HIGHSPEED

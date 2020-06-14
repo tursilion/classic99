@@ -146,6 +146,7 @@ extern HWND hBugWnd;
 extern bool BreakOnIllegal, BreakOnDiskCorrupt;
 extern bool bWarmBoot;
 extern int installedJoysticks;
+extern bool gResetTimer;
 
 extern void sound_init(int freq);
 extern void SetSoundVolumes();
@@ -925,7 +926,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					// we don't initialize COM, so some shell extensions may cause issues.
 					// MS wants us to do this: CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)
 					// But that's per-thread! And you have to DeInitialize and track how many times and everything, oi.
-					int nResult = (int)ShellExecute(hwnd, "open", pDriveType[wParam-ID_DSK0_OPENDSK0]->GetPath(), NULL, NULL, SW_SHOWNORMAL);
+					int nResult = (int)ShellExecute(hwnd, NULL, pDriveType[wParam-ID_DSK0_OPENDSK0]->GetPath(), NULL, NULL, SW_SHOWNORMAL);
 					LeaveCriticalSection(&csDriveType);
 					if (nResult < 32) {
 						HLOCAL pMsg;
@@ -1104,9 +1105,9 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_HELP_OPENHELPFILE:
 				// just try to launch the PDF file
 				{
-					int nResult = (int)ShellExecute(hwnd, "open", "Classic99 Manual.pdf", NULL, NULL, SW_SHOWNORMAL);
+					int nResult = (int)ShellExecute(hwnd, NULL, "Classic99 Manual.pdf", NULL, NULL, SW_SHOWNORMAL);
 					if (nResult < 32) {
-						debug_write("Failed to open help with code %d, and FormatMessage failed with code %d", nResult, GetLastError());
+						debug_write("Failed to open help with code %d", nResult);
 						MessageBox(hwnd, "Failed to open manual. Make sure it is in the Classic99 folder, and a PDF reader is installed.", "Error", MB_OK | MB_ICONERROR);
 					}
 				}
@@ -3724,6 +3725,10 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					memset(CPUMemInited, 0, sizeof(CPUMemInited));
 					memset(VDPMemInited, 0, sizeof(VDPMemInited));
 					break;
+
+                case ID_DEBUG_RESETTIMERSTATISTICS:
+                    gResetTimer= true;
+                    break;
 
 				case ID_DEBUG_DETECTUNINITMEM:
 					if (g_bCheckUninit) {

@@ -167,7 +167,10 @@ char AppName[128];                                          // the title bar nam
 
 // debug
 struct _break BreakPoints[MAX_BREAKPOINTS];
+int cycleCounter[65536];                                    // cycle counting during a trace
+bool cycleCountOn=false;
 int nBreakPoints=0;
+bool gResetTimer=false;                                     // used to reset the debug timer breakpoint
 bool BreakOnIllegal = false;
 bool BreakOnDiskCorrupt = false;
 bool gDisableDebugKeys = false;
@@ -2800,6 +2803,7 @@ void readroms() {
 	grombanking=0;							// not using grom banking
 	nCurrentDSR=-1;							// no DSR paged in
 	memset(nDSRBank, 0, sizeof(nDSRBank));	// not on second page of DSR
+    memset(cycleCounter, 0, sizeof(cycleCounter));
 
 	// load the always load files
 	for (idx=0; idx<sizeof(AlwaysLoad)/sizeof(IMG); idx++) {
@@ -3199,13 +3203,25 @@ void do1()
 						break;
 
 					// timing instead of breakpoints
+                    // TODO: multiple timers, proper memory placement
 					case BREAK_RUN_TIMER:
 						if ((BreakPoints[idx].Bank != -1) && (xbBank != BreakPoints[idx].Bank)) {
 							break;
 						}
 						if (PC == BreakPoints[idx].A) {
 							nFirst=total_cycles;
+                            cycleCountOn=true;
+                            // hate this hack
+                            if (gResetTimer) {
+                                gResetTimer = false;
+			                    nMax=0;
+                                nMin=0xffffffff;
+			                    nCount=0;
+			                    nTotal=0;
+                                memset(cycleCounter, 0, sizeof(cycleCounter));
+                            }
 						} else if (PC == BreakPoints[idx].B) {
+                            cycleCountOn = false;
 							if (nFirst!=0) {
 								if (total_cycles<nFirst) {
 									debug_write("Counter Wrapped, no statistics");
@@ -3569,6 +3585,9 @@ void do1()
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
 			if (pCurrentCPU->enableDebug) {
 				Disasm[19].cycles = pCurrentCPU->GetCycleCount();
+                if (cycleCountOn) {
+                    cycleCounter[Disasm[19].pc] += Disasm[19].cycles;
+                }
 			}
 		}
 
@@ -6416,6 +6435,36 @@ void TriggerBreakPoint(bool bForce) {
 	UpdateMakeMenu(dbgWnd, 1);
 	draw_debug();
 	redraw_needed = REDRAW_LINES;
+
+    // dump the cycle counting file if it's got anything in it
+    for (int idx=0; idx<0x10000; idx+=2) {
+        if (cycleCounter[idx]) {
+            FILE *fp=fopen("CycleCounts.txt", "w");
+            if (NULL != fp) {
+                bool blank=false;
+                for (int i2=idx; i2<0x10000; ) {
+                    if (cycleCounter[i2]) {
+			            char buf[1024];
+                        blank=true;
+			            sprintf(buf, "%04X ", i2);
+			            int tmp = Dasm9900(&buf[5], i2, 0);   // TODO: can't help the bank right now
+			            fprintf(fp, "(%d) %-33s %d cycles\n", 0, buf, cycleCounter[i2]);
+                        i2+=tmp;
+                    } else {
+                        if (blank) {
+                            fprintf(fp, "(...)\n");
+                            blank=false;
+                        }
+                        i2+=2;
+                    }
+                }
+                fclose(fp);
+                debug_write("Wrote CycleCounts.txt for timed segment");
+                memset(cycleCounter, 0, sizeof(cycleCounter));
+            }
+            break;
+        }
+    }
 }
 
 void memrnd(void *pRnd, int nCnt) {
