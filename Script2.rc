@@ -256,6 +256,7 @@ BEGIN
         MENUITEM "&Redraw",                     ID_VIEW_REDRAW
         MENUITEM "&Clear",                      ID_VIEW_CLEAR
         MENUITEM "ASCII Add Screen Offset for BASIC", ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC
+        MENUITEM "Log Disasm to Disk",          ID_VIEW_LOGDISASMTODISK
     END
     POPUP "&Debug"
     BEGIN

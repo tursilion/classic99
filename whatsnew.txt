@@ -1982,7 +1982,19 @@ Cartridge System:
 - fix crash bug in debug of writing very large files
 - fix recorded length of variable-length record files (would be off by 1)
 - fix reporting of errors on CLOSE (/all/ disk types suffered here)
+-----------------------------------------------
+8 July 2020
+- Added View->Log Disasm to Disk to the Debug menu - this will log a running CPU trace (no GPU right now) to disk until you turn it off. You have the option to include or exclude console ROM tracing to save a little bit of effort, and the log will also note breakpoints and interrupts:
 
+**** Interrupt Trigger, vector >0004 (console), level 2
+or
+**** Breakpoint triggered
+
+so they they are easier to search for (and in the case of interrupts, understand why the PC just jumped off into hyperspace ;) ).
+
+- Some work on SID debug but it's not visible yet
+- proper line counting in the debug output, so the cursor stays where it's supposed to
+-----------------------------------------------
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)

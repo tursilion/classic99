@@ -73,6 +73,9 @@ extern bool BreakOnIllegal;							// true if we should trigger a breakpoint on b
 extern CPU9900 * volatile pCurrentCPU;
 extern CPU9900 *pCPU, *pGPU;
 extern int bInterleaveGPU;
+extern FILE *fpDisasm;          // file pointer for logging disassembly, if active
+extern int disasmLogType;
+extern CRITICAL_SECTION csDisasm;
 
 // we set skip_interrupt to 2 because it's decremented after every instruction - including
 // the one that sets it!
@@ -405,6 +408,18 @@ void CPU9900::TriggerInterrupt(Word vector, Byte level) {
 	//	Write PC->R14
 	//	Write ST->R15
 	//	Read PC
+
+    // debug helper if logging
+    EnterCriticalSection(&csDisasm);
+        if (NULL != fpDisasm) {
+            if ((disasmLogType == 0) || (pCurrentCPU->GetPC() > 0x2000)) {
+                fprintf(fpDisasm, "**** Interrupt Trigger, vector >%04X (%s), level %d\n",
+                    vector, 
+                    (vector==0)?"reset":(vector==4)?"console":(vector=0xfffc)?"load":"unknown",
+                    level);
+            }
+        }
+    LeaveCriticalSection(&csDisasm);
 
 	// no more idling!
 	StopIdle();

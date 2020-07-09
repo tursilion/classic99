@@ -117,6 +117,7 @@ extern bool bWindowInitComplete;
 extern CString csCf7Bios;
 extern int bEnableAppMode;
 extern char AppName[];
+extern Byte SidCache[29];
 
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
@@ -177,6 +178,11 @@ HBITMAP hHeatBmp=NULL;
 // used to initialize the disk config dialog 
 int g_DiskCfgNum;
 
+// whether logging disassembly to disk
+FILE *fpDisasm = NULL;
+int disasmLogType = 0;  // 0 = all, 1 = exclude < 2000
+CRITICAL_SECTION csDisasm;  // initialized in tiemul.c
+
 #ifndef GET_X_LPARAM
 #define GET_X_LPARAM(x) (x&0xffff)
 #endif
@@ -206,7 +212,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void ConfigureDisk(HWND hwnd, int nDiskNum);
 BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-int EmitDebugLine(char cPrefix, struct history obj, CString &csOut);
+int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines);
 void UpdateUserCartMRU();
 
 // checks for open files. Returns true to continue or false to abort
@@ -3399,11 +3405,12 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 										CString csOut;
 										for (int idx = x; idx <= y; ) {
 											struct history obj;
+                                            int lines = 0;
 											obj.bank=0;
 											obj.cycles=0;
 											obj.pc=idx;
 											csOut = "";
-											idx+=EmitDebugLine(' ', obj, csOut);
+											idx+=EmitDebugLine(' ', obj, csOut, lines);
 											csOut.Remove('\r');
 											fprintf(fp, "%s", (const char*)csOut);
 										}
@@ -3840,6 +3847,34 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					}
 					break;
 
+                case ID_VIEW_LOGDISASMTODISK:
+                    EnterCriticalSection(&csDisasm);
+                    if (fpDisasm) {
+                        fclose(fpDisasm);
+                        fpDisasm = NULL;
+                        CheckMenuItem(GetMenu(hwnd), ID_VIEW_LOGDISASMTODISK, MF_UNCHECKED);
+                    } else {
+                        int ret = MessageBox(hwnd, "This will write all disassembly to 'disasm.txt' until you turn it off,\r\n"
+                            "quickly creating a very large file. Do you want to include console ROM (interrupt, etc)?\r\n"
+                            "Click Yes to include, No to exclude, or Cancel to abort logging.", "Classic99", MB_YESNOCANCEL);
+                        if (ret != IDCANCEL) {
+                            if (ret == IDYES) {
+                                disasmLogType = 0;  // include ROM
+                            } else {
+                                disasmLogType = 1;  // exclude > 0x2000
+                            }
+
+                            fpDisasm = fopen("disasm.txt", "w");
+                            if (NULL == fpDisasm) {
+                                MessageBox(hwnd, "Failed to open file!", "Classic99 Error", MB_OK);
+                            } else {
+                                CheckMenuItem(GetMenu(hwnd), ID_VIEW_LOGDISASMTODISK, MF_CHECKED);
+                            }
+                        }
+                    }
+                    LeaveCriticalSection(&csDisasm);
+                    break;
+
 				case ID_MAKE_SAVEPROGRAM:
 					DoMakeDlg(hwnd);
 					PostMessage(hwnd, WM_COMMAND, ID_VIEW_REDRAW, 0);
@@ -3885,7 +3920,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 } 
 
 // helper for DebugUpdateThread - updates csOut
-int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
+int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines) {
 	char buf1[80], buf2[80];
 	CPU9900 *pLclCPU = pCPU;
 
@@ -3908,10 +3943,14 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
 		sprintf(buf1, "%c  %04X  %04X  %-27s\r\n", cPrefix, PC, pLclCPU->GetSafeWord(PC, obj.bank), buf2);
 	}
 	csOut+=buf1;
+    ++lines;
+
+
 	while ((nSize-=2) > 0) {
 		PC+=2;
 		sprintf(buf1, "         %04X\r\n", pLclCPU->GetSafeWord(PC, obj.bank));
 		csOut+=buf1;
+        ++lines;
 	}
 
 	return nRet;
@@ -3984,9 +4023,9 @@ void DebugUpdateThread(void*) {
 							// show line with bank only for multi-bank cartridges
 							for (idx=0; idx<20; idx++) {
 								if ((xb)&&((Disasm[idx].pc & 0xE000) == 0x6000)) {
-									nLineCnt+=EmitDebugLine('b', Disasm[idx], csOut)/2;
+									EmitDebugLine('b', Disasm[idx], csOut, nLineCnt);
 								} else {
-									nLineCnt+=EmitDebugLine(' ', Disasm[idx], csOut)/2;
+									EmitDebugLine(' ', Disasm[idx], csOut, nLineCnt);
 								}
 							}
 							while (nLineCnt > 20) {
@@ -4006,10 +4045,10 @@ void DebugUpdateThread(void*) {
 							}
 							myHist.cycles = 0;
 
-							myHist.pc += EmitDebugLine('>', myHist, csOut);
+							myHist.pc += EmitDebugLine('>', myHist, csOut, nLineCnt);
 
 							for (idx=0; idx<13; idx++) {
-								int nTmp = EmitDebugLine(' ', myHist, csOut);
+								int nTmp = EmitDebugLine(' ', myHist, csOut, nLineCnt);
 								myHist.pc += nTmp;
 								while (nTmp > 2) {
 									idx++;
@@ -4155,6 +4194,38 @@ void DebugUpdateThread(void*) {
 							break;
 
                     case MEMAMS:		// AMS Memory
+#if 0
+                        // hijacking this for SID
+                        {
+							// CPU must not call the read function, as it may call the memory
+							// mapped devices and affect them.
+							char buf3[32];
+							int c;
+							strncpy(buf3, szTopMemory[nMemType], 32);
+							buf3[31]='\0';
+                            tmpPC = 0;
+							for (idx2=0; idx2<34; idx2++) {
+								sprintf(buf1, "%04X: ", tmpPC);
+								strcpy(buf3, "");
+								for (idx=0; idx<8; idx++) {
+                                    if (tmpPC >= sizeof(SidCache)) break;
+									c=SidCache[tmpPC++];
+									sprintf(buf2, "%02X ", c);
+									strcat(buf1, buf2);
+									if ((c>=32)&&(c<=126)) {
+										buf2[0]=c;
+									} else {
+										buf2[0]='.';
+									}
+									buf2[1]='\0';
+									strcat(buf3, buf2);
+								}
+								strcat(buf1, buf3);
+								csOut+=buf1;
+								csOut+="\r\n";
+							}
+                        }
+#else
 						{
 							// CPU must not call the read function, as it may call the memory
 							// mapped devices and affect them.
@@ -4187,6 +4258,7 @@ void DebugUpdateThread(void*) {
 								csOut+="\r\n";
 							}
 						}
+#endif
 						break;
 				}
 				if (!csOut.IsEmpty()) {

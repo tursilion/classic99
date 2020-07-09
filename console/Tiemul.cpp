@@ -178,6 +178,9 @@ bool bIgnoreConsoleBreakpointHits = false;
 CRITICAL_SECTION debugCS;
 char g_cmdLine[512];
 extern bool bWarmBoot;
+extern FILE *fpDisasm;          // file pointer for logging disassembly, if active
+extern int disasmLogType;       // 0 = all, 1 = exclude < 2000, valid only when fpDisasm is not NULL
+extern CRITICAL_SECTION csDisasm; 
 
 // disk
 extern bool bCorruptDSKRAM;
@@ -284,6 +287,7 @@ LPDIRECTSOUNDBUFFER speechbuf;						// speech audio buffer
 // This probably belongs in the speech emulation
 bool CPUSpeechHalt=false;
 Byte CPUSpeechHaltByte=0;
+Byte SidCache[29];                                  // cache of written sid registers
 
 // disassembly view
 struct history Disasm[20];							// history object
@@ -1074,6 +1078,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	InitializeCriticalSection(&csDriveType);
 	InitializeCriticalSection(&csAudioBuf);
     InitializeCriticalSection(&TapeCS);
+    InitializeCriticalSection(&csDisasm);
 
 	hInstance = hInst;
 	hPrevInstance=hInPrevInstance;
@@ -3520,24 +3525,19 @@ void do1()
 			// will fill in cycles below
 		}
 
-#if 0
 		// disasm running log
-		static FILE *fLog=NULL;
-		if ((NULL == fLog)&&(pCurrentCPU == pCPU)&&(pCurrentCPU->GetPC() == 0x601c)) {
-			fLog=fopen("c:\\new\\RUNTRACE.TXT", "w");
-		}
-		if (NULL != fLog) {
-			char buf[1024];
-			sprintf(buf, "%04X ", pCurrentCPU->GetPC());
-			Dasm9900(&buf[5], pCurrentCPU->GetPC(), xbBank);
-			fprintf(fLog, "(%d) %s\n", xbBank, buf);
-
-			if ((pCurrentCPU == pCPU)&&(pCurrentCPU->GetPC() == 0xffff)) {
-				fclose(fLog);
-				ExitProcess(0);
-			}
-		}
-#endif
+        // TODO: doesn't support GPU run - we can add that with a second file handle
+        EnterCriticalSection(&csDisasm);
+            if ((NULL != fpDisasm) && (pCurrentCPU == pCPU)) {
+                int pc = pCurrentCPU->GetPC();
+                if ((disasmLogType == 0) || (pc >= 0x2000)) {
+			        char buf[1024];
+			        sprintf(buf, "%04X   ", pc);
+			        Dasm9900(&buf[5], pCurrentCPU->GetPC(), xbBank);
+			        fprintf(fpDisasm, "(%d) %s\n", xbBank, buf);
+                }
+            }
+        LeaveCriticalSection(&csDisasm);
 
 		// TODO: is this true? Is the LOAD interrupt disabled when the READY line is blocked?
 		if ((pCurrentCPU == pCPU) && (!nopFrame)) {
@@ -4151,6 +4151,8 @@ void wcpubyte(Word x, Byte c)
 			case -1:
 				// no DSR, so might be SID card
 				if (NULL != write_sid) {
+                    int reg = (x-0x5800)/2;
+                    if (reg < 29) SidCache[reg] = c;
 					write_sid(x, c);
 				}
 				break;
@@ -6428,6 +6430,13 @@ void TriggerBreakPoint(bool bForce) {
 	if ((!pCurrentCPU->enableDebug)&&(!bForce)) {
 		return;
 	}
+
+    if (NULL != fpDisasm) {
+        if ((disasmLogType == 0) || (pCurrentCPU->GetPC() > 0x2000)) {
+            fprintf(fpDisasm, "**** Breakpoint triggered\n");
+        }
+    }
+
 	SetWindowText(myWnd, "Classic99 - Breakpoint. F1 - Continue, F2 - Step, F3 - Step Over");
 	max_cpf=0;
 	MuteAudio();

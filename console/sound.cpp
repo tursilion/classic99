@@ -165,7 +165,6 @@ CRITICAL_SECTION csAudioBuf;
 
 int nClock = 3579545;					// NTSC, PAL may be at 3546893? - this is divided by 16 to tick
 int nCounter[4]= {0,0,0,1};				// 10 bit countdown timer
-double nOutput[4]={1.0,1.0,1.0,1.0};	// output scale
 int nNoisePos=1;						// whether noise is positive or negative (white noise only)
 unsigned short LFSR=0x4000;				// noise shifter (only 15 bit)
 int nRegister[4]={0,0,0,0};				// frequency registers
@@ -185,6 +184,7 @@ unsigned int CalculatedAudioBufferSize=22080*2;	// round audiosample rate up to 
 // This matches what MAME uses (although MAME shifts the other way ;) )
 int nTappedBits=0x0003;
 
+double nOutput[4]={1.0,1.0,1.0,1.0};	// output scale
 // logarithmic scale (linear isn't right!)
 // the SMS Power example, (I convert below to percentages)
 int sms_volume_table[16]={
@@ -273,6 +273,8 @@ void setvol(int chan, int vol) {
 	nVolume[chan]=vol&0xf;
 }
 
+// this #if is here for the Apple2 experiment...
+#if 1
 // fill the output audio buffer with signed 16-bit values
 // nAudioIn contains a fixed value to add to all samples (used to mix in the casette audio)
 // (this emu doesn't run speech through there, though, speech gets its own buffer for now)
@@ -445,13 +447,16 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	}
 }
 
-#if 0
+#else
 // Apple testing...
-//unsigned char nOutput[4]={1,1,1,1};		// output scale
-//unsigned char sms_volume_table[16] = {
-   //31, 25, 20, 16, 13, 10,  8,  6,
-    //5,  4,  3,  3,  2,  2,  1,  0
- //};
+// Overall, I think this is fairly decent. Yeah, it gets crappy with really
+// complex music, but I don't know how much we can expect out of the 1-bit speaker.
+// It's good enough that I almost shipped a release of Classic99 with it turned on ;)
+unsigned char nOutputApp[4]={1,1,1,1};		// output scale
+unsigned char app_volume_table[16] = {
+   31, 25, 20, 16, 13, 10,  8,  6,
+   5,  4,  3,  3,  2,  2,  1,  0
+}; 
 void sound_update(short *buf, double nAudioIn, int nSamples) {
 	// nClock is the input clock frequency, which runs through a divide by 16 counter
 	// The frequency does not divide exactly by 16
@@ -473,7 +478,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 			nCounter[idx]-=nClocksPerSample;
 			while (nCounter[idx] <= 0) {
 				nCounter[idx]+=(nRegister[idx]?nRegister[idx]:0x400);
-				nOutput[idx]=!nOutput[idx];
+				nOutputApp[idx]=!nOutputApp[idx];
 			}
 		}
 
@@ -502,24 +507,24 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 						in = 0x4000;
 					}
 					if (LFSR&0x01) {
-						nOutput[3]=1;
+						nOutputApp[3]=1;
 					} else {
-						if (nOutput[3]) {
+						if (nOutputApp[3]) {
 							noisedir=!noisedir;
 						}
-						nOutput[3]=0;
+						nOutputApp[3]=0;
 					}
 				} else {
 					// periodic noise - tap bit 0 (again, BBC Micro)
 					// Compared against TI samples, this looks right
 					if (LFSR&0x0001) {
 						in=0x4000;	// (15 bit shift)
-						nOutput[3]=1;
+						nOutputApp[3]=1;
 					} else {
-						if (nOutput[3]) {
+						if (nOutputApp[3]) {
 							noisedir=!noisedir;
 						}
-						nOutput[3]=0;
+						nOutputApp[3]=0;
 					}
 				}
 				LFSR>>=1;
@@ -531,44 +536,114 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		nSamples--;
 
 		// Calculate this tick
-		idx = 0;
-		if (nOutput[0]) {
-			idx+=sms_volume_table[nVolume[0]];
+		int cnt = 0;
+		if (nOutputApp[0]) {
+			cnt+=app_volume_table[nVolume[0]];
 		} else {
-			idx-=sms_volume_table[nVolume[0]];
+			cnt-=app_volume_table[nVolume[0]];
 		}
-		if (nOutput[1]) {
-			idx+=sms_volume_table[nVolume[1]];
+		if (nOutputApp[1]) {
+			cnt+=app_volume_table[nVolume[1]];
 		} else {
-			idx-=sms_volume_table[nVolume[1]];
+			cnt-=app_volume_table[nVolume[1]];
 		}
-		if (nOutput[2]) {
-			idx+=sms_volume_table[nVolume[2]];
+		if (nOutputApp[2]) {
+			cnt+=app_volume_table[nVolume[2]];
 		} else {
-			idx-=sms_volume_table[nVolume[2]];
+			cnt-=app_volume_table[nVolume[2]];
 		}
-		if (nOutput[3]) {
+		if (nOutputApp[3]) {
 			if (noisedir) {
-				idx+=sms_volume_table[nVolume[3]];
+				cnt+=app_volume_table[nVolume[3]];
 			} else {
-				idx-=sms_volume_table[nVolume[3]];
+				cnt-=app_volume_table[nVolume[3]];
 			}
 		}
 		// now, we have in idx a value from -64 to +64
+static int sampleCnt = 0;
+
+        // These are both awful on complex sounds and both
+        // work pretty well on simple ones (including chords)
 #if 0
 		// we are only concerned with its sign
 		// if the sign of the output has changed, 'tick' the speaker
+        // very noisey - basically the cassette without a dead zone
 		if (oldout != (idx&0x80)) {
 			oldout = idx&0x80;
 //			idx=SPKR;
+            olddelta = oldout;
 		}
-#else
+#elif 0
 		// if the sign of the output delta has changed, 'tick' the speaker
-		if (((idx-oldout)&0x80) != olddelta) {
-			olddelta=(idx-oldout)&0x80;
+        // require a minimum delta before we react - this helps a bit
+
+        // this does sound pretty good with the correct lookup tables for volume
+        idx = (unsigned char)(cnt&0xff);
+        int delta = idx-oldout;
+        if (delta < 0) delta=-delta;
+        if (delta > 8) {
+		    if (((idx-oldout)&0x80) != olddelta) {
+			    olddelta=(idx-oldout)&0x80;
+		    }
+		    oldout = idx;
+        }
+#elif 1
+        // how about delta with a drift to zero?
+        // this works, but not sure if it's better than
+        // the other delta. It still sometimes drops voices.
+       
+        int delta = cnt-sampleCnt;
+        if (delta < 0) {
+            delta=-delta;
+            sampleCnt--;
+        } else if (delta > 0) {
+            sampleCnt++;
+        }
+        if (delta > 8) {
+            // ticking instead of setting makes the sound very muddied and wrong
+		    oldout = (unsigned char)cnt;
+        }
+#elif 0
+        // try to copy the cassette circuit which looks at zero crossings with a ~10% dead zone
+        
+        // tick for change - this is better then the delta was...
+        // need to tick on every change else the frequency is wrong
+        // We need the dead zone else it's pretty awful sounding
+        // (Actually with the correct scaling this is really bad... muffled)
+#define DEADZONE 4
+        if (cnt > DEADZONE) {
+            if (olddelta < 0) {
+                oldout = ~oldout;
+                olddelta = 1;
+            }
+        } else if (cnt < -DEADZONE) {
+            if (olddelta >= 0) {
+                oldout = ~oldout;
+                olddelta = -1;
+            }
+        }
+
+#else
+    // play out the four voices statically with arpeggio
+    // I doubt the Apple can do that much...
+    // 800 at 44100 samples/second is about 55hz cycling
+    // frankly this isn't too bad....
+#define TONELEN 800
+    switch (((++sampleCnt)/TONELEN)%4) {
+    case 0: if ((nOutputApp[0])&&(nVolume[0] < 12)) oldout=0x80; else oldout=0x00; break;
+    case 1: if ((nOutputApp[1])&&(nVolume[1] < 12)) oldout=0x80; else oldout=0x00; break;
+    case 2: if ((nOutputApp[2])&&(nVolume[2] < 12)) oldout=0x80; else oldout=0x00; break;
+    case 3:
+		if ((nOutputApp[3])&&(nVolume[3] < 12)) {
+			if (noisedir) {
+				oldout=0x80;
+			} else {
+			    oldout=0;
+			}
 		}
-		oldout = idx;
+    }
 #endif
+
 		double output = (oldout&0x80)?0.5:-0.5;
 
 		short nSample=(short)((double)0x7fff*output); 
@@ -576,6 +651,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	}
 
 }
+
 #endif
 
 
