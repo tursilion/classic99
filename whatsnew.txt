@@ -1995,6 +1995,8 @@ so they they are easier to search for (and in the case of interrupts, understand
 - Some work on SID debug but it's not visible yet
 - proper line counting in the debug output, so the cursor stays where it's supposed to
 -----------------------------------------------
+15 July 2020
+- bugfix so that CLOSE doesn't return an error on devices without FLUSH (like CLOCK)
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
