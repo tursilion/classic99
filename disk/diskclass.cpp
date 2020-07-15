@@ -321,6 +321,11 @@ bool BaseDisk::Close(FileInfo *pFile) {
 
 	// derived classes can generally use this version
 	bool bRet = Flush(pFile);	// flush decides for itself if it is needed
+    if ((bRet == false)&&(pFile->LastError == ERR_ILLEGALOPERATION)) {
+        // device does not implement flush, so that's okay, not an error
+        pFile->LastError = ERR_NOERROR;
+        bRet = true;
+    }
 	pFile->bOpen = false;		// whether it was set or not, just clear it
 
 	// this test is only here for the debug statement :) otherwise I'd just wipe it
