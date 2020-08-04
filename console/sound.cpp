@@ -1,3 +1,19 @@
+/*
+From Matt - check this decrement:
+2:15 PM] dnotq: The counters don't consider the 0-count as it's own state.  It was very interesting that I literally took the AY up-counters, changed them to count down (changed ++ to -), and changed the reset when count >= period condition to load-period when count = 0, and they just worked.
+[2:16 PM] dnotq: It took me a while to realize this, since when you mentioned 0-count is maximum period, that threw me for a bit.
+[2:17 PM] tursilion: yeah, I said that. But I think the SN was the first and everyone else cloned them ;)
+[2:17 PM] dnotq: But the "compare-to-0 and load" is done during the period of the count.  Easier to show than to explain in English.
+[2:18 PM] dnotq: It was just neat to see the same mechanism work in both directions.  Everyone else is loading the count - 1 and crap like that into their counters, or making special cases for the 0 count, etc.
+[2:19 PM] tursilion: huh, weird. I don't understand your "during the period of the count" bit, as you implied ;)
+[2:21 PM] dnotq: It means that the reset-and-count happens in the same time period as a single count.  So when you hit zero, the period is loaded, then decremented immediately.  So the counter being "zero" is never try for a full count period.
+[2:21 PM] dnotq: This is what allows a count of 1 to actually cut the frequency in half.
+[2:22 PM] dnotq: If zero was true for a full count cycle, a count of one would be: 1, 0 (toggle), 1, 0 (toggle).  And that is actually a divide by 2.
+[2:26 PM] dnotq: It is done in the real IC via the asynchronous nature of the transistors, and the way any signal transition can be a clock, set, or reset signal.  But I reproduced the functionality in synchronous HDL and the counters just work as they should.  No special tests, edge cases, loading or comparing period-1, etc.
+[2:27 PM] tursilion: ah, I see. That makes sense :) I should check if Classic99 does that right
+*/
+
+
 // Testing on a real TI:
 // The sound chip itself outputs an always positive sound wave peaking roughly at 2.8v.
 // Output values are roughly 1v peak-to-peak (I measured 0 attenuation at roughly 720mV)

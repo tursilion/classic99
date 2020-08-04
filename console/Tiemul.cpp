@@ -5064,9 +5064,11 @@ Byte rgrmbyte(Word x, bool rmw)
 	if (grombanking) {
 		nBank=(x&0x3ff)>>2;								// maximum possible range to >9BFF - not all supported here though
 		if (nBank >= PCODEGROMBASE) {
-			debug_write("Invalid GROM base 0x%04X read", x);
-			return 0;
+			debug_write("Warning: Invalid GROM base 0x%04X read", x);
 		}
+        // TODO: Classic99 always supports 16 GROM bases. Note that not all
+        // carts will, so technically this mask needs to be configurable.
+        nBank &= 0xf;
 	} else {
 		nBank=0;
 	}
@@ -5197,9 +5199,11 @@ void wgrmbyte(Word x, Byte c)
 	if (grombanking) {
 		nBank=(x&0x3ff)>>2;								// maximum possible range to >9BFF - not all supported here though
 		if (nBank >= PCODEGROMBASE) {
-			debug_write("Invalid GROM base 0x%04X write", x);
-			return;
+			debug_write("Warning: Invalid GROM base 0x%04X write", x);
 		}
+        // TODO: Classic99 always supports 16 GROM bases. Note that not all
+        // carts will, so technically this mask needs to be configurable.
+        nBank &= 0xf;
 	} else {
 		nBank=0;
 	}
@@ -6351,11 +6355,15 @@ void DoStep() {
 }
 
 void DoStepOver() {
+    // TODO: does not work with banks - convert breakpoint system to
+    // a standard and then this can be a "temporary" breakpoint that
+    // deletes itself once its hit.
 	if (0 == max_cpf) {
 		max_cpf=cfg_cpf;
 		SetWindowText(myWnd, szDefaultWindowText);
 		InterlockedExchange((LONG*)&cycles_left, max_cpf);
 		pCurrentCPU->SetReturnAddress(0);
+		bDebugAfterStep=true;
 		bStepOver=true;
 		nStepCount=1;
 		SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
