@@ -333,6 +333,7 @@ int sams_size = 3;									// SAMS emulation memory size (0 = 128k, 1 = 256k, 2 
 int retrace_count=0;								// count on the 60hz timer
 
 int PauseInactive;									// what to do when the window is inactive
+int WindowActive;                                   // true if the Classic99 window is active
 int SpeechEnabled;									// whether speech is enabled
 volatile int CPUThrottle;							// Whether or not the CPU is throttled
 volatile int SystemThrottle;						// Whether or not the VDP is throttled
@@ -1356,6 +1357,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	max_cpf=DEFAULT_60HZ_CPF;	// max cycles per frame
 	cfg_cpf=max_cpf;
 	PauseInactive=0;			// don't pause when window inactive
+    WindowActive=(myWnd == GetForegroundWindow());  // true if we're active
 	SpeechEnabled=1;			// speech is decent now
 	Recording=0;				// not recording AVI
 	slowdown_keyboard=1;		// slow down keyboard repeat when read via BASIC
@@ -2095,7 +2097,7 @@ void __cdecl emulti(void *)
 
 	while (!quitflag)
 	{ 
-		if ((PauseInactive)&&(myWnd != GetForegroundWindow())&&(dbgWnd != GetForegroundWindow())) {
+		if ((PauseInactive)&&(!WindowActive)) {
 			// we're supposed to pause when inactive, and we are not active
 			// So, don't execute an instruction, and sleep a bit to relieve CPU
 			// also clear the current timeslice so the machine doesn't run crazy fast when
@@ -5336,6 +5338,37 @@ void SetSuperBank() {
 }
 
 //////////////////////////////////////////////////////////////////
+// Set bank for PopCart CRU method (currently leans on 379 code)
+//////////////////////////////////////////////////////////////////
+void SetSuperBank2() {
+    // based on the data written, lots of 1s, this doesn't seem right
+	if (CRU[0x0580]) {
+		// is this not also true if all zeros written?
+		xbBank=0;	
+	} else if (CRU[0x0581]) {
+		xbBank=1;
+	} else if (CRU[0x0582]) {
+		xbBank=2;
+	} else if (CRU[0x0583]) {
+		xbBank=3;
+	} else if (CRU[0x0584]) {
+		xbBank=4;
+	} else if (CRU[0x0585]) {
+        // this is accessed by Toggle RAM, which is for mapping in SuperCart RAM
+		xbBank=5;
+	} else if (CRU[0x0586]) {
+		xbBank=6;
+	} else if (CRU[0x0587]) {
+		xbBank=7;
+	}
+	xbBank&=xb;
+
+	// debug helper for me
+//	TriggerBreakPoint();
+}
+
+
+//////////////////////////////////////////////////////////////////
 // Write a bit to CRU
 // Better 9901 CRU notes:
 // There are 32 bits, from 0-31:
@@ -5429,6 +5462,10 @@ void wcru(Word ad, int bt)
 					nDSRBank[0xf]=1;
 				}
 				break;
+
+            default:
+//                debug_write("Write unsupported CRU 0x%04X = %d", ad, bt);
+                break;
 			}
 		} else {
 			// bit 0 enables the DSR rom, so we'll check that first
@@ -5469,6 +5506,10 @@ void wcru(Word ad, int bt)
 					nDSRBank[0xf]=0;
 				}
 				break;
+
+            default:
+//                debug_write("Write unsupported CRU 0x%04X = %d", ad, bt);
+                break;
 			}
 		}
 		return;
@@ -5514,6 +5555,8 @@ void wcru(Word ad, int bt)
                         // We don't need to do anything here, since we update the read register when we're supposed to
                         break;
 
+                       
+
 					case 3:
 						// timer interrupt bit
                         if (timer9901IntReq) {
@@ -5521,6 +5564,11 @@ void wcru(Word ad, int bt)
 //                            debug_write("9901 timer interrupt cleared");
                         }
 						break;
+
+                    case 2:     // vdp interrupt
+                    case 21:    // alpha lock
+                        // just remember it
+                        break;
 
                     case 18:
                     case 19:
@@ -5541,8 +5589,18 @@ void wcru(Word ad, int bt)
 					
 					case 0x040f:
 						// super-space cart piggybacked on 379 code for now
+                        debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
 						SetSuperBank();
 						break;
+
+                    case 0x587:
+                        debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
+                        SetSuperBank2();
+                        break;
+
+                    default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                        break;
 				}
 			}
 		} else {
@@ -5604,6 +5662,11 @@ void wcru(Word ad, int bt)
                         }
 						break;
 
+                    case 2:     // vdp interrupt
+                    case 21:    // alpha lock
+                        // just remember it
+                        break;
+
                     case 18:
                     case 19:
                     case 20:
@@ -5618,8 +5681,18 @@ void wcru(Word ad, int bt)
 					
 					case 0x040f:
 						// super-space cart piggybacked on 379 code for now
+                        debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
 						SetSuperBank();
 						break;
+
+                    case 0x587:
+                        debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
+                        SetSuperBank2();
+                        break;
+
+                    default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                        break;
 				}
 			}
 		}
@@ -5896,6 +5969,7 @@ int rcru(Word ad)
 
 			default:
 				// no other cards supported yet
+//                debug_write("Read unsupported CRU 0x%04X", ad);
 				return 1;	// "false"
 		}
 	}
@@ -5989,7 +6063,8 @@ int rcru(Word ad)
 	if ((ad>=11)&&(ad<=31)) {
 		// this is an I/O pin - return whatever was last written
 		ret = CRU[ad];
-	}
+        debug_write("Read CRU I/O 0x%04X (got %d)", ad, ret);
+    }
 
 	return(ret);
 }
@@ -6111,7 +6186,7 @@ void __cdecl TimerThread(void *)
 		// process debugger, if active
 		processDbgPackets();
          
-		if ((PauseInactive)&&(myWnd != GetForegroundWindow())&&(dbgWnd != GetForegroundWindow())) {
+		if ((PauseInactive)&&(!WindowActive)) {
 			// Reduce CPU usage when inactive (hack)
 			Sleep(100);
 		} else {
@@ -6129,7 +6204,7 @@ void __cdecl TimerThread(void *)
 					break;
 				case CPU_MAXIMUM:
 					// We do the exchange here since the loop below may not run
-					//InterlockedExchange((LONG*)&cycles_left, max_cpf*100);
+					InterlockedExchange((LONG*)&cycles_left, max_cpf*100);
 					break;
 			}
 
@@ -6154,7 +6229,7 @@ void __cdecl TimerThread(void *)
 			nStart.QuadPart=nEnd.QuadPart;					// don't lose any time
 			
 			// see function header comments for these numbers (62hz or 60hz : 50hz)
-			nFreq.QuadPart=(hzRate==HZ60) ? 16129i64/*16666i64*/ : 20000i64;
+			nFreq.QuadPart=(hzRate==HZ60) ? /*16129i64*/ 16666i64 : 20000i64;
 
 			while (nAccum.QuadPart >= nFreq.QuadPart) {
 				nVDPFrames++;
@@ -6212,6 +6287,13 @@ void __cdecl TimerThread(void *)
 					vdpForceFrame();
 				}
 			}
+
+            // TODO: a hack of sorts, but DAC and sound update can end up running at different rates,
+            // leading to out of sync audio. So empty the dac buffer, no matter how much we used
+//            if (dac_pos < 100) {
+//                debug_write("dac_pos at %d", dac_pos);
+//                dac_pos = 0;
+//            }
 
 			if ((bDrawDebug)&&(dbgWnd)) {
 				if (max_cpf > 0) {

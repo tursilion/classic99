@@ -306,14 +306,24 @@ void do_dsrlnk() {
     if ((pCurrentCPU->GetST() & 0xF) != 0) {
         debug_write("Warning: Calling DSR with interrupts enabled (LIMI %d) will randomly crash on hw!", (pCurrentCPU->GetST() & 0xF));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
-        // TODO: don't check this change in...
-        pCurrentCPU->SetST((pCurrentCPU->GetST() & (~0xF)));
     }
 
 	if (pCurrentCPU->GetWP() != 0x83E0) {
-		debug_write("Warning: Calling DSR without setting GPLWS may not work on hw (WP=0x%04X)!", pCurrentCPU->GetWP());
+		debug_write("Warning: Calling DSR without setting GPLWS may not work on hw (WP=>%04X)!", pCurrentCPU->GetWP());
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
+    if (romword(0x83FA) != 0x9800) {    // warning: GROM base address
+        debug_write("Warning: Calling DSR without GROM base address in GPLWS R13 may cause issues (got >%04X)!", romword(0x83fa));
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
+    }
+//    if (romword(0x83FC)&0x???? != 0x9800) {    // warning: GPL Status - does it need anything special?
+//        debug_write("Warning: Calling DSR with bad GPL Status in GPLWS R14 (got >%04X)!", romword(0x83fc));
+//        if (BreakOnDiskCorrupt) TriggerBreakPoint();
+//    }
+    if (romword(0x83FE) != 0x8C02) {    // warning: VDP read address
+        debug_write("Warning: Calling DSR without VDP read address in GPLWS R15 may lockup on hardware (got >%04X)!", romword(0x83fe));
+        if (BreakOnDiskCorrupt) TriggerBreakPoint();
+    }
 	if (romword(0x83d0) != 0x1100) {	// warning: hard-coded CRU base
 		debug_write("Warning: DSRLNK functions should store the CRU base of the device at >83D0! (Got >%04X)", romword(0x83d0));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
@@ -923,6 +933,18 @@ void do_sbrlnk(int nOpCode) {
 	switch (nOpCode) {
 		case SBR_SECTOR:
 			{
+                // TODO: Oi! There are no range checks in here to ensure the requested
+                // sector matches the size of the disk.
+                // Now, maybe that goes in the target device (probably it does), but
+                // commenting here so that I apply it to all of them. However,
+                // We probably need a special option for the PCODE device, which is
+                // probably the only device that CAN deal with floppy disks with 65536 
+                // sectors! It's being used that way by one user, so we shouldn't break it.
+                // Of course, he's a pCode pro and likely nobody else will figure it out,
+                // but it DOES mean that other TI software could use the raw sector access
+                // to access disks up to 16MB in size, even though the file system doesn't
+                // allow for it. That's probably a bug, but now it needs to be an option.
+
 				// raw sector I/O to the disk
 				tmpFile.DataBuffer = romword(0x834e);	// address in VDP of data buffer
 				tmpFile.RecordNumber = romword(0x8350);	// sector index

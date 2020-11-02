@@ -743,10 +743,9 @@ void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol) {
 
 void resetDAC() { 
 	// empty the buffer and reset the pointers
-    // TODO: added the mutes, but still some clicks, reset is worst (cause buffer isn't being filled?)
     MuteAudio();
 	EnterCriticalSection(&csAudioBuf);
-		memset(&dac_buffer[0], 0x00, sizeof(dac_buffer));
+		memset(&dac_buffer[0], (unsigned char)(nDACLevel*255), sizeof(dac_buffer));
 		dac_pos=0;
 		dacupdatedistance=0.0;
         dacramp=0.0;
@@ -852,13 +851,13 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	if ((nWriteAhead < 1) && (pDat->nJitterFrames < 15)) {
 		pDat->nJitterFrames++;
 #ifdef _DEBUG
-//		debug_write("Grow jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
+		debug_write("Grow jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
 #endif
 	} else if ((nWriteAhead > pDat->nJitterFrames+1) && (pDat->nJitterFrames > pDat->nMinJitterFrames)) {
 		// maybe we can shrink the buffer?
 		pDat->nJitterFrames--;
 #ifdef _DEBUG
-//		debug_write("Shrink jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
+		debug_write("Shrink jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
 #endif
 	} else if ((nWriteAhead > pDat->nMinJitterFrames/2+1) && (pDat->nMinJitterFrames > 2)) {
 		pDat->nMinJitterFrames--;

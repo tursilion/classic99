@@ -3378,7 +3378,7 @@ void GPUF18A::reset() {
 	nPostInc[DST]=0;
 
 	SetWP(0xff80);			// just a dummy, out of the way place for them. F18A doesn't have a WP
-	SetPC(0);				// it doesn't run automatically, either
+	SetPC(0);				// it doesn't run automatically, either (todo: but it is supposed to!)
 	X_flag=0;				// not currently executing an X instruction (todo: does it have X?)
 	ST=(ST&0xfff0);			// disable interrupts (todo: does it have interrupts?)
 	SetCycleCount(26);		// not that it's a big deal, but that's how long reset takes ;)

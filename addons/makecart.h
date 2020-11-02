@@ -62,7 +62,7 @@ struct options {
 	int FirstGROM;
 };
 
-BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void DoMakeDlg(HWND hwnd);
 void DoMakeEA5(HWND hwnd, struct options opt);
 void DoMakeCopyCart(HWND hwnd, struct options opt);

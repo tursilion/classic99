@@ -118,6 +118,7 @@ extern CString csCf7Bios;
 extern int bEnableAppMode;
 extern char AppName[];
 extern Byte SidCache[29];
+extern int WindowActive;
 
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
@@ -208,10 +209,10 @@ static char szTopMemory[6][32] = { "", "", "8300", "0000", "0000", "0000" };		//
 
 // references
 // CartDlgProc is in makecart.cpp
-BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void ConfigureDisk(HWND hwnd, int nDiskNum);
-BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines);
 void UpdateUserCartMRU();
 
@@ -614,7 +615,7 @@ void ParseForXB(char *pStr) {
 /////////////////////////////////////////////////////////////////////////
 // Window handler
 /////////////////////////////////////////////////////////////////////////
-LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// winuser.h has the VK_key key defines
 	// also fill in the key[] array for on/off
@@ -2092,6 +2093,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if (PauseInactive) {
 				// Re-enable sounds
 				SetSoundVolumes();
+                WindowActive = 1;
 			}
 			break;
 
@@ -2099,6 +2101,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			// Disable sounds, cache current levels
 			if (PauseInactive) {
 				MuteAudio();
+                WindowActive = 0;
 			}
 			// clear all keyboard state
 #ifdef _DEBUG
@@ -2124,7 +2127,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 
-BOOL CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static int nRate=22050;
 //	static int nLocalSidEnable = false;
 
@@ -2204,7 +2207,7 @@ BOOL CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) 
     { 
         case WM_COMMAND: 
@@ -2342,7 +2345,7 @@ BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     return FALSE; 
 } 
 
-BOOL CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) 
     { 
         case WM_COMMAND: 
@@ -2371,7 +2374,7 @@ BOOL CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 }
 
-BOOL CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	// only tricky part is loading the kb image resource
 	static HBITMAP hBmp=NULL;
 	HWND hWnd=NULL;
@@ -2408,7 +2411,7 @@ BOOL CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-BOOL CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	// handles a running heatmap display - showing accessed memory
 	HWND hWnd=NULL;
 
@@ -2444,7 +2447,7 @@ BOOL CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	// nothing fancy here
     switch (uMsg) 
     { 
@@ -2467,7 +2470,7 @@ BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 } 
 
 // External references
-BOOL CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static double hue=0, sat=0, cont=0, bright=0, sharp=0;
 	double thue, tsat, tcont, tbright, tsharp, tmp;
 
@@ -3107,7 +3110,7 @@ void UpdateMakeMenu(HWND hwnd, int enable) {
 	}
 }
 
-BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	char buf1[80];
 	int idx;
 
@@ -4563,7 +4566,7 @@ void FakeRadioButton(HWND hwnd, int nCtrlClicked, int nCtrlAffected) {
 }
 
 // everything in this dialog locks the disk system, so protected by the disk critical section
-BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static int nIndex = 0;
 	static bool bFiadSet = false;
 	static bool bImageSet = false;

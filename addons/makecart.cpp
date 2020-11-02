@@ -1908,7 +1908,7 @@ bool LooksLikeC99(int ad) {
 	return false;
 }
 
-BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	char buf[256];
 
     switch (uMsg) 
