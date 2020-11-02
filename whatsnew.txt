@@ -1997,6 +1997,17 @@ so they they are easier to search for (and in the case of interrupts, understand
 -----------------------------------------------
 15 July 2020
 - bugfix so that CLOSE doesn't return an error on devices without FLUSH (like CLOCK)
+-----------------------------------------------
+1 November 2020
+- minor tweaks to make it build in 64-bit, but the 64 bit build is not going to be released
+- move the check for "pause when window inactive" to reduce slowdown
+- popcart CRU emulation
+- set VDP interrupt and alpha lock CRU in 9901
+- 60fps in all places (found a place still set to 62hz)
+- set audio buffer to DAC level rather than assume 0
+- more disk DSR sanity checks
+    
+
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
