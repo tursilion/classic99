@@ -528,20 +528,26 @@ void do_dsrlnk() {
 	// split name into options and name
 	tmpFile.SplitOptionsFromName();
 
-    // after a call, >8356 points to the filename (usually with the first byte zeroed) in the disk
-    // buffer structures. Some software tries to read the filename back for name tracking, but as
-    // the buffer is technically freed, that's a bad practice. Also only the TI controller (and clones)
-    // actually use the VDP buffers exactly this way... Ray Kazar's animations are a prime example - see
-    // discussion of Dino above...
-    // this stupid hack makes those animations work. But please don't use that...
-    // I'm just using a fixed buffer, below the 6 bytes needed for CF7, and NONE of the
-    // other disk structures are present.
-    // search for 0x3FE1 to find the place in tiemul.h that prints the warning
-    // using an odd number since it's less likely to be a deliberately chosen address
-    memset(&VDP[0x3fe1], ' ', 10);  // limit to 10 because this hack is for TI disk controllers ONLY
-    memcpy(&VDP[0x3fe1], tmpFile.csName.GetString(), min(tmpFile.csName.GetLength(),10));
-    VDP[0x3fe1]=0;  // zero the first byte - this would not be correct if it was not closed!
-    wrword(0x8356, 0x3fe1);
+    // only write the filename if we are not on CALL FILES(0)
+    // TODO: AMS might not like my use of staticCPU here
+    int top = GetSafeCpuWord(0x8370, 0);
+    if (top < 0x3fff) {
+        // after a call, >8356 points to the filename (usually with the first byte zeroed) in the disk
+        // buffer structures. Some software tries to read the filename back for name tracking, but as
+        // the buffer is technically freed, that's a bad practice. Also only the TI controller (and clones)
+        // actually use the VDP buffers exactly this way... Ray Kazar's animations are a prime example - see
+        // discussion of Dino above...
+        // this stupid hack makes those animations work. But please don't use that...
+        // I'm just using a fixed buffer, below the 6 bytes needed for CF7, and NONE of the
+        // other disk structures are present.
+        // search for 0x3FE1 to find the place in tiemul.h that prints the warning
+        // using an odd number since it's less likely to be a deliberately chosen address
+        memset(&VDP[0x3fe1], ' ', 10);  // limit to 10 because this hack is for TI disk controllers ONLY
+        memcpy(&VDP[0x3fe1], tmpFile.csName.GetString(), min(tmpFile.csName.GetLength(),10));
+        VDP[0x3fe1]=0;  // zero the first byte - this would not be correct if it was not closed!
+        wrword(0x8356, 0x3fe1);
+    }
+
     // and 0x8354 is supposed to point to the PAB, again, TI specific...
     wrword(0x8354, PAB);
 
