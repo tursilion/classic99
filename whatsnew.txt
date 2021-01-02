@@ -2006,7 +2006,9 @@ so they they are easier to search for (and in the case of interrupts, understand
 - 60fps in all places (found a place still set to 62hz)
 - set audio buffer to DAC level rather than assume 0
 - more disk DSR sanity checks
-    
+-----------------------------------------------
+2 Jan 2021
+- Fix CPU post-increment bug - increment after calculating the address rather than after fetching/storing the data
 
 
 
