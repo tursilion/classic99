@@ -145,14 +145,16 @@ Word BStatusLookup[256];
 // value is written to the same address before the increment occurs.
 // There are even trickier cases in the console like MOV *R3+,@>0008(R3),
 // where the post-increment happens before the destination address calculation.
+// Then in 2021 we found MOV *R0+,R1, where R0 points to itself, and found
+// that the increment happens before *R0 is fetched for the move.
 // Thus it appears the steps need to happen in this order:
 //
 // 1) Calculate source address
-// 2) Get Source data
-// 3) Handle source post-increment
+// 2) Handle source post-increment
+// 3) Get Source data
 // 4) Calculate destination address
-// 5) Store destination data
-// 6) Handle Destination post-increment
+// 5) Handle Destination post-increment
+// 6) Store destination data
 //
 // Only the following instruction formats support post-increment:
 // FormatI
@@ -161,12 +163,8 @@ Word BStatusLookup[256];
 // FormatVI (src only) (has no destination)
 // FormatIX (src only) (has no destination)
 
-// NOTE: this keeps it safe, but forces a PC from 0x8000-0x83ff into the 0x83xx range
-// This is wrong, of course, but even more so since the RAM is repeated from
-// 0x8100-0x8300, and not at 0x8000. However, 0x8000-0x80ff is the memory mapped
-// hardware, so if the Program Counter is there, we're in trouble ANYWAY! ;)
-// TODO: do I need this scratchpad remap? doesn't the memory fetch function handle it?
-#define ADDPC(x) { PC+=(x); PC&=0xfffe; if ((PC&0xfc00)==0x8000) PC|=0x300; }	
+// force the PC to always be 15-bit, can't store a 16-bit PC
+#define ADDPC(x) { PC+=(x); PC&=0xfffe; }
 
 /////////////////////////////////////////////////////////////////////
 // Inlines for getting source and destination addresses
@@ -181,16 +179,6 @@ Word BStatusLookup[256];
 #define FormatVIII_0 { D=(in&0x000f); D=WP+(D<<1); }
 #define FormatVIII_1 { D=(in&0x000f); D=WP+(D<<1); S=ROMWORD(PC); ADDPC(2); }
 #define FormatIX  { D=(in&0x03c0)>>6; Ts=(in&0x0030)>>4; S=(in&0x000f); B=0; fixS(); }				// No destination here (dest calc'd after call) (DIV, MUL, XOP)
-
-//////////////////////////////////////////////////////////////////////////
-// Arrays to handle post-increment on registers - separate for source and dest
-// There are probably better ways to handle this. 
-//////////////////////////////////////////////////////////////////////////
-// Register number to increment, ORd with 0x80 for 2, or 0x40 for 1
-#define SRC 0
-#define DST 1
-#define POSTINC2 0x80
-#define POSTINC1 0x40
 
 CPU9900::CPU9900() {
 	buildcpu();
@@ -213,10 +201,6 @@ void CPU9900::reset() {
 	StopIdle();
 	halted = 0;			// clear all possible halt sources
 	nReturnAddress=0;
-
-	// zero out the post increment tracking
-	nPostInc[SRC]=0;
-	nPostInc[DST]=0;
 
 	TriggerInterrupt(0x0000,0);				// reset vector is 22 cycles
 	AddCycleCount(4);						// reset is slightly more work than a normal interrupt
@@ -301,10 +285,12 @@ void CPU9900::fixS()
 			break;
 
 	case 3: 
-			nPostInc[SRC] = S | (B==1?POSTINC1:POSTINC2);			// do the increment after the opcode is done with the source
 			t2=WP+(S<<1); 
 			temp=ROMWORD(t2); 
-			S=temp;			
+			S=temp;
+            // After we have the final address, we can increment the register (so MOV *R0+ returns the post increment if R0=adr(R0))
+            WORD val = ROMWORD(t2, true);                           // don't count this read for cycles
+            WRWORD(t2, val + (B == 1 ? 1:2));                       // do count this write
 			AddCycleCount((B==1?6:8));								// (add 1 if byte, 2 if word)	(*R1+)			Address is the contents of the register, which
 			break;													// register indirect autoincrement				is incremented by 1 for byte or 2 for word ops
 	}
@@ -334,10 +320,13 @@ void CPU9900::fixD()
 			AddCycleCount(8);
 			break;
 
-	case 3: nPostInc[DST] = D | (B==1?POSTINC1:POSTINC2);			// do the increment after the opcode is done with the dest
+	case 3: 
 			t2=WP+(D<<1);											// (add 1 if byte, 2 if word)
 			temp=ROMWORD(t2); 
 			D=temp; 
+            // After we have the final address, we can increment the register (so MOV *R0+ returns the post increment if R0=adr(R0))
+            WORD val = ROMWORD(t2, true);                           // don't count this read for cycles
+            WRWORD(t2, val + (B == 1 ? 1:2));                       // do count this write
 			AddCycleCount((B==1?6:8)); 
 			break;													// register indirect autoincrement
 	}
@@ -513,20 +502,6 @@ Word CPU9900::ExecuteOpcode(bool nopFrame) {
 #define romword  #error Do not use in this file
 #define wrword	 #error Do not use in this file
 
-void CPU9900::post_inc(int nWhich) {
-	if (nPostInc[nWhich]) { 
-		int i = nPostInc[nWhich] & 0xf;
-		int t2=WP+(i<<1); 
-
-		int nTmpCycles = nCycleCount;
-		Word nTmpVal = GetSafeWord(t2, xbBank);	// we need to reread this value, but the memory access can't count for cycles
-		SetCycleCount(nTmpCycles);
-
-		WRWORD(t2, nTmpVal + ((nPostInc[nWhich]&POSTINC2) ? 2 : 1)); 
-		nPostInc[nWhich]=0;
-	} 
-}
-
 void CPU9900::op_a()
 {
 	// Add words: A src, dst
@@ -548,13 +523,11 @@ void CPU9900::op_a()
 
 	FormatI;
 	x1=ROMWORD(S); 
-	post_inc(SRC);
 
 	fixD();
 	x2=ROMWORD(D);
 	x3=x2+x1; 
 	WRWORD(D,x3);
-	post_inc(DST);
 																						// most of these are the same for every opcode.
 	reset_EQ_LGT_AGT_C_OV;																// We come out with either EQ or LGT, never both
 	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
@@ -580,13 +553,11 @@ void CPU9900::op_ab()
 
 	FormatI;
 	x1=RCPUBYTE(S); 
-	post_inc(SRC);
 
 	fixD();
 	x2=RCPUBYTE(D);
 	x3=x2+x1;
 	WCPUBYTE(D,x3);
-	post_inc(DST);
 	
 	reset_EQ_LGT_AGT_C_OV_OP;
 	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
@@ -624,7 +595,6 @@ void CPU9900::op_abs()
 		WRWORD(S,x2);
 		AddCycleCount(2);
 	}
-	post_inc(SRC);
 
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
@@ -677,7 +647,6 @@ void CPU9900::op_dec()
 
 	x1--;
 	WRWORD(S,x1);
-	post_inc(SRC);
 
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
@@ -705,7 +674,6 @@ void CPU9900::op_dect()
 
 	x1-=2;
 	WRWORD(S,x1);
-	post_inc(SRC);
 	
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
@@ -775,7 +743,6 @@ void CPU9900::op_div()
 
 	FormatIX;
 	x2=ROMWORD(S);
-	post_inc(SRC);
 
 	D=WP+(D<<1);
 	x3=ROMWORD(D);
@@ -850,7 +817,6 @@ void CPU9900::op_inc()
 	
 	x1++;
 	WRWORD(S,x1);
-	post_inc(SRC);
 	
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV_C;
@@ -875,7 +841,6 @@ void CPU9900::op_inct()
 	
 	x1+=2;
 	WRWORD(S,x1);
-	post_inc(SRC);
 	
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
@@ -904,7 +869,6 @@ void CPU9900::op_mpy()
 
 	FormatIX;
 	x1=ROMWORD(S);
-	post_inc(SRC);
 	
 	D=WP+(D<<1);
 	x3=ROMWORD(D);
@@ -932,7 +896,6 @@ void CPU9900::op_neg()
 
 	x1=(~x1)+1;
 	WRWORD(S,x1);
-	post_inc(SRC);
 
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV_C;
@@ -955,13 +918,11 @@ void CPU9900::op_s()
 
 	FormatI;
 	x1=ROMWORD(S); 
-	post_inc(SRC);
 
 	fixD();
 	x2=ROMWORD(D);
 	x3=x2-x1;
 	WRWORD(D,x3);
-	post_inc(DST);
 
 	reset_EQ_LGT_AGT_C_OV;
 	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
@@ -989,13 +950,11 @@ void CPU9900::op_sb()
 
 	FormatI;
 	x1=RCPUBYTE(S); 
-	post_inc(SRC);
 
 	fixD();
 	x2=RCPUBYTE(D);
 	x3=x2-x1;
 	WCPUBYTE(D,x3);
-	post_inc(DST);
 
 	reset_EQ_LGT_AGT_C_OV_OP;
 	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
@@ -1025,7 +984,6 @@ void CPU9900::op_b()
 
 	FormatVI;
 	SetPC(S);
-	post_inc(SRC);
 }
 
 void CPU9900::op_bl()
@@ -1049,7 +1007,6 @@ void CPU9900::op_bl()
 	}
 	WRWORD(WP+22,PC);
 	SetPC(S);
-	post_inc(SRC);
 }
 
 void CPU9900::op_blwp()
@@ -1088,7 +1045,6 @@ void CPU9900::op_blwp()
 	WRWORD(WP+28,PC);
 	WRWORD(WP+30,ST);
 	SetPC(ROMWORD(S+2));
-	post_inc(SRC);
 
 	// TODO: is it possible to conceive a test where the BLWP vectors being written affects
 	// where it jumps to? That is - can we prove the above order of operation is correct
@@ -1556,7 +1512,6 @@ void CPU9900::op_x()
 
 	FormatVI;
 	in=ROMWORD(S);
-	post_inc(SRC);		// does this go before or after the eXecuted instruction??
 	
     // we don't want to skip anymore - when we exit the X is complete. The original skip was because we recalled do1()
     //SET_SKIP_INTERRUPT;	// (ends up having no effect because we call the function inline, but technically still correct)
@@ -1598,7 +1553,6 @@ void CPU9900::op_xop()
 	x1=WP;
 	SetWP(ROMWORD(0x0040+(D<<2)));
 	WRWORD(WP+22,S);
-	post_inc(SRC);
 	WRWORD(WP+26,x1);
 	WRWORD(WP+28,PC);
 	WRWORD(WP+30,ST);
@@ -1624,11 +1578,9 @@ void CPU9900::op_c()
 
 	FormatI;
 	x3=ROMWORD(S); 
-	post_inc(SRC);
 
 	fixD();
 	x4=ROMWORD(D); 
-	post_inc(DST);
 
 	reset_LGT_AGT_EQ;
 	if (x3>x4) set_LGT;
@@ -1656,11 +1608,9 @@ void CPU9900::op_cb()
 
 	FormatI;
 	x3=RCPUBYTE(S); 
-	post_inc(SRC);
 
 	fixD();
 	x4=RCPUBYTE(D); 
-	post_inc(DST);
   
 	reset_LGT_AGT_EQ_OP;
 	if (x3>x4) set_LGT;
@@ -1718,7 +1668,6 @@ void CPU9900::op_coc()
 
 	FormatIII;
 	x1=ROMWORD(S);
-	post_inc(SRC);
 
 	fixD();
 	x2=ROMWORD(D);
@@ -1746,7 +1695,6 @@ void CPU9900::op_czc()
 
 	FormatIII;
 	x1=ROMWORD(S);
-	post_inc(SRC);
 
 	fixD();
 	x2=ROMWORD(D);
@@ -1779,7 +1727,6 @@ void CPU9900::op_ldcr()
 	FormatIV;
 	if (D==0) D=16;     // this also makes the timing of (0=52 cycles) work - 2*16=32+20=52
 	x1=(D<9 ? RCPUBYTE(S) : ROMWORD(S));
-	post_inc(SRC);
   
 	x3=1;
 
@@ -1894,7 +1841,6 @@ void CPU9900::op_stcr()
 	{
 		WRWORD(S,x1);
 	}
-	post_inc(SRC);
 
 	if (D<8) {
 //		AddCycleCount(42-42);
@@ -2090,12 +2036,10 @@ void CPU9900::op_mov()
 
 	FormatI;
 	x1=ROMWORD(S);
-	post_inc(SRC);
 	
 	fixD();
 	ROMWORD(D, true);		// wasted read before write
 	WRWORD(D,x1);
-	post_inc(DST);
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
@@ -2118,12 +2062,10 @@ void CPU9900::op_movb()
 
 	FormatI;
 	x1=RCPUBYTE(S);
-	post_inc(SRC);
 	
 	fixD();
 	ROMWORD(D,true);			// wasted read before write (always a word!) (hacky, this one is for timing, but WCPUBYTE needs to read again to build the word)
 	WCPUBYTE(D,x1);
-	post_inc(DST);
 	
 	reset_LGT_AGT_EQ_OP;
 	ST|=BStatusLookup[x1]&mask_LGT_AGT_EQ_OP;
@@ -2181,7 +2123,6 @@ void CPU9900::op_swpb()
 
 	x2=((x1&0xff)<<8)|(x1>>8);
 	WRWORD(S,x2);
-	post_inc(SRC);
 }
 
 void CPU9900::op_andi()
@@ -2251,7 +2192,6 @@ void CPU9900::op_xor()
 
 	FormatIII;
 	x1=ROMWORD(S);
-	post_inc(SRC);
 
 	fixD();
 	x2=ROMWORD(D);
@@ -2282,7 +2222,6 @@ void CPU9900::op_inv()
 	x1=ROMWORD(S);
   	x1=~x1;
 	WRWORD(S,x1);
-  	post_inc(SRC);
 
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ;
@@ -2304,7 +2243,6 @@ void CPU9900::op_clr()
 	FormatVI;
 	ROMWORD(S, true);		// wasted read before write
 	WRWORD(S,0);
-	post_inc(SRC);
 }
 
 void CPU9900::op_seto()
@@ -2323,7 +2261,6 @@ void CPU9900::op_seto()
 	FormatVI;
 	ROMWORD(S, true);			// wasted read before write
 	WRWORD(S,0xffff);
-	post_inc(SRC);
 }
 
 void CPU9900::op_soc()
@@ -2345,13 +2282,11 @@ void CPU9900::op_soc()
 
 	FormatI;
 	x1=ROMWORD(S);
-	post_inc(SRC);
 
 	fixD();
 	x2=ROMWORD(D);
   	x3=x1|x2;
 	WRWORD(D,x3);
-	post_inc(DST);
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
@@ -2374,13 +2309,11 @@ void CPU9900::op_socb()
 
 	FormatI;
 	x1=RCPUBYTE(S);
-	post_inc(SRC);
 
 	fixD();
 	x2=RCPUBYTE(D);
   	x3=x1|x2;
 	WCPUBYTE(D,x3);
-	post_inc(DST);
 
 	reset_LGT_AGT_EQ_OP;
 	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
@@ -2404,13 +2337,11 @@ void CPU9900::op_szc()
 
 	FormatI;
 	x1=ROMWORD(S);
-	post_inc(SRC);
 
 	fixD();
 	x2=ROMWORD(D);
   	x3=(~x1)&x2;
 	WRWORD(D,x3);
-	post_inc(DST);
   
 	reset_LGT_AGT_EQ;
 	ST|=WStatusLookup[x3]&mask_LGT_AGT_EQ;
@@ -2433,13 +2364,11 @@ void CPU9900::op_szcb()
 
 	FormatI;
 	x1=RCPUBYTE(S);
-	post_inc(SRC);
 
 	fixD();
 	x2=RCPUBYTE(D);
   	x3=(~x1)&x2;
 	WCPUBYTE(D,x3);
-	post_inc(DST);
 
 	reset_LGT_AGT_EQ_OP;
 	ST|=BStatusLookup[x3]&mask_LGT_AGT_EQ_OP;
@@ -2701,8 +2630,6 @@ void CPU9900::op_callF18() {
 
 	SetPC(S);
 
-	post_inc(SRC);
-
 	// TODO: does it affect any status flags??
 	//reset_EQ_LGT_AGT_C_OV;
 	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
@@ -2744,8 +2671,6 @@ void CPU9900::op_pushF18(){
 	x2-=2;
 	WRWORD(WP+30, x2);		// update R15
 
-	post_inc(SRC);
-
 	// TODO: does it affect any status flags??
 	//reset_EQ_LGT_AGT_C_OV;
 	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
@@ -2771,8 +2696,6 @@ void CPU9900::op_popF18(){
 	x1=ROMWORD(x2);
 	WRWORD(S, x1);
 
-	post_inc(SRC);
-
 	// TODO: does it affect any status flags??
 	//reset_EQ_LGT_AGT_C_OV;
 	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
@@ -2796,8 +2719,6 @@ void CPU9900::op_slcF18(){
 	x1<<=1;
 	if (x2) x1|=0x0001;
 	WRWORD(S, x1);
-
-	post_inc(SRC);
 
 	// TODO: does it affect any status flags??
 	//reset_EQ_LGT_AGT_C_OV;
@@ -2902,9 +2823,6 @@ void CPU9900::op_pixF18(){
 		WRWORD(D, ad);
 	}
 
-	// only the source address can be post-inc
-	post_inc(SRC);
-
 	// TODO: does it affect any status flags??
 	//reset_EQ_LGT_AGT_C_OV;
 	//ST|=WStatusLookup[x1]&mask_LGT_AGT_EQ_OV;
@@ -2950,7 +2868,6 @@ void CPU9900::op_spioutF18(){
 
 	FormatIV;
 	x1=RCPUBYTE(S);
-	post_inc(SRC);
 
 	// Always 8 bits
 	spi_write_data(x1, 8);
@@ -2977,7 +2894,6 @@ void CPU9900::op_spiinF18(){
 	// Always 8 bits
 	x1 = spi_read_data(8);
 	WCPUBYTE(S,(Byte)(x1&0xff));  
-	post_inc(SRC);
 
 	// TODO: does it affect any status flags??
 	//reset_EQ_LGT_AGT_C_OV;
@@ -3372,10 +3288,6 @@ GPUF18A::GPUF18A() {
 void GPUF18A::reset() {
 	StartIdle();
 	nReturnAddress=0;
-
-	// zero out the post increment tracking
-	nPostInc[SRC]=0;
-	nPostInc[DST]=0;
 
 	SetWP(0xff80);			// just a dummy, out of the way place for them. F18A doesn't have a WP
 	SetPC(0);				// it doesn't run automatically, either (todo: but it is supposed to!)
