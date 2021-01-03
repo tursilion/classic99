@@ -1533,6 +1533,7 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 		//			later systems like the Geneve which actually had a clock. However, the TI Disk Controller
 		//			didn't support them and as a result, very little software ever reads it. I'm slightly biased
 		//			against adding them because software doesn't expect them to be there.
+        //          Could add them as an option in the future...?
 		//
 		// There, now they are documented. ;)
 #endif

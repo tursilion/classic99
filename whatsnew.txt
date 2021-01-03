@@ -2009,6 +2009,8 @@ so they they are easier to search for (and in the case of interrupts, understand
 -----------------------------------------------
 2 Jan 2021
 - Fix CPU post-increment bug - increment after calculating the address rather than after fetching/storing the data
+...
+- Implement SBR_FILEOUT for disk images
 
 
 

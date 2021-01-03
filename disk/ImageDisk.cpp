@@ -1367,10 +1367,9 @@ const char* ImageDisk::GetAttributes(int nType) {
 // If 0 sectors spectified, the following are returned by ReadFileSectors, 
 // They are the same as in a PAB.
 // FileType, RecordsPerSector, BytesInLastSector, RecordLength, NumberRecords
-// On return, LengthSectors must contain the actual number of sectors read,
+// On return, LengthSectors must contain the actual number of sectors read
+// This is just a wrapper for ReadFileSectorsToAddress
 bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
-	unsigned char tmpbuf[256];
-
 	if (pFile->LengthSectors == 0) {
 		FileInfo lclFile;
 		lclFile.CopyFileInfo(pFile, true);  // not that this is necessarily correct yet
@@ -1405,11 +1404,19 @@ bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
 
 	debug_write("Reading drive %d file %s sector %d-%d to VDP %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->DataBuffer);
 
+    // now go do the real work
+    return ReadFileSectorsToAddress(pFile, &VDP[pFile->DataBuffer]);
+}
+
+// read to an arbitrary address - used by both read and write but does the real work
+bool ImageDisk::ReadFileSectorsToAddress(FileInfo *pFile, unsigned char *pAdr) {
+	unsigned char tmpbuf[256];
+
 	// we just want to read by sector, so we can reuse some of the buffering code
 	CString csFileName=BuildFilename(pFile);
 	FILE *fp=fopen(csFileName, "rb");
 	if (NULL == fp) {
-		debug_write("Failed to open %s", (LPCSTR)csFileName);
+		debug_write("Failed to open %s for %s", (LPCSTR)csFileName, csFileName);
 		return false;
 	}
 
@@ -1432,19 +1439,174 @@ bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
 	// now we just read the desired sectors. We do need to make sure we don't run off the end
 	int nLastSector=0;
 	while (pSectorList[nLastSector] != 0) nLastSector++;
-	int nVDPAdr = pFile->DataBuffer;
 
 	for (int idx=pFile->RecordNumber; idx < pFile->RecordNumber + pFile->LengthSectors; idx++) {
 		if (idx >= nLastSector) {
 			debug_write("Reading out of range... aborting.");
 			break;
 		}
-		GetSectorFromDisk(fp, pSectorList[idx], &VDP[nVDPAdr]);
-		nVDPAdr+=256;
+		GetSectorFromDisk(fp, pSectorList[idx], pAdr);
+		pAdr+=256;
 	}
 	free(pSectorList);
 	fclose(fp);
 
+	return true;
+}
+
+// Write a file by sectors (file type irrelevant)
+// LengthSectors - number of sectors to write
+// csName - filename to write
+// DataBuffer - address of data in VDP
+// RecordNumber - first sector to write
+// If 0 sectors spectified, the following are used to create the file.  
+// They are the same as in a PAB. (If not 0, file must exist).
+// FileType, RecordsPerSector, BytesInLastSector, RecordLength, NumberRecords
+// On return, LengthSectors must contain the actual number of sectors written,
+// leave as 0 if 0 was originally specified.
+// TODO: we delete and rewrite the file, so it may move on a disk, which is not
+// how the TI disk controller does it.
+bool ImageDisk::WriteFileSectors(FileInfo *pFile) {
+	FILE *fp;
+    CString csFilename = BuildFilename(pFile);
+
+	if (pFile->LengthSectors == 0) {
+		// Create a new, empty file
+        // first, delete the old one if it exists
+        Delete(pFile);
+
+        // now open the disk image so we can work on it
+        fp = fopen(csFilename, "r+b");
+	    if (NULL == fp) {
+		    // couldn't open the file
+		    debug_write("Can't open %s for writing, errno %d", (LPCSTR)csFilename, errno);
+		    pFile->LastError = ERR_FILEERROR;
+		    return false;
+	    }
+
+		if (pFile->RecordNumber != 0) {
+			// write out this many sectors
+            int bytes = pFile->RecordNumber * 256;
+            unsigned char *buf = (unsigned char*)malloc(bytes);
+            if (NULL == buf) {
+                debug_write("Failed to allocate memory to create new file %s with %d sectors", pFile->csName, pFile->RecordNumber);
+                pFile->LastError = ERR_DEVICEERROR;
+                fclose(fp);
+                return false;
+            }
+			memset(buf, 0, bytes);
+            pFile->LengthSectors = pFile->RecordNumber;
+            if (!WriteOutFile(pFile, fp, buf, bytes)) {
+                // error occurred - WriteOutFile already complained
+                free(buf);
+                fclose(fp);
+                return false;
+            }
+
+            free(buf);
+		}
+
+		fclose(fp);
+
+		debug_write("Low-level created drive %d file %s (Type >%02x, Records Per Sector %d, EOF Offset %d, Record Length %d, Number Records %d, Record # %d)", 
+			pFile->nDrive, pFile->csName, pFile->FileType, pFile->RecordsPerSector, pFile->BytesInLastSector, pFile->RecordLength, pFile->NumberRecords, pFile->RecordNumber);
+		
+		return true;
+	}
+
+	// sanity test
+	if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
+		debug_write("Attempt to sector write file %s past end of VDP, truncating.", pFile->csName);
+		pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
+		if (pFile->LengthSectors < 1) {
+			debug_write("Not enough VDP RAM for even one sector, aborting.");
+			pFile->LastError = ERR_BUFFERFULL;
+			return false;
+		}
+	}
+
+	debug_write("Writing drive %d file %s sector %d-%d from VDP %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->DataBuffer);
+
+	// verify the file exists and get its current data
+    FileInfo lclInfo;
+    lclInfo.CopyFileInfo(pFile, true);
+    lclInfo.Status &= ~FLAG_MODEMASK;
+    lclInfo.Status |= FLAG_UPDATE;  // lie so we can get the information
+
+    debug_write("Attempting to identify existing file drive %d file %s...", pFile->nDrive, pFile->csName);
+
+    if (!TryOpenFile(&lclInfo)) {
+        // TODO: what does the TI controller do here?
+        debug_write("Drive %d file %s can't find file to update...", pFile->nDrive, pFile->csName);
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
+
+    // use ReadFileSectors to get the file in... we should have a rough idea of how big it is
+    // I think LengthSectors is always right...?
+    // lclInfo has the current file size, pFile has the new count to write
+    // calculate a buffer size
+    int size = lclInfo.LengthSectors + (pFile->RecordNumber - lclInfo.LengthSectors) + pFile->LengthSectors;
+    if (size < lclInfo.LengthSectors) size = lclInfo.LengthSectors; // covers the case of the file getting smaller
+    debug_write("Allocating work buffer of %d sectors (file length %d, record %d, adding %d)", size, lclInfo.LengthSectors, pFile->RecordNumber, pFile->LengthSectors);
+    size *= 256;
+    unsigned char *workbuf = (unsigned char*)malloc(size);
+    if (NULL == workbuf) {
+        debug_write("Failed to allocate memory to buffer %d sectors for drive %d file %s", size/256, pFile->nDrive, pFile->csName);
+        pFile->LastError = ERR_DEVICEERROR;
+        return false;
+    }
+
+    debug_write("Attempting to buffer existing file drive %d file %s...", pFile->nDrive, pFile->csName);
+
+    // now we should be able to pull the file into memory...
+    lclInfo.RecordNumber = 0;
+    if (!ReadFileSectorsToAddress(&lclInfo, workbuf)) {
+        debug_write("Can't cache drive %d file %s for sector write.", pFile->nDrive, pFile->csName);
+        pFile->LastError = ERR_DEVICEERROR;
+        free(workbuf);
+        return false;
+    }
+
+    // okay, now nuke the file - this way we can re-allocate the sectors with existing code
+    // this is the part that's not right for the TI controller
+    // TODO: presumably we can make a version of WriteOutFile that just goes through the
+    // motions for the first part of the file, then starts adding sectors when it hits
+    // the end of what is already there... but not today
+    debug_write("Attempting to remove existing file drive %d file %s...", pFile->nDrive, pFile->csName);
+    Delete(pFile);
+
+    // pFile->RecordNumber is the first sector to write, pFile->LengthSectors is the number of sectors to write
+    int offset = pFile->RecordNumber*256;
+
+    // we should be able to just do this if we did everything above correctly...
+    memcpy(&workbuf[offset], &VDP[pFile->DataBuffer], pFile->LengthSectors*256);
+
+    // update the file information
+    lclInfo.LengthSectors = size / 256;
+
+    debug_write("Attempting to re-write existing file drive %d file %s...", pFile->nDrive, pFile->csName);
+
+    // now open the disk image so we can work on it
+    fp = fopen(csFilename, "r+b");
+	if (NULL == fp) {
+		// couldn't open the file
+		debug_write("Can't open %s for writing, errno %d", (LPCSTR)csFilename, errno);
+		pFile->LastError = ERR_FILEERROR;
+		return false;
+	}
+
+    // and write it back out
+    if (!WriteOutFile(&lclInfo, fp, workbuf, lclInfo.LengthSectors*256)) {
+        // error already emitted
+        fclose(fp);
+        free(workbuf);
+        return false;
+    }
+
+	// all done
+	fclose(fp);
+    free(workbuf);
 	return true;
 }
 

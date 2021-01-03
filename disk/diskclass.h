@@ -99,7 +99,7 @@ typedef struct s_FILEINFO {
 	// The buffer usually contains a little padding at the end
 	// and may be extended dynamically, so should not be used
 	// by multiple threads. nDataSize contains the size of the buffer.
-	// Not used by LOAD and SAVE operations, only OPEN files.
+	// Not used by LOAD and SAVE operations, only OPEN files (except in the SBR_FILEOUT opcode...)
 } FileInfo;
 
 // file types
@@ -110,8 +110,8 @@ enum {
 	IMAGE_TEXT,			// Windows Text file
 	IMAGE_IMG,			// Windows Image file (ie: any headerless file)
 	IMAGE_SECTORDSK,	// File on a sector dump (V9T9) disk image
-	IMAGE_TRACKDSK,		// File on a track dump (PC99) disk image
-	IMAGE_OMNIFLOP		// File on a physical floppy accessed via OmniFlop/TI99-PC
+	IMAGE_TRACKDSK,		// File on a track dump (PC99) disk image (TODO: not used, used SECTORDSK)
+	IMAGE_OMNIFLOP		// File on a physical floppy accessed via OmniFlop/TI99-PC (TODO: probably never)
 };
 
 // PAB error codes

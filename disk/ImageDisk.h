@@ -82,10 +82,10 @@ public:
 	virtual bool ReadSector(FileInfo *pFile) override;
 	virtual bool WriteSector(FileInfo *pFile) override;
 	virtual bool ReadFileSectors(FileInfo *pFile) override;
-//	virtual bool WriteFileSectors(FileInfo *pFile) override;    // TODO
+	virtual bool WriteFileSectors(FileInfo *pFile) override;
 //	virtual bool FormatDisk(FileInfo *pFile) override;			// TODO - maybe someday
-//	virtual bool ProtectFile(FileInfo *pFile) override;			// not supported
-//	virtual bool UnProtectFile(FileInfo *pFile) override;		// not supported
+//	virtual bool ProtectFile(FileInfo *pFile) override;			// TODO - maybe never
+//	virtual bool UnProtectFile(FileInfo *pFile) override;       // TODO - maybe never
 	virtual bool RenameFile(FileInfo *pFile, const char *csNewFile) override;
 
 	// class-specific functions
@@ -104,6 +104,7 @@ public:
 	int findFreeSector(FILE *fp, int lastFileSector);
 	void FreePartialFile(FILE *fp, int fdr, int *sectorList, int sectorCnt);
     bool sortDirectory(FILE *fp, int newFDR);
+    bool ReadFileSectorsToAddress(FileInfo *pFile, unsigned char *pAdr);
 
 	// configuration data
 	bool bUseV9T9DSSD;			// use the reverse sector order for DSSD disks that V9T9 did
