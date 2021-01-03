@@ -1495,7 +1495,13 @@ bool ImageDisk::WriteFileSectors(FileInfo *pFile) {
                 return false;
             }
 			memset(buf, 0, bytes);
+            
+            // fill in the status flags - they were not set by the caller and WriteOutFile needs them
+
+	        if (pFile->FileType & TIFILES_VARIABLE) pFile->Status |= FLAG_VARIABLE;
+	        if (pFile->FileType & TIFILES_INTERNAL) pFile->Status |= FLAG_INTERNAL; 
             pFile->LengthSectors = pFile->RecordNumber;
+
             if (!WriteOutFile(pFile, fp, buf, bytes)) {
                 // error occurred - WriteOutFile already complained
                 free(buf);
@@ -2219,13 +2225,13 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 	buf[0x0d] = pFile->RecordsPerSector;
 	buf[0x0e] = pFile->LengthSectors>>8;
 	buf[0x0f] = pFile->LengthSectors&0xff;
-	if (pFile->Status & FLAG_VARIABLE) {
+	if ((pFile->Status & FLAG_VARIABLE) || (pFile->FileType & TIFILES_PROGRAM)) {
 		buf[0x10] = pFile->BytesInLastSector&0xff;
 	} else {
         buf[0x10] = 0;  // 0 for fixed
     }
 	buf[0x11] = pFile->RecordLength;
-    if (pFile->Status & FLAG_VARIABLE) {
+    if ((pFile->Status & FLAG_VARIABLE) && ((pFile->FileType & TIFILES_PROGRAM) == 0)) {
         // variable file stores number of sectors again
     	buf[0x12] = pFile->LengthSectors&0xff;	// little endian
 	    buf[0x13] = pFile->LengthSectors>>8;
