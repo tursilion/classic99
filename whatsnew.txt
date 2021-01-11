@@ -2011,7 +2011,12 @@ so they they are easier to search for (and in the case of interrupts, understand
 - Fix CPU post-increment bug - increment after calculating the address rather than after fetching/storing the data
 - Implement SBR_FILEOUT for disk images
 - Fix bug in SBR_FILEOUT - was always setting bytes in last sector to 0
-
+-----------------------------------------------
+10 Jan 2021
+- Fix cycle counting with respect to read-before-write by reworking the memory read system and auditing all instructions
+- STCR was missing its read-before-write in word mode
+- MOVB had an extra read-before-write, but it wasn't being counted, which was the main issue
+- change NOP cycles slightly - but didn't check if it fixed anything
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)

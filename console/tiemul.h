@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.036"
+#define VERSION "QI399.037"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -51,13 +51,11 @@ typedef unsigned __int8 Byte;
 typedef unsigned __int16 Word;
 typedef unsigned __int32 DWord;
 
-// 3MHz seems to be correct via measurement
-// But 5% slack is allowed. Raising it a bit so the /62 works out even
-//#define CLOCK_MHZ 3000056
+// 3MHz seems to be correct via measurement - 5% slack is allowed per datasheet
 #define CLOCK_MHZ 3000000
 // note these actual timings as calculated from the VDP datasheet
 // calculated it as 62.6 - but a long term interrupt count test gave 59.9
-// so back to 60 and fix the clock above
+// so back to 60
 #define HZ60 60
 // calculate it as 50.23
 #define HZ50 50
@@ -283,6 +281,12 @@ struct _break {
 	int Mask;		// optional mask to filter against (specify in braces) A mask of 0 is 0xffff
 };
 
+enum READACCESSTYPE {
+    ACCESS_READ = 0,    // normal read
+    ACCESS_RMW,         // read-before-write access, do not breakpoint
+    ACCESS_FREE         // internal access, do not count or breakpoint
+};
+
 // Function prototypes
 bool CheckRange(int nBreak, int x);
 
@@ -347,7 +351,7 @@ void startvdp(void);
 void startsound(void);
 void warn(char[]);
 void fail(char[]);
-Word romword(Word, bool rmw=false);
+Word romword(Word, READACCESSTYPE rmw=ACCESS_READ);
 void wrword(Word,Word);
 void __cdecl emulti(void*);
 void readroms(void);
@@ -363,10 +367,10 @@ void opcode07(Word);
 void opcode1(Word);
 void opcode2(Word);
 void opcode3(Word);
-Byte rcpubyte(Word,bool rmw=false);
+Byte rcpubyte(Word,READACCESSTYPE rmw=ACCESS_READ);
 void wcpubyte(Word,Byte);
 void increment_vdpadd();
-Byte rvdpbyte(Word,bool);
+Byte rvdpbyte(Word,READACCESSTYPE);
 void wvdpbyte(Word,Byte);
 void pset(int dx, int dy, int c, int a, int l);
 Byte rspeechbyte(Word);
@@ -374,7 +378,7 @@ void wspeechbyte(Word, Byte);
 void SpeechUpdate(int nSamples);
 void wVDPreg(Byte,Byte);
 void wsndbyte(Byte);
-Byte rgrmbyte(Word,bool);
+Byte rgrmbyte(Word,READACCESSTYPE);
 void wgrmbyte(Word,Byte);
 Byte rpcodebyte(Word);
 void wpcodebyte(Word,Byte);

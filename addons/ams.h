@@ -82,7 +82,7 @@ Byte ReadMapperRegisterByte(Byte reg, bool highByte);
 
 /* Read/Write a single byte to AMS/SAMS memory */
 Byte ReadRawAMS(int address);
-Byte ReadMemoryByte(Word address, bool bTrueAccess = true);
+Byte ReadMemoryByte(Word address, READACCESSTYPE rmw = ACCESS_READ);
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
 
 /* Read/Write a block of data to AMS/SAMS memory */

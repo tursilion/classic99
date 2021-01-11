@@ -75,7 +75,7 @@
 #include "diskclass.h"
 
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
-Byte ReadMemoryByte(Word address, bool trueWrite);
+Byte ReadMemoryByte(Word address, READACCESSTYPE rmw);
 
 const char *pszOptionNames[] = {
 	"FIAD_WriteV9T9",		
@@ -233,7 +233,7 @@ bool BaseDisk::SetFiles(int n) {
 
 	// we just use this test to control debug, we still re-initialize everything
 	int nNewTop = 0x3def - (256+256+6)*n - 5 - 1;		// should be 0x37d7 with 3 files
-	int nCurTop = ReadMemoryByte(0x8370,false)*256 + ReadMemoryByte(0x8371,false);
+	int nCurTop = ReadMemoryByte(0x8370,ACCESS_READ)*256 + ReadMemoryByte(0x8371,ACCESS_READ);
 	if (nNewTop != nCurTop) {
 		if (n > 0) {
 			debug_write("Setting top of VRAM to >%04X (%d files)", nNewTop, n);

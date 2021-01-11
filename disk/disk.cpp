@@ -312,35 +312,35 @@ void do_dsrlnk() {
 		debug_write("Warning: Calling DSR without setting GPLWS may not work on hw (WP=>%04X)!", pCurrentCPU->GetWP());
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
-    if (romword(0x83FA) != 0x9800) {    // warning: GROM base address
-        debug_write("Warning: Calling DSR without GROM base address in GPLWS R13 may cause issues (got >%04X)!", romword(0x83fa));
+    if (romword(0x83FA, ACCESS_FREE) != 0x9800) {    // warning: GROM base address
+        debug_write("Warning: Calling DSR without GROM base address in GPLWS R13 may cause issues (got >%04X)!", romword(0x83fa, ACCESS_FREE));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
     }
-//    if (romword(0x83FC)&0x???? != 0x9800) {    // warning: GPL Status - does it need anything special?
-//        debug_write("Warning: Calling DSR with bad GPL Status in GPLWS R14 (got >%04X)!", romword(0x83fc));
+//    if (romword(0x83FC, ACCESS_FREE)&0x???? != 0x9800) {    // warning: GPL Status - does it need anything special?
+//        debug_write("Warning: Calling DSR with bad GPL Status in GPLWS R14 (got >%04X)!", romword(0x83fc, ACCESS_FREE));
 //        if (BreakOnDiskCorrupt) TriggerBreakPoint();
 //    }
-    if (romword(0x83FE) != 0x8C02) {    // warning: VDP read address
-        debug_write("Warning: Calling DSR without VDP read address in GPLWS R15 may lockup on hardware (got >%04X)!", romword(0x83fe));
+    if (romword(0x83FE, ACCESS_FREE) != 0x8C02) {    // warning: VDP read address
+        debug_write("Warning: Calling DSR without VDP read address in GPLWS R15 may lockup on hardware (got >%04X)!", romword(0x83fe, ACCESS_FREE));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
     }
-	if (romword(0x83d0) != 0x1100) {	// warning: hard-coded CRU base
-		debug_write("Warning: DSRLNK functions should store the CRU base of the device at >83D0! (Got >%04X)", romword(0x83d0));
+	if (romword(0x83d0, ACCESS_FREE) != 0x1100) {	// warning: hard-coded CRU base
+		debug_write("Warning: DSRLNK functions should store the CRU base of the device at >83D0! (Got >%04X)", romword(0x83d0, ACCESS_FREE));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
-	if (romword(0x83f8) != 0x1100) {	// warning: hard-coded CRU base
-		debug_write("Warning: DSRLNK functions MUST store the CRU base of the device at >83F8 (GPLWS R12) to avoid a crash on hw! (Got >%04X)", romword(0x83f8));
+	if (romword(0x83f8, ACCESS_FREE) != 0x1100) {	// warning: hard-coded CRU base
+		debug_write("Warning: DSRLNK functions MUST store the CRU base of the device at >83F8 (GPLWS R12) to avoid a crash on hw! (Got >%04X)", romword(0x83f8, ACCESS_FREE));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
 	// steal nLen for a quick test...
-	nLen = romword(0x83d2);
-	if (romword(nLen+2) != pCurrentCPU->GetPC()) {	// a hacky check that we are probably at the right place in the header
-		debug_write("Warning: DSRLNK functions should store the DSR address of the device name entry at >83D2! (Got >%04X)", romword(0x83d2));
+	nLen = romword(0x83d2, ACCESS_FREE);
+	if (romword(nLen+2, ACCESS_FREE) != pCurrentCPU->GetPC()) {	// a hacky check that we are probably at the right place in the header
+		debug_write("Warning: DSRLNK functions should store the DSR address of the device name entry at >83D2! (Got >%04X)", romword(0x83d2, ACCESS_FREE));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
 
 	// get the base address of PAB in VDP RAM
-	PAB = romword(0x8356);		// this points to the character AFTER the device name (the '.' or end of string)
+	PAB = romword(0x8356, ACCESS_FREE);		// this points to the character AFTER the device name (the '.' or end of string)
 	// since there must be 10 bytes before the name, we can do a quick early out here...
 	if (PAB < 13) {		// 10 bytes, plus three for shortest device name "DSK"
 		debug_write("Bad PAB address >%04X", PAB);		// not really what the TI would do, but it's wrong anyway.
@@ -354,7 +354,7 @@ void do_dsrlnk() {
 		static int nLastOp = -1;
 		static int nLastPAB = -1;	// reduce debug by reducing repetition
 
-		int nLen = romword(0x8354);
+		int nLen = romword(0x8354, ACCESS_FREE);
 		if (nLen > 7) {
 			debug_write("Warning: bad DSR name length %d in >8354", nLen);
             if (BreakOnDiskCorrupt) TriggerBreakPoint();

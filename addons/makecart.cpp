@@ -1794,7 +1794,7 @@ public:
 		for (Word idx = opt.StartHigh; idx<=opt.EndHigh; idx++) {
 			int pos = idx - opt.StartHigh;
 			if (pos >= 8192) break;
-			buf[pos] = ReadMemoryByte(idx, 0);
+			buf[pos] = ReadMemoryByte(idx, ACCESS_FREE);
 		}
 		fwrite(buf, 1, 8192, fp);
 		fclose(fp);

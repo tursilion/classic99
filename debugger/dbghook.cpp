@@ -174,14 +174,14 @@ void handleMemory(char *buf, unsigned int p) {
 					if (issafe) {
 						data = GetSafeCpuWord(address&0xffff, 0);	// todo: always bank 0? should be current bank
 					} else {
-						data = romword(address&0xffff, true);		// rmw set to not trigger breakpoints
+						data = romword(address&0xffff, ACCESS_RMW);	// rmw set to not trigger breakpoints
 					}
 				} else {
 					// read byte
 					if (issafe) {
-						data = GetSafeCpuByte(address&0xffff, 0);	// todo: always bank 0? should be current bank
+						data = GetSafeCpuByte(address&0xffff, 0);	    // todo: always bank 0? should be current bank
 					} else {
-						data = rcpubyte(address&0xffff, true);		// rmw set to not trigger breakpoints
+						data = rcpubyte(address&0xffff, ACCESS_RMW);	// rmw set to not trigger breakpoints
 					}
 				}
 				buf[p+6]=data>>8;

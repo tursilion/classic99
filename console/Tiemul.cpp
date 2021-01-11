@@ -1995,7 +1995,7 @@ void fail(char *x)
 /////////////////////////////////////////////////////////
 // Return a Word from CPU memory
 /////////////////////////////////////////////////////////
-Word romword(Word x, bool rmw)
+Word romword(Word x, READACCESSTYPE rmw)
 { 
     x&=0xfffe;		// drop LSB
 
@@ -2094,6 +2094,7 @@ void WindowThread() {
 void __cdecl emulti(void *)
 {
 	quitflag=0;							// Don't quit
+    TriggerBreakPoint();    // TODO REMOVE ME***************************
 
 	while (!quitflag)
 	{ 
@@ -3145,7 +3146,7 @@ void do1()
 //			}
             // the if cycles_left doesn't work because if we don't take it now, we'll
             // execute other instructions (at least one more!) instead of stopping...
-            // so we'll just take it and suffer later.
+            // so we'll just take it and pay for it later.
 		}
 
 		// If an idle is set
@@ -3419,7 +3420,9 @@ void do1()
 						*PasteIndex='\0';
 					}
 
-					if ((rcpubyte(0x8374)==0)||(rcpubyte(0x8374)==5)) {		// Check for pastestring - note keyboard is still active
+                    // TODO: all the writes in here will have CPU timing implications, but pasting happens
+                    // in overdrive anyway, so I guess it doesn't matter
+					if ((rcpubyte(0x8374, ACCESS_FREE)==0)||(rcpubyte(0x8374, ACCESS_FREE)==5)) {		// Check for pastestring - note keyboard is still active
 						if (*PasteIndex) {
 							if (*PasteIndex==10) {
 								// CRLF to CR, LF to CR
@@ -3435,18 +3438,18 @@ void do1()
 										// from GROM, so we need to hack 8375 after it's written
 										Word WP = pCurrentCPU->GetWP();
 										wcpubyte(0x8375, toupper(*PasteIndex));
-										wcpubyte(WP, rcpubyte(0x837c) | 0x20);	/* R0 must contain the status byte */
+										wcpubyte(WP, rcpubyte(0x837c, ACCESS_FREE) | 0x20);	/* R0 must contain the status byte */
 									} else {
 										if ((PasteStringHackBuffer)&&(nSystem==1)) {	// for normal TI-99/4A only - need to verify for 2.2
 											wcpubyte(0x835F, 0x5d);		// max length for BASIC continuously set - infinite string length! Use with care!
 										}
 										Word WP = pCurrentCPU->GetWP();
 										wcpubyte(WP, *PasteIndex);					/* set R0 (byte) with keycode */
-										wcpubyte(WP+12, rcpubyte(0x837c) | 0x20);	/* R6 must contain the status byte (it gets overwritten) */
+										wcpubyte(WP+12, rcpubyte(0x837c, ACCESS_FREE) | 0x20);	/* R6 must contain the status byte (it gets overwritten) */
 									}
 								}
 								if (PasteCount<1) {
-									wcpubyte(0x837c, rcpubyte(0x837c)|0x20);
+									wcpubyte(0x837c, rcpubyte(0x837c, ACCESS_FREE)|0x20);
 								}
 								PasteCount++;
 								PasteIndex++;
@@ -3607,13 +3610,13 @@ void do1()
 			// This doesn't work in XB!
 			if ((CPUThrottle!=CPU_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x2a62)) {
 				if ((ticks%10) != 0) {
-					WriteMemoryByte(0x830D, ReadMemoryByte(0x830D) - 1, false);
+					WriteMemoryByte(0x830D, ReadMemoryByte(0x830D, ACCESS_FREE) - 1, false);
 				}
 			}
 			// but this one does (note it will trigger for ANY bank-switched cartridge that uses this code at this address...)
 			if ((CPUThrottle!=CPU_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x6AB6) && (xb)) {
 				if ((ticks%10) != 0) {
-					WriteMemoryByte(0x8300, ReadMemoryByte(0x8300) - 1, false);
+					WriteMemoryByte(0x8300, ReadMemoryByte(0x8300, ACCESS_FREE) - 1, false);
 				}
 			}
 		}
@@ -3743,7 +3746,7 @@ void verifyCallFiles() {
 //////////////////////////////////////////////////////
 // Read a single byte from CPU memory
 //////////////////////////////////////////////////////
-Byte rcpubyte(Word x,bool rmw) {
+Byte rcpubyte(Word x,READACCESSTYPE rmw) {
 	// TI CPU memory map
 	// >0000 - >1fff  Console ROM
 	// >2000 - >3fff  Low bank RAM
@@ -3767,7 +3770,7 @@ Byte rcpubyte(Word x,bool rmw) {
 	// no matter what kind of access, update the heat map
 	UpdateHeatmap(x);
 
-	if (!rmw) {
+	if (rmw == ACCESS_READ) {
 		// Check for read or access breakpoints
 		for (int idx=0; idx<nBreakPoints; idx++) {
 			switch (BreakPoints[idx].Type) {
@@ -3781,23 +3784,23 @@ Byte rcpubyte(Word x,bool rmw) {
 					break;
 			}
 		}
+    }
 
-		// the cycle timing for read-before-write is dealt with in the opcodes
+    if (rmw != ACCESS_FREE) {
 		if ((x & 0x01) == 0) {					// this is a wait state (we cancel it below for ROM and scratchpad)
 			pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
 												// be right now that the CPU emulation does all Word accesses
 		}
 	}
 
-
 	switch (x & 0xe000) {
 		case 0x8000:
 			switch (x & 0xfc00) {
 				case 0x8000:				// scratchpad RAM - 256 bytes repeating.
-					if ((!rmw) && ((x & 0x01) == 0)) {
+					if ((rmw != ACCESS_FREE) && ((x & 0x01) == 0)) {
 						pCurrentCPU->AddCycleCount(-4);			// never mind for scratchpad :)
 					}
-					return ReadMemoryByte(x | 0x0300, !rmw);	// I map it all to >83xx
+					return ReadMemoryByte(x | 0x0300, rmw);	// I map it all to >83xx
 				case 0x8400:				// Don't read the sound chip (can hang a real TI? maybe only on early ones?)
 					return 0;
 				case 0x8800:				// VDP read data
@@ -3841,25 +3844,25 @@ Byte rcpubyte(Word x,bool rmw) {
 					return 0;
 			}
 		case 0x0000:					// console ROM
-			if ((!rmw) && ((x & 0x01) == 0)) {
+			if ((rmw != ACCESS_FREE) && ((x & 0x01) == 0)) {
 				pCurrentCPU->AddCycleCount(-4);			// never mind for scratchpad :)
 			}
 			// fall through
 		case 0x2000:					// normal CPU RAM
 		case 0xa000:					// normal CPU RAM
 		case 0xc000:					// normal CPU RAM
-			return ReadMemoryByte(x, !rmw);
+			return ReadMemoryByte(x, rmw);
 
 		case 0xe000:					// normal CPU RAM
 #ifdef USE_GIGAFLASH
             readE000(x,rmw);            // but never returns anything valid
 #endif
-			return ReadMemoryByte(x, !rmw);
+			return ReadMemoryByte(x, rmw);
 
 		case 0x4000:					// DSR ROM (with bank switching and CRU)
 			if (ROMMAP[x]) {			
 				// someone loaded ROM here, override the DSR system
-				return ReadMemoryByte(x, !rmw);
+				return ReadMemoryByte(x, rmw);
 			}
 
 			if (-1 == nCurrentDSR) return 0;
@@ -3960,7 +3963,7 @@ Byte rcpubyte(Word x,bool rmw) {
                     // make sure xbBank never exceeds xb
 					return(CPU2[(xbBank<<13)+(x-0x6000)]);	// cartridge bank 2 and up
 				} else {
-					return ReadMemoryByte(x, !rmw);			// cartridge bank 1
+					return ReadMemoryByte(x, rmw);			// cartridge bank 1
 				}
 			} else {
 				// MBX is weird. The lower 4k is fixed, but the top 1k of that is RAM
@@ -4410,7 +4413,7 @@ int GetRealVDP() {
 //////////////////////////////////////////////////////////////
 // Read from VDP chip
 //////////////////////////////////////////////////////////////
-Byte rvdpbyte(Word x, bool rmw)
+Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 { 
 	unsigned short z;
 
@@ -4491,7 +4494,7 @@ Byte rvdpbyte(Word x, bool rmw)
 		RealVDP = GetRealVDP();
 		UpdateHeatVDP(RealVDP);
 
-		if (!rmw) {
+		if (rmw == ACCESS_READ) {
 			// Check for breakpoints
 			for (int idx=0; idx<nBreakPoints; idx++) {
 				switch (BreakPoints[idx].Type) {
@@ -5053,7 +5056,7 @@ Byte ReadValidGrom(int nBase, Word x) {
 	}
 }
 
-Byte rgrmbyte(Word x, bool rmw)
+Byte rgrmbyte(Word x, READACCESSTYPE rmw)
 {
 	unsigned int z;										// temp variable
 	int nBank;
@@ -5075,7 +5078,7 @@ Byte rgrmbyte(Word x, bool rmw)
 		nBank=0;
 	}
 
-	if (!rmw) {
+	if (rmw == ACCESS_READ) {
 		// Check for breakpoints
 		for (int idx=0; idx<nBreakPoints; idx++) {
 			switch (BreakPoints[idx].Type) {
@@ -6496,7 +6499,7 @@ void DoMemoryDump() {
 		if (NULL != fp) {
 			unsigned char buf[8192];
 			for (int idx=0; idx<65536; idx++) {
-				buf[idx%8192]=ReadMemoryByte((Word)idx);
+				buf[idx%8192]=ReadMemoryByte((Word)idx, ACCESS_FREE);
 				if (idx%8192 == 8191) {
 					fwrite(buf, 1, 8192, fp);
 				}

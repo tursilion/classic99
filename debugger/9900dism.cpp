@@ -40,13 +40,13 @@ Byte GetSafeCpuByte(int x, int bank) {
 	switch (x & 0xe000) {
 	case 0x8000:
 		if ((x & 0xfc00)==0x8000) {						// scratchpad RAM - 256 bytes repeating.
-			return ReadMemoryByte(x|0x0300, false);		// I map it all to >83xx
+			return ReadMemoryByte(x|0x0300, ACCESS_FREE);		// I map it all to >83xx
 		}
 		break;
 	
 	case 0x4000:										// DSR ROM (with bank switching and CRU)
 		if (ROMMAP[x]) {
-			return ReadMemoryByte(x, false);
+			return ReadMemoryByte(x, ACCESS_FREE);
 		}
 		
 		if (-1 == nCurrentDSR) {
@@ -70,12 +70,12 @@ Byte GetSafeCpuByte(int x, int bank) {
             }
 			return(CPU2[(bank<<13)+(x-0x6000)]);		// cartridge bank 2
 		} else {
-			return ReadMemoryByte(x, false);			// cartridge bank 1
+			return ReadMemoryByte(x, ACCESS_FREE);			// cartridge bank 1
 		}
 		break;
 	}
 
-	return ReadMemoryByte(x, false);
+	return ReadMemoryByte(x, ACCESS_FREE);
 }
 
 extern CPU9900 * volatile pCurrentCPU;

@@ -387,9 +387,9 @@ void TICCDisk::readsectorwrap() {
 
 	FileInfo lclFile;
 
-	lclFile.nDrive=rcpubyte(0x834c);
-	lclFile.DataBuffer = romword(0x834e);	// address in VDP of data buffer
-	lclFile.RecordNumber = romword(0x834a);	// sector index
+	lclFile.nDrive=rcpubyte(0x834c, ACCESS_FREE);
+	lclFile.DataBuffer = romword(0x834e, ACCESS_FREE);	// address in VDP of data buffer
+	lclFile.RecordNumber = romword(0x834a, ACCESS_FREE);	// sector index
 
 	// This may get spammy...
 	debug_write("Sector read: TICC drive %d, sector %d, VDP >%04X", lclFile.nDrive, lclFile.RecordNumber, lclFile.DataBuffer);
@@ -417,9 +417,9 @@ void TICCDisk::writesectorwrap() {
 
 	FileInfo lclFile;
 
-	lclFile.nDrive=rcpubyte(0x834c);
-	lclFile.DataBuffer = romword(0x834e);	// address in VDP of data buffer
-	lclFile.RecordNumber = romword(0x834a);	// sector index
+	lclFile.nDrive=rcpubyte(0x834c, ACCESS_FREE);
+	lclFile.DataBuffer = romword(0x834e, ACCESS_FREE);	// address in VDP of data buffer
+	lclFile.RecordNumber = romword(0x834a, ACCESS_FREE);	// sector index
 
 	// This may get spammy...
 	debug_write("Sector write: TICC drive %d, sector %d, VDP >%04X", lclFile.nDrive, lclFile.RecordNumber, lclFile.DataBuffer);

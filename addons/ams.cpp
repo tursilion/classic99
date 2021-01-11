@@ -236,13 +236,14 @@ void WriteRawAMS(int address, int value) {
     systemMemory[address] = value&0xff;
 }
 
-Byte ReadMemoryByte(Word address, bool bTrueAccess)
+Byte ReadMemoryByte(Word address, READACCESSTYPE rmw)
 {
 	DWord wMask = 0x0000FF00;  // TODO: set for appropriate memory size	
 	DWord pageBase = ((DWord)address & 0x00000FFF);
 	DWord pageOffset = ((DWord)address & 0x0000F000) >> 12;
 	DWord pageExtension = pageOffset;
 
+    bool bTrueAccess = (rmw == ACCESS_READ);
 	bool bIsMapMode = (mapperMode == Map);
 	bool bIsRAM = (!ROMMAP[address]) && (((pageOffset >= 0x2) && (pageOffset <= 0x3)) || ((pageOffset >= 0xA) && (pageOffset <= 0xF)));
 	bool bIsMappable = (((pageOffset >= 0x2) && (pageOffset <= 0x3)) || ((pageOffset >= 0xA) && (pageOffset <= 0xF)));
@@ -420,7 +421,7 @@ Byte* ReadMemoryBlock(Word address, void* vData, Word length)
 
 	for (Word memIndex = 0; memIndex < length; memIndex++)
 	{
-		*(data + memIndex) = ReadMemoryByte((address + memIndex) & 0xFFFF);
+		*(data + memIndex) = ReadMemoryByte((address + memIndex) & 0xFFFF, ACCESS_FREE);
 	}
 
     return data;

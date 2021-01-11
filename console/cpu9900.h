@@ -91,7 +91,7 @@ public:		// type protection later. Make work today.
 	/////////////////////////////////////////////////////////////////////
 	virtual Byte RCPUBYTE(Word src);
 	virtual void WCPUBYTE(Word dest, Byte c);
-	virtual Word ROMWORD(Word src, bool rmw);
+	virtual Word ROMWORD(Word src, READACCESSTYPE rmw);
 	virtual void WRWORD(Word dest, Word val);
 
 	virtual Word GetSafeWord(int x, int bank);
@@ -276,7 +276,7 @@ public:		// type protection later. Make work today.
 	/////////////////////////////////////////////////////////////////////
 	Byte RCPUBYTE(Word src) override;
 	void WCPUBYTE(Word dest, Byte c) override;
-	Word ROMWORD(Word src, bool rmw) override;
+	Word ROMWORD(Word src, READACCESSTYPE rmw) override;
 	void WRWORD(Word dest, Word val) override;
 	void TriggerInterrupt(Word vector, Byte level) override;
 	

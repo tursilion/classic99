@@ -66,8 +66,8 @@ HWND hBugWnd = NULL;
 
 extern HWND myWnd;
 extern int nCurrentDSR;
-extern Byte rcpubyte(Word x,bool rmw);
-extern Word romword(Word x, bool rmw);
+extern Byte rcpubyte(Word x,READACCESSTYPE rmw);
+extern Word romword(Word x, READACCESSTYPE rmw);
 extern void wcpubyte(Word x, Byte c);
 extern void wcru(Word ad, int bt);
 extern int rcru(Word ad);
