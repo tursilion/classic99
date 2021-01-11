@@ -2012,11 +2012,26 @@ so they they are easier to search for (and in the case of interrupts, understand
 - Implement SBR_FILEOUT for disk images
 - Fix bug in SBR_FILEOUT - was always setting bytes in last sector to 0
 -----------------------------------------------
-10 Jan 2021
-- Fix cycle counting with respect to read-before-write by reworking the memory read system and auditing all instructions
-- STCR was missing its read-before-write in word mode
-- MOVB had an extra read-before-write, but it wasn't being counted, which was the main issue
-- change NOP cycles slightly - but didn't check if it fixed anything
+11 Jan 2021
+Reworked memory read handling to differentiate between normal read, read-before-write, and emulator reads. (Normal and RMW differ only in whether breakpoints are triggered). Also, "Read-modify-write" is still the acronym used but I mean read-before-write. ;)
+
+Changed the "rmw" flag on romword and related functions to an "access type" enum to reflect true use:
+	ACCESS_READ - the normal read cycle (0, default)
+	ACCESS_RMW  - a read-before-write, simply skips breakpoints, still counts cycles
+	ACCESS_FREE	- emulator access - skips breakpoints and no cycles are consumed
+
+Change nopframe - the opcode for NOP is 10FF, not 1000. Didn't test if that fixes anything - TE2 text-to-speech would be a good test.
+
+fixS() and fixD() - remove additional unnecessary read in WR indirect auto-increment (just cleanup, they already read the value that needs to be incremented).
+
+op_stcr() was missing the read-before-write for word accesses (and was commented wrong)
+op_movb() had a (now) extra ROMWORD for read-before-write
+op_ab(), op_sb(), op_socb(), op_szcb() were rewritten to do the byte work inline
+op_xop(), op_b() and op_bl() missing dummy read of source
+
+And with apologies, I switched the spacing from tabs to spaces... which will make the diff annoying.
+
+
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
