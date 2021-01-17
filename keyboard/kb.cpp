@@ -267,6 +267,16 @@ void decode(unsigned char sc)
 				return;
 		}
 	}
+    // also skip some of the keys we use for Windows hot keys
+    if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+        // control is down
+        switch (sc) {
+        case VK_F1:
+        case VK_F2:
+        case VK_HOME:
+            return;
+        }
+    }
 
 	// TODO: would be fun to have a debug vis of the Classic99 keyboard state
 	// This would help track down a bug -- when using ESDX and Q to fire in Parsec,

@@ -2030,6 +2030,10 @@ op_ab(), op_sb(), op_socb(), op_szcb() were rewritten to do the byte work inline
 op_xop(), op_b() and op_bl() missing dummy read of source
 
 And with apologies, I switched the spacing from tabs to spaces... which will make the diff annoying.
+-----------------------------------------------
+17 Jan 2021
+- Fix keyboard to ignore Control-F1 so pasting doesn't insert a control character
+- Github release only
 
 
 

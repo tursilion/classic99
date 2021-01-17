@@ -1884,7 +1884,7 @@ bool FiadDisk::Load(FileInfo *pFile) {
 	fclose(fp);										// all done
 		
 	// handle DSK1 automapping (AutomapDSK checks whether it's enabled)
-	AutomapDSK(&VDP[pFile->DataBuffer], min(pFile->RecordNumber, nDetectedLength), pFile->nDrive, false);
+	AutomapDSK(&VDP[pFile->DataBuffer], read_bytes, pFile->nDrive, false);
 		
 	// update heatmap
 	for (int idx=0; idx<read_bytes; idx++) {

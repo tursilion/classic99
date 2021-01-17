@@ -676,7 +676,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				decode(0xe0);	// extended
 			}
 			decode(wParam);
-			fKeyEverPressed=true;
+    		fKeyEverPressed=true;
 			break;
 
 		case WM_KEYUP:
