@@ -15,6 +15,35 @@
 // NOTE: AMSTEST4 can't handle this, we need a config option
 #define ENABLE_HUGE_AMS 
 
+// TODO: need to make the AMS emulation more closely resemble real
+// hardware - so no more pre-init, and handle the bytes written
+// properly based on the size of memory (ie: one byte or two? Which
+// byte, first or second? etc).
+//
+// Original cards, then, used a 74LS612. What do the new cards use?
+// I think it's still a 74LS612...
+// 
+// Notes from Ksarul:
+// The original AMS and SAMS cards only used one byte of the 12-bit address space, making the four high-order bits 
+// invisible to programs and the users. In order to get the results they needed, they had to write the address byte
+// twice to ensure that the address they wanted was populating the registers. The first write was shifted to the 
+// high-order register when the low order byte was written in--but it had no function as there were no outputs tied
+// to the four high-order bits. This is a requirement of the 74LS612, as it MUST have both bytes written to it for 
+// it to work. The original design reflected this limitation of the hardware--it is definitely NOT a bug, it is 
+// a feature that programmers have to wrap their minds around to get the card to respond properly.
+//
+// Expansion to 4M uses two of those high-order bits, and expansion to 16M would use all four, so that high-order 
+// byte now actually DOES something when it is shifted into the registers. Tursi's variant actually uses one 
+// additional high-order bit that isn't available on the 74LS612 to expand the space to 32M. 
+//
+// Rich, I have a thought: when writing to set the registers on a 1M SAMS, if you write zeroes in the first 
+// byte sent (the high-order byte), it should not try to switch you to bizarro pages that don't exist, as now 
+// there won't be spurious ones in the high-order byte. Same goes for the high-order byte in larger cards, always 
+// make sure unused bits are set to zero in the first byte sent to set the registers. Following this convention 
+// at all times should allow just a single SAMS management routine (set up a variable that identifies card size 
+// and mask all necessary initial bits to zero, which will also eliminate potential issues with cards smaller 
+// than 1M too).
+
 // define sizes for memory arrays 
 static const int MaxMapperPages	= 0x2000;       // MUST be a power of 2
 static const int MaxPageSize	= 0x1000;		// TODO: wait.. this is 32MB, but we only support a maximum of 1MB. Why so much data?
