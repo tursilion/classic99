@@ -369,12 +369,28 @@ void OpenUserCart(OPENFILENAME &ofn) {
 				if (NULL != fp) {
 					fseek(fp, 0, SEEK_END);
 					Users[nUsr].Img[nCnt].dwImg=NULL;
+					Users[nUsr].Img[nCnt].nLength=ftell(fp);
+                    // And it gets better /still/, FinalGROM users are now using "C.BIN" to
+                    // name /bank switched/ carts. THANK YOU VERY $%#%#$%# MUCH. I only
+                    // spent 15 years establishing the standard. Now I am spending hours
+                    // on "why doesn't my ROM work?????" Because it %$#@%$#@ LIES TO THE EMULATOR.
+                    // %$@%$@# eat me.
+                    if ((Users[nUsr].Img[nCnt].nType == TYPE_ROM) && (Users[nUsr].Img[nCnt].nLength > 8192)) {
+                        // at least we can assume it's non-inverted. Thank you for small favors.
+                        debug_write("Cartridge image is improperly named - C.BIN images max 8k. Treating as type 8.");
+                        Users[nUsr].Img[nCnt].nType = TYPE_378;
+                    }
+                    // might as well check the opposite, since the no-extension case could happen
+                    if ((Users[nUsr].Img[nCnt].nType == TYPE_378) && (Users[nUsr].Img[nCnt].nLength <= 8192)) {
+                        // can't bank less than 8k
+                        debug_write("Cartridge image is improperly named - not banked. Treating as type C.");
+                        Users[nUsr].Img[nCnt].nType = TYPE_ROM;
+                    }
 					if ((Users[nUsr].Img[nCnt].nType==TYPE_378)||(Users[nUsr].Img[nCnt].nType==TYPE_379)||(Users[nUsr].Img[nCnt].nType==TYPE_MBX)) {
 						Users[nUsr].Img[nCnt].nLoadAddr=0x0000;
 					} else {
 						Users[nUsr].Img[nCnt].nLoadAddr=0x6000;
 					}
-					Users[nUsr].Img[nCnt].nLength=ftell(fp);
 					strncpy(Users[nUsr].Img[nCnt].szFileName, ofn.lpstrFile, 1024);
 					Users[nUsr].Img[nCnt].szFileName[1023]='\0';
 					nCnt++;

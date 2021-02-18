@@ -2433,7 +2433,6 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 				// load it into the second bank of switched memory (2k in)
 				memcpy(&CPU2[pImg->nLoadAddr-0x4000], pData, nLen);
 				xb=1;		// one xb bank loaded
-				xbBank=1;	// not guaranteed on real console
 				bInvertedBanks=false;
 				bUsesMBX = false;
 				break;
@@ -2538,8 +2537,6 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                     }
                 }
 				memcpy(&CPU2[pImg->nLoadAddr], pData, nLen);
-                xbBank=xb;	// not guaranteed on real console
-				//xbBank=rand()%xb;		// TODO: make an option
 
                 if (xb == 16383) {
                     // copy the GROM data into the GROM space
@@ -2706,6 +2703,34 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
     // But we do need to free DiskFile if set
     if (NULL != DiskFile) {
         free(DiskFile);
+    }
+}
+
+// this searches banked cartridge space for a ROM header and
+// sets xbBank to that page. Only checks first and last page.
+// This is NOT what a real console does - real ROM carts
+// come up in a semi-random page (although it's usually first
+// or last, though you can't predict which until you try).
+// And yeah, I need this because of the FinalGROMs discard of
+// previous naming conventions. Hours of my life gone because
+// someone doesn't like "8". >:(
+void findXBbank() {
+    //xbBank=rand()%xb;		// TODO: make an option
+
+    // default to first page
+    xbBank = 0;
+    if (xb > 0) {
+        // cartridge is in CPU2, and size is 8192*(xb+1) pages
+        if (CPU2[0] == 0xaa) {
+            // header in first page
+            debug_write("Found ROM header in page 0, setting bank. NOT REALISTIC.");
+        } else if (CPU2[8192*xb] = 0xaa) {
+            // header in last page
+            xbBank = xb;
+            debug_write("Found ROM header in last page, setting bank. NOT REALISTIC.");
+        } else {
+            debug_write("No ROM header found in paged cart, setting bank to 0.");
+        }
     }
 }
 
@@ -2902,6 +2927,9 @@ void readroms() {
 			}
 		}
 	}
+
+    // set xbBank if paging
+    findXBbank();
 
     if (bEnableAppMode) {
         // patch the boot GROMs as appropriate
