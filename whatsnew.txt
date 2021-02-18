@@ -2030,10 +2030,29 @@ op_ab(), op_sb(), op_socb(), op_szcb() were rewritten to do the byte work inline
 op_xop(), op_b() and op_bl() missing dummy read of source
 
 And with apologies, I switched the spacing from tabs to spaces... which will make the diff annoying.
+
 -----------------------------------------------
 17 Jan 2021
 - Fix keyboard to ignore Control-F1 so pasting doesn't insert a control character
 - Github release only
+
+-----------------------------------------------
+17 Feb 2021
+
+- added autodetection of ROM cartridge boot bank, against my preference
+- add better guesses on C.BIN versus 8.BIN versus nothing, which completely defeats that system. Thanks.
+- added gpl.cpp - doesn't do anything right now and probably never will
+
+I expanded the character system in 2013 so that the single-character type ID could be used
+with all our modern carts. People were using it and it made sense, except to MESS who preferred
+an embedded XML file in their executable so people couldn't extend it.
+
+By 2021 it was rendered obsolete in favor of /guessing/. Thanks guys. I love this approach.
+
+-----------------------------------------------
+
+
+
 
 
 
