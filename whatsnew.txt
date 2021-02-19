@@ -2043,13 +2043,12 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 - add better guesses on C.BIN versus 8.BIN versus nothing, which completely defeats that system. Thanks.
 - added gpl.cpp - doesn't do anything right now and probably never will
 
-I expanded the character system in 2013 so that the single-character type ID could be used
-with all our modern carts. People were using it and it made sense, except to MESS who preferred
-an embedded XML file in their executable so people couldn't extend it.
-
-By 2021 it was rendered obsolete in favor of /guessing/. Thanks guys. I love this approach.
-
 -----------------------------------------------
+
+19 Feb 2021
+
+- fix the autodetection of ROM boot bank - a typo against my own standards ;)
+
 
 
 

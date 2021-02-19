@@ -2721,10 +2721,10 @@ void findXBbank() {
     xbBank = 0;
     if (xb > 0) {
         // cartridge is in CPU2, and size is 8192*(xb+1) pages
-        if (CPU2[0] == 0xaa) {
+        if (0xaa == CPU2[0]) {
             // header in first page
             debug_write("Found ROM header in page 0, setting bank. NOT REALISTIC.");
-        } else if (CPU2[8192*xb] = 0xaa) {
+        } else if (0xaa == CPU2[8192*xb]) {
             // header in last page
             xbBank = xb;
             debug_write("Found ROM header in last page, setting bank. NOT REALISTIC.");
