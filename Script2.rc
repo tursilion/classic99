@@ -336,6 +336,8 @@ IDR_PGROM               ROMS                    "roms\\p1f00g_0000_f800.GRM"
 
 IDR_EAUTILS             ROMS                    "roms\\EA_Utils.bin"
 
+IDR_TIPISIM             ROMS                    "roms\\TIPISIM.BIN"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //

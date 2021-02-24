@@ -51,6 +51,25 @@
 // any patches that want to access it directly (not through ROMWORD or RCPUBYTE)
 // must take note of this or they will fail
 
+// CRU device map
+// >0000	Console / SID Blaster
+// >1000	CF7
+// >1100	Classic99 DSR / TI DSR
+// >1200	TIPI Sim
+// >1300	RS232/PIO
+// >1400
+// >1500    Reserved for second RS232/PIO
+// >1600
+// >1700
+// >1800    Reserved for Thermal Printer
+// >1900
+// >1A00
+// >1B00
+// >1C00
+// >1D00
+// >1E00	AMS
+// >1F00	P-Code
+
 #pragma warning (disable: 4113 4761 4101)
 
 #define WIN32_LEAN_AND_MEAN
@@ -85,6 +104,7 @@
 #include "..\disk\imagedisk.h"
 #include "..\disk\TICCDisk.h"
 #include "..\disk\cf7Disk.h"
+#include "..\disk\tipiDisk.h"
 #include "sound.h"
 #include "..\debugger\bug99.h"
 #include "..\addons\mpd.h"
@@ -369,6 +389,12 @@ CRITICAL_SECTION TapeCS;							// Tape CS
 extern const char *pCurrentHelpMsg;
 extern int VDPDebug;
 extern int TVScanLines;
+extern CString TipiURI[3];
+extern CString TipiDirSort;
+extern CString TipiTz;
+extern CString TipiSSID;
+extern CString TipiPSK;
+extern CString TipiName;
 
 #define INIFILE ".\\classic99.ini"
 
@@ -380,6 +406,7 @@ extern int TVScanLines;
 struct IMG AlwaysLoad[] = {
     {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0},
 	{	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
+    {   IDR_TIPISIM,    0x1200, 0x0100, TYPE_DSR    , 0},
 //	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0},
 	{	IDR_SPCHROM,	0x0000,	0x8000,	TYPE_SPEECH	, 0},
 	{	IDR_PGROM,		0x0000, 0xF800, TYPE_PCODEG , 0},
@@ -818,6 +845,27 @@ skiprestofuser:
 	tsharp=(tmp-100)/100.0;
 	SetTVValues(thue, tsat, tcont, tbright, tsharp);
 
+    // TIPISim
+    {
+        char buf[256];
+        GetPrivateProfileString("TIPISim", "URI1", "", buf, sizeof(buf), INIFILE);
+        TipiURI[0] = buf;
+        GetPrivateProfileString("TIPISim", "URI2", "", buf, sizeof(buf), INIFILE);
+        TipiURI[1] = buf;
+        GetPrivateProfileString("TIPISim", "URI3", "", buf, sizeof(buf), INIFILE);
+        TipiURI[2] = buf;
+        GetPrivateProfileString("TIPISim", "TipiDirSort", "FIRST", buf, sizeof(buf), INIFILE);
+        TipiDirSort = buf;
+        GetPrivateProfileString("TIPISim", "TipiTz", "Emu/Classic99", buf, sizeof(buf), INIFILE);
+        TipiTz = buf;
+        GetPrivateProfileString("TIPISim", "TipiSSID", "", buf, sizeof(buf), INIFILE);
+        TipiSSID = buf;
+        GetPrivateProfileString("TIPISim", "TipiPSK", "", buf, sizeof(buf), INIFILE);
+        TipiPSK = buf;
+        GetPrivateProfileString("TIPISim", "TipiName", "TIPISim", buf, sizeof(buf), INIFILE);
+        TipiName = buf;
+    }
+
     // MRUs
     for (int idx=1; idx<=MAX_MRU; ++idx) {
         char buf[1024];
@@ -954,6 +1002,16 @@ void SaveConfig() {
 	tmp=(int)((tsharp+1.0)*100.0);
 	WritePrivateProfileInt(		"tvfilter",		"sharpness",			tmp,						INIFILE);
 	WritePrivateProfileInt(		"tvfilter",		"scanlines",			TVScanLines,				INIFILE);
+
+    // TIPISim
+    WritePrivateProfileString("TIPISim", "URI1", TipiURI[0], INIFILE);
+    WritePrivateProfileString("TIPISim", "URI2", TipiURI[1], INIFILE);
+    WritePrivateProfileString("TIPISim", "URI3", TipiURI[2], INIFILE);
+    WritePrivateProfileString("TIPISim", "TipiDirSort", TipiDirSort, INIFILE);
+    WritePrivateProfileString("TIPISim", "TipiTz", TipiTz, INIFILE);
+    WritePrivateProfileString("TIPISim", "TipiSSID", TipiSSID, INIFILE);
+    WritePrivateProfileString("TIPISim", "TipiPSK", TipiPSK, INIFILE);
+    WritePrivateProfileString("TIPISim", "TipiName", TipiName, INIFILE);
 
     // MRUs
     for (int idx=1; idx<=MAX_MRU; ++idx) {
@@ -2847,7 +2905,6 @@ void readroms() {
     if (csCf7Bios.GetLength() > 0) {
         FILE *fp = fopen(csCf7Bios, "rb");
         if (NULL != fp) {
-//            DSR[1][0] = 0x00;       // disable Classic99 DSR - not positive how important that is...
             debug_write("Replacing DSK1-3 with CF7 emulation at CRU >1000.");
             fread(DSR[0], 1, 8192, fp);
             fclose(fp);
@@ -3542,6 +3599,25 @@ void do1()
 			if ((nCurrentDSR == 1) && (nDSRBank[1] > 0) && (pCurrentCPU->GetPC() == 0x40e8)) {
 				HandleTICCSector();
 			}
+		}
+        // Check for TIPISim access hook
+		// These patches handle the custom DSR
+		// NOTE: TIPISIM DSR must not use 0x5FF8-0x5FFF - used for TIPI interface hardware
+		if ((nCurrentDSR == 2) && (pCurrentCPU->GetPC() >= 0x4800) && (pCurrentCPU->GetPC() <= 0x5FF8)) {
+			Word WP = pCurrentCPU->GetWP();
+			bool bRet = HandleTIPI();
+			if (bRet) {
+				// if all goes well, increment address by 2
+				// Note the powerup routine won't do that :)
+				// return address in R11.. TI is a bit silly
+				// and if we don't increment by 2, it's considered
+				// an error condition
+                // TODO: not sure if this is true for CALL, but CALL
+                // can just return false in that case
+				wrword(WP+22, romword(WP+22)+2);
+			}
+			pCurrentCPU->SetPC(romword(WP+22)); // basically this is a B*R11
+            return;
 		}
 
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {

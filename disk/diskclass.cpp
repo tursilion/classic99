@@ -111,6 +111,7 @@ const char *szDiskTypes[] = {
 	
 	"ClipBoard",				// it should be safe to let Clipboard float at the end
 	"Clock",					// and clock too
+    "TIPIsim",                  // TIPI sim
 };
 
 //********************************************************
@@ -144,6 +145,8 @@ s_FILEINFO::s_FILEINFO() {
 	LastError=0;
 	nCurrentRecord=0;
 	nLocalData=0;
+    initData = NULL;
+    initDataSize = 0;
 	// warning: this is not atomic, but it will work here
 	nIndex=nCnt++;
 }
@@ -190,6 +193,10 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	p->pData=NULL;
 	nDataSize=p->nDataSize;
 	p->nDataSize=0;
+    initData = p->initData;
+    p->initData = NULL;
+    initDataSize = p->initDataSize;
+    p->initDataSize = 0;
 	// so we also nuke the open and dirty flags, since they aren't anymore
 	// no need to check if they WERE, faster to just clear them
 	p->bDirty = false;
@@ -340,6 +347,11 @@ bool BaseDisk::Close(FileInfo *pFile) {
 		pFile->pData=NULL;
 		pFile->nDataSize = 0;
 	}
+    if (NULL != pFile->initData) {
+        free(pFile->initData);
+        pFile->initData = NULL;
+        pFile->initDataSize = 0;
+    }
 
 	return bRet;
 }
@@ -555,7 +567,7 @@ bool BaseDisk::Write(FileInfo *pFile) {
 // Restore/Rewind - moves the file pointer - to the
 // beginning if sequential, to a specified record if relative
 bool BaseDisk::Restore(FileInfo *pFile) {
-	if (pFile->Status & FLAG_RELATIVE) {
+	if (pFile->Status & FLAG_RELATIVE) {    // TODO: check if this is really variable vs fixed
 		pFile->nCurrentRecord = pFile->RecordNumber;
 	} else {
 		pFile->nCurrentRecord = 0;

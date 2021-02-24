@@ -130,7 +130,7 @@ int ScratchPadCorruptList[] = {
 void LoadOneImg(struct IMG *pImg, char *szFork);
 bool TryLoadMagicImage(FileInfo *pFile);
 void do_files(int n);
-void do_dsrlnk();
+void do_dsrlnk(char *forceDevice);
 void do_sbrlnk(int nOpCode);
 void setfileerror(FileInfo *pFile);
 void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile);
@@ -170,7 +170,7 @@ bool HandleDisk() {
 
 	switch (PC) {
 	case 0x4800:	// dsr entry
-		do_dsrlnk();
+		do_dsrlnk(NULL);
 		LeaveCriticalSection(&csDriveType);
 		return true;
 
@@ -294,8 +294,9 @@ const char* getOpcode(int opcode) {
 
 ///////////////////////////////////////////////////////////////////////
 // Base entry for standard DSR call
+// forceDevice right now is NULL to pull from the PAB, or "DSKx" or "CLOCK" (only)
 ///////////////////////////////////////////////////////////////////////
-void do_dsrlnk() {
+void do_dsrlnk(char *forceDevice) {
 	// performs file i/o using the PAB passed as per a normal dsrlnk call.
 	// address of length byte passed in CPU >8356
 	int PAB;
@@ -324,13 +325,19 @@ void do_dsrlnk() {
         debug_write("Warning: Calling DSR without VDP read address in GPLWS R15 may lockup on hardware (got >%04X)!", romword(0x83fe, ACCESS_FREE));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
     }
+    // TODO: TIPISim patch - allow 1100 or 1200
 	if (romword(0x83d0, ACCESS_FREE) != 0x1100) {	// warning: hard-coded CRU base
-		debug_write("Warning: DSRLNK functions should store the CRU base of the device at >83D0! (Got >%04X)", romword(0x83d0, ACCESS_FREE));
-        if (BreakOnDiskCorrupt) TriggerBreakPoint();
+        if (romword(0x83d0, ACCESS_FREE) != 0x1200) {
+    		debug_write("Warning: DSRLNK functions should store the CRU base of the device at >83D0! (Got >%04X)", romword(0x83d0, ACCESS_FREE));
+            if (BreakOnDiskCorrupt) TriggerBreakPoint();
+        }
 	}
+    // TODO: TIPISim patch - allow 1100 or 1200
 	if (romword(0x83f8, ACCESS_FREE) != 0x1100) {	// warning: hard-coded CRU base
-		debug_write("Warning: DSRLNK functions MUST store the CRU base of the device at >83F8 (GPLWS R12) to avoid a crash on hw! (Got >%04X)", romword(0x83f8, ACCESS_FREE));
-        if (BreakOnDiskCorrupt) TriggerBreakPoint();
+    	if (romword(0x83f8, ACCESS_FREE) != 0x1200) {
+    		debug_write("Warning: DSRLNK functions MUST store the CRU base of the device at >83F8 (GPLWS R12) to avoid a crash on hw! (Got >%04X)", romword(0x83f8, ACCESS_FREE));
+            if (BreakOnDiskCorrupt) TriggerBreakPoint();
+        }
 	}
 	// steal nLen for a quick test...
 	nLen = romword(0x83d2, ACCESS_FREE);
@@ -350,7 +357,7 @@ void do_dsrlnk() {
 	}
 
 	// verify mandatory setup makes some form of sense - for debugging DSR issues
-	{
+	if (NULL == forceDevice) {
 		static int nLastOp = -1;
 		static int nLastPAB = -1;	// reduce debug by reducing repetition
 
@@ -402,9 +409,12 @@ void do_dsrlnk() {
 
 	// You can make assumptions when the device name is always the same length, but
 	// we have a few, so we need to work out which one we had, then subtract an additional 10 bytes.
+    // Force device doesn't apply here, cause we're playing to find the start of the PAB
+    // TODO: why can't we just use the length byte in 0x8354??
 	PAB -= 4;					// enough to differentiate which we have (DSKx and CLIP are both 4 chars)
 	if (0 == _strnicmp("clock", (const char*)&VDP[PAB]-1, 5)) PAB--;		// must be CLOCK, subtract one more
 	if (0 == _strnicmp("dsk.", (const char*)&VDP[PAB]+1, 4)) PAB++;			// if DSK., then add one (this is kind of hacky)
+    if (0 == _strnicmp("\x2PI.", (const char*)&VDP[PAB]+1, 4)) PAB+=2;      // Handles "PI.", which we can get in force cases (the length byte is included in the test so TIPI doesn't match PI)
 	PAB-=10;					// back up to the beginning of the PAB
 	PAB&=0x3FFF;				// mask to VDP memory range
 
@@ -417,36 +427,53 @@ void do_dsrlnk() {
 	// 10 - Clipboard "CLIP"
 	// 11 - Clock "CLOCK"
 	// ?? - Diskname "DSK"
-	if (isdigit(VDP[(PAB+13)&0x3FFF])) {
-		nDrive = VDP[(PAB+13)&0x3FFF] - '0';
-	} else {
-		// differentiate non-numbered names
-		if ((VDP[(PAB+13)&0x3fff] == '.') || (VDP[(PAB+13)&0x3fff]&0x80)) {		// TI DSR allows high ascii as a separator
-			// it must be DSK.DISKNAME.FILENAME, so work out which disk the user wants
-			CString csDiskName;
-			int pos = PAB+14;
-			int nLen = VDP[(PAB+9)&0x3fff] - 4;		// 4 for 'DSK.'
-			while ((VDP[pos&0x3fff] != '.') && ((VDP[pos&0x3fff]&0x80) == 0)) {
-				csDiskName+=VDP[pos&0x3fff];
-				pos++;
-				nLen--;
-				if (nLen == 0) break;
-			}
-			nDrive = FindDiskName(csDiskName);
-			if (nDrive == -1) {
-				debug_write("Diskname '%s' was not found.", csDiskName);
-				// since we don't have a structure yet, set it manually
-				VDP[PAB+1] &= 0x1f;					// no errors
-				VDP[PAB+1] |= ERR_BADATTRIBUTE<<5;	// file error
-				return;
-			}
-			bDiskByName = true;
-		} else if (toupper(VDP[(PAB+12)&0x3fff]) == 'O') {
-			nDrive = CLOCK_DRIVE_INDEX;		// clOck
-		} else {
-			nDrive = CLIP_DRIVE_INDEX;		// clIp
+    if (forceDevice) {
+        // forceDevice right now can only be DSKx or CLOCK
+        if (0 == _stricmp(forceDevice, "CLOCK")) {
+            nDrive = CLOCK_DRIVE_INDEX;
+        } else if ((strlen(forceDevice) > 3) && (isdigit(forceDevice[3]))) {
+    		nDrive = forceDevice[3]-'0';
+        }
+
+		if (nDrive == -1) {
+			debug_write("[Forced] Disk device '%s' was not found.", forceDevice);
+			// since we don't have a structure yet, set it manually
+			VDP[PAB+1] &= 0x1f;					// no errors
+			VDP[PAB+1] |= ERR_BADATTRIBUTE<<5;	// file error
+			return;
 		}
-	}
+    } else {
+	    if (isdigit(VDP[(PAB+13)&0x3FFF])) {
+		    nDrive = VDP[(PAB+13)&0x3FFF] - '0';
+	    } else {
+		    // differentiate non-numbered names
+		    if ((VDP[(PAB+13)&0x3fff] == '.') || (VDP[(PAB+13)&0x3fff]&0x80)) {		// TI DSR allows high ascii as a separator
+			    // it must be DSK.DISKNAME.FILENAME, so work out which disk the user wants
+			    CString csDiskName;
+			    int pos = PAB+14;
+			    int nLen = VDP[(PAB+9)&0x3fff] - 4;		// 4 for 'DSK.'
+			    while ((VDP[pos&0x3fff] != '.') && ((VDP[pos&0x3fff]&0x80) == 0)) {
+				    csDiskName+=VDP[pos&0x3fff];
+				    pos++;
+				    nLen--;
+				    if (nLen == 0) break;
+			    }
+			    nDrive = FindDiskName(csDiskName);
+			    if (nDrive == -1) {
+				    debug_write("Diskname '%s' was not found.", csDiskName);
+				    // since we don't have a structure yet, set it manually
+				    VDP[PAB+1] &= 0x1f;					// no errors
+				    VDP[PAB+1] |= ERR_BADATTRIBUTE<<5;	// file error
+				    return;
+			    }
+			    bDiskByName = true;
+		    } else if (toupper(VDP[(PAB+12)&0x3fff]) == 'O') {
+			    nDrive = CLOCK_DRIVE_INDEX;		// clOck
+		    } else {
+			    nDrive = CLIP_DRIVE_INDEX;		// clIp
+		    }
+	    }
+    }
 
 	// technically, it should not be possible for this to be illegal, but just in case
 	if ((nDrive < 0) || (nDrive >= MAX_DRIVES)) {
@@ -516,6 +543,20 @@ void do_dsrlnk() {
 	}
 	if (DISK_TICC == pDriveType[nDrive]->GetDiskType()) {
 		// it's a TI disk controller! We have to handle it special
+
+        // TODO: TIPISim - don't allow this
+        if (romword(0x83f8, ACCESS_FREE) == 0x1200) {
+            // the CRU base MUST be at that address, so this is okay
+            // guess we could also check the active DSR...
+            debug_write("TIPIsim can not wrap to the TI disk controller");
+		    // Bad drive = file error
+		    tmpFile.LastError = ERR_FILEERROR;	// we can not use error code 0 because it's too late at this point, it won't detect as an error for some ops!
+		    setfileerror(&tmpFile);
+		    // set COND bit for non-existant DSR - who knows? :) Someone might use it!
+		    wcpubyte(0x837c, rcpubyte(0x837c) | 0x20); 
+		    return;
+        }
+
 		TICCDisk *pDisk = (TICCDisk*)pDriveType[nDrive];
 		if (bDiskByName) {
 			pDisk->dsrlnk(-1);
@@ -529,7 +570,6 @@ void do_dsrlnk() {
 	tmpFile.SplitOptionsFromName();
 
     // only write the filename if we are not on CALL FILES(0)
-    // TODO: AMS might not like my use of staticCPU here
     int top = GetSafeCpuWord(0x8370, 0);
     if (top < 0x3fff) {
         // after a call, >8356 points to the filename (usually with the first byte zeroed) in the disk
@@ -664,8 +704,9 @@ void do_dsrlnk() {
 				HELPFULDEBUG1("Failed reading max %d bytes", pWorkFile->RecordLength);
 				setfileerror(pWorkFile);
 			} else {
-				// need to copy the char count back to the PAB if fixed
+				// always copy the char count back (TODO: always?)
 				VDP[tmpFile.PABAddress+5] = pWorkFile->CharCount;
+				// Fixed files always get the record number updated
 				if (0 == (tmpFile.Status & FLAG_VARIABLE)) {
 					VDP[tmpFile.PABAddress+6] = pWorkFile->RecordNumber/256;
 					VDP[tmpFile.PABAddress+7] = pWorkFile->RecordNumber%256;
@@ -694,6 +735,7 @@ void do_dsrlnk() {
 			} else {
 				// mark it dirty
 				pWorkFile->bDirty = true;
+				// Fixed files always get the record number updated
 				if (0 == (tmpFile.Status & FLAG_VARIABLE)) {
 					VDP[tmpFile.PABAddress+6] = pWorkFile->RecordNumber/256;
 					VDP[tmpFile.PABAddress+7] = pWorkFile->RecordNumber%256;

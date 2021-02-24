@@ -35,6 +35,7 @@
 //
 // http://harmlesslion.com - visit the web page for contact info
 //
+#pragma once
 
 // FIAD style disk access
 class FiadDisk : public BaseDisk {
@@ -91,9 +92,9 @@ public:
 	// class-specific functions
 	FILE *fopen(const char *szFile, char *szMode);
 	void DetectImageType(FileInfo *pFile, CString csFileName);
-	bool BufferFiadFile(FileInfo *pFile);
-	bool BufferTextFile(FileInfo *pFile);
-	bool BufferImgFile(FileInfo *pFile);
+	virtual bool BufferFiadFile(FileInfo *pFile);
+	virtual bool BufferTextFile(FileInfo *pFile);
+	virtual bool BufferImgFile(FileInfo *pFile);
 	bool FlushWindowsText(FileInfo *pFile);
 	bool FlushFiad(FileInfo *pFile);
 	void WriteFileHeader(FileInfo *pFile, FILE *fp);

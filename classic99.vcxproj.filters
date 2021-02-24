@@ -97,6 +97,9 @@
     <ClCompile Include="addons\gpl.cpp">
       <Filter>addons</Filter>
     </ClCompile>
+    <ClCompile Include="disk\tipiDisk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -171,6 +174,9 @@
     </ClInclude>
     <ClInclude Include="addons\gpl.h">
       <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\tipiDisk.h">
+      <Filter>disk</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -251,6 +257,8 @@
     <None Include="roms\EA_Utils.bin">
       <Filter>roms\makecart</Filter>
     </None>
+    <None Include="graphics\roms3.bin" />
+    <None Include="roms\TIPISIM.BIN" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="2xSAI">

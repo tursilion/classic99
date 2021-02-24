@@ -44,8 +44,8 @@
 #define IDR_BASICHDR                    319
 #define IDD_DISKCFG                     320
 #define IDD_OPTGRAM                     322
-#define IDR_ROMS2                       337
 #define IDR_TIDISK                      338
+#define IDR_TIPISIM                     353
 #define IDC_RADIO1                      1000
 #define IDC_RADIO2                      1001
 #define IDC_RADIO3                      1002
@@ -418,7 +418,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        351
+#define _APS_NEXT_RESOURCE_VALUE        354
 #define _APS_NEXT_COMMAND_VALUE         40194
 #define _APS_NEXT_CONTROL_VALUE         1174
 #define _APS_NEXT_SYMED_VALUE           101

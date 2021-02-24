@@ -1,0 +1,1865 @@
+// This is just a SIMULATION of TIPI, you can not rely on programming
+// idiosyncrases to be correct. It IS possible to communicate with an
+// emulation of TIPI - there is a QEMU package, but at the moment
+// that is not what this file is emulating. This is just an interface
+// to make the API work.
+
+// TIPI's file system maps the following device names:
+//
+// TIPI - the root folder of the file system
+// DSK0 - an alias for TIPI
+// DSK1 - user mapped to any subfolder of TIPI
+// DSK2 - ""
+// DSK3 - ""
+// DSK4 - ""
+// URI1 - User defined alias for "PI.*" (for URIs)
+// URI2 - ""
+// URI3 - ""
+// URI4 - ""
+// DSK  - simulation of DSK search
+//
+// The filesystem supports subdirectories as file type 6
+// It supports the extended file system information as
+// documented in the proposal I started with JediMatt's 
+// comments.
+//
+
+// Hardware
+// >5FF9	RC - Raspberry PI Control Byte
+// >5FFB	RD - Raspberry PI Data Byte
+// >5FFD	TC - TI-99/4A Control Byte
+// >5FFF	TD - TI-99/4A Data Byte
+//
+// See https://github.com/jedimatt42/tipi/wiki/TIPI-Protocol
+// At this level, use emulation
+// https://github.com/jedimatt42/tipi/wiki/emulation-installation
+
+// High level interface
+// PI.PIO - output to PDF: https://github.com/jedimatt42/tipi/wiki/PI.PIO
+// PI.CLOCK - read a timestamp (like existing): https://github.com/jedimatt42/tipi/wiki/PI.CLOCK
+// PI.TCP - TCP interface - https://github.com/jedimatt42/tipi/wiki/PI.TCP
+// PI.UDP - UDP interface - https://github.com/jedimatt42/tipi/wiki/PI.UDP
+// PI.HTTP - URL file access - https://github.com/jedimatt42/tipi/wiki/PI.HTTP
+// PI.CONFIG - Access configuration file - https://github.com/jedimatt42/tipi/wiki/PI.CONFIG
+// PI.STATUS - Access status data - https://github.com/jedimatt42/tipi/wiki/PI.STATUS
+// PI.VARS - Variable access to myti99.com - https://github.com/jedimatt42/tipi/wiki/PI.VARS
+// PI.SHUTDOWN - shutdown PI - https://github.com/jedimatt42/tipi/wiki/PI.SHUTDOWN
+// PI.REBOOT - reboot PI - https://github.com/jedimatt42/tipi/wiki/PI.REBOOT
+// PI.UPGRADE - upgrade PI - https://github.com/jedimatt42/tipi/wiki/PI.UPGRADE
+
+// Extensions
+// These normally run through the messaging interface:
+//
+//  AORG >4010
+//	DATA	recvmsg		; MOV @>4010,R3   BL *R3   to invoke recvmsg.
+//	DATA	sendmsg		; MOV @>4012,R3   BL *R3   to invoke sendmsg. 
+//	DATA	vrecvmsg	; MOV @>4014,R3   BL *R3   to invoke recvmsg (VDP?).
+//	DATA	vsendmsg	; MOV @>4016,R3   BL *R3   to invoke sendmsg (VDP?). 
+//	DATA	>0000 
+//
+// https://github.com/jedimatt42/tipi/wiki/RawExtensions
+//
+// 0x20 - read mouse - https://github.com/jedimatt42/tipi/wiki/Extension-Mouse
+// 0x21 - network variables - https://github.com/jedimatt42/tipi/wiki/Extension-NetVar
+// 0x22 - TCP - https://github.com/jedimatt42/tipi/wiki/Extension-TCP
+// 0x23 - UDP - https://github.com/jedimatt42/tipi/wiki/Extension-UDP
+
+// This TIPI Sim will install at CRU >1200
+//
+// Status:
+// DSK0 - handled by Classic99 DSR - not implemented here
+// DSK1 - handled by Classic99 DSR - not implemented here
+// DSK2 - handled by Classic99 DSR - not implemented here
+// DSK3 - handled by Classic99 DSR - not implemented here
+// DSK4 - handled by Classic99 DSR - not implemented here
+// DSK  - handled by Classic99 DSR - not implemented here
+// DSR - not implemented
+// >5FF9 RC - Raspberry PI Control Byte - not implemented
+// >5FFB RD - Raspberry PI Data Byte - not implemented
+// >5FFD TC - TI-99/4A Control Byte - not implemented
+// >5FFF TD - TI-99/4A Data Byte - not implemented
+// PI.PIO - output to PDF - not implemented
+// 
+// 4800 CALL TIPI - pending
+// 4810 TIPI - alias for DSK0 - pending
+// 4820 URI1 - User defined alias for "PI.*" (for URIs) - pending
+// 4822 URI2 - "" - pending
+// 4824 URI3 - "" - pending
+// 4826 URI4 - "" - pending
+// 4830 PI.CLOCK - alias for CLOCK - pending
+// 4830 PI.TCP - TCP interface - pending
+// 4830 PI.UDP - UDP interface - pending
+// 4830 PI.HTTP - URL file access - pending
+// 4830 PI.CONFIG - Access configuration file - pending
+// 4830 PI.STATUS - Access status data - pending
+// 4830 PI.VARS - Variable access to myti99.com - pending?
+// 4830 PI.SHUTDOWN - shutdown PI (NOP here) - pending
+// 4830 PI.REBOOT - reboot PI (NOP here) - pending
+// 4830 PI.UPGRADE - upgrade PI (NOP here) - pending
+// 
+// 4840 DATA recvmsg - pending
+// 4850	DATA sendmsg - pending
+// 4860	DATA vrecvmsg - pending
+// 4870	DATA vsendmsg - pending
+
+#include <windows.h>
+#include <winhttp.h>
+#include <stdio.h>
+#include <io.h>
+#include <atlstr.h>
+#include <time.h>
+#include "tiemul.h"
+#include "diskclass.h"
+#include "cpu9900.h"
+#include "tipiDisk.h"
+
+extern CPU9900 * volatile pCurrentCPU;
+extern void do_dsrlnk(char *forceDevice);
+extern const char* getOpcode(int opcode);
+extern void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile);
+extern void setfileerror(FileInfo *pFile);
+extern BaseDisk *pDriveType[MAX_DRIVES];
+
+CString TipiURI[3];
+CString TipiDirSort;
+CString TipiTz;
+CString TipiSSID;
+CString TipiPSK;
+CString TipiName;
+TipiWebDisk tipiDsk;
+
+bool callTipi();
+bool dsrTipi();
+bool dsrUri(int x);
+bool dsrPI();
+bool dsrPiPio();
+bool dsrPiClock();
+bool dsrPiTcp();
+bool dsrPiUdp();
+bool dsrPiHttp();
+bool dsrPiConfig();
+bool dsrPiStatus();
+bool dsrPiVars();
+bool dsrPiHardwareNop();
+bool directRecvMsg();
+bool directSendMsg();
+bool directVRecvMsg();
+bool directVSendMsg();
+bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile));
+bool bufferWebFile(FileInfo *pFile);
+bool bufferConfig(FileInfo *pFile);
+bool bufferStatus(FileInfo *pFile);
+
+#define MAX_RAM_FILE 128*1024
+
+// on the day this changes (for instance, we support
+// direct access to RAW files, etc), add a headersize
+// variable to FileInfo and make sure the detection code
+// updates it, then use that instead.
+#define HEADERSIZE 128
+
+static const unsigned char LoadPAB[] = {
+    0x05, 0x00, // LOAD
+    0x10, 0x00, // VDP address >1000
+    0x00, 0x00, // record length, char count
+    0x20, 0x06, // max size 0x2006 (8k+EA5 header)
+    0x00, 0x00  // BIAS, name length
+};
+
+// get a file from the web and store in RAM
+// caller is responsible for freeing data
+// NULL on failure
+unsigned char *getWebFile(CString &filename, int &outSize) {
+    // adapted from https://stackoverflow.com/questions/23038973/c-winhttp-get-response-header-and-body
+    DWORD dwSize;
+    DWORD dwDownloaded;
+    DWORD headerSize = 0;
+    BOOL  bResults = FALSE;
+    HINTERNET hSession;
+    HINTERNET hConnect;
+    HINTERNET hRequest;
+    wchar_t host[MAX_PATH];
+    wchar_t resource[MAX_PATH];
+    char tmpStr[MAX_PATH];
+    bool secure = false;
+    unsigned char *buf = NULL;
+    int outPos = 0;
+    outSize = 0;
+
+    // Parse out pi.http vs urix
+    //
+    // it's a URI request - if PI make sure it's http
+    // TODO: not sure if multiple web files are allowed to
+    // be open! This code assumes only one...
+    CString url;
+    CString tst = filename.Left(3);
+
+    if (tst.CompareNoCase("PI.") == 0) {
+        if (filename.Mid(3, 4).CompareNoCase("http") != 0) {
+            debug_write("Can't load from '%s'!", filename);
+            return NULL;
+        }
+        url = filename.Mid(3);
+    } else {
+        // URI1, URI2, URI3, URI4
+        int idx = filename[3]-'1';
+        if ((idx<0)||(idx>2)||(TipiURI[idx].IsEmpty())) {
+            debug_write("Can't load from '%s'?", filename);
+            return NULL;
+        }
+        // assuming, not checking for the '.'
+        url = TipiURI[idx] + filename.Mid(5);
+    }
+
+    debug_write("Load URL is '%s'", url.GetString());
+
+    // split up the path and make it wide
+    strncpy(tmpStr, url.GetString(), MAX_PATH);
+    tmpStr[MAX_PATH-1]='\0';
+
+    char *p = strchr(tmpStr, ':');
+    if (NULL == p) {
+        // okay, assume no http part
+        secure = false;
+        p = tmpStr;
+    } else if (p == tmpStr) {
+        // what is this nonsense?
+        secure = false;
+        ++p;
+    } else if ((*(p-1) == 'S')||(*(p-1) == 's')) {
+        // https:
+        secure = true;
+        ++p;
+    } else {
+        // probably http:, but not checking
+        // we shouldn't be called with other methods...
+        secure = false;
+        ++p;
+    }
+    while (*p == '/') ++p;
+    char *p2 = strchr(p, '/');
+    if (NULL != p2) {
+        *p2 = '\0';
+        ++p2;
+        _snwprintf(host, MAX_PATH, L"%S", p);
+        _snwprintf(resource, MAX_PATH, L"%S", p2);
+    } else {
+        _snwprintf(host, MAX_PATH, L"%S", p);
+        _snwprintf(resource, MAX_PATH, L"");
+    }
+
+    // CALL TIPI("PI.http://harmlesslion.com/tipi/PIANO1")
+
+    hSession = WinHttpOpen( L"Classic99TipiSim/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0 );
+    if (NULL == hSession) {
+        debug_write("Failed to create web session, code %d", GetLastError());
+        return NULL;
+    }
+
+    hConnect = WinHttpConnect( hSession, host, secure ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 0 );
+    if (NULL == hConnect) {
+        debug_write("Web connect request failed, code %d", GetLastError());
+        WinHttpCloseHandle(hSession);
+        return NULL;
+    }
+        
+    hRequest = WinHttpOpenRequest( hConnect, L"GET", resource, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0 );
+    if (NULL == hRequest) {
+        debug_write("Web open request failed, code %d", GetLastError());
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return NULL;
+    }
+
+    bResults = WinHttpSendRequest( hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, NULL, 0, 0, 0 );
+    if (!bResults) {
+        debug_write("Web Send Request failed, code %d", GetLastError());
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return NULL;
+    }
+
+    bResults = WinHttpReceiveResponse( hRequest, NULL );
+    if (!bResults) {
+        debug_write("Web Receive failed, code %d", GetLastError());
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return NULL;
+    }
+
+    /* store headers...
+    bResults = WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF, NULL, WINHTTP_NO_OUTPUT_BUFFER, &headerSize, WINHTTP_NO_HEADER_INDEX);
+    if ((!bResults) && (GetLastError() == ERROR_INSUFFICIENT_BUFFER))
+    {
+        responseHeader.resize(headerSize / sizeof(wchar_t));
+        if (responseHeader.empty())
+        {
+            bResults = TRUE;
+        }
+        else
+        {
+            bResults = WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF, NULL, &responseHeader[0], &headerSize, WINHTTP_NO_HEADER_INDEX);
+            if( !bResults ) headerSize = 0;
+            responseHeader.resize(headerSize / sizeof(wchar_t));
+        }
+    }
+    */
+
+    // TODO: this needs optimizing...
+    do
+    {
+        // Check for available data.
+        dwSize = 0;
+        bResults = WinHttpQueryDataAvailable( hRequest, &dwSize );
+        if (!bResults) {
+            debug_write("Failed to query web data available, code %d", GetLastError());
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            free(buf);
+            return NULL;
+        }
+
+        if (dwSize == 0) {
+            // all done
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            return buf;
+        }
+
+        // grab what is so-far available
+        do
+        {
+            // Allocate space for the buffer.
+            if (outPos + (signed)dwSize > outSize) {
+                buf = (unsigned char*)realloc(buf, outPos+dwSize);
+                outSize = outPos+dwSize;
+                if (outSize >= MAX_RAM_FILE) {
+                    debug_write("Web file exceeds max size (%dk) (Classic99 limit) - failing", MAX_RAM_FILE/1024);
+                    WinHttpCloseHandle(hRequest);
+                    WinHttpCloseHandle(hConnect);
+                    WinHttpCloseHandle(hSession);
+                    free(buf);
+                    return NULL;
+                }
+            }
+            // Read the data.
+            bResults = WinHttpReadData( hRequest, &buf[outPos], dwSize, &dwDownloaded );
+            if (!bResults) {
+                debug_write("Failed reading web data, code %d", GetLastError());
+                // is this not an error?
+                dwDownloaded = 0;
+            }
+
+            outPos += dwDownloaded;
+            dwSize -= dwDownloaded;
+
+            if (dwDownloaded == 0) {
+                break;
+            }
+        }
+        while (dwSize > 0);
+    }
+    while (true);
+}
+
+// TIPI DSR jump - return true to add two to R11
+// (DSR success is indicated this way)
+bool HandleTIPI() {
+    // figure out which entry point was requested
+    switch (pCurrentCPU->GetPC()) {
+    case 0x4800:    // CALL TIPI
+        return callTipi();
+
+    case 0x4810:    // TIPI
+        return dsrTipi();
+
+    case 0x4820:    // URI1
+        return dsrUri(1);
+
+    case 0x4822:    // URI2
+        return dsrUri(2);
+
+    case 0x4824:    // URI3
+        return dsrUri(3);
+
+    case 0x4826:    // URI4
+        return dsrUri(4);
+
+    case 0x4830:    // PI
+        return dsrPI();
+
+    case 0x4840:    // recvmsg
+        return directRecvMsg();
+
+    case 0x4850:    // sendmsg
+        return directSendMsg();
+
+    case 0x4860:    // vrecvmsg
+        return directVRecvMsg();
+
+    case 0x4870:    // vsendmsg
+        return directVSendMsg();
+
+    default:
+        debug_write("Warning: Unemulated TIPI entry point: >%04X", pCurrentCPU->GetPC());
+        return false;
+    }
+}
+
+// CALL TIPI from TI BASIC
+// This is an EA#5 loader which defaults to "TIPI.TIPICFG"
+bool callTipi() {
+    // verify assumptions:
+    // workspace is >83E0
+    if (pCurrentCPU->GetWP() != 0x83E0) {
+        debug_write("Warning: CALL TIPI with incorrect workspace of >%04X instead of >83E0",pCurrentCPU->GetWP());
+    }
+    // R1 = number of times called, normally 1 (?)
+    // R9 = address of the subprogram
+    if (GetSafeCpuWord(pCurrentCPU->GetWP()+18, 0) != 0x4800) {
+        debug_write("Warning: CALL TIPI should have address of program in R9, got >%04X", GetSafeCpuWord(pCurrentCPU->GetWP()+18, 0));
+    }
+    // R11 - return address (to keep scanning)
+    // R12 - CRU base
+    if (GetSafeCpuWord(pCurrentCPU->GetWP()+24, 0) != 0x1200) {
+        debug_write("Warning: CALL TIPI should have CRU address in R12, got >%04X", GetSafeCpuWord(pCurrentCPU->GetWP()+24, 0));
+    }
+    // >83D0-D1: CRU base address of the card
+    if (GetSafeCpuWord(0x83d0, 0) != 0x1200) {
+        debug_write("Warning: CALL TIPI should have CRU address in 0x83D0, got >%04X", GetSafeCpuWord(0x83d0, 0));
+    }
+    // >83D2-D3: link to next subprogram in the header
+
+    // Assuming TI BASIC in RAM
+
+    // pull the filename out of the command - if there is not
+    // one, load the default. This is intended to be called from TI BASIC
+    // TODO: does CALL TIPI support variables? We are assuming no.
+    CString filename = "";
+
+    // useful tokens:
+    // B7 - open parenthesis
+    // C7 - quoted string (length byte, then data)
+    // B6 - close parenthesis
+    // 00 - end of line
+    // Token pointer at >832C - points to the "TIPI" name: C8 04 T I P I
+    int adr = GetSafeCpuWord(0x832c, 0);
+    if (adr > 0x3ffb) {
+        debug_write("VDP address for CALL TIPI too large - >%04X", adr);
+        return false;
+    }
+
+    // the rest is in VDP - we can read directly
+    if (VDP[adr] != 4) {   // length of TIPI
+        // just fail
+        debug_write("BASIC syntax parse error..");
+        return false;
+    }
+    // not going to check the string...
+    adr+=5;
+    // either end of command, or open parenthesis
+    if (VDP[adr] != 0) {
+        if (VDP[adr] != 0xb7) {
+            debug_write("BASIC syntax parse error...");
+            return false;
+        }
+
+        ++adr;
+        // if it's close parenthesis, then ignore
+        if (VDP[adr] != 0xb6) {
+            if (VDP[adr] != 0xc7) {
+                debug_write("Classic99 only supports quoted strings for CALL TIPI");
+                return false;
+            }
+
+            ++adr;
+            int len = VDP[adr++];
+            for (int idx=0; idx<len; ++idx) {
+                filename += (char)VDP[adr++];
+            }
+
+            // now it MUST be close
+            if (VDP[adr++] != 0xb6) {
+                debug_write("Missing close parenthesis on CALL TIPI...");
+                return false;
+            }
+        }
+
+        // we should be pointing at the 0, but BASIC can check that, if we return
+    }
+    // write back the address
+    wrword(0x832c, adr);
+    // and copy the NUL token to >8342
+    wcpubyte(0x8342, 0);
+
+    if (filename.IsEmpty()) filename = "DSK0.TIPICFG";
+    debug_write("Handling CALL TIPI(\"%s\")", filename.GetString());
+
+    // if the filename starts with TIPI, replace it with DSK0
+    if (filename.Left(5).CompareNoCase("TIPI.") == 0) {
+        filename = "DSK0." + filename.Mid(5);
+    }
+    // only legal results now are starting with DSK, URI, or PI.
+    CString tst = filename.Left(3);
+    if ((tst.CompareNoCase("DSK") != 0) && (tst.CompareNoCase("URI") != 0) && (tst.CompareNoCase("PI.") != 0)) {
+        debug_write("Can't load from '%s'", filename);
+        return false;
+    }
+
+    int bootAddress = 0;
+
+    // load the file - TODO: does TIPI load through VDP or straight to CPU?
+    // if file fails to load, reset
+    // It's a bit wasteful to loop here.. but this is concept...
+nextfile:
+    if (tst.CompareNoCase("DSK") == 0) {
+        // need to route through the disk system
+        // TODO: we don't need this fakery if the real CALL TIPI
+        // uses a normal PAB, which I can check, but I'm just
+        // gonna fake it the safe way for now.
+        unsigned char tmpVDP[16384];
+        unsigned char tmpCPU[256];
+        
+        // backup VDP
+        memcpy(tmpVDP, VDP, 16384);
+        for (int idx=0; idx<256; ++idx) {
+            tmpCPU[idx] = GetSafeCpuByte(idx+0x8300, 0);
+        }
+
+        // create a PAB to load up to 8k to >1000
+        memcpy(&VDP[0x3100], LoadPAB, sizeof(LoadPAB));
+        VDP[0x3109] = filename.GetLength() & 0xff;
+        for (int idx=0; idx<filename.GetLength(); ++idx) {
+            VDP[0x310a+idx] = filename[idx];
+        }
+
+        // We are bypassing the real DSRLNK call, so we need to set
+        // up the pointers slightly differently
+        wrword(0x8354, 4);          // all supported filenames here are 4 bytes
+        wrword(0x8356, 0x310a+4);   // one byte after the filename
+        do_dsrlnk(NULL);            // ask the disk system to do it for us
+        // The TI disk controller will reject these calls, it will
+        // not work to try and wrap through to that. Not sure if the
+        // real TIPI can... but certainly not when it's at >1200.
+
+        // check for success, if it failed we just reboot
+    	if (0 != (VDP[0x3100+1]&0xe0)) {
+            debug_write("CALL TIPI load failed, reboot.");
+            // the Classic99 code will "return" to the caller's
+            // R11, so we need to load the address we want there,
+            // then we can still safely change WP here... 
+            // (though it should already be right)
+            wrword(pCurrentCPU->GetWP()+22, GetSafeCpuWord(2,0));
+            pCurrentCPU->SetWP(GetSafeCpuWord(0,0));
+            return false;
+        }
+
+        // copy the data from VDP to CPU
+        int next = VDP[0x1000]*256 + VDP[0x1001];   // next file flag
+        int size = VDP[0x1002]*256 + VDP[0x1003];
+        int dest = VDP[0x1004]*256 + VDP[0x1005];
+        for (int idx=0; idx<size; ++idx) {
+            if ((dest+idx > 0xffff)||(0x1006+idx > 0x3fff)) {
+                debug_write("Load address overflow - aborting load.");
+                break;
+            }
+            wcpubyte(dest+idx, VDP[0x1006+idx]);
+        }
+
+        // restore VDP
+        for (int idx=0; idx<256; ++idx) {
+            wcpubyte(idx+0x8300, tmpCPU[idx]);
+        }
+        memcpy(VDP, tmpVDP, 16384);
+
+        // set start
+        if (0 == bootAddress) {
+            bootAddress = dest;
+        }
+
+        // increment filename
+        int flen = filename.GetLength();
+        filename = filename.Left(flen-1) + (char)(filename[flen-1] + 1);
+
+        // loop if flagged
+        if (next) goto nextfile;
+
+        // start the application - need to load it
+        // into R11 to trick the Classic99 code
+        wrword(pCurrentCPU->GetWP()+22, bootAddress);
+    } else {
+        int outSize = 0;
+        unsigned char *buf = getWebFile(filename, outSize);
+        if (NULL == buf) {
+            debug_write("CALL TIPI load failed, reboot.");
+            // the Classic99 code will "return" to the caller's
+            // R11, so we need to load the address we want there,
+            // then we can still safely change WP here... 
+            // (though it should already be right)
+            wrword(pCurrentCPU->GetWP()+22, GetSafeCpuWord(2,0));
+            pCurrentCPU->SetWP(GetSafeCpuWord(0,0));
+            return false;
+        }
+        if (outSize < 128+6) {
+            // if it's not a TIFILES file with PROGRAM header, then skip it
+            debug_write("CALL TIPI load got bad file, reboot.");
+            // the Classic99 code will "return" to the caller's
+            // R11, so we need to load the address we want there,
+            // then we can still safely change WP here... 
+            // (though it should already be right)
+            wrword(pCurrentCPU->GetWP()+22, GetSafeCpuWord(2,0));
+            pCurrentCPU->SetWP(GetSafeCpuWord(0,0));
+            return false;
+        }
+        // might as well check it's a PROGRAM image too, won't bother with the rest
+        if (buf[10] != TIFILES_PROGRAM) {
+            debug_write("CALL TIPI load is non-PROGRAM TIFILES image, reboot.");
+            // the Classic99 code will "return" to the caller's
+            // R11, so we need to load the address we want there,
+            // then we can still safely change WP here... 
+            // (though it should already be right)
+            wrword(pCurrentCPU->GetWP()+22, GetSafeCpuWord(2,0));
+            pCurrentCPU->SetWP(GetSafeCpuWord(0,0));
+            return false;
+        }
+
+        // copy the data from buffer to CPU (after the 128 byte TIFILES header)
+        int next = buf[128]*256 + buf[129];   // next file flag
+        int size = buf[130]*256 + buf[131];
+        int dest = buf[132]*256 + buf[133];
+        for (int idx=0; idx<size; ++idx) {
+            if ((dest+idx > 0xffff)||(idx+128+6 > outSize)) {
+                // this may actually happen a lot - a lot of EA#5 headers
+                // include the 6 byte header in the length, even though
+                // the header is not copied
+                debug_write("Load address overflow - aborting load.");
+                break;
+            }
+            wcpubyte(dest+idx, buf[idx+128+6]);
+        }
+
+        // set start
+        if (0 == bootAddress) {
+            bootAddress = dest;
+        }
+
+        // increment filename
+        int flen = filename.GetLength();
+        filename = filename.Left(flen-1) + (char)(filename[flen-1] + 1);
+
+        // loop if flagged
+        if (next) goto nextfile;
+
+        // start the application - need to load it
+        // into R11 to trick the Classic99 code
+        wrword(pCurrentCPU->GetWP()+22, bootAddress);
+    }
+
+    // always return false, we have ceded control
+    return false;
+}
+
+// This is TIPI as a device name, and should just wrap to DSK0
+bool dsrTipi() {
+    debug_write("Remapping TIPI to DSK0...");
+    do_dsrlnk("DSK0");
+    return true;
+}
+bool dsrPiClock() {
+    debug_write("Remapping PI.CLOCK to CLOCK...");
+    do_dsrlnk("CLOCK");
+    return true;
+}
+
+// This has a number of suboptions that we need to parse out
+bool dsrPI() {
+    // we need to figure out from the DSR what is being asked of us
+    // we have a device name like PI.HTTP, etc...
+    // 0x8354 (word) contains the DSR name length, but that's just 'PI'
+    // 0x8356 (word) points to the period - in this case it MUST be a period
+    // So at 0x8356 - at 0x8354 - 1 has the total name length byte, but for now
+    // we can just substring match
+    int PAB = romword(0x8356, ACCESS_FREE);
+    ++PAB;
+    if (PAB > 0x3ffd) {
+        debug_write("Invalid PAB address, failing");
+        return false;
+    }
+    // shortest one is 3 characters, so we'll just take 3
+         if (0 == _strnicmp((char*)&VDP[PAB], "TCP", 3)) return dsrPiTcp();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "UDP", 3)) return dsrPiUdp();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "HTT", 3)) return dsrPiHttp();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "CON", 3)) return dsrPiConfig();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "STA", 3)) return dsrPiStatus();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "VAR", 3)) return dsrPiVars();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "SHU", 3)) return dsrPiHardwareNop();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "REB", 3)) return dsrPiHardwareNop();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "UPG", 3)) return dsrPiHardwareNop();
+
+    debug_write("Unknown PI action, skipping");
+    return false;
+}
+bool dsrPiHttp() {
+    // load the web file into a TipiWebDisk
+    return tipiDsrLnk(bufferWebFile);
+}
+// This spawns up an alias for PI.HTTP://whateverpath
+bool dsrUri(int x) {
+    // load the web file into a TipiWebDisk
+    return tipiDsrLnk(bufferWebFile);
+}
+bool dsrPiConfig() {
+    // load the web file into a TipiWebDisk
+    return tipiDsrLnk(bufferConfig);
+}
+bool dsrPiStatus() {
+    // load the web file into a TipiWebDisk
+    return tipiDsrLnk(bufferStatus);
+}
+
+// similar to the disk dsrlnk, but for TIPI web services
+// bufferCode is a function that buffers data into initData
+bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile)) {
+	// performs web file i/o using the PAB passed as per a normal dsrlnk call.
+	// address of length byte passed in CPU >8356
+	int PAB;
+	FileInfo tmpFile, *pWorkFile;
+
+	// get the base address of PAB in VDP RAM
+	PAB = romword(0x8356, ACCESS_FREE);		// this points to the character AFTER the device name (the '.' or end of string)
+	// since there must be 10 bytes before the name, we can do a quick early out here...
+	if (PAB < 13) {		// 10 bytes, plus three for shortest device name "DSK"
+		debug_write("Bad PAB address >%04X", PAB);		// not really what the TI would do, but it's wrong anyway.
+		// we can't set the error, because we'd underrun! (real TI would wrap around the address)
+		return false;
+	}
+
+	// verify mandatory setup makes some form of sense - for debugging DSR issues
+	{
+		static int nLastOp = -1;
+		static int nLastPAB = -1;	// reduce debug by reducing repetition
+
+		int nLen = romword(0x8354, ACCESS_FREE);
+		if (nLen > 7) {
+			debug_write("Warning: bad DSR name length %d in >8354", nLen);
+			// this is supposed to tell us where to write the error!?
+			return false;
+		}
+
+		int nOpcode=VDP[PAB-nLen-10];
+		if ((nOpcode < 0) || (nOpcode > 9)) {
+			debug_write("Warning: bad Opcode in PAB at VDP >%04X (>%02X)", PAB-nLen-10,nOpcode);
+			TriggerBreakPoint();
+			// since we don't have a structure yet, set it manually
+			VDP[PAB-nLen-10+1] &= 0x1f;					// no errors
+			VDP[PAB-nLen-10+1] |= ERR_BADATTRIBUTE<<5;	// file error
+			return true;
+		}
+
+		int nNameLen = VDP[PAB-nLen-1];
+		if (PAB-nLen+nNameLen > 0x3fff) {
+			debug_write("PAB name too long (%d) for VDP >%04X", nNameLen, PAB);		// not really what the TI would do, but it's wrong anyway.
+			// since we don't have a structure yet, set it manually
+			VDP[PAB-nLen-10+1] &= 0x1f;					// no errors
+			VDP[PAB-nLen-10+1] |= ERR_BADATTRIBUTE<<5;	// file error
+			return true;
+		}
+
+		if ((nLastOp!=nOpcode)||(nLastPAB != PAB)||(nOpcode == 0)) {
+			char buf[32];
+			if (nNameLen > 32) {
+				nNameLen=31;
+			}
+			memset(buf, 0, sizeof(buf));
+			memcpy(buf, &VDP[PAB-nLen], nNameLen);
+			debug_write("TIPIsim opcode >%d (%s) on PAB >%04X, filename %s", nOpcode, getOpcode(nOpcode), PAB, buf);
+			nLastOp = nOpcode;
+			nLastPAB = PAB;
+		}
+	}
+
+    // we are called here only for PI, or URIx
+    // PI has several options as well, but we have a buffering tool already set for that
+
+	// You can make assumptions when the device name is always the same length, but
+	// we have a few, so we need to work out which one we had, then subtract an additional 10 bytes.
+    // Force device doesn't apply here, cause we're playing to find the start of the PAB
+    // TODO: why can't we just use the length byte in 0x8354??
+    PAB -= 2;                   // either PI or Ix
+	if (0 == _strnicmp("uri", (const char*)&VDP[PAB]-2, 3)) PAB-=2;		// must be URI
+	PAB-=10;					// back up to the beginning of the PAB
+	PAB&=0x3FFF;				// mask to VDP memory range
+
+	// The DSR limited the names that can be passed in here, so it's okay to
+	// make some assumptions.!
+	// TODO: It's TI code that decides if we get called, so it's actually NOT okay,
+	// we need to actually verify the name. I had a DSRLNK that passed a block of
+	// zero bytes and ended up accessing the CLIP device instead of failing.
+
+	// save the drive index (always zero - tipiDsk)
+	tmpFile.nDrive = 0;
+
+	// copy the PAB data into the tmpFile struct
+	tmpFile.PABAddress = PAB;
+	tmpFile.OpCode = VDP[PAB++];							// 0
+	PAB&=0x3FFF;
+	tmpFile.Status = VDP[PAB++];							// 1
+	PAB&=0x3FFF;
+	tmpFile.DataBuffer = (VDP[PAB]<<8) | VDP[PAB+1];		// 2,3
+	PAB+=2;
+	PAB&=0x3FFF;
+	tmpFile.RecordLength = VDP[PAB++];						// 4
+	PAB&=0x3FFF;
+	tmpFile.CharCount = VDP[PAB++];							// 5
+	PAB&=0x3FFF;
+	tmpFile.RecordNumber = (VDP[PAB]<<8) | VDP[PAB+1];		// 6,7	It's not relative vs sequential, it's variable (not used) vs fixed (used)
+	PAB+=2;
+	PAB&=0x3FFF;
+	tmpFile.ScreenOffset = VDP[PAB++];						// 8
+	PAB&=0x3FFF;
+	int nLen = VDP[PAB++];  								// 9
+    // don't skip anything, so we have the full path (PI.HTTP://xxx, URI1.xxx, PI.CONFIG, PI.STATUS)
+    GetFilenameFromVDP(PAB, nLen, &tmpFile);
+
+	// somewhat annoying, but we need to try and keep the FileType (TIFILES) and Status (PAB)
+	// in sync, so map Status over
+	tmpFile.FileType=0;
+	if (tmpFile.Status & FLAG_VARIABLE) tmpFile.FileType |= TIFILES_VARIABLE;
+	if (tmpFile.Status & FLAG_INTERNAL) tmpFile.FileType |= TIFILES_INTERNAL;
+
+	// split name into options and name (shouldn't be any options)
+	tmpFile.SplitOptionsFromName();
+
+    // and 0x8354 is supposed to point to the PAB, again, TI specific...
+    // TODO: probably not TIPI?
+    wrword(0x8354, PAB);
+
+	// See if we can find an existing FileInfo for this request, and use it instead
+	pWorkFile=tipiDsk.FindFileInfo(tmpFile.csName);
+	if (NULL == pWorkFile) {
+		// none was found, just use what we have, hopefully it's an existing file
+		pWorkFile=&tmpFile;
+	} else {
+		// XB is bad about not closing its files, so if this is an open request,
+		// then just assume we should close the old file and do it again. Usually this
+		// happens only if an error occurs while loading a program. TODO: how did TI deal with this?
+        // Maybe this doesn't happen any more with the better emulation?
+		if (tmpFile.OpCode == OP_OPEN) {
+			// discard any changes to the old file, it was never closed
+			pWorkFile->bDirty = false;
+			tipiDsk.Close(pWorkFile);
+			debug_write("Recycling unclosed file buffer %d", pWorkFile->nIndex);
+			// and then use tmpFile as if it were new
+			pWorkFile = &tmpFile;
+		} else {
+			// it was found, so it's open. Verify the header/mode parameters match what we have
+			// then go ahead and swap it over
+			// We don't care on a CLOSE request
+			if (tmpFile.OpCode != OP_CLOSE) {
+				if ((pWorkFile->Status&FLAG_TYPEMASK) != (tmpFile.Status&FLAG_TYPEMASK)) {
+					debug_write("File mode/status does not match open file for %s (0x%02X vs 0x%02X)", (LPCSTR)tmpFile.csName, pWorkFile->Status&0x1f, tmpFile.Status&0x1f);
+					pWorkFile->LastError = ERR_BADATTRIBUTE;
+					setfileerror(pWorkFile);
+					return true;
+				}
+				if (pWorkFile->RecordLength != tmpFile.RecordLength) {
+					debug_write("File record length does not match open file for %s (%d vs %d)", (LPCSTR)tmpFile.csName, pWorkFile->RecordLength, tmpFile.RecordLength);
+					pWorkFile->LastError = ERR_BADATTRIBUTE;
+					setfileerror(pWorkFile);
+					return true;
+				}
+			}
+			
+			// okay, that's the important stuff, copy the request data we got into the new one
+			pWorkFile->CopyFileInfo(&tmpFile, true);
+		}
+	}
+
+	// make sure the last error is cleared
+	pWorkFile->LastError = ERR_NOERROR;
+
+#define HELPFULDEBUG(x) debug_write(x " %s on drive type %s", (LPCSTR)pWorkFile->csName, tipiDsk.GetDiskTypeAsString());
+#define HELPFULDEBUG1(x,y) debug_write(x " %s on drive type %s", y, (LPCSTR)pWorkFile->csName, tipiDsk.GetDiskTypeAsString());
+	switch (pWorkFile->OpCode) {
+		case OP_OPEN:
+			{
+				FileInfo *pNewFile=NULL;
+
+				HELPFULDEBUG("Opening");
+
+                // check for disk write protection on output or append (update will come if a write is attempted)
+				if (tipiDsk.GetWriteProtect()) {
+					if (((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT) ||
+						((pWorkFile->Status & FLAG_MODEMASK) == FLAG_APPEND)) {
+							debug_write("Attempt to write to write-protected disk.");
+							pWorkFile->LastError = ERR_WRITEPROTECT;
+							setfileerror(pWorkFile);
+							break;
+					}
+				}
+
+				// a little more info just for opens
+				debug_write("PAB requested file type is %c%c%d", (pWorkFile->Status&FLAG_INTERNAL)?'I':'D', (pWorkFile->Status&FLAG_VARIABLE)?'V':'F', pWorkFile->RecordLength);
+
+                // before the open, buffer the file
+                if (!bufferCode(pWorkFile)) {
+                    setfileerror(pWorkFile);
+                    break;
+                }
+                
+                // now the open
+                pNewFile = tipiDsk.Open(pWorkFile);
+				if ((NULL == pNewFile) /*|| (!pNewFile->bOpen)*/) {
+					// the bOpen check is to make STATUS able to use Open to check PROGRAM files
+					pNewFile = NULL;
+					setfileerror(pWorkFile);
+				} else {
+					// if the user didn't specify a RecordLength in the PAB, we should do that now
+                    // TODO: why am I missing pWorkFile, tmpFile, and pNewFile in here...?
+					if ((VDP[pWorkFile->PABAddress+4] == 0) && (pNewFile->RecordLength != 0)) {
+						VDP[pWorkFile->PABAddress+4]=pNewFile->RecordLength;
+					}
+
+					// ALWAYS performs a rewind operation , which has this effect (should be zeroes)
+					tipiDsk.Restore(pWorkFile);		// todo: should we check for error?
+					VDP[tmpFile.PABAddress+6] = pWorkFile->RecordNumber/256;
+					VDP[tmpFile.PABAddress+7] = pWorkFile->RecordNumber%256;
+
+					// The pointer to the new object is needed since that's what the derived
+					// class updated/created. (This fixes Owen's Wycove Forth issue)
+					pNewFile->nCurrentRecord = 0;
+					pNewFile->bOpen = true;
+					pNewFile->bDirty = false;	// can't be dirty yet!
+				}
+			}
+			break;
+
+		case OP_CLOSE:
+			// we should check for open here, but safer to just always try to close
+			HELPFULDEBUG("Closing");
+			if (!tipiDsk.Close(pWorkFile)) {
+				setfileerror(pWorkFile);
+			}
+			break;
+
+		case OP_READ:
+			if ((!pWorkFile->bOpen) ||
+				((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT) || 
+				((pWorkFile->Status & FLAG_MODEMASK) == FLAG_APPEND)) {
+				debug_write("Can't read from %s as file is not opened for read.", pWorkFile->csName);
+				pWorkFile->LastError = ERR_ILLEGALOPERATION;
+				setfileerror(pWorkFile);
+				break;
+			}
+			if (!tipiDsk.Read(pWorkFile)) {
+				HELPFULDEBUG1("Failed reading max %d bytes", pWorkFile->RecordLength);
+				setfileerror(pWorkFile);
+			} else {
+				// always copy the char count back (TODO: always?)
+				VDP[tmpFile.PABAddress+5] = pWorkFile->CharCount;
+				// Fixed files always get the record number updated
+				if (0 == (tmpFile.Status & FLAG_VARIABLE)) {
+					VDP[tmpFile.PABAddress+6] = pWorkFile->RecordNumber/256;
+					VDP[tmpFile.PABAddress+7] = pWorkFile->RecordNumber%256;
+				}
+			}
+			break;
+
+		case OP_WRITE:
+			if ((!pWorkFile->bOpen) || ((pWorkFile->Status & FLAG_MODEMASK) == FLAG_INPUT)) {
+				debug_write("Can't write to %s as file is not opened for write.", pWorkFile->csName);
+				pWorkFile->LastError = ERR_ILLEGALOPERATION;
+				setfileerror(pWorkFile);
+				break;
+			}
+			// check for disk write protection
+			if (tipiDsk.GetWriteProtect()) {
+				debug_write("Attempt to write to write-protected disk.");
+				pWorkFile->LastError = ERR_WRITEPROTECT;
+				setfileerror(pWorkFile);
+				break;
+			}
+
+			if (!tipiDsk.Write(pWorkFile)) {
+				HELPFULDEBUG1("Failed writing %d bytes", pWorkFile->CharCount);
+				setfileerror(pWorkFile);
+			} else {
+				// mark it dirty
+				pWorkFile->bDirty = true;
+				// Fixed files always get the record number updated
+				if (0 == (tmpFile.Status & FLAG_VARIABLE)) {
+					VDP[tmpFile.PABAddress+6] = pWorkFile->RecordNumber/256;
+					VDP[tmpFile.PABAddress+7] = pWorkFile->RecordNumber%256;
+				}
+			}
+			break;
+
+		case OP_RESTORE:
+			if ((!pWorkFile->bOpen) ||
+				((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT) || 
+				((pWorkFile->Status & FLAG_MODEMASK) == FLAG_APPEND)) {
+				debug_write("Can't restore %s as file is not opened for read.", pWorkFile->csName);
+				pWorkFile->LastError = ERR_ILLEGALOPERATION;
+				setfileerror(pWorkFile);
+				break;
+			}
+			// the basics of this operation is copied in OPEN, so if you fix something,
+			// also look there.
+			HELPFULDEBUG1("Restoring from record %d", pWorkFile->RecordNumber);
+			if (!tipiDsk.Restore(pWorkFile)) {
+				setfileerror(pWorkFile);
+			} else {
+				// update the PAB, all file types (verified via TICC emulation)
+				VDP[tmpFile.PABAddress+6] = pWorkFile->RecordNumber/256;
+				VDP[tmpFile.PABAddress+7] = pWorkFile->RecordNumber%256;
+			}
+			break;
+
+		case OP_LOAD:
+			HELPFULDEBUG1("Loading to VDP >%04X", pWorkFile->DataBuffer);
+            // before the load, buffer the file
+            if (!bufferCode(pWorkFile)) {
+                setfileerror(pWorkFile);
+                break;
+            }
+			if (!tipiDsk.Load(pWorkFile)) {
+				setfileerror(pWorkFile);
+			}
+			break;
+
+		case OP_SAVE:
+			HELPFULDEBUG1("Saving from VDP >%04X", pWorkFile->DataBuffer);
+			
+			// check for disk write protection
+			if (tipiDsk.GetWriteProtect()) {
+				debug_write("Attempt to write to write-protected disk.");
+				pWorkFile->LastError = ERR_WRITEPROTECT;
+				setfileerror(pWorkFile);
+				break;
+			}
+
+			if (!tipiDsk.Save(pWorkFile)) {
+				setfileerror(pWorkFile);
+			}
+			break;
+
+		case OP_DELETE:
+			HELPFULDEBUG("Deleting");
+			// check for disk write protection
+			if (tipiDsk.GetWriteProtect()) {
+				debug_write("Attempt to write to write-protected disk.");
+				pWorkFile->LastError = ERR_WRITEPROTECT;
+				setfileerror(pWorkFile);
+				break;
+			}
+			if (!tipiDsk.Delete(pWorkFile)) {
+				setfileerror(pWorkFile);
+			}
+			break;
+
+		case OP_SCRATCH:
+			if (!pWorkFile->bOpen) {
+				debug_write("Can't scratch in %s as file is not opened.", pWorkFile->csName);
+				pWorkFile->LastError = ERR_ILLEGALOPERATION;
+				setfileerror(pWorkFile);
+				break;
+			}
+			HELPFULDEBUG1("Scratching record %d", pWorkFile->RecordNumber);
+
+			// check for disk write protection
+			if (tipiDsk.GetWriteProtect()) {
+				debug_write("Attempt to write to write-protected disk.");
+				pWorkFile->LastError = ERR_WRITEPROTECT;
+				setfileerror(pWorkFile);
+				break;
+			}
+
+			if (!tipiDsk.Scratch(pWorkFile)) {
+				setfileerror(pWorkFile);
+			} else {
+				// mark it dirty
+				pWorkFile->bDirty = true;
+			}
+			break;
+
+		case OP_STATUS:
+			pWorkFile->ScreenOffset = 0;
+			if (!tipiDsk.GetStatus(pWorkFile)) {
+				setfileerror(pWorkFile);
+			} else {
+				// write the result back to the PAB
+				VDP[tmpFile.PABAddress+8] = pWorkFile->ScreenOffset;
+			}
+			HELPFULDEBUG1("Status returns >%02X on", VDP[tmpFile.PABAddress+8]);
+			break;
+
+		default:
+			HELPFULDEBUG1("Unknown DSRLNK opcode %d", pWorkFile->OpCode);
+			pWorkFile->LastError = ERR_BADATTRIBUTE;
+			setfileerror(pWorkFile);		// Bad open attribute
+			break;
+	}
+#undef HELPFULDEBUG
+#undef HELPFULDEBUG1
+
+    return true;
+}
+
+bool bufferWebFile(FileInfo *pFile) {
+    // download a web file into pFile's initdata
+    // pName can be PI.HTTP://stuff, or URIx.stuff
+    int outSize = 0;
+    unsigned char *buf = getWebFile(pFile->csName, outSize);
+    if (NULL == buf) {
+        debug_write("bufferWebFile failed...");
+        return false;
+    }
+
+    pFile->initData = buf;
+    pFile->initDataSize = outSize;
+    return true;
+}
+
+bool bufferConfig(FileInfo *pFile) {
+    // make a fake DV254 configuration file
+    // to make life simple, we'll just store one record per sector
+    // We can get away with that because of how variable works ;)
+    unsigned char *buf = (unsigned char*)malloc(256*12+128);
+    memset(buf, 0xff, 256*12+128);
+    pFile->initData = buf;
+    pFile->initDataSize = 256*12+128;
+
+    // build the TIFILES header - DV254 with 12 records, fully padded
+	buf[0] = 7;
+	buf[1] = 'T';
+	buf[2] = 'I';
+	buf[3] = 'F';
+	buf[4] = 'I';
+	buf[5] = 'L';
+	buf[6] = 'E';
+	buf[7] = 'S';
+	buf[8] = 0;			// length in sectors HB
+	buf[9] = 12;		// LB 
+	buf[10] = TIFILES_VARIABLE;			// File type 
+	buf[11] = 1;		// records/sector
+	buf[12] = 255;  	// # of bytes in last sector
+	buf[13] = 254;		// record length 
+	buf[14] = 12;		// # of records(FIX)/sectors(VAR) LB 
+	buf[15] = 0;		// HB
+
+    // write out the records (length, data)
+    // padding is already in place
+    int off = 128;
+
+    snprintf((char*)&buf[off+1], 255, "DIR_SORT=%s", TipiDirSort.GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "DSK1_DIR=%s", pDriveType[1]->GetPath());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "DSK2_DIR=%s", pDriveType[2]->GetPath());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "DSK3_DIR=%s", pDriveType[3]->GetPath());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "DSK4_DIR=%s", pDriveType[4]->GetPath());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "URI1=%s", TipiURI[0].GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "URI2=%s", TipiURI[1].GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "URI3=%s", TipiURI[2].GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "WPA_SSID=%s", TipiSSID.GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "WPA_PSK=******");    // don't show password
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "TIPI_NAME=%s", TipiName.GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "TZ=%s", TipiTz.GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+
+    // patch header
+	buf[12] = buf[off]+1;  	// # of bytes in last sector
+
+    return true;
+}
+bool bufferStatus(FileInfo *pFile) {
+    // make a fake DV80 configuration file
+    // to make life simple, we'll just store one record per sector
+    // We can get away with that because of how variable works ;)
+    unsigned char *buf = (unsigned char*)malloc(256*3+128);
+    memset(buf, 0xff, 256*3+128);
+    pFile->initData = buf;
+    pFile->initDataSize = 256*3+128;
+
+    // build the TIFILES header - DV80 with 3 records, fully padded
+	buf[0] = 7;
+	buf[1] = 'T';
+	buf[2] = 'I';
+	buf[3] = 'F';
+	buf[4] = 'I';
+	buf[5] = 'L';
+	buf[6] = 'E';
+	buf[7] = 'S';
+	buf[8] = 0;			// length in sectors HB
+	buf[9] = 3; 		// LB 
+	buf[10] = TIFILES_VARIABLE;			// File type 
+	buf[11] = 3;		// (up to) records/sector
+	buf[12] = 255;  	// # of bytes in last sector
+	buf[13] = 80;		// record length 
+	buf[14] = 3;		// # of records(FIX)/sectors(VAR) LB 
+	buf[15] = 0;		// HB
+
+    // write out the records (length, data)
+    // padding is already in place
+    int off = 128;
+
+    // TODO: I don't remember what the version looks like, it's late
+    snprintf((char*)&buf[off+1], 255, "VERSION=1.0.0");
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "_IPADDRESS=127.0.0.1");
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "_MACADDRESS=00:00:00:00:00:00");
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+
+    // patch header
+	buf[12] = buf[off]+1;  	// # of bytes in last sector
+
+    return true;
+}
+
+bool dsrPiPio() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+bool dsrPiTcp() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+bool dsrPiUdp() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+bool dsrPiVars() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+bool dsrPiHardwareNop() {
+    debug_write("Ignoring action, hardware not supported.");
+    return true;
+}
+
+// These functions directly interface to several functions
+bool directRecvMsg() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+bool directSendMsg() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+bool directVRecvMsg() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+bool directVSendMsg() {
+    debug_write("NOT IMPLEMENTED");
+    return false;
+
+}
+
+// Web disk class
+// TODO: if we changed the FiadDisk object to work with streams instead of files directly,
+// then we could feed it file streams and string streams, and share all that parsing code
+// more easily...
+
+// TODO: as implemented so far, writes are all disallowed, but I need to be able to write
+// to PI.CONFIG for the config tool to work...
+
+// constructor
+TipiWebDisk::TipiWebDisk() : FiadDisk() {
+}
+
+TipiWebDisk::~TipiWebDisk() {
+}
+
+// create an output file
+bool TipiWebDisk::CreateOutputFile(FileInfo *pFile) {
+    // the web is read-only
+    debug_write("Can't write to the web for '%s'", pFile->csName.GetString());
+	pFile->LastError = ERR_WRITEPROTECT;
+    return false;
+}
+
+// Open an existing file from RAM (initData), check the header against the parameters
+bool TipiWebDisk::TryOpenFile(FileInfo *pFile) {
+	char *pMode;
+	int nMode = pFile->Status & FLAG_MODEMASK;	// should be UPDATE, APPEND or INPUT
+	FileInfo lclInfo;
+
+	switch (nMode) {
+		case FLAG_UPDATE:
+			pMode="update";
+			break;
+
+		case FLAG_INPUT:
+			pMode="input";
+			break;
+
+		default:
+			debug_write("Illegal or Unknown mode - can't open.");
+		    pFile->LastError = ERR_FILEERROR;
+		    return false;
+	}
+
+	if (NULL == pFile->initData) {
+		debug_write("No file data for %s, failing.", pMode);
+		pFile->LastError = ERR_FILEERROR;
+		return false;
+	}
+
+	// there should be no data to copy as we are just opening the file
+	lclInfo.CopyFileInfo(pFile, false);
+	DetectImageType(&lclInfo);
+
+	if (lclInfo.ImageType == IMAGE_UNKNOWN) {
+		debug_write("%s is an unknown file type - can not open.", (LPCSTR)lclInfo.csName);
+		pFile->LastError = ERR_BADATTRIBUTE;
+		return false;
+	}
+
+    // TODO: TIPI allows headerless files, but as what type? It's not the open mode...
+#if 0
+    // special case - a headerless file normally detects as DF128, but
+    // I'm going to allow software to open them as IF128 too.
+    // pFile is the request, lclInfo is the disk file
+    if (lclInfo.ImageType == IMAGE_IMG) {
+        if (((pFile->FileType & TIFILES_INTERNAL) == TIFILES_INTERNAL) && ((lclInfo.FileType & TIFILES_INTERNAL) == 0)) {
+            // it's a headerless file, which should be DF128, but the app wants IF128. Since there's
+            // no difference save the flag, we're going to allow it. ;)
+            debug_write("Changing headerless filetype to IF128 to match open request.");
+            lclInfo.FileType|=TIFILES_INTERNAL;
+            lclInfo.Status|=FLAG_INTERNAL;
+        }
+    }
+#else
+    if (lclInfo.ImageType == IMAGE_IMG) {
+		debug_write("%s is missing TIFILES header - can not open.", (LPCSTR)lclInfo.csName);
+		pFile->LastError = ERR_BADATTRIBUTE;
+		return false;
+	}
+#endif
+
+	// Verify the parameters as a last step before we OK it all, but only on open
+	if ((pFile->OpCode == OP_OPEN) || (pFile->OpCode == OP_LOAD)) {
+		if ((pFile->FileType&TIFILES_MASK) != (lclInfo.FileType&TIFILES_MASK)) {
+			// note: don't put function calls into varargs!
+			const char *str1,*str2;
+			str1=GetAttributes(lclInfo.FileType);
+			str2=GetAttributes(pFile->FileType);
+			debug_write("Incorrect file type: %d/%s%d (real) vs %d/%s%d (requested)", lclInfo.FileType&TIFILES_MASK, str1, lclInfo.RecordLength, pFile->FileType&TIFILES_MASK, str2, pFile->RecordLength);
+			pFile->LastError = ERR_BADATTRIBUTE;
+			return false;
+		}
+	}
+
+	if (0 == (lclInfo.FileType & TIFILES_PROGRAM)) {
+		// check record length (we already verified if PROGRAM was wanted above)
+
+		if (pFile->RecordLength == 0) {
+			pFile->RecordLength = lclInfo.RecordLength;
+		}
+
+		if (pFile->RecordLength != lclInfo.RecordLength) {
+			debug_write("Record Length mismatch: %d (real) vs %d (requested)", lclInfo.RecordLength, pFile->RecordLength);
+			pFile->LastError = ERR_BADATTRIBUTE;
+			return false;
+		}
+	}
+
+	// seems okay? Copy the data over from the PAB
+	pFile->CopyFileInfo(&lclInfo, false);
+	return true;
+}
+
+// Determine the type of image (in initData) into ImageType
+// This also translates the TIFILES FileType back to a PAB status type
+void TipiWebDisk::DetectImageType(FileInfo *pFile) {
+	unsigned char buf[512];		// buffer to read first block into
+
+    // TIPI only supports TIFILES and so will we
+    // otherwise we're just going to confuse ourselves...
+    // Anything else, including V9T9 and Text, will be unknown
+    pFile->ImageType = IMAGE_UNKNOWN;
+
+	// data must exist
+	if ((NULL == pFile->initData)||(pFile->initDataSize < 128)) {
+		debug_write("Can't read file data");
+		return;
+	}
+
+	// we have it open - read the first block then close it
+    // TODO: don't really need this copy...
+    memcpy(buf, pFile->initData, 128);
+	
+	// check for TIFILES, if supported
+	// the first characters would be a length and then "TIFILES" if it's a TIFILES file
+	if ((0==_strnicmp((char*)buf, "\x07TIFILES", 8)) || (pFile->csOptions.Find('T')!=-1)) {
+		debug_write("Detected data as a TIFILES file");
+		pFile->ImageType = IMAGE_TIFILES;
+		// fill in the information 
+		pFile->LengthSectors=(buf[8]<<8)|buf[9];
+		pFile->FileType=buf[10];
+		pFile->RecordsPerSector=buf[11];
+		pFile->BytesInLastSector=buf[12];
+		pFile->RecordLength=buf[13];
+		pFile->NumberRecords=(buf[15]<<8)|buf[14];		// NOTE: swapped on disk!
+		// translate FileType to Status
+		pFile->Status = 0;
+		if (pFile->FileType & TIFILES_VARIABLE) pFile->Status|=FLAG_VARIABLE;
+		if (pFile->FileType & TIFILES_INTERNAL) pFile->Status|=FLAG_INTERNAL;
+		// do some fixup of the NumberRecords field
+		// If it's variable or fixed, we should easily determine if the value is byteswapped
+		if (pFile->FileType & TIFILES_VARIABLE) {
+			// must match the number of sectors
+			if (pFile->NumberRecords != pFile->LengthSectors) {
+				// check for byte swap (better debugging)
+                // TODO: option to breakpoint on these warnings - sometimes they scroll off too quickly
+                // Or maybe warnings should have their own output window? That would be handy!
+				if (((buf[14]<<8)|(buf[15])) == pFile->LengthSectors) {
+					debug_write("Warning: Var File had Number Records byte-swapped - will fix - recommend re-saving file");
+					pFile->NumberRecords = pFile->LengthSectors;
+				} else {
+					debug_write("Warning: Number Records doesn't match sector length on variable file.");
+				}
+			}
+		} else {
+			// is an actual record count, but we can use LengthSectors and RecordsPerSector to
+			// see if it was byte swapped. We don't bother with using BytesInLastSector to get the actual count
+			if (pFile->NumberRecords > (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
+				if (((buf[14]<<8)|(buf[15])) <= (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
+					debug_write("Warning: Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
+					pFile->NumberRecords = ((buf[14]<<8)|(buf[15]));
+				}
+			}
+		}
+		return;
+	}
+
+	// no other match, just return default
+	debug_write("Data could not be identified.");
+}
+
+
+// Read the data from initData into the disk buffer
+// This function's job is to read the data into individual records
+// into the memory buffer so it can be worked on generically. This
+// function is not used for PROGRAM image files, but everything else
+// is fair game. It reads the entire file, and it stores the records
+// at maximum size (even for variable length files). Since TI files
+// should max out at about 360k (largest floppy size), this should
+// be fine (even though hard drives do exist, there are very few
+// files for them, and thanks to MESS changing all the time the
+// format seems not to be well defined.) Note that if you DO open
+// a large file, though, Classic99 will try to allocate enough RAM
+// to hold it. Buyer beware, so to speak. ;)
+// Success or failure, initData is freed.
+bool TipiWebDisk::BufferFile(FileInfo *pFile) {
+	// this checks for PROGRAM images as well as Classic99 sequence bugs
+	if (0 == pFile->RecordLength) {
+		debug_write("Attempting to buffer file with 0 record length, can't do it.", (LPCSTR)pFile->csName);
+        if (NULL != pFile->initData) free(pFile->initData);
+        pFile->initData = NULL;
+        pFile->initDataSize = 0;
+		return false;
+	}
+
+	// all right, then, let's give it a shot.
+	// So really, all we do here is branch out to the correct function
+	switch (pFile->ImageType) {
+		case IMAGE_UNKNOWN:
+			debug_write("Attempting to buffer unknown file type %s, can't do it.", (LPCSTR)pFile->csName);
+			break;
+
+		case IMAGE_TIFILES:
+			// these two can be handled the same way
+            { 
+                bool ret = BufferFiadFile(pFile);
+                if (NULL != pFile->initData) free(pFile->initData);
+                pFile->initData = NULL;
+                pFile->initDataSize = 0;
+                return ret;
+            }
+
+		default:
+			debug_write("Failed to buffer undetermined file type %d for %s", pFile->ImageType, (LPCSTR)pFile->csName);
+	}
+
+    if (NULL != pFile->initData) free(pFile->initData);
+    pFile->initData = NULL;
+    pFile->initDataSize = 0;
+	return false;
+}
+
+// Buffer a TIFILES or V9T9 style file -- after the
+// header, these filetypes are the same so both are
+// handled here. Of course, this should only get TIFILES here...
+bool TipiWebDisk::BufferFiadFile(FileInfo *pFile) {
+	int idx, nSector;
+	unsigned char *pData;
+    unsigned char *pOffset;
+
+    if (NULL == pFile->initData) {
+        debug_write("Nothing to buffer, failing.");
+        return false;
+    }
+
+	// Fixed records are obvious. Variable length records are prefixed
+	// with a byte that indicates how many bytes are in this record. It's
+	// all padded to 256 byte blocks. If it won't fit, the space in the
+	// rest of the sector is wasted (and 0xff marks it)
+	// Even better - the NumberRecords field in a variable file is a lie,
+	// it's really a sector count. So we need to read them differently,
+	// more like a text file.
+
+	// get a new buffer as well sized as we can figure
+	if (NULL != pFile->pData) {
+		free(pFile->pData);
+		pFile->pData=NULL;
+	}
+
+	// Datasize = (number of records+10) * (record size + 2)
+	// the +10 gives it a little room to grow
+	// the +2 gives room for a length word (16bit) at the beginning of each
+	// record, necessary because it may contain binary data with zeros
+	if (pFile->Status & FLAG_VARIABLE) {
+		// like with the text files, we'll just assume a generic buffer size of 
+		// about 100 records and grow it if we need to :)
+		pFile->nDataSize = (100) * (pFile->RecordLength + 2);
+		pFile->pData = (unsigned char*)malloc(pFile->nDataSize);
+	} else {
+		// for fixed length fields we know how much memory we need
+		pFile->nDataSize = (pFile->NumberRecords+10) * (pFile->RecordLength + 2);
+		pFile->pData = (unsigned char*)malloc(pFile->nDataSize);
+	}
+
+	idx=0;							// count up the records read
+	nSector=256;					// bytes left in this sector
+    pOffset = pFile->initData + HEADERSIZE; // skip the header
+	pData = pFile->pData;
+
+	// we need to let the embedded code decide the terminating rule
+	for (;;) {
+		if (pOffset >= pFile->initData+pFile->initDataSize) {
+			debug_write("Premature EOF - truncating read at record %d.", idx);
+			pFile->NumberRecords = idx;
+			break;
+		}
+
+		if (pFile->Status & FLAG_VARIABLE) {
+			// read a variable record
+			int nLen=*(pOffset++);
+			if (pOffset >= pFile->initData+pFile->initDataSize) {
+				debug_write("Corrupt file - truncating read at record %d.", idx);
+				pFile->NumberRecords = idx;
+				break;
+			}
+
+			nSector--;
+			if (nLen==0xff) {
+				// end of sector indicator, no record read, skip rest of sector
+                pOffset+=nSector;
+				nSector=256;
+				pFile->NumberRecords--;
+				// are we done?
+				if (pFile->NumberRecords == 0) {
+					// yes we are, get the true count
+					pFile->NumberRecords = idx;
+					break;
+				}
+			} else {
+				// check for buffer resize
+				if ((pFile->pData+pFile->nDataSize) - pData < (pFile->RecordLength+2)*10) {
+					int nOffset = pData - pFile->pData;		// in case the buffer moves
+					// time to grow the buffer - add another 100 lines
+					pFile->nDataSize += (100) * (pFile->RecordLength + 2);
+                    unsigned char *pTmp = (unsigned char*)realloc(pFile->pData, pFile->nDataSize);
+                    if (NULL == pTmp) {
+                        debug_write("BufferFIAD failed to allocate memory for data, failing.");
+                        pFile->LastError = ERR_FILEERROR;
+                        return false;
+                    }
+		            pFile->pData = pTmp;
+
+					pData = pFile->pData + nOffset;
+				}
+				
+				// clear buffer
+				memset(pData, 0, pFile->RecordLength+2);
+
+				// check again
+				if ((nSector < nLen) || (pOffset+nLen >= pFile->initData+pFile->initDataSize)) {
+					debug_write("Corrupted file - truncating read.");
+					pFile->NumberRecords = idx;
+					break;
+				}
+
+				// we got some data, read it in and count off the record
+				// verify it (don't get screwed up by a bad file)
+				if (nLen > pFile->RecordLength) {
+					debug_write("Potentially corrupt file - skipping end of record %d.", idx);
+					
+					// store length data
+					*(unsigned short*)pData = pFile->RecordLength;
+					pData+=2;
+
+                    memcpy(pData, pOffset, pFile->RecordLength);
+                    pOffset+=pFile->RecordLength;
+                    nSector-=nLen;
+					// skip the excess and trim down nLen
+                    pOffset+=nLen - pFile->RecordLength;
+					nLen = pFile->RecordLength;
+				} else {
+					// record is okay (normal case)
+					
+					// write length data
+					*(unsigned short*)pData = nLen;
+					pData+=2;
+
+                    memcpy(pData, pOffset, nLen);
+                    pOffset+=nLen;
+					nSector-=nLen;
+				}
+				// count off a valid record and update the pointer
+				idx++;
+				pData+=pFile->RecordLength;
+			}
+		} else {
+			// are we done?
+			if (idx >= pFile->NumberRecords) {
+				break;
+			}
+
+			// clear buffer
+			memset(pData, 0, pFile->RecordLength+2);
+
+			// read a fixed record
+			if (nSector < pFile->RecordLength) {
+				// not enough room for another record, skip to the next sector
+                pOffset += nSector;
+				nSector=256;
+			} else {
+				// a little simpler, we just need to read the data
+				*(unsigned short*)pData = pFile->RecordLength;
+				pData+=2;
+
+			    if (pOffset+pFile->RecordLength >= pFile->initData+pFile->initDataSize) {
+				    debug_write("Corrupt file - truncating read at record %d.", idx);
+				    pFile->NumberRecords = idx;
+				    break;
+			    }
+
+                memcpy(pData, pOffset, pFile->RecordLength);
+                pOffset+=pFile->RecordLength;
+				nSector -= pFile->RecordLength;
+				idx++;
+				pData += pFile->RecordLength;
+			}
+		}
+	}
+
+	debug_write("Memory read %d records", pFile->NumberRecords);
+	return true;
+}
+
+// Open a file with a particular mode, creating it if necessary
+FileInfo *TipiWebDisk::Open(FileInfo *pFile) {
+	FileInfo *pNewFile=NULL;
+
+	if (pFile->bOpen) {
+		// trying to open a file that is already open! Can't allow that!
+		pFile->LastError = ERR_FILEERROR;
+		return NULL;
+	}
+
+	// See if we can get a new file handle from the driver
+	pNewFile = AllocateFileInfo();
+	if (NULL == pNewFile) {
+		// no files free
+		pFile->LastError = ERR_BUFFERFULL;
+		return NULL;
+	}
+
+	if (pFile->Status & FLAG_VARIABLE) {
+		// variable length file - check maximum length
+		if (pFile->RecordLength > 254) {
+			pFile->LastError = ERR_BADATTRIBUTE;
+			goto error;
+		}
+	}
+
+    // We should have been given the file. In addition,
+    // we don't support directories.
+    {
+		// let's see what we are doing here...
+		switch (pFile->Status & FLAG_MODEMASK) {
+			case FLAG_APPEND:
+			case FLAG_OUTPUT:
+                pFile->LastError = ERR_BADATTRIBUTE;
+				goto error;
+
+			default:	// should only be FLAG_INPUT or FLAG_UPDATE
+				if (!TryOpenFile(pFile)) {
+					// Error out then, must exist for input (save old error)
+					goto error;
+				}
+
+				// So we should have a file now - read it in
+				if (!BufferFile(pFile)) {
+					pFile->LastError = ERR_FILEERROR;
+					// in this special case, I want to return pFile
+					// so that STATUS can get information even if
+					// it had mismatched attributes, like PROGRAM
+					pNewFile->CopyFileInfo(pFile, false);
+					Close(pNewFile);
+					return pNewFile;
+				}
+				break;
+		}
+	}
+
+	// Finally, transfer the object over to the DriveType object
+	pNewFile->CopyFileInfo(pFile, false);
+	return pNewFile;
+
+error:
+	// release the allocated fileinfo, we didn't succeed to open
+	// Use the base class as we have nothing to flush
+	Close(pNewFile);
+	return NULL;
+}
+
+// Load a PROGRAM image file - this happens immediately and doesn't
+// need to use a buffer (nor does it close). Success or failure it
+// will free initData
+bool TipiWebDisk::Load(FileInfo *pFile) {
+	int read_bytes;
+
+	// sanity check -- make sure we don't request more data
+	// than there is RAM. A real TI would probably wrap the 
+	// address counter, but for simplicity we don't. It's
+	// likely a bug anyway! If we want to do emulator proof
+	// code, though... ;)
+	if (pFile->DataBuffer + pFile->RecordNumber > 0x4000) {
+		debug_write("Attempt to load bytes past end of VDP, truncating");
+		pFile->RecordNumber = 0x4000 - pFile->DataBuffer;
+	}
+
+	// We may need to fill in some of the FileInfo object here
+	pFile->Status = FLAG_INPUT;
+	pFile->FileType = TIFILES_PROGRAM;
+	
+	if (!TryOpenFile(pFile)) {
+		// couldn't open the file - keep original error code
+        if (NULL != pFile->initData) free(pFile->initData);
+        pFile->initData = NULL;
+        pFile->initDataSize = 0;
+		return false;
+	}
+	int nDetectedLength = pFile->LengthSectors*256 + pFile->BytesInLastSector;
+	if (pFile->BytesInLastSector != 0) {
+		nDetectedLength -= 256;
+	}
+
+	// the TI disk controller will fail the load if the file is larger than the buffer!
+	// (It won't load a partial file). It's okay if the buffer is larger than the file.
+	if (nDetectedLength > pFile->RecordNumber) {
+		debug_write("Requested file is larger than available buffer, failing.");
+		pFile->LastError = ERR_FILEERROR;
+        if (NULL != pFile->initData) free(pFile->initData);
+        pFile->initData = NULL;
+        pFile->initDataSize = 0;
+		return false;
+	}
+
+	// XB first tries to load as a PROGRAM image file with the
+	// maximum available VDP RAM. If that fails with code 0x60,
+	// it tries again as the proper DIS/FIX254
+	// I am leaving this comment here, but hacks might not be
+	// needed anymore now that the headers are properly tested.
+
+    // we know it has a fixed size header since that's all we support
+    read_bytes = min(pFile->RecordNumber, nDetectedLength);
+    if (read_bytes > pFile->initDataSize-HEADERSIZE) read_bytes = pFile->initDataSize-HEADERSIZE;
+    memcpy(&VDP[pFile->DataBuffer], pFile->initData+HEADERSIZE, read_bytes);
+	debug_write("loading 0x%X bytes", read_bytes);	// do we need to give this value to the user?
+		
+    if (NULL != pFile->initData) free(pFile->initData);
+    pFile->initData = NULL;
+    pFile->initDataSize = 0;
+
+	// update heatmap
+	for (int idx=0; idx<read_bytes; idx++) {
+		UpdateHeatVDP(pFile->DataBuffer+idx);
+	}
+
+	return true;
+}
+
+// Save a PROGRAM image file
+bool TipiWebDisk::Save(FileInfo *pFile) {
+    debug_write("Save to web not supported");
+	pFile->LastError = ERR_ILLEGALOPERATION;
+    return false;
+}
+

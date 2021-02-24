@@ -579,7 +579,7 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>ws2_32.lib;dxguid.lib;odbc32.lib;odbccp32.lib;dsound.lib;winmm.lib;vfw32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ws2_32.lib;dxguid.lib;odbc32.lib;odbccp32.lib;dsound.lib;winmm.lib;vfw32.lib;winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>.\Debug/classic99.exe</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -918,6 +918,7 @@
     <ClCompile Include="debugger\dbghook.cpp" />
     <ClCompile Include="disk\cf7Disk.cpp" />
     <ClCompile Include="disk\TICCDisk.cpp" />
+    <ClCompile Include="disk\tipiDisk.cpp" />
     <ClCompile Include="keyboard\kb.cpp" />
     <ClCompile Include="keyboard\keyboard.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -995,6 +996,7 @@
     <ClInclude Include="debugger\dbghook.h" />
     <ClInclude Include="disk\cf7Disk.h" />
     <ClInclude Include="disk\TICCDisk.h" />
+    <ClInclude Include="disk\tipiDisk.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="2xSaI\2xSaI.h" />
     <ClInclude Include="debugger\bug99.h" />
@@ -1025,11 +1027,13 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">true</ExcludedFromBuild>
     </CustomBuildStep>
+    <None Include="graphics\roms3.bin" />
     <None Include="readme.md" />
     <None Include="roms\BASIC_ROM_header.bin" />
     <None Include="roms\chara1" />
     <None Include="roms\DISK.BIN" />
     <None Include="roms\EA_Utils.bin" />
+    <None Include="roms\TIPISIM.BIN" />
     <None Include="whatsnew.txt" />
     <None Include="roms\994AGROM.BIN" />
     <None Include="roms\994AROM.BIN" />

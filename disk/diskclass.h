@@ -56,6 +56,7 @@ typedef struct s_FILEINFO FileInfo;
 typedef struct s_FILEINFO {
 	s_FILEINFO();
 	// DO NOT ADD A DESTRUCTOR WITHOUT REWORKING THE FIAD DIRECTORY CACHE
+    // TODO: why not? What needs reworking? Is that an old comment?
 
 	void CopyFileInfo(FileInfo *p, bool bJustPAB);
 	void SplitOptionsFromName();
@@ -78,6 +79,8 @@ typedef struct s_FILEINFO {
 	int ScreenOffset;
 	int nDrive;
 	CString csName;		// this is the important one, we match on this
+    unsigned char *initData;    // used only by RAM-based input like the web system, cleared by buffer
+    int initDataSize;
 	
 	// internal data
 	int nIndex;			// never meant to change, just for debug
@@ -192,14 +195,12 @@ enum {
 	DISK_SECTOR,	// Sector based (V9T9 or PC99) format disk image
 	DISK_TICC,		// TI Controller Card
 //	DISK_CCCC,		// CorComp Controller Card (might just hack the TI controller for larger disks?)
-//	DISK_OMNI,		// Omniflop (TI99-PC) based physical disk -- OR, make this an option to the above four formats
 	
 	DISK_CLIPBOARD,	// Windows Clipboard access - it should be safe to let Clipboard float at the end as it's never saved
 	DISK_CLOCK,		// same with the clock
+    DISK_TIPIWEB,   // and TIPI
 };
 extern const char *szDiskTypes[];
-// Note on disk sectors -- most likely TICC and CCCC can just be derived from the SECTOR
-// mechanism.. and OMNI can potentially be an option on it. 
 
 // Option parameters (text version is pszOptionNames)
 enum {
