@@ -5532,11 +5532,14 @@ void wcru(Word ad, int bt)
 		if (bt) {
 			// bit 0 enables the DSR rom, so we'll check that first
 			if ((ad&0xff) == 0) {
+                static int nLastSetDSR = 0;
 				int nTmp = (ad>>8)&0xf;
 				if ((nCurrentDSR != -1) && (nTmp != nCurrentDSR)) {
 					debug_write("WARNING! DSR Conflict between >1%X00 and >1%X00 at PC >%04X", nCurrentDSR, nTmp, pCurrentCPU->GetPC());
+                    if (nLastSetDSR) debug_write("         DSR was last turned on at PC >%04X", nLastSetDSR);
 				}
 				nCurrentDSR=nTmp;
+                nLastSetDSR=pCurrentCPU->GetPC();
 //				debug_write("Enabling DSR at >%04x", ad);
 				// there may also be device-dependent behaviour! Don't exit.
 			}
