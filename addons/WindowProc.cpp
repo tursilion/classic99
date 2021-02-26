@@ -1579,10 +1579,10 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_CPUTHROTTLING_NORMAL:
 				CPUThrottle=CPU_NORMAL;
 				SystemThrottle=VDP_CPUSYNC;
-				max_cpf=cfg_cpf;
+				if (lParam != 1) max_cpf=cfg_cpf;   // lParam(1) means internal message, don't change
 				resetDAC();		// otherwise we will be way out of sync
 				SetSoundVolumes();		// unmute in case it was in slow mode
-				if (max_cpf <= SLOW_CPF) {
+				if ((lParam != 1) && (max_cpf <= SLOW_CPF)) {
 					// we've lost the configured speed.. sorry? to remove that later anyway
 					max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
 					cfg_cpf=max_cpf;

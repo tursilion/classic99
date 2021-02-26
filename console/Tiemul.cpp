@@ -6575,13 +6575,17 @@ void DoPlay() {
 		SetSoundVolumes();
 		UpdateMakeMenu(dbgWnd, 0);
 	}
+    // Passing '1' here tells the window handler not to change the
+    // speed again - otherwise we race with the message pump. This
+    // was causing breakpoints that were very close together to be
+    // lost. The '1' makes it a visual update only.
 	PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 1);
 	SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
 }
 
 void DoFastForward() {
 	DoPlay();		// wake up clean, then accelerate
-	PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 1);
+	PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
 }
 
 void DoLoadInterrupt() {
