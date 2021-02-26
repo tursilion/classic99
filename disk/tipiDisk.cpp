@@ -1424,7 +1424,12 @@ bool directSendMsg() {
     }
 
     // now figure out what to do with it
-    return handleSendMsg(buf, len);
+    if (!handleSendMsg(buf, len)) {
+        debug_write("handleSendMsg failed");
+    }
+
+    // always return false, direct calls don't skip like DSRs
+    return false;
 }
 bool directVSendMsg() {
     // same, but from VDP
@@ -1439,7 +1444,12 @@ bool directVSendMsg() {
         off &= 0x3fff;
         len = 0x4000-off;
     }
-    return handleSendMsg(&VDP[off], len);    
+    if (!handleSendMsg(&VDP[off], len)) {
+        debug_write("handleSendMsg (VDP) failed");
+    }
+
+    // always return false, direct calls don't skip like DSRs
+    return false;
 }
 
 bool directRecvMsg() {
@@ -1450,7 +1460,11 @@ bool directRecvMsg() {
     int len = romword(wp);
     int off = romword(wp+2);
 
-    if (len < rxMessageLen) {
+    // telnet sets len to zero...
+    // TODO: is a non-zero length honored?
+
+    // anyway, here we make sure we don't send more than the message
+    if ((len == 0) || (len > rxMessageLen)) {
         len = rxMessageLen;
         wrword(wp, len);
     }
@@ -1462,7 +1476,8 @@ bool directRecvMsg() {
         }
     }
 
-    return true;
+    // always return false
+    return false;
 }
 bool directVRecvMsg() {
     int wp = pCurrentCPU->GetWP();
@@ -1486,13 +1501,14 @@ bool directVRecvMsg() {
         memcpy(&VDP[off], rxMessageBuf, len);
     }
 
-    return true;
+    // always return false
+    return false;
 }
 
 void resizeBuffer(int size) {
     // todo: we could track message length and buffer size separately
     // and reduce how often we need to realloc this memory...
-    if (size < rxMessageLen) {
+    if (size > rxMessageLen) {
         rxMessageBuf = (unsigned char*)realloc(rxMessageBuf, size);
     }
     rxMessageLen = size;
@@ -1693,14 +1709,23 @@ bool handleTcp(unsigned char *buf, int len) {
             debug_write("UDP read command string too short");
             rxMessageLen = 0;
         } else {
-            int rxSize = buf[3]*256 + buf[4];
-            resizeBuffer(rxSize);
-            int s = recv(sock[index], (char*)rxMessageBuf, rxSize, 0);
-            if (s == SOCKET_ERROR) {
-                debug_write("Socket[%d] recv failed WSA code 0x%x", index, WSAGetLastError());
+            fd_set reads = {0};
+            TIMEVAL nilTime = {0,0};
+            FD_SET(sock[index], &reads);
+            int sel = select(0, &reads, NULL, NULL, &nilTime);
+            if ((SOCKET_ERROR == sel)||(0 == sel)) {
+                // broken or no data
                 rxMessageLen = 0;
             } else {
-                rxMessageLen = s;   // guaranteed to be smaller or equal
+                int rxSize = buf[3]*256 + buf[4];
+                resizeBuffer(rxSize);
+                int s = recv(sock[index], (char*)rxMessageBuf, rxSize, 0);
+                if (s == SOCKET_ERROR) {
+                    debug_write("Socket[%d] recv failed WSA code 0x%x", index, WSAGetLastError());
+                    rxMessageLen = 0;
+                } else {
+                    rxMessageLen = s;   // guaranteed to be smaller or equal
+                }
             }
         }
         break;
