@@ -342,7 +342,7 @@ void do_dsrlnk(char *forceDevice) {
 	// steal nLen for a quick test...
 	nLen = romword(0x83d2, ACCESS_FREE);
 	if (romword(nLen+2, ACCESS_FREE) != pCurrentCPU->GetPC()) {	// a hacky check that we are probably at the right place in the header
-		debug_write("Warning: DSRLNK functions should store the DSR address of the device name entry at >83D2! (Got >%04X)", romword(0x83d2, ACCESS_FREE));
+		debug_write("Warning: DSRLNK functions should store the DSR address of the device handler entry at >83D2! (Got >%04X)", romword(0x83d2, ACCESS_FREE));
         if (BreakOnDiskCorrupt) TriggerBreakPoint();
 	}
 

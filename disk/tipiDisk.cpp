@@ -80,28 +80,30 @@
 // >5FFF TD - TI-99/4A Data Byte - not implemented
 // PI.PIO - output to PDF - not implemented
 // 
-// 4800 CALL TIPI - pending
-// 4810 TIPI - alias for DSK0 - pending
-// 4820 URI1 - User defined alias for "PI.*" (for URIs) - pending
-// 4822 URI2 - "" - pending
-// 4824 URI3 - "" - pending
-// 4826 URI4 - "" - pending
-// 4830 PI.CLOCK - alias for CLOCK - pending
-// 4830 PI.TCP - TCP interface - pending
-// 4830 PI.UDP - UDP interface - pending
-// 4830 PI.HTTP - URL file access - pending
-// 4830 PI.CONFIG - Access configuration file - pending
-// 4830 PI.STATUS - Access status data - pending
+// 4800 CALL TIPI
+// 4810 TIPI - alias for DSK0
+// 4820 URI1 - User defined alias for "PI.*" (for URIs)
+// 4822 URI2 - ""
+// 4824 URI3 - ""
+// 4826 URI4 - ""
+// 4830 PI.CLOCK - alias for CLOCK
+// 4830 PI.TCP - TCP interface
+// 4830 PI.UDP - UDP interface
+// 4830 PI.HTTP - URL file access
+// 4830 PI.CONFIG - Access configuration file
+// 4830 PI.STATUS - Access status data
 // 4830 PI.VARS - Variable access to myti99.com - pending?
-// 4830 PI.SHUTDOWN - shutdown PI (NOP here) - pending
-// 4830 PI.REBOOT - reboot PI (NOP here) - pending
-// 4830 PI.UPGRADE - upgrade PI (NOP here) - pending
+// 4830 PI.SHUTDOWN - shutdown PI (NOP here)
+// 4830 PI.REBOOT - reboot PI (NOP here)
+// 4830 PI.UPGRADE - upgrade PI (NOP here)
 // 
-// 4840 DATA recvmsg - pending
-// 4850	DATA sendmsg - pending
-// 4860	DATA vrecvmsg - pending
-// 4870	DATA vsendmsg - pending
+// 4840 DATA recvmsg
+// 4850	DATA sendmsg
+// 4860	DATA vrecvmsg
+// 4870	DATA vsendmsg
 
+#include <WinSock2.h>
+#include <WS2tcpip.h>
 #include <windows.h>
 #include <winhttp.h>
 #include <stdio.h>
@@ -119,14 +121,25 @@ extern const char* getOpcode(int opcode);
 extern void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile);
 extern void setfileerror(FileInfo *pFile);
 extern BaseDisk *pDriveType[MAX_DRIVES];
+extern HWND myWnd;
+extern RECT gWindowRect;
+extern int WindowActive;
+extern int nCurrentDSR;
 
 CString TipiURI[3];
+CString TipiAuto;
 CString TipiDirSort;
 CString TipiTz;
 CString TipiSSID;
 CString TipiPSK;
 CString TipiName;
 TipiWebDisk tipiDsk;
+bool initDone = false;
+
+// network interface
+unsigned char *rxMessageBuf = NULL; // data storage - size may vary
+int rxMessageLen = 0;               // current message size (not necessarily the full buffer size)
+SOCKET sock[256] = { 0 };           // up to 256 sockets are allowed (here, I share them)
 
 bool callTipi();
 bool dsrTipi();
@@ -145,6 +158,12 @@ bool directRecvMsg();
 bool directSendMsg();
 bool directVRecvMsg();
 bool directVSendMsg();
+bool handleSendMsg(unsigned char *buf, int len);
+bool handleMouse(unsigned char *buf, int len);
+bool handleNetvars(unsigned char *buf, int len);
+bool handleTcp(unsigned char *buf, int len);
+bool handleUdp(unsigned char *buf, int len);
+
 bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile));
 bool bufferWebFile(FileInfo *pFile);
 bool bufferConfig(FileInfo *pFile);
@@ -369,6 +388,14 @@ unsigned char *getWebFile(CString &filename, int &outSize) {
 // TIPI DSR jump - return true to add two to R11
 // (DSR success is indicated this way)
 bool HandleTIPI() {
+    if (false == initDone) {
+        initDone = true;
+
+        for (int idx=0; idx<256; ++idx) {
+            sock[idx] = INVALID_SOCKET;
+        }
+    }
+
     // figure out which entry point was requested
     switch (pCurrentCPU->GetPC()) {
     case 0x4800:    // CALL TIPI
@@ -511,6 +538,12 @@ bool callTipi() {
     }
 
     int bootAddress = 0;
+
+    // before we go any further, just make sure the DSR is turned off. On the
+    // real thing, the DSR is turned off before launching the program, but
+    // because of the address hacks (for reboot, etc), the console doesn't
+    // always get a chance to do it, so just fake it here
+    nCurrentDSR = -1;
 
     // load the file - TODO: does TIPI load through VDP or straight to CPU?
     // if file fails to load, reset
@@ -892,25 +925,31 @@ bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile)) {
 				HELPFULDEBUG("Opening");
 
                 // check for disk write protection on output or append (update will come if a write is attempted)
-				if (tipiDsk.GetWriteProtect()) {
-					if (((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT) ||
-						((pWorkFile->Status & FLAG_MODEMASK) == FLAG_APPEND)) {
-							debug_write("Attempt to write to write-protected disk.");
-							pWorkFile->LastError = ERR_WRITEPROTECT;
-							setfileerror(pWorkFile);
-							break;
-					}
-				}
+				if (((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT) ||
+					((pWorkFile->Status & FLAG_MODEMASK) == FLAG_APPEND)) {
+    				if (tipiDsk.GetWriteProtect()) {
+						debug_write("Attempt to write to write-protected disk.");
+						pWorkFile->LastError = ERR_WRITEPROTECT;
+						setfileerror(pWorkFile);
+						break;
+					} else if (bufferCode != bufferConfig) {
+                        // that's one way to check ;) Allow writes only to PI.CONFIG
+                        debug_write("Virtual file is read-only");
+						pWorkFile->LastError = ERR_WRITEPROTECT;
+						setfileerror(pWorkFile);
+						break;
+                    }
+				} else {
+                    // before the open, buffer the file
+                    if (!bufferCode(pWorkFile)) {
+                        setfileerror(pWorkFile);
+                        break;
+                    }
+                }
 
 				// a little more info just for opens
 				debug_write("PAB requested file type is %c%c%d", (pWorkFile->Status&FLAG_INTERNAL)?'I':'D', (pWorkFile->Status&FLAG_VARIABLE)?'V':'F', pWorkFile->RecordLength);
 
-                // before the open, buffer the file
-                if (!bufferCode(pWorkFile)) {
-                    setfileerror(pWorkFile);
-                    break;
-                }
-                
                 // now the open
                 pNewFile = tipiDsk.Open(pWorkFile);
 				if ((NULL == pNewFile) /*|| (!pNewFile->bOpen)*/) {
@@ -1125,15 +1164,17 @@ bool bufferWebFile(FileInfo *pFile) {
 }
 
 bool bufferConfig(FileInfo *pFile) {
-    // make a fake DV254 configuration file
+    // make a fake DV80 configuration file (did docs say DV254??)
+    // again, the docs aren't really matching the data...
     // to make life simple, we'll just store one record per sector
     // We can get away with that because of how variable works ;)
-    unsigned char *buf = (unsigned char*)malloc(256*12+128);
-    memset(buf, 0xff, 256*12+128);
+    const int RECORDS = 15;  // needs to match what is written below!
+    unsigned char *buf = (unsigned char*)malloc(256*RECORDS+128);
+    memset(buf, 0xff, 256*RECORDS+128);
     pFile->initData = buf;
-    pFile->initDataSize = 256*12+128;
+    pFile->initDataSize = 256*RECORDS+128;
 
-    // build the TIFILES header - DV254 with 12 records, fully padded
+    // build the TIFILES header - DV80 with 12 records, fully padded
 	buf[0] = 7;
 	buf[1] = 'T';
 	buf[2] = 'I';
@@ -1143,76 +1184,97 @@ bool bufferConfig(FileInfo *pFile) {
 	buf[6] = 'E';
 	buf[7] = 'S';
 	buf[8] = 0;			// length in sectors HB
-	buf[9] = 12;		// LB 
+	buf[9] = RECORDS;	// LB 
 	buf[10] = TIFILES_VARIABLE;			// File type 
 	buf[11] = 1;		// records/sector
 	buf[12] = 255;  	// # of bytes in last sector
-	buf[13] = 254;		// record length 
-	buf[14] = 12;		// # of records(FIX)/sectors(VAR) LB 
+	buf[13] = 80;		// record length 
+	buf[14] = RECORDS;	// # of records(FIX)/sectors(VAR) LB 
 	buf[15] = 0;		// HB
 
     // write out the records (length, data)
     // padding is already in place
     int off = 128;
 
-    snprintf((char*)&buf[off+1], 255, "DIR_SORT=%s", TipiDirSort.GetString());
+    // TODO: automap DSK1 to last load location
+    snprintf((char*)&buf[off+1], 8, "AUTO=%s", TipiAuto.GetString());
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "DSK1_DIR=%s", pDriveType[1]->GetPath());
+    snprintf((char*)&buf[off+1], 80, "DIR_SORT=%s", TipiDirSort.GetString());
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "DSK2_DIR=%s", pDriveType[2]->GetPath());
+    // because these tend to be long, and tipicfg doesn't trim, we do
+    snprintf((char*)&buf[off+1], 39, "DSK1_DIR=(handled by Classic99)");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "DSK3_DIR=%s", pDriveType[3]->GetPath());
+    snprintf((char*)&buf[off+1], 39, "DSK2_DIR=(handled by Classic99)");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "DSK4_DIR=%s", pDriveType[4]->GetPath());
+    snprintf((char*)&buf[off+1], 39, "DSK3_DIR=(handled by Classic99)");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "URI1=%s", TipiURI[0].GetString());
+    snprintf((char*)&buf[off+1], 39, "DSK4_DIR=(handled by Classic99)");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "URI2=%s", TipiURI[1].GetString());
+    // TODO: mouse acceleration
+    snprintf((char*)&buf[off+1], 29, "MOUSE_SCALE=50");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "URI3=%s", TipiURI[2].GetString());
+    // for directory listings?
+    snprintf((char*)&buf[off+1], 29, "SECTOR_COUNT=1440");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "WPA_SSID=%s", TipiSSID.GetString());
+    snprintf((char*)&buf[off+1], 80, "TIPI_NAME=%s", TipiName.GetString());
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "WPA_PSK=******");    // don't show password
+    snprintf((char*)&buf[off+1], 80, "TZ=%s", TipiTz.GetString());
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "TIPI_NAME=%s", TipiName.GetString());
+    snprintf((char*)&buf[off+1], 80, "URI1=%s", TipiURI[0].GetString());
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "TZ=%s", TipiTz.GetString());
+    snprintf((char*)&buf[off+1], 80, "URI2=%s", TipiURI[1].GetString());
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 80, "URI3=%s", TipiURI[2].GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    // In the real file, this is plain text...
+    snprintf((char*)&buf[off+1], 80, "WIFI_PSK=******");    // don't show password
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 80, "WIFI_SSID=%s", TipiSSID.GetString());
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    //off+=256;     // not on the last one
 
     // patch header
 	buf[12] = buf[off]+1;  	// # of bytes in last sector
@@ -1223,12 +1285,13 @@ bool bufferStatus(FileInfo *pFile) {
     // make a fake DV80 configuration file
     // to make life simple, we'll just store one record per sector
     // We can get away with that because of how variable works ;)
-    unsigned char *buf = (unsigned char*)malloc(256*3+128);
-    memset(buf, 0xff, 256*3+128);
+    const int RECORDS = 6;  // needs to match what is written below!
+    unsigned char *buf = (unsigned char*)malloc(256*RECORDS+128);
+    memset(buf, 0xff, 256*RECORDS+128);
     pFile->initData = buf;
-    pFile->initDataSize = 256*3+128;
+    pFile->initDataSize = 256*RECORDS+128;
 
-    // build the TIFILES header - DV80 with 3 records, fully padded
+    // build the TIFILES header - DV80 with 6 records, fully padded to each sector
 	buf[0] = 7;
 	buf[1] = 'T';
 	buf[2] = 'I';
@@ -1238,32 +1301,53 @@ bool bufferStatus(FileInfo *pFile) {
 	buf[6] = 'E';
 	buf[7] = 'S';
 	buf[8] = 0;			// length in sectors HB
-	buf[9] = 3; 		// LB 
+	buf[9] = RECORDS;   // LB 
 	buf[10] = TIFILES_VARIABLE;			// File type 
 	buf[11] = 3;		// (up to) records/sector
 	buf[12] = 255;  	// # of bytes in last sector
 	buf[13] = 80;		// record length 
-	buf[14] = 3;		// # of records(FIX)/sectors(VAR) LB 
+	buf[14] = RECORDS;	// # of records(FIX)/sectors(VAR) LB 
 	buf[15] = 0;		// HB
 
     // write out the records (length, data)
     // padding is already in place
     int off = 128;
 
-    // TODO: I don't remember what the version looks like, it's late
-    snprintf((char*)&buf[off+1], 255, "VERSION=1.0.0");
+    // docs for these records are incorrect
+    // based on the current version 2.19
+    // TODO: get windows MAC address
+    snprintf((char*)&buf[off+1], 255, "MAC_WLAN0=00:00:00:00:00:00");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "_IPADDRESS=127.0.0.1");
+    // TODO: get windows IP address
+    snprintf((char*)&buf[off+1], 255, "IP_WLAN0=127.0.0.1");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    snprintf((char*)&buf[off+1], 255, "_MACADDRESS=00:00:00:00:00:00");
+    snprintf((char*)&buf[off+1], 255, "VERSION=2.19");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    snprintf((char*)&buf[off+1], 255, "RELDATE=2021-02-26");
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    // TODO: what is this UUID?
+    snprintf((char*)&buf[off+1], 255, "UUID=00000000-0000-0000-0000-000000000000");
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    off+=256;
+
+    // TODO: I assume it fetched latest from the server... doesn't help us anyway
+    snprintf((char*)&buf[off+1], 255, "LATEST=2.19");
+    buf[off] = strlen((char*)&buf[off+1])&0xff; 
+    buf[off+1+buf[off]] = 0xff;  // fix terminator
+    //off+=256; // not on last record
 
     // patch header
 	buf[12] = buf[off]+1;  	// # of bytes in last sector
@@ -1272,22 +1356,22 @@ bool bufferStatus(FileInfo *pFile) {
 }
 
 bool dsrPiPio() {
-    debug_write("NOT IMPLEMENTED");
+    debug_write("PI.PIO NOT IMPLEMENTED");
     return false;
 
 }
 bool dsrPiTcp() {
-    debug_write("NOT IMPLEMENTED");
+    debug_write("PI.TCP NOT IMPLEMENTED");
     return false;
 
 }
 bool dsrPiUdp() {
-    debug_write("NOT IMPLEMENTED");
+    debug_write("PI.UDP NOT IMPLEMENTED");
     return false;
 
 }
 bool dsrPiVars() {
-    debug_write("NOT IMPLEMENTED");
+    debug_write("PI.VARS NOT IMPLEMENTED");
     return false;
 
 }
@@ -1297,30 +1381,621 @@ bool dsrPiHardwareNop() {
 }
 
 // These functions directly interface to several functions
-bool directRecvMsg() {
-    debug_write("NOT IMPLEMENTED");
-    return false;
+// In each of these R0 is the length of the message buffer,
+// and R1 is the pointer to it. Workspace is expected to be >83E0
+// For receive, R0 is updated with the new length of data.
+// I don't think the "V" versions are used as often, but
+// they appear to access VDP instead of CPU RAM. Generally,
+// a message is sent, and then return data is received. This
+// suggests only one message should be active at a time.
+// TODO: There is a note in the docs that says messages MUST be received,
+// so maybe there is a queue or a block?
 
+bool handleSendMsg(unsigned char *buf, int len) {
+    // first byte of the buffer tells us what to do
+    switch (buf[0]) {
+    case 0x20:  // read mouse
+        return handleMouse(buf, len);
+    case 0x21:  // netvars
+        return handleNetvars(buf, len);
+    case 0x22:  // TCP
+        return handleTcp(buf, len);
+    case 0x23:  // UDP
+        return handleUdp(buf, len);
+    default:
+        // TODO: what does TIPI do with an unknown extension?
+        return false;
+    }
 }
+
 bool directSendMsg() {
-    debug_write("NOT IMPLEMENTED");
-    return false;
+    unsigned char buf[65536];   // max size
+    int wp = pCurrentCPU->GetWP();
+    if (wp != 0x83e0) {
+        debug_write("Warning: Call TIPI functions with GPLWS (>83E0), SendMsg WP is >%04X", wp);
+    }
+    int len = romword(wp);
+    int off = romword(wp+2);
+    
+    // because CPU memory is fragmented, use the read functions to fetch the data
+    // we don't need to sanity test, this is safe
+    for (int idx=0; idx<len; ++idx) {
+        buf[idx] = rcpubyte(off+idx);
+    }
 
-}
-bool directVRecvMsg() {
-    debug_write("NOT IMPLEMENTED");
-    return false;
-
+    // now figure out what to do with it
+    return handleSendMsg(buf, len);
 }
 bool directVSendMsg() {
-    debug_write("NOT IMPLEMENTED");
-    return false;
+    // same, but from VDP
+    int wp = pCurrentCPU->GetWP();
+    if (wp != 0x83e0) {
+        debug_write("Warning: Call TIPI functions with GPLWS (>83E0), VSendMsg WP is >%04X", wp);
+    }
+    int len = romword(wp);
+    int off = romword(wp+2);
+    if (off+len > 0x3fff) {
+        debug_write("Illegal VDP access in VSendMsg, wrapping (address >%04X, len >%04X)", off, len);
+        off &= 0x3fff;
+        len = 0x4000-off;
+    }
+    return handleSendMsg(&VDP[off], len);    
+}
 
+bool directRecvMsg() {
+    int wp = pCurrentCPU->GetWP();
+    if (wp != 0x83e0) {
+        debug_write("Warning: Call TIPI functions with GPLWS (>83E0), RecvMsg WP is >%04X", wp);
+    }
+    int len = romword(wp);
+    int off = romword(wp+2);
+
+    if (len < rxMessageLen) {
+        len = rxMessageLen;
+        wrword(wp, len);
+    }
+
+    if (len > 0) {
+        for (int idx=0; idx<len; ++idx) {
+            // safe function, don't need to check here
+            wcpubyte(off+idx, rxMessageBuf[idx]);
+        }
+    }
+
+    return true;
+}
+bool directVRecvMsg() {
+    int wp = pCurrentCPU->GetWP();
+    if (wp != 0x83e0) {
+        debug_write("Warning: Call TIPI functions with GPLWS (>83E0), VRecvMsg WP is >%04X", wp);
+    }
+    int len = romword(wp);
+    int off = romword(wp+2);
+    if (off+len > 0x3fff) {
+        debug_write("Illegal VDP access in VSendMsg, wrapping (address >%04X, len >%04X)", off, len);
+        off &= 0x3fff;
+        len = 0x4000-off;
+    }
+
+    if (len < rxMessageLen) {
+        len = rxMessageLen;
+        wrword(wp, len);
+    }
+
+    if (len > 0) {
+        memcpy(&VDP[off], rxMessageBuf, len);
+    }
+
+    return true;
+}
+
+void resizeBuffer(int size) {
+    // todo: we could track message length and buffer size separately
+    // and reduce how often we need to realloc this memory...
+    if (size < rxMessageLen) {
+        rxMessageBuf = (unsigned char*)realloc(rxMessageBuf, size);
+    }
+    rxMessageLen = size;
+}
+
+bool handleMouse(unsigned char *buf, int len) {
+    if (len != 1) {
+        debug_write("Warning: TIPI mouse message with length %d - 1 expected.", len);
+    }
+    // just load up the mouse data in the return buffer
+    // three bytes: x delta, y delta, buttons
+    // button bits are : 1 - left, 2 - middle, 4 - right
+    // This means we need the last mouse position...
+    static POINT lastMouse = { -1, -1 };
+
+    // update the buffer
+    resizeBuffer(3);
+
+    // ... so how will we handle mouse coordinates, anyway?
+    // I guess we try to scale to the window size and return
+    // in 265x192 pixels
+    if (!WindowActive) {
+        // no move if not active
+        memset(rxMessageBuf, 0, 3);
+    } else {
+        if (GetWindowRect(myWnd, &gWindowRect)) {
+            // TODO: this assumption may work poorly in text or 80 column mode...
+            // but because it's delta, it may be okay. Note that since the moves
+            // are relative, the TI cursor, not the Windows cursor, must be used.
+            // We have no way to know where the application cursor is.
+            // TODO: Also, double-clicks will still trigger the paste function...
+            double scaleX = 256/(gWindowRect.right-gWindowRect.left);
+            double scaleY = 192/(gWindowRect.bottom-gWindowRect.top);
+            POINT pt;
+            GetCursorPos(&pt); // screen coordinates!
+            double x = (pt.x-lastMouse.x) * scaleX;
+            double y = (pt.y-lastMouse.y) * scaleY;
+            lastMouse = pt;
+
+            // so, buttons only if you're pointing at the window
+            // that's awkward, but I don't know how else to do it...
+            // (short of capture, that is...)
+            int btn = 0;
+            if (WindowFromPoint(pt) == myWnd) {
+                if (GetAsyncKeyState(VK_LBUTTON)&0x8000) btn |= 0x01;
+                if (GetAsyncKeyState(VK_MBUTTON)&0x8000) btn |= 0x02;
+                if (GetAsyncKeyState(VK_RBUTTON)&0x8000) btn |= 0x04;
+            }
+
+            rxMessageBuf[0] = (unsigned char)((int)round(x));
+            rxMessageBuf[1] = (unsigned char)((int)round(y));
+            rxMessageBuf[2] = btn;
+        }
+    }
+    return true;
+}
+
+bool handleNetvars(unsigned char *buf, int len) {
+    // TODO: need to look up what to DO with the string we get...
+    // it's probably relatively transparent...
+    // Is this a myti99.com specific thing?
+    // 0x21 namespace 0x1e net-context 0x1e operation 0x1e queue-flag 0x1e [results_var] [ 0x1e key [ 0x1e value ] ]{1:6}
+    // https://github.com/jedimatt42/tipi/wiki/Extension-NetVar
+    debug_write("Extension NETVARS not implemented");
+    return false;
+}
+
+bool handleTcp(unsigned char *buf, int len) {
+    // https://github.com/jedimatt42/tipi/wiki/Extension-TCP
+    if (len < 3) {
+        debug_write("Illegal TCP access, missing data, len %d", len);
+        return false;
+    }
+
+    int index = buf[1]; // handle byte - caller specifies
+    int cmd = buf[2];   // what to do
+
+    switch (cmd) {
+    case 0x01:  // open
+        {
+            // data expected is a string: hostname:port
+            bool ret = true;
+
+            // probably paranoid...
+            shutdown(sock[index], SD_BOTH);
+            closesocket(sock[index]);
+            sock[index] = INVALID_SOCKET;
+
+            // parse the remote string
+            CString hostname;
+            CString port;
+            int idx = 3;
+            while (idx<len) {
+                if ((buf[idx]==':') || (buf[idx]=='\0')) break;
+                hostname += buf[idx++];
+            }
+            if (buf[idx] == ':') {
+                ++idx;
+                while (idx<len) {
+                    if (buf[idx]=='\0') break;
+                    port += buf[idx++];
+                }
+            }
+            debug_write("Accessing %s:%s", hostname.GetString(), port.GetString());
+            // TODO: I think port is mandatory?
+            if ((hostname.IsEmpty()) || (port.IsEmpty())) {
+                debug_write("Bad syntax on TCP open, failing");
+                ret = false;
+            } else {
+                // try to convert it to data
+                struct addrinfo hints;
+                struct addrinfo *result, *rp;   // we'll play like the example..
+                memset(&hints, 0, sizeof(hints));
+                hints.ai_family = AF_UNSPEC;  // allows v4 and v6?
+                hints.ai_socktype = SOCK_STREAM;
+                hints.ai_flags = 0;
+                hints.ai_protocol = IPPROTO_TCP;
+                int s = getaddrinfo(hostname.GetString(), port.GetString(), &hints, &result);
+                if (s) {
+                    debug_write("Failed to look up address in TCP open, code %d", s);
+                    ret = false;
+                } else {
+                    /* getaddrinfo() returns a list of address structures.
+                        Try each address until we successfully connect(2).
+                        If socket(2) (or connect(2)) fails, we (close the socket
+                        and) try the next address. */
+                    int idx = 0;
+                    for (rp = result; rp != NULL; rp=rp->ai_next) {
+                        debug_write("Trying result %d", ++idx);
+                        sock[index] = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+                        if (sock[index] == INVALID_SOCKET) continue;
+
+                        if (connect(sock[index], rp->ai_addr, rp->ai_addrlen) != SOCKET_ERROR) {
+                            break;  // got it
+                        }
+
+                        closesocket(sock[index]);
+                        sock[index] = INVALID_SOCKET;
+                    }
+
+                    // clean up, either way
+                    freeaddrinfo(result);
+
+                    if (rp == NULL) {
+                        debug_write("Failed to configure socket for %s:%s after %d tries", hostname, port, idx);
+                        ret = false;
+                    }
+                }
+            }
+            resizeBuffer(1);
+            if (ret) {
+                rxMessageBuf[0] = 255;
+            } else {
+                rxMessageBuf[0] = 0;
+            }
+        }
+        break;
+
+    case 0x06:  // unbind
+        // I think the real TIPI has server and client sockets in different spaces, thus the different
+        // function. For me, it should work fine to just close it...
+        // fall through...
+    case 0x02:  // close
+        shutdown(sock[index], SD_BOTH);
+        closesocket(sock[index]);
+        sock[index] = INVALID_SOCKET;
+        resizeBuffer(1);
+        rxMessageBuf[0] = 255;
+        break;
+
+    case 0x03:  // write
+        {
+            int tosend = len-3;
+            unsigned char *ptr = buf+3;
+            bool ret = true;
+            resizeBuffer(1);
+
+            while (tosend > 0) {
+                int s = send(sock[index], (const char*)ptr, tosend, 0);
+                if (s != SOCKET_ERROR) {
+                    tosend -= s;
+                } else {
+                    debug_write("Socket[%d] send failed WSA code 0x%x", index, WSAGetLastError());
+                    ret = false;
+                    break;
+                }
+            }
+            if (ret) {
+                rxMessageBuf[0] = 255;
+            } else {
+                rxMessageBuf[0] = 0;
+            }
+        }
+        break;
+
+    case 0x04:  // read
+        if (len < 5) {
+            debug_write("UDP read command string too short");
+            rxMessageLen = 0;
+        } else {
+            int rxSize = buf[3]*256 + buf[4];
+            resizeBuffer(rxSize);
+            int s = recv(sock[index], (char*)rxMessageBuf, rxSize, 0);
+            if (s == SOCKET_ERROR) {
+                debug_write("Socket[%d] recv failed WSA code 0x%x", index, WSAGetLastError());
+                rxMessageLen = 0;
+            } else {
+                rxMessageLen = s;   // guaranteed to be smaller or equal
+            }
+        }
+        break;
+
+    case 0x05:  // bind (instead of open)
+        // this is very similar to open, but creates a listen socket
+        {
+            // data expected is a string: interface:port (interface can be '*' for all)
+            bool ret = true;
+
+            // probably paranoid...
+            shutdown(sock[index], SD_BOTH);
+            closesocket(sock[index]);
+            sock[index] = INVALID_SOCKET;
+
+            // parse the local string
+            CString hostname;
+            CString port;
+            int idx = 3;
+            while (idx<len) {
+                if ((buf[idx]==':') || (buf[idx]=='\0')) break;
+                hostname += buf[idx++];
+            }
+            if (buf[idx] == ':') {
+                ++idx;
+                while (idx<len) {
+                    if (buf[idx]=='\0') break;
+                    port += buf[idx++];
+                }
+            }
+            debug_write("Binding to %s:%s", hostname.GetString(), port.GetString());
+            if ((hostname.IsEmpty()) || (port.IsEmpty())) {
+                debug_write("Bad syntax on TCP bind, failing");
+                ret = false;
+            } else {
+                // try to convert it to data
+                struct addrinfo hints;
+                struct addrinfo *result;   // we'll play like the example..
+                memset(&hints, 0, sizeof(hints));
+                hints.ai_family = AF_INET;  // TODO: unspec??
+                hints.ai_socktype = SOCK_STREAM;
+                hints.ai_flags = AI_PASSIVE;
+                hints.ai_protocol = IPPROTO_TCP;
+
+                int s = getaddrinfo(hostname=="*" ? NULL : hostname.GetString(), port.GetString(), &hints, &result);
+                if (s) {
+                    debug_write("Failed to look up local address in TCP bind, code %d", s);
+                    ret = false;
+                } else {
+                    // in this case, we expect only one response
+                    sock[index] = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+                    if (sock[index] == INVALID_SOCKET) {
+                        debug_write("Failed to configure listen socket for %s:%s", hostname, port);
+                        ret = false;
+                    } else {
+                        if (bind(sock[index], result->ai_addr, (int)result->ai_addrlen) == SOCKET_ERROR) {
+                            debug_write("Failed to bind listen socket for %s:%s", hostname, port);
+                            closesocket(sock[index]);
+                            sock[index] = INVALID_SOCKET;
+                            ret = false;
+                        } else {
+                            if (listen(sock[index], SOMAXCONN) == SOCKET_ERROR) {
+                                debug_write("Failed to listen on listen socket for %s:%s", hostname, port);
+                                closesocket(sock[index]);
+                                sock[index] = INVALID_SOCKET;
+                                ret = false;
+                            }
+                        }
+                    }
+
+                    // clean up, either way
+                    freeaddrinfo(result);
+                }
+            }
+            resizeBuffer(1);
+            if (ret) {
+                rxMessageBuf[0] = 255;
+            } else {
+                rxMessageBuf[0] = 0;
+            }
+        }
+        break;
+
+    //case 0x06:  // unbind (see close above)
+
+    case 0x07:  // accept
+        // try to accept on the server socket and return a new handle
+        // 0 for failure, 255 if not a server socket
+        {
+            unsigned char ret = 255;    // assume bad socket...
+
+            int outsock = 0;
+            for (int idx=1; idx<255; ++idx) {
+                // can't use 0 or 255
+                if (sock[idx] == INVALID_SOCKET) {
+                    outsock = idx;
+                }
+            }
+            if (outsock == 0) {
+                // pretty unlikely...
+                debug_write("No sockets available for accept...");
+                ret = 0;
+            } else {
+                // check if there is a connection to accept
+                fd_set reads = {0};
+                TIMEVAL nilTime = {0,0};
+                FD_SET(sock[index], &reads);
+                int sel = select(0, &reads, NULL, NULL, &nilTime);
+                if (SOCKET_ERROR == sel) {
+                    ret = 255;
+                } else if (0 == sel) {
+                    // nobody's waiting
+                    ret = 0;
+                } else {
+                    // accept, don't care from who
+                    sock[outsock] = accept(sock[index], NULL, NULL);
+                    if (INVALID_SOCKET == sock[outsock]) {
+                        int err = WSAGetLastError();
+                        if (err == WSAENOTSOCK) {
+                            ret = 255;
+                        } else {
+                            ret = 0;
+                        }
+                        debug_write("Accept failed, WSAE error 0x%x", err);
+                    } else {
+                        // return valid accepted socket
+                        ret = outsock;
+                    }
+                }
+            }
+            resizeBuffer(1);
+            rxMessageBuf[0] = ret;
+        }
+        break;
+
+    default:
+        debug_write("Unknown UDP command >%02X", cmd);
+        return false;
+    }
+
+    return true;
+}
+
+bool handleUdp(unsigned char *buf, int len) {
+    if (len < 3) {
+        debug_write("Illegal UDP access, missing data, len %d", len);
+        return false;
+    }
+
+    int index = buf[1]; // handle byte - caller specifies
+    int cmd = buf[2];   // what to do
+
+    switch (cmd) {
+    case 0x01:  // open
+        {
+            // data expected is a string: hostname:port
+            // TODO: can we open an unconnected socket?
+            bool ret = true;
+
+            // probably paranoid...
+            shutdown(sock[index], SD_BOTH);
+            closesocket(sock[index]);
+            sock[index] = INVALID_SOCKET;
+
+            // parse the remote string
+            CString hostname;
+            CString port;
+            int idx = 3;
+            while (idx<len) {
+                if ((buf[idx]==':') || (buf[idx]=='\0')) break;
+                hostname += buf[idx++];
+            }
+            if (buf[idx] == ':') {
+                ++idx;
+                while (idx<len) {
+                    if (buf[idx]=='\0') break;
+                    port += buf[idx++];
+                }
+            }
+            debug_write("Accessing %s:%s", hostname.GetString(), port.GetString());
+            // TODO: I think port is mandatory?
+            if ((hostname.IsEmpty()) || (port.IsEmpty())) {
+                debug_write("Bad syntax on UDP open, failing");
+                ret = false;
+            } else {
+                // try to convert it to data
+                struct addrinfo hints;
+                struct addrinfo *result, *rp;   // we'll play like the example..
+                memset(&hints, 0, sizeof(hints));
+                hints.ai_family = AF_UNSPEC;  // allows v4 and v6?
+                hints.ai_socktype = SOCK_DGRAM;
+                hints.ai_flags = 0;
+                hints.ai_protocol = IPPROTO_UDP;
+                int s = getaddrinfo(hostname.GetString(), port.GetString(), &hints, &result);
+                if (s) {
+                    debug_write("Failed to look up address in UDP open, code %d", s);
+                    ret = false;
+                } else {
+                    /* getaddrinfo() returns a list of address structures.
+                        Try each address until we successfully connect(2).
+                        If socket(2) (or connect(2)) fails, we (close the socket
+                        and) try the next address. */
+                    int idx = 0;
+                    for (rp = result; rp != NULL; rp=rp->ai_next) {
+                        debug_write("Trying result %d", ++idx);
+                        sock[index] = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+                        if (sock[index] == INVALID_SOCKET) continue;
+
+                        if (connect(sock[index], rp->ai_addr, rp->ai_addrlen) != SOCKET_ERROR) {
+                            break;  // got it
+                        }
+
+                        closesocket(sock[index]);
+                        sock[index] = INVALID_SOCKET;
+                    }
+
+                    // clean up, either way
+                    freeaddrinfo(result);
+
+                    if (rp == NULL) {
+                        debug_write("Failed to configure socket for %s:%s after %d tries", hostname, port, idx);
+                        ret = false;
+                    }
+                }
+            }
+            resizeBuffer(1);
+            if (ret) {
+                rxMessageBuf[0] = 255;
+            } else {
+                rxMessageBuf[0] = 0;
+            }
+        }
+        break;
+
+    case 0x02:  // close
+        shutdown(sock[index], SD_BOTH);
+        closesocket(sock[index]);
+        sock[index] = INVALID_SOCKET;
+        resizeBuffer(1);
+        rxMessageBuf[0] = 255;
+        break;
+
+    case 0x03:  // write
+        {
+            int tosend = len-3;
+            unsigned char *ptr = buf+3;
+            bool ret = true;
+            resizeBuffer(1);
+
+            while (tosend > 0) {
+                int s = send(sock[index], (const char*)ptr, tosend, 0);
+                if (s != SOCKET_ERROR) {
+                    tosend -= s;
+                } else {
+                    debug_write("Socket[%d] send failed WSA code 0x%x", index, WSAGetLastError());
+                    ret = false;
+                    break;
+                }
+            }
+            if (ret) {
+                rxMessageBuf[0] = 255;
+            } else {
+                rxMessageBuf[0] = 0;
+            }
+        }
+        break;
+
+    case 0x04:  // read
+        if (len < 5) {
+            debug_write("UDP read command string too short");
+            rxMessageLen = 0;
+        } else {
+            int rxSize = buf[3]*256 + buf[4];
+            resizeBuffer(rxSize);
+            int s = recv(sock[index], (char*)rxMessageBuf, rxSize, 0);
+            if (s == SOCKET_ERROR) {
+                debug_write("Socket[%d] recv failed WSA code 0x%x", index, WSAGetLastError());
+                rxMessageLen = 0;
+            } else {
+                rxMessageLen = s;   // guaranteed to be smaller or equal
+            }
+        }
+        break;
+
+    default:
+        debug_write("Unknown UDP command >%02X", cmd);
+        return false;
+    }
+
+    return true;
 }
 
 // Web disk class
 // TODO: if we changed the FiadDisk object to work with streams instead of files directly,
-// then we could feed it file streams and string streams, and share all that parsing code
+// then we could feed it file streams and buffer streams, and share all that parsing code
 // more easily...
 
 // TODO: as implemented so far, writes are all disallowed, but I need to be able to write
@@ -1335,10 +2010,58 @@ TipiWebDisk::~TipiWebDisk() {
 
 // create an output file
 bool TipiWebDisk::CreateOutputFile(FileInfo *pFile) {
-    // the web is read-only
-    debug_write("Can't write to the web for '%s'", pFile->csName.GetString());
-	pFile->LastError = ERR_WRITEPROTECT;
-    return false;
+    // we should be called only for PI.CONFIG, so we rely on that.
+    // create a new memory-only file
+
+    // we need to open PI.CONFIG in append mode, but nothing is being destroyed...
+    // save this in case other files are added...
+#if 0
+    // first a little sanity checking -- we never overwrite an existing file
+	// unless the mode is 'output', so check existance against the mode
+	if ((pFile->Status & FLAG_MODEMASK) != FLAG_OUTPUT) {
+		// no, we are not
+		debug_write("Can't overwrite PI.CONFIG with open mode 0x%02X", (pFile->Status & FLAG_MODEMASK));
+		return false;
+	}
+#endif
+
+	// check if the user requested a default record length, and fill it in if so
+	if (pFile->RecordLength == 0) {
+		pFile->RecordLength = 80;
+	}
+    if (pFile->RecordLength != 80) {
+        debug_write("PI.CONFIG must be opened as D/V80");
+        return false;
+    }
+
+	// now make sure the type is display/variable
+	if (pFile->Status&FLAG_INTERNAL) {
+		debug_write("PI.CONFIG supports display files only");
+		return false;
+	}
+	if (0==(pFile->Status&FLAG_VARIABLE)) {
+		debug_write("PI.CONFIG supports variable records only");
+		return false;
+	}
+
+	// calculate necessary data and fill in header fields
+	// Most of this is probably meaningless here, but that's okay, we'll keep it
+	pFile->RecordsPerSector = 256  / (pFile->RecordLength + ((pFile->Status & FLAG_VARIABLE) ? 1 : 0) );
+	pFile->LengthSectors = 1;
+	pFile->FileType = 0;
+	if (pFile->Status & FLAG_VARIABLE) pFile->FileType|=TIFILES_VARIABLE;
+	if (pFile->Status & FLAG_INTERNAL) pFile->FileType|=TIFILES_INTERNAL;
+	pFile->BytesInLastSector = 0;
+	pFile->NumberRecords = 0;
+
+	// Allocate a buffer for it (size of 15 records by default)
+	if (NULL != pFile->pData) {
+		free(pFile->pData);
+	}
+	pFile->pData = (unsigned char*)malloc(15 * (pFile->RecordLength+2));
+	pFile->bDirty = true;
+
+	return true;
 }
 
 // Open an existing file from RAM (initData), check the header against the parameters
@@ -1429,6 +2152,109 @@ bool TipiWebDisk::TryOpenFile(FileInfo *pFile) {
 
 	// seems okay? Copy the data over from the PAB
 	pFile->CopyFileInfo(&lclInfo, false);
+	return true;
+}
+
+// check a string for a meaningful PI.CONFIG value
+// return 1 if updated or 0 if not
+int processConfig(char *key) {
+    char *dat = strchr(key, '=');
+    if (NULL == dat) {
+        return 0;
+    }
+    *dat = '\0';
+    ++dat;
+
+    if (0 == strcmp(key, "AUTO")) {
+        TipiAuto = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "DIR_SORT")) {
+        TipiDirSort = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "AUTO")) {
+        TipiAuto = dat;
+        return 1;
+    }
+    // Skipping DSK1_DIR, DSK2_DIR, DSK3_DIR, DSK4_DIR
+    // Should do MOUSE_SCALE, SECTOR_COUNT
+    if (0 == strcmp(key, "TIPI_NAME")) {
+        TipiName = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "TZ")) {
+        TipiTz = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "AUTO")) {
+        TipiAuto = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "URI1")) {
+        TipiURI[0] = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "URI2")) {
+        TipiURI[1] = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "URI3")) {
+        TipiURI[2] = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "WIFI_PSK")) {
+        TipiPSK = dat;
+        return 1;
+    }
+    if (0 == strcmp(key, "WIFI_SSID")) {
+        TipiSSID = dat;
+        return 1;
+    }
+
+    return 0;
+}
+
+// Write the disk buffer out to the file, with appropriate modes and headers
+// Again, we are /assuming/ that ONLY PI.CONFIG can get to this code...
+// Unlike the real TIPI (?) we don't allow adding new records, and in fact
+// only a very few records can be updated...
+bool TipiWebDisk::Flush(FileInfo *pFile) {
+	CString csOut;
+
+	// first make sure this is an open file!
+	if (!pFile->bDirty) {
+		// nothing to flush, return success anyway
+		return true;
+	}
+
+	// The assumption is made that these are valid text strings
+	unsigned char *pData = pFile->pData;
+	char tmp[256];
+    int updates = 0;
+	if (NULL == pData) {
+		debug_write("Warning: no data to flush.");
+	} else {
+		// parse out the strings, looking for interesting ones
+		for (int idx=0; idx<pFile->NumberRecords; idx++) {
+			if (pData-pFile->pData >= pFile->nDataSize) {
+				break;
+			}
+			int nLen = *(unsigned short*)pData;
+			pData+=2;
+
+			memset(tmp, 0, sizeof(tmp));
+			memcpy(tmp, pData, nLen);
+
+            updates += processConfig(tmp);
+
+			pData+=pFile->RecordLength;
+		}
+	}
+
+	debug_write("Flushed %d records to PI.CONFIG, %d updates", pFile->NumberRecords, updates);
+	pFile->bDirty = false;
+
 	return true;
 }
 
@@ -1753,10 +2579,15 @@ FileInfo *TipiWebDisk::Open(FileInfo *pFile) {
     {
 		// let's see what we are doing here...
 		switch (pFile->Status & FLAG_MODEMASK) {
-			case FLAG_APPEND:
+			case FLAG_APPEND:   // TIPICFG opens in Append mode...
 			case FLAG_OUTPUT:
-                pFile->LastError = ERR_BADATTRIBUTE;
-				goto error;
+                // we checked in the main function (the only place that could check, so this
+                // must be PI.CONFIG, which we have to allow). Always create an empty output
+                // block, which we then read into the file as an array.
+			    if (!CreateOutputFile(pFile)) {
+				    goto error;
+			    }
+			    break;
 
 			default:	// should only be FLAG_INPUT or FLAG_UPDATE
 				if (!TryOpenFile(pFile)) {

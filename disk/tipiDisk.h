@@ -30,7 +30,7 @@ public:
 //	virtual CString BuildFilename(FileInfo *pFile);		// base class ok (unused)
 
 	// disk support
-//	virtual bool Flush(FileInfo *pFile);                // base class ok (unused)
+	virtual bool Flush(FileInfo *pFile);
 	virtual bool TryOpenFile(FileInfo *pFile);
 	virtual bool CreateOutputFile(FileInfo *pFile);
 	virtual bool BufferFile(FileInfo *pFile);

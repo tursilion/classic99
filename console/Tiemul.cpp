@@ -372,7 +372,7 @@ HDC myDC;											// Handle to Device Context
 int fontX, fontY;									// Non-proportional font x and y size
 DWORD g_dwMyStyle = WS_OVERLAPPEDWINDOW | WS_SIZEBOX | WS_VISIBLE;
 int nVideoLeft = -1, nVideoTop = -1;
-RECT gWindowRect;
+RECT gWindowRect;       // not always up to date!
 
 char AVIFileName[256]="C:\\TI99AVI.AVI";			// AVI Filename
 
@@ -391,6 +391,7 @@ extern int VDPDebug;
 extern int TVScanLines;
 extern CString TipiURI[3];
 extern CString TipiDirSort;
+extern CString TipiAuto;
 extern CString TipiTz;
 extern CString TipiSSID;
 extern CString TipiPSK;
@@ -406,7 +407,7 @@ extern CString TipiName;
 struct IMG AlwaysLoad[] = {
     {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0},
 	{	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
-    {   IDR_TIPISIM,    0x1200, 0x0100, TYPE_DSR    , 0},
+    {   IDR_TIPISIM,    0x1200, 0x0110, TYPE_DSR    , 0},
 //	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0},
 	{	IDR_SPCHROM,	0x0000,	0x8000,	TYPE_SPEECH	, 0},
 	{	IDR_PGROM,		0x0000, 0xF800, TYPE_PCODEG , 0},
@@ -856,6 +857,8 @@ skiprestofuser:
         TipiURI[2] = buf;
         GetPrivateProfileString("TIPISim", "TipiDirSort", "FIRST", buf, sizeof(buf), INIFILE);
         TipiDirSort = buf;
+        GetPrivateProfileString("TIPISim", "TipiAuto", "off", buf, sizeof(buf), INIFILE);
+        TipiAuto = buf;
         GetPrivateProfileString("TIPISim", "TipiTz", "Emu/Classic99", buf, sizeof(buf), INIFILE);
         TipiTz = buf;
         GetPrivateProfileString("TIPISim", "TipiSSID", "", buf, sizeof(buf), INIFILE);
@@ -1008,6 +1011,7 @@ void SaveConfig() {
     WritePrivateProfileString("TIPISim", "URI2", TipiURI[1], INIFILE);
     WritePrivateProfileString("TIPISim", "URI3", TipiURI[2], INIFILE);
     WritePrivateProfileString("TIPISim", "TipiDirSort", TipiDirSort, INIFILE);
+    WritePrivateProfileString("TIPISim", "TipiAuto", TipiAuto, INIFILE);
     WritePrivateProfileString("TIPISim", "TipiTz", TipiTz, INIFILE);
     WritePrivateProfileString("TIPISim", "TipiSSID", TipiSSID, INIFILE);
     WritePrivateProfileString("TIPISim", "TipiPSK", TipiPSK, INIFILE);
