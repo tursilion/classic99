@@ -2156,7 +2156,6 @@ void WindowThread() {
 void __cdecl emulti(void *)
 {
 	quitflag=0;							// Don't quit
-    TriggerBreakPoint();    // TODO REMOVE ME***************************
 
 	while (!quitflag)
 	{ 

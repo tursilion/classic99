@@ -110,6 +110,9 @@
 #include <io.h>
 #include <atlstr.h>
 #include <time.h>
+#include <map>
+#include <string>
+#include <vector>
 #include "tiemul.h"
 #include "diskclass.h"
 #include "cpu9900.h"
@@ -135,6 +138,10 @@ CString TipiPSK;
 CString TipiName;
 TipiWebDisk tipiDsk;
 bool initDone = false;
+// TODO: netvars are not persistent and have only
+// one namespace - should be adequate for now though
+std::map<std::string,std::string> ti_vars;
+bool isNetvars = false;     // next message is expected to be netvars - see that section for why
 
 // network interface
 unsigned char *rxMessageBuf = NULL; // data storage - size may vary
@@ -1392,12 +1399,19 @@ bool dsrPiHardwareNop() {
 // so maybe there is a queue or a block?
 
 bool handleSendMsg(unsigned char *buf, int len) {
-    // first byte of the buffer tells us what to do
+    if (isNetvars) {
+        // meant for netvars
+        isNetvars = false;
+        return handleNetvars(buf, len);
+    }
+
+    // otherwise, first byte of the buffer tells us what to do
     switch (buf[0]) {
     case 0x20:  // read mouse
         return handleMouse(buf, len);
     case 0x21:  // netvars
-        return handleNetvars(buf, len);
+        isNetvars = true;   // NEXT message will have the data
+        return true;
     case 0x22:  // TCP
         return handleTcp(buf, len);
     case 0x23:  // UDP
@@ -1409,7 +1423,7 @@ bool handleSendMsg(unsigned char *buf, int len) {
 }
 
 bool directSendMsg() {
-    unsigned char buf[65536];   // max size
+    unsigned char buf[65537];   // max size plus terminator
     int wp = pCurrentCPU->GetWP();
     if (wp != 0x83e0) {
         debug_write("Warning: Call TIPI functions with GPLWS (>83E0), SendMsg WP is >%04X", wp);
@@ -1422,6 +1436,7 @@ bool directSendMsg() {
     for (int idx=0; idx<len; ++idx) {
         buf[idx] = rcpubyte(off+idx);
     }
+    buf[len] = '\0';
 
     // now figure out what to do with it
     if (!handleSendMsg(buf, len)) {
@@ -1433,6 +1448,7 @@ bool directSendMsg() {
 }
 bool directVSendMsg() {
     // same, but from VDP
+    unsigned char buf[65537];   // max size plus terminator
     int wp = pCurrentCPU->GetWP();
     if (wp != 0x83e0) {
         debug_write("Warning: Call TIPI functions with GPLWS (>83E0), VSendMsg WP is >%04X", wp);
@@ -1444,7 +1460,11 @@ bool directVSendMsg() {
         off &= 0x3fff;
         len = 0x4000-off;
     }
-    if (!handleSendMsg(&VDP[off], len)) {
+    // since we need to terminate the buffer, we still need to copy
+    memcpy(buf, &VDP[off], len);
+    buf[len] = '\0';
+
+    if (!handleSendMsg(buf, len)) {
         debug_write("handleSendMsg (VDP) failed");
     }
 
@@ -1530,6 +1550,7 @@ bool handleMouse(unsigned char *buf, int len) {
     // ... so how will we handle mouse coordinates, anyway?
     // I guess we try to scale to the window size and return
     // in 265x192 pixels
+    // todo: this only works when Pause when Window Inactive is set...
     if (!WindowActive) {
         // no move if not active
         memset(rxMessageBuf, 0, 3);
@@ -1540,8 +1561,8 @@ bool handleMouse(unsigned char *buf, int len) {
             // are relative, the TI cursor, not the Windows cursor, must be used.
             // We have no way to know where the application cursor is.
             // TODO: Also, double-clicks will still trigger the paste function...
-            double scaleX = 256/(gWindowRect.right-gWindowRect.left);
-            double scaleY = 192/(gWindowRect.bottom-gWindowRect.top);
+            double scaleX = 256.0/(gWindowRect.right-gWindowRect.left)+.5;
+            double scaleY = 192.0/(gWindowRect.bottom-gWindowRect.top)+.5;
             POINT pt;
             GetCursorPos(&pt); // screen coordinates!
             double x = (pt.x-lastMouse.x) * scaleX;
@@ -1553,9 +1574,15 @@ bool handleMouse(unsigned char *buf, int len) {
             // (short of capture, that is...)
             int btn = 0;
             if (WindowFromPoint(pt) == myWnd) {
-                if (GetAsyncKeyState(VK_LBUTTON)&0x8000) btn |= 0x01;
-                if (GetAsyncKeyState(VK_MBUTTON)&0x8000) btn |= 0x02;
-                if (GetAsyncKeyState(VK_RBUTTON)&0x8000) btn |= 0x04;
+                if (GetAsyncKeyState(VK_LBUTTON)&0x8000) {
+                    btn |= 0x01;
+                }
+                if (GetAsyncKeyState(VK_MBUTTON)&0x8000) {
+                    btn |= 0x02;
+                }
+                if (GetAsyncKeyState(VK_RBUTTON)&0x8000) {
+                    btn |= 0x04;
+                }
             }
 
             rxMessageBuf[0] = (unsigned char)((int)round(x));
@@ -1566,14 +1593,393 @@ bool handleMouse(unsigned char *buf, int len) {
     return true;
 }
 
+// remove trailing spaces only
+void rstrip(std::string &str) {
+    size_t end = str.find_last_not_of(" \n\r\t\f\v");
+    if (end != std::string::npos) {
+        str = str.substr(0, end+1);
+    }
+}
+
+bool netvarError(char *err) {
+    debug_write(err);
+    resizeBuffer(7);
+    memcpy(rxMessageBuf, "0\x1e\x45RROR", 7);   // \x45 is 'E', to prevent the hex byte from running on
+    return false;
+}
+
+SOCKET connectTCP(const char *hostname, const char *port) {
+	debug_write("Accessing %s:%s", hostname, port);
+	// TODO: I think port is mandatory?
+	if (('\0' == hostname[0]) || ('\0' == port[0])) {
+		debug_write("Bad syntax on TCP open, failing");
+		return INVALID_SOCKET;
+	} else {
+		// try to convert it to data
+		SOCKET sock = INVALID_SOCKET;
+		struct addrinfo hints;
+		struct addrinfo *result, *rp;   // we'll play like the example..
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_UNSPEC;  // allows v4 and v6?
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_flags = 0;
+		hints.ai_protocol = IPPROTO_TCP;
+		int s = getaddrinfo(hostname, port, &hints, &result);
+		if (s) {
+			debug_write("Failed to look up address in TCP open, code %d", s);
+            return INVALID_SOCKET;
+		} else {
+			/* getaddrinfo() returns a list of address structures.
+				Try each address until we successfully connect(2).
+				If socket(2) (or connect(2)) fails, we (close the socket
+				and) try the next address. */
+			int idx = 0;
+			for (rp = result; rp != NULL; rp=rp->ai_next) {
+				debug_write("Trying result %d", ++idx);
+				sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+				if (sock == INVALID_SOCKET) continue;
+
+				if (connect(sock, rp->ai_addr, rp->ai_addrlen) != SOCKET_ERROR) {
+					break;  // got it
+				}
+
+				closesocket(sock);
+				sock = INVALID_SOCKET;
+			}
+
+			// clean up, either way
+			freeaddrinfo(result);
+
+			if (rp == NULL) {
+				debug_write("Failed to configure socket for %s:%s after %d tries", hostname, port, idx);
+				return INVALID_SOCKET;
+			}
+		}
+		return sock;
+	}
+}
+
+bool sendData(SOCKET sock, const char *ptr, int tosend) {
+	bool ret = true;
+	
+	while (tosend > 0) {
+		int s = send(sock, ptr, tosend, 0);
+		if (s != SOCKET_ERROR) {
+			tosend -= s;
+		} else {
+			debug_write("Socket send failed WSA code 0x%x", WSAGetLastError());
+			ret = false;
+			break;
+		}
+	}
+	
+	return ret;
+}
+
+int recvData(SOCKET sock, char *rxMessageBuf, int rxSize) {
+	int rxMessageLen = 0;
+	fd_set reads = {0};
+	TIMEVAL nilTime = {0,0};
+	FD_SET(sock, &reads);
+	int sel = select(0, &reads, NULL, NULL, &nilTime);
+	if ((SOCKET_ERROR == sel)||(0 == sel)) {
+		// broken or no data
+		rxMessageLen = 0;
+	} else {
+		int s = recv(sock, (char*)rxMessageBuf, rxSize, 0);
+		if (s == SOCKET_ERROR) {
+			debug_write("Socket recv failed WSA code 0x%x", WSAGetLastError());
+			rxMessageLen = 0;
+		} else {
+			rxMessageLen = s;   // guaranteed to be smaller or equal
+		}
+	}
+	return rxMessageLen;
+}
+
+void dumpmsg(char *msg) {
+    char buf[1024];
+    strncpy(buf, msg, 1024);
+    buf[1023]='\0';
+
+    char *p;
+    while ((p=strchr(buf, 0x1e))) {
+        *p='/';
+    }
+    debug_write(buf);
+}
+
 bool handleNetvars(unsigned char *buf, int len) {
-    // TODO: need to look up what to DO with the string we get...
-    // it's probably relatively transparent...
-    // Is this a myti99.com specific thing?
     // 0x21 namespace 0x1e net-context 0x1e operation 0x1e queue-flag 0x1e [results_var] [ 0x1e key [ 0x1e value ] ]{1:6}
     // https://github.com/jedimatt42/tipi/wiki/Extension-NetVar
-    debug_write("Extension NETVARS not implemented");
-    return false;
+    // https://github.com/jedimatt42/tipi/blob/master/services/TipiVariable.py
+
+    // A double-weird and not intuitive part about netvars: the message type 0x21
+    // is ALWAYS only the single byte. The service /itself/ then waits for a second
+    // message from the TI which contains the specific data.
+    // Why not do it all in one message like the other ones??
+
+    /*
+NetVars - depends on the Action byte. Despite the name, these may be local! 
+
+/home/tipi/.tipivars/caller_guid is a local file for each caller's stored data (wouldn't there only be one?)
+/home/tipi/.tipivars/GLOBAL is a local file for local stored data
+
+The 0x1D byte is used as a separator in the lines in these files.
+
+Input message from TI:
+
+0x21 caller_guid 0x1e net-context 0x1e operation 0x1e queue-flag 0x1e [results_var] [ 0x1e key [ 0x1e value ] ]{1:6}
+     |                |                |              |               |                    |          > data to write
+     |                |                |              |               |                    > up to 6 keys to write or one to read?
+     |                |                |              |               > name of variable to save a response in
+     |                |                |              > allow values to queue (local only)
+     |                |                > R (read) RS (read short) W (write, up to 6) U (UDP??) T (TCP??)
+     |                > namespace for U and T, depends on myti99.com. not used for local
+     > filename, basically. caller_guid in code. Can be "GLOBAL" as well.
+
+String is split on the 0x1e bytes. 
+
+return is: "0\x1eERROR" or "1\x1edata"
+
+The save mechanism appears to be a little buggy.. both GLOBAL and a requested GUID file are loaded on
+every request, but all new data is added to the requested file, which is then written back out. If
+the software is accessing the GLOBAL data, then it's read twice. Maybe not a big deal, a little wasteful.
+
+W/U/T: All writes
+	- clear response variable
+	- all six key/value pairs are stored in the local caller data (with 0x1D as separator and \n at the end of the line)
+	
+U: labeled as incomplete (doesn't appear to actually send anything)
+	- creates a UDP socket
+	- extracts the REMOTE_HOST and REMOTE_PORT from the local global variables
+	- closes the socket
+	- re-saves the caller_guid file
+	
+T: TCP send
+	- verifies that REMOTE_HOST and REMOTE_PORT are set in the local caller variables
+	- clears the response variable (again, W/U/T already did this)
+	- extracts a SESSION_ID from the local caller variables, else uses ""
+	- creates a string with 0x1e separators of caller_guid, session_id, context, action, and all six key/value pairs, if keys are set
+	- opens a TCP connection to REMOTE_HOST:REMOTE_PORT
+	- sends the string terminated by \n
+	- then receives a response up to 1024 bytes
+	- sends error string if it contains (File ") or (Traceback)
+	- close the socket
+	- save the data in the response variable
+	- re-saves the caller_guid file
+	- returns a success response with the returned data
+
+R/RS: Read (read simple just omits the header bytes for BASIC)
+	- checks if the key exists in the local caller variables (if not, returns error)
+	- if queued (meaning a series of replies separated by 0x1e), pops the first one and resaves the file
+	- otherwise, if key includes ".RESP", then the key is cleared after reading
+	- re-saves caller file regardless
+	- returns the result
+	
+Returns empty string for anything else.
+*/
+// Based generously on TipiVariable.pu by ElectricLab, because it's late and I'm sleepy ;)
+
+    // we can assume a nul terminator here, but not for parsing, embeded NUL is okay!
+    dumpmsg((char*)buf);
+
+    std::vector<std::string> ti_message;
+    unsigned char *p = buf;
+    while (p-buf < len) {
+        std::string x;
+        while ((p-buf < len)&&(*p!=0x1e)) {
+            x+=*p;
+            ++p;
+        }
+        ti_message.push_back(x);
+        ++p;
+    }
+
+    std::string caller_guid = ti_message.size() >= 1 ? ti_message[0] : "";
+    std::string context = ti_message.size() >= 2 ? ti_message[1] : "";  // ti99.com context
+    std::string action = ti_message.size() >= 3 ? ti_message[2] : "";   // R,RS,W,U,T
+    std::string queue = ti_message.size() >= 4 ? ti_message[3] : "";    // Allow values to queue for these variables. (only locally for now)
+    std::string results_var = ti_message.size() >= 5 ? ti_message[4] : "";  // optional results_var
+
+    std::string var_key1 = ti_message.size() >= 6 ? ti_message[5] : "";
+    std::string var_val1 = ti_message.size() >= 7 ? ti_message[6] : "";
+    std::string var_key2 = ti_message.size() >= 8 ? ti_message[7] : "";
+    std::string var_val2 = ti_message.size() >= 9 ? ti_message[8] : "";
+    std::string var_key3 = ti_message.size() >= 10 ? ti_message[9] : "";
+    std::string var_val3 = ti_message.size() >= 11 ? ti_message[10] : "";
+    std::string var_key4 = ti_message.size() >= 12 ? ti_message[11] : "";
+    std::string var_val4 = ti_message.size() >= 13 ? ti_message[12] : "";
+    std::string var_key5 = ti_message.size() >= 14 ? ti_message[13] : "";
+    std::string var_val5 = ti_message.size() >= 15 ? ti_message[14] : "";
+    std::string var_key6 = ti_message.size() >= 16 ? ti_message[15] : "";
+    std::string var_val6 = ti_message.size() >= 17 ? ti_message[16] : "";
+
+    std::string response = results_var.length() ? results_var : "";
+
+    if (caller_guid != "GLOBAL") {
+        debug_write("Warning: TIPIsim Netvars using non-global namespace is ignored");
+    }
+
+    // TODO: not persistent, so nothing to load here
+
+    // All three write cases pass through this block ("W" /only/ does so)
+    if (action == "W" || action == "U" || action == "T") {
+        ti_vars[response] = "";     // Blank out our old response
+        rstrip(var_val1);
+        ti_vars[var_key1] = var_val1;
+        rstrip(var_val2);
+        ti_vars[var_key2] = var_val2;
+        rstrip(var_val3);
+        ti_vars[var_key3] = var_val3;
+        rstrip(var_val4);
+        ti_vars[var_key4] = var_val4;
+        rstrip(var_val5);
+        ti_vars[var_key5] = var_val5;
+        rstrip(var_val6);
+        ti_vars[var_key6] = var_val6;
+
+        // TODO: original saved here
+    }
+
+    if (action == "U") {
+        // UDP is non-functional... probably meant to function like TCP
+        // but we don't need to do anything here...
+    } else if (action == "T") {
+        // TCP transmission
+        if ((ti_vars["REMOTE_HOST"].length() == 0) || 
+            (ti_vars["REMOTE_PORT"].length() == 0)) {
+            return netvarError("Remote host not set");
+        }
+
+        ti_vars[response] = "";
+
+        // Listener on port 9918 expects:
+        // prog_guid
+        // session_id
+        // app_id
+        // context (Optional)
+        // action
+        // var
+        // val
+
+        std::string message;
+        std::string session_id = ti_vars["SESSION_ID"];
+        message = caller_guid + '\x1e' + session_id + '\x1e' + context + '\x1e' + action;
+
+        if (var_key1.length()) message += '\x1e' + var_key1 + '\x1e' + var_val1;
+        if (var_key2.length()) message += '\x1e' + var_key2 + '\x1e' + var_val2;
+        if (var_key3.length()) message += '\x1e' + var_key3 + '\x1e' + var_val3;
+        if (var_key4.length()) message += '\x1e' + var_key4 + '\x1e' + var_val4;
+        if (var_key5.length()) message += '\x1e' + var_key5 + '\x1e' + var_val5;
+        if (var_key6.length()) message += '\x1e' + var_key6 + '\x1e' + var_val6;
+
+        SOCKET sock = connectTCP(ti_vars["REMOTE_HOST"].c_str(), ti_vars["REMOTE_PORT"].c_str());
+        if (INVALID_SOCKET == sock) {
+            ti_vars[response] = "ERROR";
+            // TODO: original saved file here
+            return netvarError("TIPIsim NetVars server error connecting socket");
+        }
+
+        // send data blindly
+        message += '\n';
+        sendData(sock, message.c_str(), message.length());
+
+        // TODO: I can't help but notice there's no delay here.. is this supposed to block?
+        // Maybe we need to loop. I'm gonna pause...
+        // now try to get the data back from the server - up to 1k
+        // there are two characters to insert at the beginning of the file
+        resizeBuffer(1024+2);
+        int pos = 2;
+        for (int idx=0; idx<10; ++idx) {
+            Sleep(50);  // allow up to 500ms
+
+            int ret = recvData(sock, (char*)rxMessageBuf+pos, 1026-pos);
+            if (ret > 0) {
+                pos += ret;
+            } else if (pos > 2) {
+                // we already got some, and it stopped, call it done
+                break;
+            }
+        }
+        rxMessageLen = pos;
+        if (rxMessageLen > 1023+2) rxMessageLen = 1023+2;
+        rxMessageBuf[rxMessageLen] = '\0';
+
+        dumpmsg((char*)rxMessageBuf);
+
+        if ((strstr((char*)rxMessageBuf, "File \"")) || (strstr((char*)rxMessageBuf, "Traceback"))) {
+            // BAD! Usually means compilation error on far end, esp when running via inetd.
+            return netvarError("TIPIsim NetVars error in response string");
+        }
+
+        shutdown(sock, SD_BOTH);
+        closesocket(sock);
+
+        ti_vars[response] = (char*)(rxMessageBuf+2);
+
+        // TODO: original code saved file here
+        rxMessageBuf[0] = '1';
+        rxMessageBuf[1] = 0x1e;
+
+        // and done
+        return true;
+    } else if ((action == "R") || (action == "RS")) {
+        // Read! 'RS' is "READ SIMPLE" which will just return the value, not preceeded by return code. Better for BASIC!
+        if (ti_vars.find(var_key1) != ti_vars.end()) {
+            debug_write(">> '%s'", ti_vars[var_key1].c_str());
+            // Need to check to see if variable is queued, uses ASCII 31 (Unit Separator) to delimit.
+            // If so, we want to pop off the first one and return it.
+            if (ti_vars[var_key1].find(0x1e) != std::string::npos) {
+                size_t pos = ti_vars[var_key1].find(0x1e);
+                std::string first_item;
+                if (pos > 0) {
+                    first_item = ti_vars[var_key1].substr(0, pos);
+                }
+                ti_vars[var_key1] = ti_vars[var_key1].substr(pos+1, std::string::npos);
+                // todo: original should save file here
+
+                if (action == "R") {
+                    resizeBuffer(2+first_item.length());
+                    rxMessageBuf[0] = '1';
+                    rxMessageBuf[1] = 0x1e;
+                    memcpy(&rxMessageBuf[2], first_item.c_str(), first_item.length());
+                } else {
+                    resizeBuffer(first_item.length());
+                    memcpy(&rxMessageBuf[0], first_item.c_str(), first_item.length());
+                }
+                return true;
+            } else {
+                response = ti_vars[var_key1];
+                
+                if (var_key1.find(".RESP") != std::string::npos) {
+                    ti_vars[var_key1] = "";
+                }
+
+                // TODO: original saved file here
+
+                if (action == "R") {
+                    resizeBuffer(2+response.length());
+                    rxMessageBuf[0] = '1';
+                    rxMessageBuf[1] = 0x1e;
+                    memcpy(&rxMessageBuf[2], response.c_str(), response.length());
+                } else {
+                    resizeBuffer(response.length());
+                    memcpy(&rxMessageBuf[0], response.c_str(), response.length());
+                }
+            }
+        } else {
+            // no data
+            if (action == "R") {
+                return netvarError("Empty data - no key available for read");
+            } else {
+                resizeBuffer(5);
+                memcpy(&rxMessageBuf[0], "ERROR", 5);
+            }
+        }
+    }
+
+    return true;
 }
 
 bool handleTcp(unsigned char *buf, int len) {
@@ -1612,52 +2018,12 @@ bool handleTcp(unsigned char *buf, int len) {
                     port += buf[idx++];
                 }
             }
-            debug_write("Accessing %s:%s", hostname.GetString(), port.GetString());
-            // TODO: I think port is mandatory?
-            if ((hostname.IsEmpty()) || (port.IsEmpty())) {
-                debug_write("Bad syntax on TCP open, failing");
+            
+            sock[index] = connectTCP(hostname.GetString(), port.GetString());
+            if (INVALID_SOCKET == sock[index]) {
                 ret = false;
-            } else {
-                // try to convert it to data
-                struct addrinfo hints;
-                struct addrinfo *result, *rp;   // we'll play like the example..
-                memset(&hints, 0, sizeof(hints));
-                hints.ai_family = AF_UNSPEC;  // allows v4 and v6?
-                hints.ai_socktype = SOCK_STREAM;
-                hints.ai_flags = 0;
-                hints.ai_protocol = IPPROTO_TCP;
-                int s = getaddrinfo(hostname.GetString(), port.GetString(), &hints, &result);
-                if (s) {
-                    debug_write("Failed to look up address in TCP open, code %d", s);
-                    ret = false;
-                } else {
-                    /* getaddrinfo() returns a list of address structures.
-                        Try each address until we successfully connect(2).
-                        If socket(2) (or connect(2)) fails, we (close the socket
-                        and) try the next address. */
-                    int idx = 0;
-                    for (rp = result; rp != NULL; rp=rp->ai_next) {
-                        debug_write("Trying result %d", ++idx);
-                        sock[index] = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-                        if (sock[index] == INVALID_SOCKET) continue;
-
-                        if (connect(sock[index], rp->ai_addr, rp->ai_addrlen) != SOCKET_ERROR) {
-                            break;  // got it
-                        }
-
-                        closesocket(sock[index]);
-                        sock[index] = INVALID_SOCKET;
-                    }
-
-                    // clean up, either way
-                    freeaddrinfo(result);
-
-                    if (rp == NULL) {
-                        debug_write("Failed to configure socket for %s:%s after %d tries", hostname, port, idx);
-                        ret = false;
-                    }
-                }
             }
+
             resizeBuffer(1);
             if (ret) {
                 rxMessageBuf[0] = 255;
@@ -1686,16 +2052,8 @@ bool handleTcp(unsigned char *buf, int len) {
             bool ret = true;
             resizeBuffer(1);
 
-            while (tosend > 0) {
-                int s = send(sock[index], (const char*)ptr, tosend, 0);
-                if (s != SOCKET_ERROR) {
-                    tosend -= s;
-                } else {
-                    debug_write("Socket[%d] send failed WSA code 0x%x", index, WSAGetLastError());
-                    ret = false;
-                    break;
-                }
-            }
+            ret = sendData(sock[index], (const char*)ptr, tosend);
+
             if (ret) {
                 rxMessageBuf[0] = 255;
             } else {
@@ -1709,24 +2067,9 @@ bool handleTcp(unsigned char *buf, int len) {
             debug_write("UDP read command string too short");
             rxMessageLen = 0;
         } else {
-            fd_set reads = {0};
-            TIMEVAL nilTime = {0,0};
-            FD_SET(sock[index], &reads);
-            int sel = select(0, &reads, NULL, NULL, &nilTime);
-            if ((SOCKET_ERROR == sel)||(0 == sel)) {
-                // broken or no data
-                rxMessageLen = 0;
-            } else {
-                int rxSize = buf[3]*256 + buf[4];
-                resizeBuffer(rxSize);
-                int s = recv(sock[index], (char*)rxMessageBuf, rxSize, 0);
-                if (s == SOCKET_ERROR) {
-                    debug_write("Socket[%d] recv failed WSA code 0x%x", index, WSAGetLastError());
-                    rxMessageLen = 0;
-                } else {
-                    rxMessageLen = s;   // guaranteed to be smaller or equal
-                }
-            }
+            int rxSize = buf[3]*256 + buf[4];
+            resizeBuffer(rxSize);
+            rxMessageLen = recvData(sock[index], (char*)rxMessageBuf, rxSize);
         }
         break;
 
