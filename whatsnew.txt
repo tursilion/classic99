@@ -2049,8 +2049,14 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 
 - fix the autodetection of ROM boot bank - a typo against my own standards ;)
 
+-----------------------------------------------
 
+27 Feb 2021
 
+- update fbForth to v13
+- update RXB to 2020D
+- Fix missed breakpoints that come too close together after pressing F1 to continue
+- very basic and mostly broken TIPI simulation (NOT emulation!!). No bug reports on this will be entertained.
 
 
 
