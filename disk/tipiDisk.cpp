@@ -1480,8 +1480,9 @@ bool directRecvMsg() {
     int len = romword(wp);
     int off = romword(wp+2);
 
-    // telnet sets len to zero...
-    // TODO: is a non-zero length honored?
+    // TODO temp: TIPI currently ignores R0, so
+    // we set it to 0 here to force the write to always happen
+    len = 0;
 
     // anyway, here we make sure we don't send more than the message
     if ((len == 0) || (len > rxMessageLen)) {
@@ -1506,18 +1507,24 @@ bool directVRecvMsg() {
     }
     int len = romword(wp);
     int off = romword(wp+2);
-    if (off+len > 0x3fff) {
-        debug_write("Illegal VDP access in VSendMsg, wrapping (address >%04X, len >%04X)", off, len);
-        off &= 0x3fff;
-        len = 0x4000-off;
-    }
 
-    if (len < rxMessageLen) {
+    // TODO temp: TIPI currently ignores R0, so
+    // we set it to 0 here to force the write to always happen
+    len = 0;
+
+    if ((len == 0) || (len > rxMessageLen)) {
         len = rxMessageLen;
         wrword(wp, len);
     }
 
     if (len > 0) {
+        // TODO part two - need to check the range again since we faked it above
+        if (off+len > 0x3fff) {
+            debug_write("Illegal VDP access in VSendMsg, truncating (address >%04X, len >%04X)", off, len);
+            off &= 0x3fff;
+            len = 0x4000-off;
+        }
+        // copy should be safe now
         memcpy(&VDP[off], rxMessageBuf, len);
     }
 
@@ -1540,7 +1547,7 @@ bool handleMouse(unsigned char *buf, int len) {
     }
     // just load up the mouse data in the return buffer
     // three bytes: x delta, y delta, buttons
-    // button bits are : 1 - left, 2 - middle, 4 - right
+    // button bits are : 1 - left, 2 - right, 4 - middle
     // This means we need the last mouse position...
     static POINT lastMouse = { -1, -1 };
 
@@ -1578,10 +1585,10 @@ bool handleMouse(unsigned char *buf, int len) {
                     btn |= 0x01;
                 }
                 if (GetAsyncKeyState(VK_MBUTTON)&0x8000) {
-                    btn |= 0x02;
+                    btn |= 0x04;
                 }
                 if (GetAsyncKeyState(VK_RBUTTON)&0x8000) {
-                    btn |= 0x04;
+                    btn |= 0x02;
                 }
             }
 
