@@ -11,8 +11,7 @@ Open source (but restrictive license) emulator including ROMs licensed by Texas 
 
 Download the latest release zip here: [https://github.com/tursilion/classic99/raw/master/dist/classic99.zip](https://github.com/tursilion/classic99/raw/master/dist/classic99.zip)
 
-- Tips and tricks video: [https://www.youtube.com/watch?v=dt50U5kPnTY](https://www.youtube.com/watch?v=dt50U5kPnTY)
-- Using the debugger: [https://www.youtube.com/watch?v=_qjZN6qf1wk](https://www.youtube.com/watch?v=_qjZN6qf1wk)
+- Tips and tricks video: [https://www.youtube.com/watch?v=6Zok8TZLIP8](https://www.youtube.com/watch?v=6Zok8TZLIP8)
 
 Review commit history here: [https://github.com/tursilion/classic99/commits/master](https://github.com/tursilion/classic99/commits/master)
 
