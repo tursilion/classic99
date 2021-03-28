@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.039"
+#define VERSION "QI399.040"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -211,9 +211,8 @@ extern Byte VDP[128*1024];							// Video RAM
 extern int bF18AActive;
 extern int bF18Enabled;
 extern HANDLE Video_hdl[2];							// Handles for Display/Blit events
-extern unsigned int *framedata;					// The actual pixel data
+extern unsigned int *framedata;						// The actual pixel data
 extern unsigned int *framedata2;					// Filtered frame data
-extern int FullScreenMode;							// Current full screen mode
 extern int FilterMode;								// Current filter mode
 extern int nDefaultScreenScale;						// default screen scaling multiplier
 extern int nXSize, nYSize;							// custom sizing
@@ -324,7 +323,7 @@ void debug_write(char *s, ...);
 void doBlit(void);
 void RenderFont(void);
 void DrawSprites(int scanline);
-void SetupDirectDraw(int fullscreen);
+void SetupDirectDraw(bool fullscreen);
 void takedownDirectDraw();
 int ResizeBackBuffer(int w, int h);
 void UpdateHeatVDP(int Address);

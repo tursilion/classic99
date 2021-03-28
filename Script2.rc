@@ -209,17 +209,7 @@ BEGIN
             MENUITEM "None",                        ID_VIDEO_STRETCHMODE_NONE
             MENUITEM "DIB",                         ID_VIDEO_STRETCHMODE_DIB
             MENUITEM "DX",                          ID_VIDEO_STRETCHMODE_DX
-            POPUP "DX Full"
-            BEGIN
-                MENUITEM "320x240x8",                   ID_VIDEO_STRETCHMODE_DXFULL_320X240X8
-                MENUITEM "640x480x8",                   ID_VIDEO_STRETCHMODE_DXFULL_640X480X8
-                MENUITEM "640x480x16",                  ID_VIDEO_STRETCHMODE_DXFULL_640X480X16
-                MENUITEM "640x480x32",                  ID_DXFULL_640X480X32
-                MENUITEM "800x600x16",                  ID_VIDEO_STRETCHMODE_DXFULL_800X600X16
-                MENUITEM "800x600x32",                  ID_DXFULL_800X600X32
-                MENUITEM "1024x768x16",                 ID_DXFULL_1024X768X16
-                MENUITEM "1024x768x32",                 ID_DXFULL_1024X768X32
-            END
+            MENUITEM "DX Fullscreen",               ID_STRETCHMODE_DXFULLSCREEN
         END
         POPUP "Filter Mode"
         BEGIN

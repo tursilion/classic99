@@ -235,7 +235,6 @@ DDSURFACEDESC2 CurrentDDSD;					// current back buffer settings
 // deprecated directdraw functions we need to manually extract from ddraw.dll
 typedef HRESULT (WINAPI* LPDIRECTDRAWCREATEEX )( GUID FAR * lpGuid, LPVOID  *lplpDD, REFIID  iid,IUnknown FAR *pUnkOuter );
 
-int FullScreenMode=0;						// Current full screen mode
 int FilterMode=0;							// Current filter mode
 int nDefaultScreenScale=1;					// default screen scale multiplier
 int nXSize=256, nYSize=192;					// custom sizing
@@ -288,6 +287,9 @@ int skip_interrupt;							// flag for some instructions TODO: WTF are these two 
 int doLoadInt;								// execute a LOAD after this instruction
 Byte VDPREG[59];							// VDP read-only registers (9918A has 8, we define 9 to support 80 cols, and the F18 has 59 (!) (and 16 status registers!))
 Byte VDPS;									// VDP Status register
+
+int fullscreenX;							// current res of full screen X (cause GetSystemMetrics is slow)
+int fullscreenY;							// current res of full screen Y
 
 // Added by RasmusM
 int F18AStatusRegisterNo = 0;				// F18A Status register number
@@ -537,7 +539,7 @@ void VDPmain()
 	tmpDC=CreateCompatibleDC(myDC);
 	ReleaseDC(myWnd, myDC);
 
-	SetupDirectDraw(0);
+	SetupDirectDraw(false);
 
 	// now we create a waitable object and sit on it - the main thread
 	// will tell us when we should redraw the screen.
@@ -1576,6 +1578,7 @@ unsigned int* drawTextLine(unsigned int *pDat, const char *buf) {
 // NOTES: Graphics modes we have (and some we need)
 // 272x208 -- the standard default pixel mode of the 9918A plus a fixed (incorrect) border
 // 
+// TODO: these modes all have different aspect ratios and none of them are properly 4:3, but we pretend they are
 //
 // NOTES: Graphics modes we have (and some we need)
 // 272x208 -- the standard default pixel mode of the 9918A plus a fixed (incorrect) border
@@ -1594,7 +1597,7 @@ unsigned int* drawTextLine(unsigned int *pDat, const char *buf) {
 ////////////////////////////////////////////////////////////////
 void doBlit()
 {
-	RECT rect1, rect2;
+	RECT rect1;
 	int x,y;
 	HRESULT ret;
 
@@ -1764,10 +1767,49 @@ void doBlit()
 	myDC=GetDC(myWnd);
 	SetStretchBltMode(myDC, COLORONCOLOR);
 
+	// in full screen mode, GetClientRect lies about the screen size, which makes the DX blit fail
+	// So, just force our assumptions. (I think it includes the menu height...)
+	// TODO: I hate these numbers... fix that
+	if (StretchMode == 3) {
+		// full screen is the desktop size
+		rect1.top=0;
+		rect1.left=0;
+		rect1.right = fullscreenX;
+		rect1.bottom = fullscreenY;
+	}
+
+	// even though aspect ratio is forced by the window resize for everything but full screen,
+	// people still complain. They maximize or full screen on their 16:9 monitor and then complain
+	// that the image isn't 4:3. In short, bah humbug!
+	if ((MaintainAspect) && (StretchMode != 0)) {
+		// make sure it fits the window and is 4:3 (1.33333)
+		// Since our borders are not 100%, 1.30 is a better match
+		const double DesiredRatio = 1.30;
+		double ratio = (double)(rect1.right - rect1.left) / (rect1.bottom - rect1.top);
+		if (ratio < 1.3) {
+			// screen is too narrow, need to make shorter to fit
+			int height = (int)((rect1.right - rect1.left) / DesiredRatio + 0.5);
+			int diff = ((rect1.bottom - rect1.top) - height) & (~1);	// make sure it's even so we can divide by 2
+			if (diff > 0) {
+				rect1.top += diff/2;
+				rect1.bottom = rect1.top + height;
+			}
+		} else if (ratio > 1.34) {
+			// screen is too wide, need to make thinner to fit
+			int width = (int)((rect1.bottom - rect1.top) * DesiredRatio + 0.5);
+			int diff = ((rect1.right - rect1.left) - width) & (~1);		// make sure it's even again
+			if (diff > 0) {
+				rect1.left += diff/2;
+				rect1.right = rect1.left + width;
+			}
+		}
+	}
+
+
 	// TODO: hacky city - 80-column mode doesn't filter or anything, cause we'd have to change ALL the stuff below.
 	if ((bEnable80Columns)&&(VDPREG[0]&0x04)&&(VDPREG[1]&0x10)) {
 		// render 80 columns to the screen using DIB blit
-		StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+16, 192+16, framedata, &myInfo80Col, 0, SRCCOPY);
+		StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+16, 192+16, framedata, &myInfo80Col, 0, SRCCOPY);
 		ReleaseDC(myWnd, myDC);
 		LeaveCriticalSection(&VideoCS);
 		return;
@@ -1829,25 +1871,25 @@ void doBlit()
 	case 1:	// DIB
 		switch (FilterMode) {
 		case 0:		// none
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 256+16, 192+16, framedata, &myInfo, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 256+16, 192+16, framedata, &myInfo, 0, SRCCOPY);
 			break;
 
 		case 4:		// TV
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, TV_WIDTH, 384+29, framedata2, &myInfoTV, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, TV_WIDTH, 384+29, framedata2, &myInfoTV, 0, SRCCOPY);
 			break;
 
 		case 5:		// hq4x
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, (256+16)*4, (192+16)*4, framedata2, &myInfo32, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, (256+16)*4, (192+16)*4, framedata2, &myInfo32, 0, SRCCOPY);
 			break;
 
 		default:	// all the SAI ones
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+32, 384+29, framedata2, &myInfo2, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+32, 384+29, framedata2, &myInfo2, 0, SRCCOPY);
 		}
 		break;
 
 	case 2: // DX
 		if (NULL == lpdd) {
-			SetupDirectDraw(0);
+			SetupDirectDraw(false);
 			if (NULL == lpdd) {
 				StretchMode=0;
 				break;
@@ -1887,28 +1929,29 @@ void doBlit()
 			}
 		}
 		ddsBack->ReleaseDC(tmpDC);
-		GetWindowRect(myWnd, &rect2);
 		// rect1 contains client coordinates (with the correct size!)
-		// rect2 contains window coordinates
+		{ 
+			POINT pt;
+			int w = rect1.right-rect1.left;
+			int h = rect1.bottom - rect1.top;
+			pt.x = rect1.left;
+			pt.y = rect1.top;
+			ClientToScreen(myWnd, &pt);
+			rect1.top = pt.y;
+			rect1.bottom = pt.y + h;
+			rect1.left = pt.x;
+			rect1.right = pt.x + w;
 
-		POINT pt;
-		pt.x = 0;
-		pt.y = 0;
-		ClientToScreen(myWnd, &pt);
-		rect1.top = pt.y;
-		rect1.bottom += pt.y;
-		rect1.left = pt.x;
-		rect1.right+= pt.x;
-
-		// The DirectDraw blit will draw using screen coordinates but into the client area thanks to the clipper
-		if (DDERR_SURFACELOST == lpdds->Blt(&rect1, ddsBack, NULL, DDBLT_DONOTWAIT, NULL)) {	// Just go as quick as we can, don't bother waiting
-			lpdd->RestoreAllSurfaces();
+			// The DirectDraw blit will draw using screen coordinates but into the client area thanks to the clipper
+			if (DDERR_SURFACELOST == lpdds->Blt(&rect1, ddsBack, NULL, DDBLT_DONOTWAIT, NULL)) {	// Just go as quick as we can, don't bother waiting
+				lpdd->RestoreAllSurfaces();
+			}
 		}
 		break;
 
 	case 3: // DX Full
 		if (NULL == lpdd) {
-			SetupDirectDraw(FullScreenMode);
+			SetupDirectDraw(true);
 			if (NULL == lpdd) {
 				StretchMode=0;
 				break;
@@ -1943,9 +1986,24 @@ void doBlit()
 			}
 		}
 		ddsBack->ReleaseDC(tmpDC);
-		if (DD_OK != (ret=lpdds->Blt(NULL, ddsBack, NULL, DDBLT_DONOTWAIT, NULL))) {
-			if (DDERR_SURFACELOST == ret) {
-				lpdd->RestoreAllSurfaces();
+
+		// rect1 contains client coordinates (with the correct size!)
+		{ 
+			POINT pt;
+			int w = rect1.right-rect1.left;
+			int h = rect1.bottom - rect1.top;
+			pt.x = rect1.left;
+			pt.y = rect1.top;
+			ClientToScreen(myWnd, &pt);
+			rect1.top = pt.y;
+			rect1.bottom = pt.y + h;
+			rect1.left = pt.x;
+			rect1.right = pt.x + w;
+
+			if (DD_OK != (ret=lpdds->Blt(&rect1, ddsBack, NULL, DDBLT_DONOTWAIT, NULL))) {
+				if (DDERR_SURFACELOST == ret) {
+					lpdd->RestoreAllSurfaces();
+				}
 			}
 		}
 		break;
@@ -2429,7 +2487,7 @@ HRESULT WINAPI myCallBack(LPDDSURFACEDESC2 ddSurface, LPVOID pData) {
 // In order for Fullscreen to work, only the main thread
 // may call this function!
 ////////////////////////////////////////////////////////////
-void SetupDirectDraw(int fullscreen) {
+void SetupDirectDraw(bool fullscreen) {
 	int x,y,c;
 	RECT myRect;
 
@@ -2460,17 +2518,15 @@ void SetupDirectDraw(int fullscreen) {
 
 			GetWindowRect(myWnd, &myRect);
 
-			switch (fullscreen) {
-				case 1: x=320; y=240; c=8; break;
-				case 2: x=640; y=480; c=8; break;
-				case 3: x=640; y=480; c=16; break;
-				case 4: x=640; y=480; c=32; break;
-				case 5: x=800; y=600; c=16; break;
-				case 6: x=800; y=600; c=32; break;
-				case 7: x=1024; y=768; c=16; break;
-				case 8: x=1024; y=768; c=32; break;
-				default:x=640; y=480; c=16; break;
-			}
+			// select a full screen mode that equals the desktop mode
+			// Limitation: primary monitor only
+			x = GetSystemMetrics(SM_CXSCREEN);
+			y = GetSystemMetrics(SM_CYSCREEN);
+			c = 32;		// always 32-bit color now
+
+			// save those values off
+			fullscreenX = x;
+			fullscreenY = y;
 
 			// Check if mode is legal
 			ZeroMemory(&myDesc, sizeof(myDesc));
@@ -2625,7 +2681,7 @@ int ResizeBackBuffer(int w, int h) {
 	ddsBack=NULL;
 
 	if (NULL == lpdd) {
-		SetupDirectDraw(0);
+		SetupDirectDraw(false);
 		if (NULL == lpdd) {
 			MessageBox(myWnd, "Unable to create back buffer surface\nDX mode is not available", "Classic99 Error", MB_OK);
 			ddsBack=NULL;

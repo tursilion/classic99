@@ -782,8 +782,6 @@ skiprestofuser:
 	FilterMode=		GetPrivateProfileInt("video",	"FilterMode",		FilterMode,		INIFILE);
 	// essentially frameskip
 	drawspeed=		GetPrivateProfileInt("video",	"frameskip",		drawspeed,		INIFILE);
-	// graphics mode used for full screen direct X (see SetupDirectDraw() in tivdp.cpp)
-	FullScreenMode=	GetPrivateProfileInt("video",	"fullscreenmode",	FullScreenMode, INIFILE);
 	// heat map fade speed
 	HeatMapFadeSpeed=GetPrivateProfileInt("video",	"heatmapfadespeed",	HeatMapFadeSpeed, INIFILE);
 	// set interrupt rate - 50/60
@@ -966,7 +964,6 @@ void SaveConfig() {
 	
 	WritePrivateProfileInt(		"video",		"FilterMode",			FilterMode,					INIFILE);
 	WritePrivateProfileInt(		"video",		"frameskip",			drawspeed,					INIFILE);
-	WritePrivateProfileInt(		"video",		"fullscreenmode",		FullScreenMode,				INIFILE);
 	WritePrivateProfileInt(		"video",		"heatmapfadespeed",		HeatMapFadeSpeed,			INIFILE);
 
 	WritePrivateProfileInt(		"video",		"hzRate",				hzRate,						INIFILE);
@@ -1122,11 +1119,31 @@ void UpdateUserCartMRU() {
 	}
 }
 
+// used at startup and when switching out of fullscreen mode
+void RestoreWindowPosition() {
+	// position the window if needed
+	if ((nVideoLeft != -1) || (nVideoTop != -1)) {
+		RECT check;
+		check.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+		check.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+		check.right = check.left + GetSystemMetrics(SM_CXVIRTUALSCREEN) - 256;
+		check.bottom = check.top + GetSystemMetrics(SM_CYVIRTUALSCREEN) - 192;
+		// if it looks onscreen more or less, then allow it
+		if ((nVideoLeft >= check.left) && (nVideoLeft <= check.right) && (nVideoTop >= check.top) && (nVideoTop <= check.bottom)) {
+			SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, 0, 0, SWP_NOOWNERZORDER | SWP_NOSIZE | SWP_NOZORDER);
+		}
+	}
+
+	SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, nXSize, nYSize, SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
+
+	ShowWindow(myWnd, SW_SHOWNORMAL);
+}
+
 ///////////////////////////////////
 // Main
 // Startup and shutdown system
 ///////////////////////////////////
-int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine, int /*nCmdShow*/)
 {
 	int idx;
 	int err;
@@ -1407,7 +1424,6 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	nDefaultScreenScale=1;		// 1x by default
 	nXSize = 256+16;			// default size, but not used while screenscale is set
 	nYSize = 192+16;
-	FullScreenMode=6;			// full screen at 640x480x16
 	fJoy=1;						// enable joysticks
 	joy1mode=0;					// keyboard
 	joy2mode=1;					// joystick 1
@@ -1470,20 +1486,6 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	// assume both joysticks are there
 	installedJoysticks = 3;
 
-	// position the window if needed
-	if ((nVideoLeft != -1) || (nVideoTop != -1)) {
-		RECT check;
-		check.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-		check.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-		check.right = check.left + GetSystemMetrics(SM_CXVIRTUALSCREEN) - 256;
-		check.bottom = check.top + GetSystemMetrics(SM_CYVIRTUALSCREEN) - 192;
-		// if it looks onscreen more or less, then allow it
-		if ((nVideoLeft >= check.left) && (nVideoLeft <= check.right) && (nVideoTop >= check.top) && (nVideoTop <= check.bottom)) {
-			SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, 0, 0, SWP_NOOWNERZORDER | SWP_NOSIZE | SWP_NOZORDER);
-		}
-	}
-	ShowWindow(myWnd, nCmdShow);
-
 	// Update user menu - this will be a function later
 	hMenu=GetMenu(myWnd);   // root menu
 	if (hMenu) {
@@ -1529,10 +1531,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	// wait for the video thread to initialize so we can resize the window :)
 	Sleep(500);
 
+	RestoreWindowPosition();
 	if (nDefaultScreenScale != -1) {
 		SendMessage(myWnd, WM_COMMAND, ID_CHANGESIZE_1X+nDefaultScreenScale-1, 1);
-	} else {
-		SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, nXSize, nYSize, SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
 	}
 
 	// Set menu-based settings (lParam 1 means it's coming from here, not the user)
@@ -1546,14 +1547,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_INTERLEAVEGPU, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_ENABLE80COLUMNHACK, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_ENABLE128KHACK, 1);
-
-	if ((StretchMode>=0)&&(StretchMode<=2)) {
-		SendMessage(myWnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
-	} else {
-		if (StretchMode==3) {
-			SendMessage(myWnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_DXFULL_320X240X8+FullScreenMode-1, 1);
-		}
-	}
+	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_50HZ, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_PAUSEINACTIVE, 1);
 	if (SpeechEnabled) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_SPEECHENABLED, 1);

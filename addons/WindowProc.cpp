@@ -120,6 +120,9 @@ extern char AppName[];
 extern Byte SidCache[29];
 extern int WindowActive;
 
+// window
+extern int nVideoLeft, nVideoTop;
+
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
 extern bool CPUSpeechHalt;
@@ -169,6 +172,8 @@ extern CString csLastDiskImage[MAX_MRU];
 extern CString csLastDiskPath[MAX_MRU];
 extern CString csLastUserCart[MAX_MRU];
 
+extern void RestoreWindowPosition();
+
 const char *pCurrentHelpMsg=NULL;
 HWND hKBMap=NULL;
 HWND hHeatMap=NULL;
@@ -206,6 +211,10 @@ static char szTopMemory[6][32] = { "", "", "8300", "0000", "0000", "0000" };		//
 #define MEMVDP 3
 #define MEMGROM 4
 #define MEMAMS 5
+
+// getting back out of full screen
+bool preFullSet = false;
+int preFullX, preFullY, preFullXS, preFullYS;
 
 // references
 // CartDlgProc is in makecart.cpp
@@ -737,9 +746,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					StretchMode=2;
 					PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
 				} else {
-					if ((2 == StretchMode) && (0 != FullScreenMode)) {
+					if (2 == StretchMode) {
 						StretchMode=3;
-						PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_DXFULL_320X240X8+FullScreenMode-1, 1);
+						PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
 					}
 				}
 			}
@@ -1881,6 +1890,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_CHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_UNCHECKED);
 				InvalidateRect(myWnd, NULL, false);
 				break;
 
@@ -1889,6 +1899,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_CHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_UNCHECKED);
 				InvalidateRect(myWnd, NULL, false);
 				break;
 
@@ -1897,8 +1908,16 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_CHECKED);
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_UNCHECKED);
 				takedownDirectDraw();
-				SetupDirectDraw(0);
+				SetupDirectDraw(false);
+				if (preFullSet) {
+					nVideoLeft = preFullX;
+					nVideoTop = preFullY;
+					nXSize = preFullXS;
+					nYSize = preFullYS;
+				}
+				RestoreWindowPosition();
 				if (2 != StretchMode) {
 					myproc(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE, 0);
 				} else {
@@ -1906,30 +1925,27 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 				break;
 
-			case ID_VIDEO_STRETCHMODE_DXFULL_320X240X8:
-			case ID_VIDEO_STRETCHMODE_DXFULL_640X480X8:
-			case ID_VIDEO_STRETCHMODE_DXFULL_640X480X16:
-			case ID_DXFULL_640X480X32:
-			case ID_VIDEO_STRETCHMODE_DXFULL_800X600X16:
-			case ID_DXFULL_800X600X32:
-			case ID_DXFULL_1024X768X16:
-			case ID_DXFULL_1024X768X32:
+			case ID_VIDEO_STRETCHMODE_DXFULLSCREEN:
 				StretchMode=3;
-				FullScreenMode=wParam-ID_VIDEO_STRETCHMODE_DXFULL_320X240X8+1;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
-				{
-					for (DWORD idx=ID_VIDEO_STRETCHMODE_DXFULL_320X240X8; idx<ID_DXFULL_1024X768X32; idx++) {
-						if (idx==wParam) {
-							CheckMenuItem(GetMenu(myWnd), wParam, MF_CHECKED);
-						} else {
-							CheckMenuItem(GetMenu(myWnd), wParam, MF_UNCHECKED);
-						}
-					}
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_CHECKED);
+				if (!GetWindowRect(myWnd, &gWindowRect)) {
+					gWindowRect.left = -1;
+					gWindowRect.top = -1;
+				} else {
+					nVideoLeft = gWindowRect.left;
+					nVideoTop = gWindowRect.top;
 				}
+				preFullX = nVideoLeft;
+				preFullY = nVideoTop;
+				preFullXS = nXSize;
+				preFullYS = nYSize;
+				preFullSet = true;
 				takedownDirectDraw();
-				SetupDirectDraw(FullScreenMode);
+				SetupDirectDraw(true);
+				// SetupDirectDraw will cancel StretchMode if it fails
 				if (3 != StretchMode) {
 					myproc(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE, 0);
 				} else {
@@ -2071,15 +2087,15 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 				}
 
-				if (0 == StretchMode) {
+				if ((MaintainAspect)||(0 == StretchMode)) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
-					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
+					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENUTEXT+1));	// must add 1 to system colors - this is normally black
 					ReleaseDC(myWnd, myDC);
 				}
 
-				if (!IsZoomed(myWnd)) {
-					// save sizes if not maximized (and finished setting up)
+				if ((!IsZoomed(myWnd)) && (StretchMode != 3)) {
+					// save sizes if not maximized, not full screen (and finished setting up)
                     if (bWindowInitComplete) {
 					    GetWindowRect(myWnd, &myrect);
 					    nXSize = myrect.right-myrect.left;
@@ -2100,7 +2116,14 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				MuteAudio();
 				StretchMode=2;
 				takedownDirectDraw();
-				SetupDirectDraw(0);
+				SetupDirectDraw(false);
+				if (preFullSet) {
+					nVideoLeft = preFullX;
+					nVideoTop = preFullY;
+					nXSize = preFullXS;
+					nYSize = preFullYS;
+				}
+				RestoreWindowPosition();
 				SetSoundVolumes();
 			}
 			break;
