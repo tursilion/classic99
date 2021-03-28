@@ -487,6 +487,16 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	static unsigned char noisedir=1;
 
 	while (nSamples) {
+        /**/
+        bool signchanged = false;   // only used in one output mode idea, which does not work
+        int loudest = 15;
+        for (int idx=0; idx<4; ++idx) {
+            if (nVolume[idx] < loudest) loudest=nVolume[idx];
+        }
+        loudest*=2;
+        if (loudest > 14) loudest=14;
+        /**/
+
 		// tone channels
 		for (idx=0; idx<3; idx++) {
 			// on the TI/Coleco, a freq of 0 is really 0x400,
@@ -495,12 +505,19 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 			while (nCounter[idx] <= 0) {
 				nCounter[idx]+=(nRegister[idx]?nRegister[idx]:0x400);
 				nOutputApp[idx]=!nOutputApp[idx];
+                if (nVolume[idx] <= loudest) {
+                    signchanged = true;
+                }
 			}
 		}
 
 		// noise channel 
 		nCounter[3]-=nClocksPerSample;
 		while (nCounter[3] <= 0) {
+            if (nVolume[3] < loudest) {
+                signchanged = true;
+            }
+
 			switch (nRegister[3]&0x03) {
 				case 0: nCounter[3]+=0x10; break;
 				case 1: nCounter[3]+=0x20; break;
@@ -558,16 +575,22 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		} else {
 			cnt-=app_volume_table[nVolume[0]];
 		}
-		if (nOutputApp[1]) {
-			cnt+=app_volume_table[nVolume[1]];
-		} else {
-			cnt-=app_volume_table[nVolume[1]];
-		}
-		if (nOutputApp[2]) {
-			cnt+=app_volume_table[nVolume[2]];
-		} else {
-			cnt-=app_volume_table[nVolume[2]];
-		}
+        if (nRegister[1]!=nRegister[0]) {
+            // don't add if the frequency was already playing on an earlier channel
+		    if (nOutputApp[1]) {
+			    cnt+=app_volume_table[nVolume[1]];
+		    } else {
+			    cnt-=app_volume_table[nVolume[1]];
+		    }
+        }
+        if ((nRegister[2]!=nRegister[0])&&(nRegister[2]!=nRegister[1])) {
+            // don't add if the frequency was already playing on an earlier channel
+		    if (nOutputApp[2]) {
+			    cnt+=app_volume_table[nVolume[2]];
+		    } else {
+			    cnt-=app_volume_table[nVolume[2]];
+		    }
+        }
 		if (nOutputApp[3]) {
 			if (noisedir) {
 				cnt+=app_volume_table[nVolume[3]];
@@ -589,11 +612,14 @@ static int sampleCnt = 0;
 //			idx=SPKR;
             olddelta = oldout;
 		}
-#elif 0
+#elif 1
 		// if the sign of the output delta has changed, 'tick' the speaker
         // require a minimum delta before we react - this helps a bit
 
-        // this does sound pretty good with the correct lookup tables for volume
+        // This sounds the cleanest of them so far, but it does not cope well
+        // when the same frequency is played on multiple channels, adds noise.
+        // But it handles chords the best
+
         idx = (unsigned char)(cnt&0xff);
         int delta = idx-oldout;
         if (delta < 0) delta=-delta;
@@ -603,7 +629,7 @@ static int sampleCnt = 0;
 		    }
 		    oldout = idx;
         }
-#elif 1
+#elif 0
         // how about delta with a drift to zero?
         // this works, but not sure if it's better than
         // the other delta. It still sometimes drops voices.
@@ -638,26 +664,36 @@ static int sampleCnt = 0;
                 olddelta = -1;
             }
         }
-
+#elif 0
+        // if /any/ channel transitioned, then tick
+        // this does NOT work, sounds more like a modem than harmony...
+        if (signchanged) {
+            if (oldout&0x80) {
+                oldout = 0;
+            } else {
+                oldout = 0x80;
+            }
+	    }
 #else
-    // play out the four voices statically with arpeggio
-    // I doubt the Apple can do that much...
-    // 800 at 44100 samples/second is about 55hz cycling
-    // frankly this isn't too bad....
+        // play out the four voices statically with arpeggio
+        // I doubt the Apple can do that much...
+        // 800 at 44100 samples/second is about 55hz cycling
+        // frankly this isn't too bad... it sounds the most
+        // correct, but the stuttering is kind of annoying
 #define TONELEN 800
-    switch (((++sampleCnt)/TONELEN)%4) {
-    case 0: if ((nOutputApp[0])&&(nVolume[0] < 12)) oldout=0x80; else oldout=0x00; break;
-    case 1: if ((nOutputApp[1])&&(nVolume[1] < 12)) oldout=0x80; else oldout=0x00; break;
-    case 2: if ((nOutputApp[2])&&(nVolume[2] < 12)) oldout=0x80; else oldout=0x00; break;
-    case 3:
-		if ((nOutputApp[3])&&(nVolume[3] < 12)) {
-			if (noisedir) {
-				oldout=0x80;
-			} else {
-			    oldout=0;
-			}
-		}
-    }
+        switch (((++sampleCnt)/TONELEN)%4) {
+        case 0: if ((nOutputApp[0])&&(nVolume[0] < 12)) oldout=0x80; else oldout=0x00; break;
+        case 1: if ((nOutputApp[1])&&(nVolume[1] < 12)) oldout=0x80; else oldout=0x00; break;
+        case 2: if ((nOutputApp[2])&&(nVolume[2] < 12)) oldout=0x80; else oldout=0x00; break;
+        case 3:
+		    if ((nOutputApp[3])&&(nVolume[3] < 12)) {
+			    if (noisedir) {
+				    oldout=0x80;
+			    } else {
+			        oldout=0;
+			    }
+		    }
+        }
 #endif
 
 		double output = (oldout&0x80)?0.5:-0.5;

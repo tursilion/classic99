@@ -1755,7 +1755,6 @@ public:
     		fwrite(buf1, 1, 8192, fp);
 	    	fwrite(buf2, 1, 8192, fp);
         } else {
-            MessageBox(hwnd, "Warning: the cartridge will write correctly, but Classic99 can't boot it because it must start in the first bank.", "Notice", MB_OK | MB_ICONINFORMATION);
     		fwrite(buf2, 1, 8192, fp);
 	    	fwrite(buf1, 1, 8192, fp);
         }

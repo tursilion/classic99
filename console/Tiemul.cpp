@@ -6426,7 +6426,6 @@ void __cdecl TimerThread(void *)
 ////////////////////////////////////////////////////////////////
 // Timer calls this function each tick
 ////////////////////////////////////////////////////////////////
-//extern SID *g_mySid;
 void Counting()
 {
 	ticks++;
@@ -6444,90 +6443,6 @@ void Counting()
 	}
 	if ((NULL != sidbuf) && (NULL != sid_update)) {
 		UpdateSoundBuf(sidbuf, sid_update, &sidDat);
-#if 0
-// HACK - REMOVE ME - CONVERT SID MUSIC TO 9919?
-// TO USE THIS HACK, BREAKPOINT IN THE SID DLL IN THE RESET
-// FUNCTION, AND GET THE ADDRESS OF mySid. THEN STEP OUT,
-// AND ASSIGN THAT ADDRESS TO g_mySid. The rest will just work.
-// Or implement GetSidPointer in the DLL. Sadly I've lost the code.
-//volume - voice.envelope.envelope_counter
-//
-//noise is generated on a voice when the voice.waveform == 0x08 (combinations do nothing anyway)
-//voice.waveform.freq is the frequency counter
-//
-//FREQUENCY = (REGISTER VALUE * CLOCK)/16777216 Hz
-//where CLOCK=1022730 for NTSC systems and CLOCK=985250 for PAL systems.
-//
-//the TI version clock is exactly 1000000, so it's 
-//FREQUENCY = REGISTER_VALUE / 16.777216
-//
-//The TI 9919 sound chip uses:
-//FREQUENCY = 111860.78125 / REGISTER_VALUE
-//and inversely, 
-//REGISTER_VALUE = 111860.78125 / FREQUENCY
-		if (NULL == g_mySid) {
-            if (NULL != GetSidPointer) {
-                g_mySid = GetSidPointer();
-            }
-        } else {
-			static int nDiv[3] = {1,1,1};		// used for scale adjust when a note is too far off (resets if all three channels are quiet)
-			bool bAllQuiet=true;
-			bool bNoise = false;
-
-			sidbuf->SetVolume(DSBVOLUME_MIN);	// don't play audibly
-			for (int i=0; i<3; i++) {
-				// pitch
-				double nFreq = g_mySid->voice[i]->wave.freq / 16.777216;
-				int code = (int)((111860.78125 / nFreq) / nDiv[i]);
-
-				// volume (is just the envelope enough? is there a master volume?)
-				// looks like this is 8-bit volume, convert to 4-bit attenuation
-                // TODO: is it linear instead of logarithmic?
-				int nVol = ((255-g_mySid->voice[i]->envelope.envelope_counter)>>4);
-				if (nVol != 0x0f) bAllQuiet = false;
-				int ctrl = 0x80+(0x20*i);	
-
-				// check for noise
-				if (g_mySid->voice[i]->wave.waveform & 0x08) {
-					// this is noise
-					bNoise = true;
-					// mute the tone and don't worry about adjusting it
-					wsndbyte((ctrl+0x10) | 0x0f);
-					// pick a noise - 5,6,7 are the white noise tones. Periodic may be useful too but for now...
-					if ((code == 0) || (code > 0x180)) {
-						code = 0xe7;
-					} else if (code > 0xc0) {
-						code = 0xe6;
-					} else {
-						code = 0xe5;
-					}
-					wsndbyte(code);
-					// set the volume on the noise channel
-					wsndbyte(0xf0 | nVol);
-				} else {
-					// this is tone
-					if (code > 0x3ff) {
-						//code=0;		// lowest possible pitch
-						nDiv[i]*=2;		// scale it an octave up
-						if (nDiv[i]>4) nDiv[i]=4;		// this is about the limit
-						code/=2;
-						if (code > 0x3ff) code=0;		// if still, get it next time
-					}
-					wsndbyte(ctrl|(code&0xf));
-					wsndbyte((code>>4)&0xff);
-					wsndbyte((ctrl+0x10) |  nVol);
-				}
-			}
-			if (bNoise == false) {
-				// make sure the noise channel is silent when not active
-				wsndbyte(0xff);
-			}
-			if (bAllQuiet) {
-				// reset the pitch divisors
-				nDiv[0] = nDiv[1] = nDiv[2] = 1;
-			}
-		}
-#endif
 	}
 
 	LeaveCriticalSection(&csAudioBuf);
