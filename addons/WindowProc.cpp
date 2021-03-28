@@ -1430,6 +1430,13 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				{
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_MAINTAINASPECT, MF_UNCHECKED);
 				}
+				// we won't resize, but for sanity's sake, wipe the background
+				if ((MaintainAspect)||(0 == StretchMode)) {
+					GetClientRect(myWnd, &myrect);
+					myDC=GetDC(myWnd);
+					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENUTEXT+1));	// must add 1 to system colors - this is normally black
+					ReleaseDC(myWnd, myDC);
+				}
 				break;
 
 			case ID_VIDEO_ENABLEF18A:
