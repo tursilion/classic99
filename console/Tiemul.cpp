@@ -355,8 +355,7 @@ int retrace_count=0;								// count on the 60hz timer
 int PauseInactive;									// what to do when the window is inactive
 int WindowActive;                                   // true if the Classic99 window is active
 int SpeechEnabled;									// whether speech is enabled
-volatile int CPUThrottle;							// Whether or not the CPU is throttled
-volatile int SystemThrottle;						// Whether or not the VDP is throttled
+volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
 
 time_t STARTTIME, ENDTIME;
 volatile long ticks;
@@ -623,11 +622,9 @@ void ReadConfig() {
 
 	// Filename used to write recorded video
 	GetPrivateProfileString("emulation", "AVIFilename", AVIFileName, AVIFileName, 256, INIFILE);
-	// CPU Throttling? CPU_OVERDRIVE, CPU_NORMAL, CPU_MAXIMUM
-	CPUThrottle=	GetPrivateProfileInt("emulation",	"cputhrottle",			CPUThrottle,	INIFILE);
-	// VDP Throttling? VDP_CPUSYNC, VDP_REALTIME
-	SystemThrottle=	GetPrivateProfileInt("emulation",	"systemthrottle",		SystemThrottle,	INIFILE);
-	// Proper CPU throttle (cycles per frame) - ipf is deprecated
+	// Throttle mode is all in one now, from -1: THROTTLE_SLOW, THROTTLE_NORMAL, THROTTLE_OVERDRIVE, THROTTLE_SYSTEMMAXIMUM
+	ThrottleMode =  GetPrivateProfileInt("emulation",   "throttlemode",         ThrottleMode,   INIFILE);
+	// Proper CPU throttle (cycles per frame) - ipf is deprecated - this defines "normal" and probably should go away too
 	max_cpf=		GetPrivateProfileInt("emulation",	"maxcpf",				max_cpf,		INIFILE);
 	cfg_cpf = max_cpf;
 	// Pause emulator when window inactive: 0-no, 1-yes
@@ -940,8 +937,7 @@ void SaveConfig() {
     WritePrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
 
 	WritePrivateProfileString(	"emulation",	"AVIFilename",			AVIFileName,				INIFILE);
-	WritePrivateProfileInt(		"emulation",	"cputhrottle",			CPUThrottle,				INIFILE);
-	WritePrivateProfileInt(		"emulation",	"systemthrottle",		SystemThrottle,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"throttlemode",			ThrottleMode,				INIFILE);
 	if (0 != max_cpf) {
 		WritePrivateProfileInt(	"emulation",	"maxcpf",				max_cpf,					INIFILE);
 	}
@@ -1417,8 +1413,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	strcpy(AVIFileName, "C:\\Classic99.AVI");	// default movie filename
 	nCartGroup=0;				// Cartridge group (0-apps, 1-games, 2-user)
 	nCart=-1;					// loaded cartridge (-1 is none)
-	CPUThrottle=CPU_NORMAL;		// throttle the CPU
-	SystemThrottle=VDP_CPUSYNC;	// throttle the VDP
+	ThrottleMode = THROTTLE_NORMAL;	// normal throttle
 	drawspeed=0;				// no frameskip
 	FilterMode=2;				// super 2xSAI
 	nDefaultScreenScale=1;		// 1x by default
@@ -3449,7 +3444,7 @@ void do1()
 		if (key[VK_F11]) {
 			key[VK_F11]=0;
 
-			if (CPUThrottle==CPU_MAXIMUM) {
+			if (ThrottleMode == THROTTLE_SYSTEMMAXIMUM) {
 				// running in fast forward, return to normal
 				DoPlay();
 			} else {
@@ -3487,11 +3482,11 @@ void do1()
 			 ((nSystem == 1) && (pCurrentCPU->GetPC()==0x478)) ||
 			 ((nSystem == 2) && (pCurrentCPU->GetPC()==0x478)) ) {
 				if (NULL != PasteString) {
-					static int nOldSpeed = -1;
+					static int nOldSpeed = THROTTLE_NONE;
 
-					if (nOldSpeed == -1) {
+					if (nOldSpeed == THROTTLE_NONE) {
 						// set overdrive during pasting, then go back to normal
-						nOldSpeed = CPUThrottle;
+						nOldSpeed = ThrottleMode;
 						SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
 					}
 
@@ -3550,13 +3545,16 @@ void do1()
 
 							switch (nOldSpeed) {
 								default:
-								case CPU_NORMAL:
+								case THROTTLE_NORMAL:
 									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
 									break;
-								case CPU_OVERDRIVE:
+								case THROTTLE_SLOW:
+									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 0);
+									break;
+								case THROTTLE_OVERDRIVE:
 									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
 									break;
-								case CPU_MAXIMUM:
+								case THROTTLE_SYSTEMMAXIMUM:
 									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
 									break;
 							}
@@ -3709,13 +3707,13 @@ void do1()
 			// repeat counter). If so, we only allow the increment at a much slower rate
 			// based on the interrupt timer (for real time slowdown).
 			// This doesn't work in XB!
-			if ((CPUThrottle!=CPU_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x2a62)) {
+			if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x2a62)) {
 				if ((ticks%10) != 0) {
 					WriteMemoryByte(0x830D, ReadMemoryByte(0x830D, ACCESS_FREE) - 1, false);
 				}
-			}
+			} // todo: ELSE??
 			// but this one does (note it will trigger for ANY bank-switched cartridge that uses this code at this address...)
-			if ((CPUThrottle!=CPU_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x6AB6) && (xb)) {
+			if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x6AB6) && (xb)) {
 				if ((ticks%10) != 0) {
 					WriteMemoryByte(0x8300, ReadMemoryByte(0x8300, ACCESS_FREE) - 1, false);
 				}
@@ -6252,7 +6250,7 @@ void __cdecl TimerThread(void *)
 {
 	MY_LARGE_INTEGER nStart, nEnd, nFreq, nAccum;
 	static unsigned long old_total_cycles=0;
-	static int oldSystemThrottle=0, oldCPUThrottle=0;
+	static int oldThrottleMode = THROTTLE_NONE;
 	static int nVDPFrames = 0;
 	bool bDrawDebug=false;
 	long nOldCyclesLeft = 0;
@@ -6275,9 +6273,8 @@ void __cdecl TimerThread(void *)
 	while (quitflag==0) {
 		// Check if the system speed has changed
 		// This is actually kind of lame - we should use a message or make the vars global
-		if ((CPUThrottle != oldCPUThrottle) || (SystemThrottle != oldSystemThrottle)) {
-			oldCPUThrottle=CPUThrottle;
-			oldSystemThrottle=SystemThrottle;
+		if (ThrottleMode != oldThrottleMode) {
+			oldThrottleMode = ThrottleMode;
 			old_total_cycles=total_cycles;
 			nAccum.QuadPart=0;
 		}
@@ -6301,23 +6298,23 @@ void __cdecl TimerThread(void *)
 			// if hzRate==60, then it's 16666us per frame - .6. overall this runs a little slow, but it is within the 5% tolerance (99.996%)
 			// our actual speeds are 50hz and 62hz, 62hz is 99% of 62.6hz, calculated via the datasheet
 			// 62hz is 16129us per frame (fractional is .03, irrelevant here, so it works out nicer too)
-			switch (CPUThrottle) {
+			switch (ThrottleMode) {
 				default:
                     // TODO: using the old trick of triggering early (twice as often) helps, but still wrong
 					WaitForSingleObject(timer, 1000);	// this is 16.12, rounded to 16, so 99% of 99% is still 99% (99.2% of truth)
+					nVDPFrames = 0;
 					break;
-				case CPU_OVERDRIVE:
+				case THROTTLE_OVERDRIVE:
 					Sleep(1);	// minimal sleep for load's sake
+					// Do not set nVDPFrames to 0 here
 					break;
-				case CPU_MAXIMUM:
+				case THROTTLE_SYSTEMMAXIMUM:
 					// We do the exchange here since the loop below may not run
 					InterlockedExchange((LONG*)&cycles_left, max_cpf*100);
+					nVDPFrames = 0;
 					break;
 			}
 
-			if (SystemThrottle == VDP_CPUSYNC) {
-				nVDPFrames=0;
-			}
 			if (FALSE == QueryPerformanceCounter((LARGE_INTEGER*)&nEnd)) {
 				debug_write("Failed to query performance counter, error 0x%08x", GetLastError());
 				MessageBox(myWnd, "Unable to run timer system.", "Classic99 Error", MB_ICONSTOP|MB_OK);
@@ -6347,11 +6344,18 @@ void __cdecl TimerThread(void *)
 					// to prevent runaway, if the CPU is not executing for some reason, don't increment
 					// this handles the case where Windows is blocking the main thread (which doesn't happen anymore)
 					if ((nOldCyclesLeft != cycles_left) || (max_cpf == 1)) {
-						if (CPUThrottle==CPU_NORMAL) {			// don't increment cycles_left if running at infinite speed or paused
+						switch (ThrottleMode) {
+						case THROTTLE_SLOW:
+						case THROTTLE_NORMAL:
 							InterlockedExchangeAdd((LONG*)&cycles_left, max_cpf);
-						} else {
-							InterlockedExchange((LONG*)&cycles_left, max_cpf*50);
+							break;
+
+						case THROTTLE_OVERDRIVE:
+						case THROTTLE_SYSTEMMAXIMUM:
+							InterlockedExchange((LONG*)&cycles_left, max_cpf * 50);
+							break;
 						}
+
 						nOldCyclesLeft = cycles_left;
 					}
 				}
@@ -6374,10 +6378,10 @@ void __cdecl TimerThread(void *)
 			// if our timing is right this should always work out about right
 			SpeechBufferCopy();
 
-			// This set the VDP processing rate. If VDP overdrive is active,
-			// then we base it on the CPU cycles. If not, then we base it on
-			// real time.
-			if (SystemThrottle == VDP_CPUSYNC) {
+			// This set the VDP processing rate. This is based on CPU cycles except
+			// in overdrive, which tries to maintain approximately real time despite
+			// CPU cycle count.
+			if (ThrottleMode != THROTTLE_OVERDRIVE) {
 				// this side is used in normal mode
 				while (old_total_cycles+(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF) <= total_cycles) {
 					Counting();					// update counters & VDP interrupt
@@ -6483,11 +6487,30 @@ void DoPlay() {
 		SetSoundVolumes();
 		UpdateMakeMenu(dbgWnd, 0);
 	}
-    // Passing '1' here tells the window handler not to change the
-    // speed again - otherwise we race with the message pump. This
-    // was causing breakpoints that were very close together to be
-    // lost. The '1' makes it a visual update only.
-	PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 1);
+
+	// Passing '1' here tells the window handler not to change the
+	// speed again - otherwise we race with the message pump. This
+	// was causing breakpoints that were very close together to be
+	// lost. The '1' makes it a visual update only.
+	switch (ThrottleMode) {
+	default:
+	case THROTTLE_NORMAL:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 1);
+		break;
+
+	case THROTTLE_SLOW:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 1);
+		break;
+
+	case THROTTLE_OVERDRIVE:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 1);
+		break;
+
+	case THROTTLE_SYSTEMMAXIMUM:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 1);
+		break;
+	}
+
 	SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
 }
 

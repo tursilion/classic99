@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.041"
+#define VERSION "QI399.042"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -61,7 +61,7 @@ typedef unsigned __int32 DWord;
 #define HZ50 50
 #define DEFAULT_60HZ_CPF (CLOCK_MHZ/HZ60)
 #define DEFAULT_50HZ_CPF (CLOCK_MHZ/HZ50)
-#define SLOW_CPF (1)
+#define SLOW_CPF (10)
 #define SPEECHRATE 8000	
 #define SPEECHBUFFER 16000
 #define MAX_BREAKPOINTS 10
@@ -256,8 +256,7 @@ void memrnd(void *pRnd, int nCnt);
 
 extern int PauseInactive;							// what to do when the window is inactive
 extern int SpeechEnabled;							// whether or not speech is enabled
-extern volatile int CPUThrottle;					// Whether or not the CPU is throttled
-extern volatile int SystemThrottle;					// Whether or not the VDP is throttled
+extern volatile int ThrottleMode;					// system throttling mode
 
 extern char lines[34][DEBUGLEN];					// debug lines
 extern bool bDebugDirty;
@@ -496,10 +495,10 @@ void Counting();
 void __cdecl SpeechBufThread(void *);
 void WindowThread();
 
-// 0 and 1 match the old values, although overdrive will be
-// slower than the old maximum (but use far less host CPU)
-#define CPU_OVERDRIVE 0
-#define CPU_NORMAL 1
-#define CPU_MAXIMUM 2
-#define VDP_CPUSYNC 0
-#define VDP_REALTIME 1
+// replaces the old dual throttle
+#define THROTTLE_NONE 9999
+#define THROTTLE_SLOW -1
+#define THROTTLE_NORMAL 0
+#define THROTTLE_OVERDRIVE 1
+#define THROTTLE_SYSTEMMAXIMUM 2
+

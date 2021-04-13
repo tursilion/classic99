@@ -829,7 +829,7 @@ void updateVDP(int cycleCount)
 	double newCycles;
 
 	// handle overdrive
-    if (SystemThrottle != VDP_CPUSYNC) {
+    if (ThrottleMode == THROTTLE_OVERDRIVE) {
         // overdrive ONLY draws full frames, so if it's not FULLFRAME, ignore it
         // the reason for this is to keep the VDP running 60fps when we don't
         // actually have a preset clockspeed to know how many cycles make a
