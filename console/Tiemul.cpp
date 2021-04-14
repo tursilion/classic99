@@ -3558,7 +3558,7 @@ void do1()
 									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
 									break;
 							}
-							nOldSpeed = -1;
+							nOldSpeed = THROTTLE_NONE;
 						}
 					}
 				}
