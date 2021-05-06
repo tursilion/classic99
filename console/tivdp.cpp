@@ -1827,6 +1827,8 @@ void doBlit()
 	}
 	if (FilterMode == 5) {
 		if ((NULL == hHQ4DLL) || (NULL == hq4x_init)) {
+			// TODO: it has been reported that the emulator just hangs after this message, does not fall back properly
+			// Check the other DLLs too.
 			MessageBox(myWnd, "HQ4 DLL not available - reverting to no filter.", "Classic99 Error", MB_OK);
 			PostMessage(myWnd, WM_COMMAND, ID_VIDEO_FILTERMODE_NONE, 0);
 			ReleaseDC(myWnd, myDC);

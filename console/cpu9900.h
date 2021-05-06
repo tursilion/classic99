@@ -232,6 +232,13 @@ public:		// type protection later. Make work today.
 	// not an opcode - illegal opcode handler
 	void op_bad();
 
+	// debug only opcodes, enabled with enableDebugOpcodes
+	void op_norm();
+	void op_ovrd();
+	void op_smax();
+	void op_brk();
+	void op_dbg();
+
 	// F18 specific versions of opcodes (here to make the function pointers work better)
 	void op_idleF18();
 	void op_callF18();

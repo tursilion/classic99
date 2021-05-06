@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.043"
+#define VERSION "QI399.044"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -469,7 +469,7 @@ void DoPlay();
 void DoFastForward();
 void DoMemoryDump();
 void DoLoadInterrupt();
-void TriggerBreakPoint(bool bForce = false);
+void TriggerBreakPoint(bool bForce = false, bool openDebugger = true);
 
 int nodot(void);
 Byte GetSafeCpuByte(int x, int bank);

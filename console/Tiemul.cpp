@@ -131,6 +131,7 @@ unsigned int BIGARRAYSIZE;
 HINSTANCE hInstance;						// global program instance
 HINSTANCE hPrevInstance;					// prev instance (always null so far)
 bool bWindowInitComplete = false;           // just a little sync so we ignore size changes till we're done
+extern HANDLE hDebugWindowUpdateEvent;		// from WindowProc.cpp
 extern BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 extern void DebugUpdateThread(void*);
 extern void UpdateMakeMenu(HWND hwnd, int enable);
@@ -167,6 +168,7 @@ bool total_cycles_looped=false;
 bool bDebugAfterStep=false;									// force debug after step
 bool bStepOver=false;										// whether step over is on
 int nStepCount=0;											// how many instructions to step before breakpoints work again (usually 1)
+int enableDebugOpcodes = 0;									// enable debug opcodes for CPU
 bool bScrambleMemory = false;								// whether to set RAM to random values on reset
 bool bWarmBoot = false;										// whether to leave memory alone on reset
 int HeatMapFadeSpeed = 25;									// how many pixels per access to fade - bigger = more CPU but faster fade
@@ -356,6 +358,7 @@ int PauseInactive;									// what to do when the window is inactive
 int WindowActive;                                   // true if the Classic99 window is active
 int SpeechEnabled;									// whether speech is enabled
 volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
+int enableSpeedKeys = 0;							// allow the INI to make F6,F7,F8,F11 available all the time
 
 time_t STARTTIME, ENDTIME;
 volatile long ticks;
@@ -627,6 +630,8 @@ void ReadConfig() {
 	// Proper CPU throttle (cycles per frame) - ipf is deprecated - this defines "normal" and probably should go away too
 	max_cpf=		GetPrivateProfileInt("emulation",	"maxcpf",				max_cpf,		INIFILE);
 	cfg_cpf = max_cpf;
+	// map through certain function keys as emulator speed control
+	enableSpeedKeys = GetPrivateProfileInt("emulation", "enableSpeedKeys",		enableSpeedKeys, INIFILE);
 	// Pause emulator when window inactive: 0-no, 1-yes
 	PauseInactive=	GetPrivateProfileInt("emulation",	"pauseinactive",		PauseInactive,	INIFILE);
 	// Disable speech if desired
@@ -634,7 +639,7 @@ void ReadConfig() {
 	// require additional control key to reset (QUIT)
 	CtrlAltReset=	GetPrivateProfileInt("emulation",	"ctrlaltreset",			CtrlAltReset,	INIFILE);
 	// override the inverted caps lock
-	gDontInvertCapsLock = !GetPrivateProfileInt("emulation","invertcaps",	!gDontInvertCapsLock, INIFILE);
+	gDontInvertCapsLock = !GetPrivateProfileInt("emulation","invertcaps",		!gDontInvertCapsLock, INIFILE);
 	// Get system type: 0-99/4, 1-99/4A, 2-99/4Av2.2
 	nSystem=		GetPrivateProfileInt("emulation",	"system",				nSystem,		INIFILE);
 	// Read flag for slowing keyboard repeat: 0-no, 1-yes
@@ -825,6 +830,7 @@ skiprestofuser:
 	// debug
 	bScrambleMemory = GetPrivateProfileInt("debug","ScrambleRam",	bScrambleMemory, INIFILE) ? true : false;
 	bCorruptDSKRAM =  GetPrivateProfileInt("debug","CorruptDSKRAM",	bCorruptDSKRAM, INIFILE) ? true : false;
+	enableDebugOpcodes = GetPrivateProfileInt("debug", "enableDebugOpcodes", enableDebugOpcodes, INIFILE);
 
 	// TV stuff
 	TVScanLines=	GetPrivateProfileInt("tvfilter","scanlines",		TVScanLines,	INIFILE);
@@ -941,6 +947,7 @@ void SaveConfig() {
 	if (0 != max_cpf) {
 		WritePrivateProfileInt(	"emulation",	"maxcpf",				max_cpf,					INIFILE);
 	}
+	WritePrivateProfileInt(		"emulation",	"enableSpeedKeys",		enableSpeedKeys,			INIFILE);
 	WritePrivateProfileInt(		"emulation",	"pauseinactive",		PauseInactive,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"ctrlaltreset",			CtrlAltReset,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"invertcaps",			!gDontInvertCapsLock,		INIFILE);
@@ -981,6 +988,7 @@ void SaveConfig() {
 	// debug
 	WritePrivateProfileInt(		"debug",		"ScrambleRam",			bScrambleMemory,			INIFILE);
 	WritePrivateProfileInt(		"debug",		"CorruptDSKRAM",		bCorruptDSKRAM,				INIFILE);
+	WritePrivateProfileInt(		"debug",		"enableDebugOpcodes",	enableDebugOpcodes,			INIFILE);
 
 	// TV stuff
 	double thue, tsat, tcont, tbright, tsharp;
@@ -1462,6 +1470,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Read configuration - uses above settings as default!
 	ReadConfig();
+	// A little hacky, but rebuild the CPU using the new settings
+	pCPU->buildcpu();
+	pGPU->buildcpu();
 
     // right off the bat, if we are in App Mode, then we need to do some work
     if (bEnableAppMode) {
@@ -3241,6 +3252,7 @@ void do1()
 		    if (NULL == dbgWnd) {
 			    PostMessage(myWnd, WM_COMMAND, ID_EDIT_DEBUGGER, 0);
 			    // the dialog focus switch may cause a loss of the up event, so just fake it now
+			    // TODO: this should not be needed with the filter in decode(), right??
 			    decode(0xe0);	// extended key
 			    decode(0xf0);
 			    decode(VK_HOME);
@@ -3266,6 +3278,44 @@ void do1()
             key[VK_F2]=0;
         }
 	}
+	
+	// speedKeys doesn't include slow because slow is too slow to be useful
+	// to a non-debugger. Those people can change the CPU speed in config instead.
+	// ... someone will complain someday. ;) 5/5/2021
+	if (enableSpeedKeys) {
+		// CPU normal
+		if (key[VK_F6]) {
+			key[VK_F6]=0;
+			SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
+		}
+
+		// cpu overdrive
+		if (key[VK_F7]) {
+			key[VK_F7]=0;
+			SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
+		}
+
+		// system maximum
+		if (key[VK_F8]) {
+			key[VK_F8]=0;
+			SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
+		}
+
+		// toggle turbo
+		if (key[VK_F11]) {
+			key[VK_F11] = 0;
+
+			if (ThrottleMode == THROTTLE_SYSTEMMAXIMUM) {
+				// running in fast forward, return to normal
+				ThrottleMode = THROTTLE_NORMAL;
+				DoPlay();
+			}
+			else {
+				DoFastForward();
+			}
+		}
+
+	} // speedkeys
 
 	// Control keys - active only with the debug view open in PS/2 mode
 	// nopFrame must be set before now!
@@ -3383,47 +3433,47 @@ void do1()
 			key[VK_F3]=0;
 		}
 
-		// do automatic screenshot (not filtered), or set CPU Normal (ctrl)
+		// do automatic screenshot, unfiltered (ctrl), or set CPU slow (normal)
 		if (key[VK_F5]) {
 			key[VK_F5]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
-			} else {
 				SaveScreenshot(true, false);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 0);
 			}
 		}
 
-		// auto screenshot, filtered, or CPU Overdrive (ctrl)
+		// auto screenshot, filtered (ctrl), or CPU normal (normal)
 		if (key[VK_F6]) {
 			key[VK_F6]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
-			} else {
 				SaveScreenshot(true, true);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
 			}
 		}
 
-		// toggle sprites / system maximum (ctrl)
+		// toggle sprites (ctrl) / cpu overdrive (normal)
 		if (key[VK_F7]) {
 			key[VK_F7]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
-			} else {
 				SendMessage(myWnd, WM_COMMAND, ID_LAYERS_DISABLESPRITES, 0);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
 			}
 		}
 
-		// toggle background / cpu slow (ctrl)
+		// toggle background (ctrl) / system maximum (normal)
 		if (key[VK_F8]) {
 			key[VK_F8]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 0);
-			} else {
 				SendMessage(myWnd, WM_COMMAND, ID_LAYERS_DISABLEBACKGROUND, 0);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
 			}
 		}
 
@@ -3439,18 +3489,20 @@ void do1()
 			key[VK_F10]=0;
 			DoMemoryDump();
 		}
-
-		// toggle turbo
+		
+		// toggle turbo (same as speedkeys)
 		if (key[VK_F11]) {
-			key[VK_F11]=0;
+			key[VK_F11] = 0;
 
 			if (ThrottleMode == THROTTLE_SYSTEMMAXIMUM) {
 				// running in fast forward, return to normal
 				DoPlay();
-			} else {
+			}
+			else {
 				DoFastForward();
 			}
-		}									
+		}
+
 		// LOAD interrupt or RESET (ctrl)
 		if (key[VK_F12]) {
 			key[VK_F12]=0;
@@ -6492,6 +6544,7 @@ void DoPlay() {
 	// speed again - otherwise we race with the message pump. This
 	// was causing breakpoints that were very close together to be
 	// lost. The '1' makes it a visual update only.
+	// TODO: this might be true anymore (or need to be?)
 	switch (ThrottleMode) {
 	default:
 	case THROTTLE_NORMAL:
@@ -6565,7 +6618,7 @@ void DoMemoryDump() {
 	}
 }
 
-void TriggerBreakPoint(bool bForce) {
+void TriggerBreakPoint(bool bForce, bool openDebugger) {
 	if ((!pCurrentCPU->enableDebug)&&(!bForce)) {
 		return;
 	}
@@ -6613,6 +6666,14 @@ void TriggerBreakPoint(bool bForce) {
             break;
         }
     }
+
+	// finally, open the debugger if it's not open (unless we are told not to!)
+	if ((openDebugger) && (NULL == dbgWnd)) {
+		// Send so that we wait for the reply
+	    SendMessage(myWnd, WM_COMMAND, ID_EDIT_DEBUGGER, 0);
+		bDebugDirty=true;
+		SetEvent(hDebugWindowUpdateEvent);
+	}
 }
 
 void memrnd(void *pRnd, int nCnt) {

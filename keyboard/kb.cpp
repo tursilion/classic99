@@ -69,6 +69,7 @@ unsigned char nLastRow=-1, nLastCol=-1;
 extern int fJoystickActiveOnKeys;
 extern int CtrlAltReset;
 extern int gDontInvertCapsLock;
+extern int enableSpeedKeys;
 extern volatile HWND dbgWnd;
 
 enum LASTMETA {
@@ -271,12 +272,22 @@ void decode(unsigned char sc)
     if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
         // control is down
         switch (sc) {
-        case VK_F1:
-        case VK_F2:
-        case VK_HOME:
+        case VK_F1:		// ctrl+F1 - edit->paste
+        case VK_F2:		// ctrl+F2 - edit->copy screen
+        case VK_HOME:	// ctrl+HOME - edit->debugger
             return;
         }
     }
+    if (enableSpeedKeys) {
+		// disable the speed keys in that case too
+		switch (sc) {
+			case VK_F6:		// CPU normal
+			case VK_F7:		// CPU Overdrive
+			case VK_F8:		// System Maximum
+			case VK_F11:	// Turbo toggle (normal/maximum)
+				return;
+		}
+	}
 
 	// TODO: would be fun to have a debug vis of the Classic99 keyboard state
 	// This would help track down a bug -- when using ESDX and Q to fire in Parsec,
@@ -290,7 +301,7 @@ void decode(unsigned char sc)
 	if ((sc != 0xe0) && (sc != 0xf0) && (NULL == pCheat)) {
 		// not extended or release, so convert from windows VK to set two US scancode
 		// with a little luck, doing it this way will let Windows take care of the
-		// scancode remapping on different keyboards! (But, it didn't).
+		// scancode remapping on different keyboards! (TODO: But, it didn't).
 		sc=VK2ScanCode[sc];
 		if (0 == sc) {
 			// was not a supported code, just ignore it

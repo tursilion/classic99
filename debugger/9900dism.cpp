@@ -27,6 +27,9 @@
 #include "cpu9900.h"
 #include "..\addons\ams.h"
 
+// config value for the Classic99 debug opcodes
+extern int enableDebugOpcodes;
+
 // Although no longer used by the disassembler -- the debugger still uses these "safe" functions.
 Word GetSafeCpuWord(int x, int bank) {
 	x&=0xfffe;
@@ -107,6 +110,8 @@ enum opcodes {
 	_limi,	_stst,	_stwp,	_rtwp,	_idle,	_rset,	_ckof,	_ckon,	_lrex,	_ill,
 	// additional opcodes for the F18A (mb)
 	_spi_en, _spi_ds, _spi_out, _spi_in, _pix,	_call,  _ret,   _push,  _pop,   _slc,
+	// debugger opcodes
+	_c99_norm, _c99_ovrd, _c99_smax, _c99_brk, _c99_dbg,
 };
 
 
@@ -121,6 +126,7 @@ static const char *token[]=
 	"limi",	"stst",	"stwp",	"rtwp",	"idle",	"rset",	"ckof",	"ckon",	"lrex", "ill",
 	// F18A
 	"spie", "spid", "spio", "spii", "pix",  "call", "ret",  "push", "pop",  "slc",
+	"c99norm","c99ovrd","c99smax","c99brk","c99dbg"
 };
 
 
@@ -249,7 +255,24 @@ int Dasm9900 (char *buffer, int pc, int bank)
 		offset=0;
 	}
 
-	if ((opc = ops0to3[BITS_0to3+offset]) != _ill)
+	// classic99 opcodes have no addressing modes per sae
+	if ((enableDebugOpcodes) && (OP >= 0x0110) && (OP <= 0x0114)) {
+		// debugger opcode
+		switch (OP) {
+			case 0x0110: sprintf(buffer, "c99_norm"); break;
+			case 0x0111: sprintf(buffer, "c99_ovrd"); break;
+			case 0x0112: sprintf(buffer, "c99_smax"); break;
+			case 0x0113: sprintf(buffer, "c99_brk");  break;
+			case 0x0114:
+			{
+				// dbg sequence is 0114,1001,adr
+				int jmp = RDWORD(myPC, bank); myPC += 2;
+				int adr = RDWORD(myPC, bank); myPC += 2;
+				sprintf(buffer, "c99_dbg(%d) >%04x", jmp - 0x1000, adr);
+			}
+			break;
+		}
+	} else if ((opc = ops0to3[BITS_0to3+offset]) != _ill)
 	{
 		smode = OPBITS(10,11);
 		sarg = OPBITS(12,15);

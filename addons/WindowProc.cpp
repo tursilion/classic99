@@ -119,6 +119,7 @@ extern int bEnableAppMode;
 extern char AppName[];
 extern Byte SidCache[29];
 extern int WindowActive;
+extern int enableSpeedKeys;
 
 // window
 extern int nVideoLeft, nVideoTop;
@@ -1174,7 +1175,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					    bWarmBoot = false;
 				    }
 				
-				    TriggerBreakPoint(true);				// halt the CPU
+				    TriggerBreakPoint(true, false);			// halt the CPU
 				    Sleep(50);								// wait for it...
 
 				    memset(CRU, 1, 4096);					// reset 9901
@@ -1557,6 +1558,8 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_OPTIONS_CPUTHROTTLING:
 				{
+					static char speedTitle[256];
+
 					// Make sure nothing's left over from the old speed
 					InterlockedExchange((LONG*)&cycles_left, 0);
 
@@ -1566,6 +1569,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						// force a known value
 						debug_write("Unknown throttle mode %d - resetting to normal.", ThrottleMode);
 						ThrottleMode = THROTTLE_NORMAL;
+						// fall through
 
 					case THROTTLE_NORMAL:
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_CHECKED);
@@ -1576,8 +1580,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						break;
 
 					case THROTTLE_SLOW:
+						snprintf(speedTitle, sizeof(speedTitle), "%s - Slow CPU", AppName);
+						szDefaultWindowText = speedTitle;
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_CHECKED);
-						szDefaultWindowText = "Classic99 - Slow CPU";
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_UNCHECKED);
@@ -1585,7 +1590,12 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 					case THROTTLE_OVERDRIVE:
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_CHECKED);
-						szDefaultWindowText = "Classic99 - CPU Overdrive";
+						if (enableSpeedKeys) {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - CPU Overdrive (F6 for normal)", AppName);
+						} else {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - CPU Overdrive", AppName);
+						}
+						szDefaultWindowText = speedTitle;
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_UNCHECKED);
@@ -1593,7 +1603,12 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 					case THROTTLE_SYSTEMMAXIMUM:
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_CHECKED);
-						szDefaultWindowText = "Classic99 - System Maximum";
+						if (enableSpeedKeys) {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - System Maximum (F6/F11 for normal)", AppName);
+						} else {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - System Maximum", AppName);
+						}
+						szDefaultWindowText = speedTitle;
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
