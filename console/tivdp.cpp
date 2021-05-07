@@ -324,6 +324,8 @@ extern int nVideoLeft, nVideoTop;
 extern int max_cpf;							// current CPU performance
 extern CPU9900 *pGPU;
 
+
+
 //////////////////////////////////////////////////////////
 // Helpers for the TV controls
 //////////////////////////////////////////////////////////
@@ -705,6 +707,9 @@ void VDPdisplay(int scanline)
 	DWORD *plong;
 	int nMax;
 
+	// reduce noisy lines
+	EnterCriticalSection(&VideoCS);
+
 	int reg0 = gettables(0);
 
 	int gfxline = scanline - 27;	// skip top border
@@ -740,6 +745,7 @@ void VDPdisplay(int scanline)
 
 		if (!bDisableBlank) {
 			if (!(VDPREG[1] & 0x40)) {	// Disable display
+				LeaveCriticalSection(&VideoCS);
 				return;
 			}
 		}
@@ -796,6 +802,8 @@ void VDPdisplay(int scanline)
 			}
 		}
 	}
+
+	LeaveCriticalSection(&VideoCS);
 }
 
 //////////////////////////////////////////////////////////
@@ -1601,6 +1609,8 @@ void doBlit()
 	int x,y;
 	HRESULT ret;
 
+	EnterCriticalSection(&VideoCS);
+
 	if (bShowFPS) {
 		static int cnt = 0;
 		static time_t lasttime = 0;
@@ -1756,11 +1766,6 @@ void doBlit()
             }
         }
 
-	}
-
-
-	if (!TryEnterCriticalSection(&VideoCS)) {
-		return;		// do it later
 	}
 
 	GetClientRect(myWnd, &rect1);
