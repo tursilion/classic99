@@ -698,7 +698,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case WM_KEYDOWN:
 			key[wParam]=1;
-			if (lParam&0x1000000) {
+			if (lParam&0x1000000) {	// bit 24 is an extended key
 				decode(0xe0);	// extended
 			}
 			decode(wParam);
@@ -707,7 +707,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case WM_KEYUP:
 			key[wParam]=0;
-			if (lParam&0x1000000) {
+			if (lParam&0x1000000) { // bit 24 is an extended key
 				decode(0xe0);	// extended
 			}
 			decode(0xf0);	// key up
@@ -719,7 +719,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if (wParam != VK_RETURN)
 			{	
 				key[wParam]=1;
-				if (lParam&0x1000000) {
+				if (lParam&0x1000000) {	// bit 24 is an extended key
 					decode(0xe0);	// extended
 				}
 				decode(wParam);
@@ -732,7 +732,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case WM_SYSKEYUP:
 			key[wParam]=0;
-			if (lParam&0x1000000) {
+			if (lParam&0x1000000) {	// bit 24 is an extended key
 				decode(0xe0);	// extended
 			}
 			decode(0xf0);	// key up
@@ -742,7 +742,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_SYSCHAR:
 			// Don't remove this check, even if we need no ALT keys - otherwise all FCTN keys on the TI ding ;)
 			// Fullscreen toggle - Alt-Enter
-			if ((wParam==VK_RETURN)&&((lParam&0x8000)==0)) {
+			if ((wParam==VK_RETURN)&&((lParam&0x8000)==0)) {	// TODO: bit 15 is ??? Part of repeat count?
 				if (3 == StretchMode) {
 					StretchMode=2;
 					PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
