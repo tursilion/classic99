@@ -111,7 +111,7 @@ enum opcodes {
 	// additional opcodes for the F18A (mb)
 	_spi_en, _spi_ds, _spi_out, _spi_in, _pix,	_call,  _ret,   _push,  _pop,   _slc,
 	// debugger opcodes
-	_c99_norm, _c99_ovrd, _c99_smax, _c99_brk, _c99_dbg,
+	_c99_norm, _c99_ovrd, _c99_smax, _c99_brk, _c99_quit, _c99_dbg,
 };
 
 
@@ -263,12 +263,28 @@ int Dasm9900 (char *buffer, int pc, int bank)
 			case 0x0111: sprintf(buffer, "c99_ovrd"); break;
 			case 0x0112: sprintf(buffer, "c99_smax"); break;
 			case 0x0113: sprintf(buffer, "c99_brk");  break;
-			case 0x0114:
+			case 0x0114: sprintf(buffer, "c99_quit");  break;
+			case 0x0120:
+			case 0x0121:
+			case 0x0122:
+			case 0x0123:
+			case 0x0124:
+			case 0x0125:
+			case 0x0126:
+			case 0x0127:
+			case 0x0128:
+			case 0x0129:
+			case 0x012a:
+			case 0x012b:
+			case 0x012c:
+			case 0x012d:
+			case 0x012e:
+			case 0x012f:
 			{
-				// dbg sequence is 0114,1001,adr
+				// dbg sequence is 012r,1001,adr
 				int jmp = RDWORD(myPC, bank); myPC += 2;
 				int adr = RDWORD(myPC, bank); myPC += 2;
-				sprintf(buffer, "c99_dbg(%d) >%04x", jmp - 0x1000, adr);
+				sprintf(buffer, "c99_dbg(%d) >%04x,R%d", jmp - 0x1000, adr, OP&0xf);
 			}
 			break;
 		}
