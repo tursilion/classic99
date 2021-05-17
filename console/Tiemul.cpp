@@ -185,6 +185,8 @@ int (*get_game_count)(void);                               // get the games coun
 int bEnableAppMode = 0;                                     // whether to enable App Mode
 int bSkipTitle = 0;                                         // whether to skip the master title page
 int nAutoStartCart = 0;                                     // Which cartridge to autostart on the selection screen (or 0 for none)
+int bAppLockFullScreen = 0;									// if in App mode, lock to full screen only
+int bEnableINIWrite = 1;									// not /just/ app mode, but app mode enables it
 char AppName[128];                                          // the title bar name to display instead of Classic99
 
 // debug
@@ -359,6 +361,7 @@ int WindowActive;                                   // true if the Classic99 win
 int SpeechEnabled;									// whether speech is enabled
 volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
 int enableSpeedKeys = 0;							// allow the INI to make F6,F7,F8,F11 available all the time
+int enableAltF4 = 0;								// allow alt+F4 to close the emulator
 
 time_t STARTTIME, ENDTIME;
 volatile long ticks;
@@ -623,6 +626,7 @@ void ReadConfig() {
         nCf7DiskSize = GetPrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
     }
 
+	// NOTE: emulation\enableAltF4 is down under the video block, due to needing to set different defaults
 	// Filename used to write recorded video
 	GetPrivateProfileString("emulation", "AVIFilename", AVIFileName, AVIFileName, 256, INIFILE);
 	// Throttle mode is all in one now, from -1: THROTTLE_SLOW, THROTTLE_NORMAL, THROTTLE_OVERDRIVE, THROTTLE_SYSTEMMAXIMUM
@@ -816,12 +820,25 @@ skiprestofuser:
 	if (nXSize < 64) nXSize=64;
 	nYSize = GetPrivateProfileInt("video", "ScreenY", nYSize, INIFILE);
 	if (nYSize < 64) nYSize=64;
+	// full screen lock (overrides StretchMode)
+	bAppLockFullScreen = GetPrivateProfileInt("video","LockFullScreen", bAppLockFullScreen, INIFILE);
+	if (bAppLockFullScreen) {
+		StretchMode = STRETCH_FULL;
+		enableAltF4 = 1;	// by default, allow Alt+F4
+	}
 
     // the new application mode - this can only be set manually, it's not saved
     bEnableAppMode = GetPrivateProfileInt("AppMode", "EnableAppMode", bEnableAppMode, INIFILE);
+	if (bEnableAppMode) bEnableINIWrite = 0;	// turn off the INI write unless specifically overridden
     bSkipTitle = GetPrivateProfileInt("AppMode", "SkipTitle", bSkipTitle, INIFILE);
     nAutoStartCart = GetPrivateProfileInt("AppMode", "AutoStartCart", nAutoStartCart, INIFILE);
     GetPrivateProfileString("AppMode", "AppName", "Powered by Classic99", AppName, sizeof(AppName), INIFILE);
+
+	// some late "emulation" checks
+	// so, we need to read the alt+f4 config here, AFTER we changed the default
+	enableAltF4 = GetPrivateProfileInt("emulation", "enableAltF4",	enableAltF4,   INIFILE);
+	// and also read the enableINIWrite
+	bEnableINIWrite = GetPrivateProfileInt("emulation", "enableINIWrite", bEnableINIWrite,   INIFILE);
 
 	// get screen position
 	nVideoLeft = GetPrivateProfileInt("video",		"topX",				-1,					INIFILE);
@@ -907,6 +924,11 @@ void WritePrivateProfileInt(LPCTSTR lpApp, LPCTSTR lpKey, int nVal, LPCTSTR lpFi
 void SaveConfig() {
 	int idx;
 
+	if (!bEnableINIWrite) {
+		debug_write("Skipping INI write per configuration");
+		return;
+	}
+
 	WritePrivateProfileInt(		"audio",		"max_volume",			max_volume,					INIFILE);
 	WritePrivateProfileInt(		"audio",		"samplerate",			AudioSampleRate,			INIFILE);
 	if (NULL != GetSidEnable) {
@@ -957,6 +979,8 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"emulation",	"ps2keyboard",			ps2keyboardok,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"sams_enabled",			sams_enabled,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"sams_size",			sams_size,					INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableAltF4",			enableAltF4,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableINIWrite",		bEnableINIWrite,			INIFILE);
 
 	WritePrivateProfileInt(		"joysticks",	"active",				fJoy,						INIFILE);
 	WritePrivateProfileInt(		"joysticks",	"joy1mode",				joy1mode,					INIFILE);
@@ -981,6 +1005,7 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"video",		"ScreenScale",			nDefaultScreenScale,		INIFILE);
 	WritePrivateProfileInt(		"video",		"ScreenX",				nXSize,						INIFILE);
 	WritePrivateProfileInt(		"video",		"ScreenY",				nYSize,						INIFILE);
+	WritePrivateProfileInt(		"video",		"LockFullScreen",		bAppLockFullScreen,			INIFILE);
 
 	WritePrivateProfileInt(		"video",		"topX",					gWindowRect.left,			INIFILE);
 	WritePrivateProfileInt(		"video",		"topY",					gWindowRect.top,			INIFILE);
@@ -1442,7 +1467,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	SpeechEnabled=1;			// speech is decent now
 	Recording=0;				// not recording AVI
 	slowdown_keyboard=1;		// slow down keyboard repeat when read via BASIC
-	StretchMode=2;				// dx
+	StretchMode=STRETCH_DX;		// dx
 	bUse5SpriteLimit=1;			// enable flicker by default
 	TVScanLines=1;				// on by default
 	sams_enabled=1;				// off by default
@@ -1991,9 +2016,8 @@ void fail(char *x)
 	sprintf(buf2,"Frameskip     : %d\n",drawspeed);
 	strcat(buffer,buf2);
 
-	// the messagebox fails during a normal exit in WIN32.. why is that?
+	// dump the stats to the debug log
 	OutputDebugString(buffer);
-	MessageBox(myWnd, buffer, "Classic99 Exit", MB_OK);
 
 	Sleep(600);			// give the threads a little time to shut down
 
@@ -3162,6 +3186,10 @@ void saveroms()
 //////////////////////////////////////////////////////////
 void do1()
 {
+	// TODO: instead of doing ALL the keyboard checks EVERY instruction, maybe
+	// we can split some of them off to a rotating check? Only breakpoints need
+	// to be checked EVERY instruction, and even then, maybe not EVERY.
+
 	// used for emulating idle and halts (!READY) better
 	bool nopFrame = false;
 
@@ -3278,6 +3306,15 @@ void do1()
             key[VK_F2]=0;
         }
 	}
+
+	// check alt+f4 if enabled
+	if (enableAltF4) {
+		if (GetAsyncKeyState(VK_MENU)&0x8000) {
+			if (key[VK_F4]) {
+				PostMessage(myWnd, WM_QUIT, 0, 0);
+			}
+		}
+	}
 	
 	// speedKeys doesn't include slow because slow is too slow to be useful
 	// to a non-debugger. Those people can change the CPU speed in config instead.
@@ -3314,7 +3351,6 @@ void do1()
 				DoFastForward();
 			}
 		}
-
 	} // speedkeys
 
 	// Control keys - active only with the debug view open in PS/2 mode

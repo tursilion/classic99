@@ -123,6 +123,7 @@ extern int enableSpeedKeys;
 
 // window
 extern int nVideoLeft, nVideoTop;
+extern int bAppLockFullScreen;
 
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
@@ -680,7 +681,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_PAINT:
 			hDC = BeginPaint(hwnd, &ps);
 			GetClientRect(myWnd, &myrect);
-			if (StretchMode==0) {
+			if (StretchMode==STRETCH_NONE) {
 				FillRect(hDC, &myrect, (HBRUSH)(COLOR_MENU+1));
 			}
 			SetEvent(BlitEvent);
@@ -743,14 +744,19 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			// Don't remove this check, even if we need no ALT keys - otherwise all FCTN keys on the TI ding ;)
 			// Fullscreen toggle - Alt-Enter
 			if ((wParam==VK_RETURN)&&((lParam&0x8000)==0)) {	// TODO: bit 15 is ??? Part of repeat count?
-				if (3 == StretchMode) {
-					StretchMode=2;
-					PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
-				} else {
-					if (2 == StretchMode) {
-						StretchMode=3;
+				// don't toggle if full screen is locked
+				if (!bAppLockFullScreen) {
+					if (STRETCH_FULL == StretchMode) {
+						StretchMode=STRETCH_DX;
 						PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
+					} else {
+						if (STRETCH_DX == StretchMode) {
+							StretchMode=STRETCH_FULL;
+							PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
+						}
 					}
+				} else {
+					debug_write("Saw alt+enter but full screen is locked.");
 				}
 			}
 			break;
@@ -1432,7 +1438,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_MAINTAINASPECT, MF_UNCHECKED);
 				}
 				// we won't resize, but for sanity's sake, wipe the background
-				if ((MaintainAspect)||(0 == StretchMode)) {
+				if ((MaintainAspect)||(STRETCH_NONE == StretchMode)) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENUTEXT+1));	// must add 1 to system colors - this is normally black
@@ -1801,7 +1807,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1832,7 +1838,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1863,7 +1869,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1894,7 +1900,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1916,7 +1922,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_VIDEO_STRETCHMODE_NONE:		// This mode is a fallback, it must not fail and must not loop back
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_CHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
@@ -1925,7 +1931,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_VIDEO_STRETCHMODE_DIB:
-				StretchMode=1;
+				StretchMode=STRETCH_DIB;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_CHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
@@ -1934,11 +1940,13 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_VIDEO_STRETCHMODE_DX:
-				StretchMode=2;
+				StretchMode=STRETCH_DX;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_CHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_UNCHECKED);
+				// NOT checking for bAppLockFullScreen here - this is not a security setting
+				// if the user bypasses it, then good for them
 				takedownDirectDraw();
 				SetupDirectDraw(false);
 				if (preFullSet) {
@@ -1948,7 +1956,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					nYSize = preFullYS;
 				}
 				RestoreWindowPosition();
-				if (2 != StretchMode) {
+				if (STRETCH_DX != StretchMode) {
 					myproc(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE, 0);
 				} else {
 					InvalidateRect(myWnd, NULL, false);
@@ -1956,7 +1964,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_VIDEO_STRETCHMODE_DXFULLSCREEN:
-				StretchMode=3;
+				StretchMode=STRETCH_FULL;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
@@ -1973,10 +1981,11 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				preFullXS = nXSize;
 				preFullYS = nYSize;
 				preFullSet = true;
+				// no need to check bAppLockFullScreen here, we are /entering/ full screen
 				takedownDirectDraw();
 				SetupDirectDraw(true);
 				// SetupDirectDraw will cancel StretchMode if it fails
-				if (3 != StretchMode) {
+				if (STRETCH_FULL != StretchMode) {
 					myproc(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE, 0);
 				} else {
 					InvalidateRect(myWnd, NULL, false);
@@ -2117,14 +2126,14 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 				}
 
-				if ((MaintainAspect)||(0 == StretchMode)) {
+				if ((MaintainAspect)||(STRETCH_NONE == StretchMode)) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENUTEXT+1));	// must add 1 to system colors - this is normally black
 					ReleaseDC(myWnd, myDC);
 				}
 
-				if ((!IsZoomed(myWnd)) && (StretchMode != 3)) {
+				if ((!IsZoomed(myWnd)) && (StretchMode != STRETCH_FULL)) {
 					// save sizes if not maximized, not full screen (and finished setting up)
                     if (bWindowInitComplete) {
 					    GetWindowRect(myWnd, &myrect);
@@ -2141,10 +2150,10 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			return(DefWindowProc(hwnd, msg, wParam, lParam));
 			break;
 
-		case WM_RBUTTONUP:	// exit full screen
-			if (3 == StretchMode) {
+		case WM_RBUTTONUP:	// exit full screen - if allowed
+			if ((STRETCH_FULL == StretchMode) && (!bAppLockFullScreen)) {
 				MuteAudio();
-				StretchMode=2;
+				StretchMode=STRETCH_DX;
 				takedownDirectDraw();
 				SetupDirectDraw(false);
 				if (preFullSet) {

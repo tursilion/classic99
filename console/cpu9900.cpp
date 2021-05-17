@@ -2670,6 +2670,17 @@ void CPU9900::op_brk() {
     TriggerBreakPoint(true);
 }
 
+void CPU9900::op_quit() {
+    // Base cycles: 6
+    // 1 memory accesses:
+    //  Read instruction (already done)
+    AddCycleCount(6);
+    FormatVII;
+
+    debug_write("CODE executed QUIT opcode at PC >%04X.", GetPC());
+    PostMessage(myWnd, WM_QUIT, 0, 0);
+}
+
 void CPU9900::op_dbg() {
     // dbg is technically an illegal opcode followed by a JMP, so
     // it's 6+10 = 16 cycles. The Classic99 part is free ;)
@@ -3095,7 +3106,7 @@ void CPU9900::buildcpu()
     // check for special debug opcodes
     if (enableDebugOpcodes) {
         for (int idx = 0x0110; idx < 0x0130; ++idx) {
-            if (idx == 0x114) idx=0x120;    // skip unused ones
+            if (idx == 0x115) idx=0x120;    // skip unused ones
 
             if (opcode[idx] != &CPU9900::op_bad) {
                 debug_write("===============================");
@@ -3109,6 +3120,7 @@ void CPU9900::buildcpu()
         opcode[0x0111] = &CPU9900::op_ovrd;
         opcode[0x0112] = &CPU9900::op_smax;
         opcode[0x0113] = &CPU9900::op_brk;
+        opcode[0x0114] = &CPU9900::op_quit;
         for (int idx=0x120; idx<=0x12f; ++idx) {
             opcode[idx] = &CPU9900::op_dbg;
         }
