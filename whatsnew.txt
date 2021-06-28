@@ -2038,25 +2038,67 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 
 -----------------------------------------------
 17 Feb 2021
-
 - added autodetection of ROM cartridge boot bank, against my preference
 - add better guesses on C.BIN versus 8.BIN versus nothing, which completely defeats that system. Thanks.
 - added gpl.cpp - doesn't do anything right now and probably never will
 
 -----------------------------------------------
-
 19 Feb 2021
-
 - fix the autodetection of ROM boot bank - a typo against my own standards ;)
 
 -----------------------------------------------
-
 27 Feb 2021
-
 - update fbForth to v13
 - update RXB to 2020D
 - Fix missed breakpoints that come too close together after pressing F1 to continue
 - very basic and mostly broken TIPI simulation (NOT emulation!!). No bug reports on this will be entertained.
+
+-----------------------------------------------
+1 Mar 2021
+- improve TIPI library simulation
+- add missing cartpack.dll to zip
+
+-----------------------------------------------
+12 Mar 2021
+- update readme.md
+
+-----------------------------------------------
+28 Mar 2021
+- clean up obsolete comments
+- improve full screen mode
+
+-----------------------------------------------
+13 Apr 2021
+- improve throttle configuration
+- bugfix to return to original speed mode after paste
+
+-----------------------------------------------
+5 May 2021
+- add 'speed keys'
+- improve app mode
+- add CPU opcodes for emulation control
+- open debugger automatically on breakpoint
+- updated manual
+
+-----------------------------------------------
+6 May 2021
+- improve flicker during overdrive
+
+-----------------------------------------------
+7 May 2021
+- fix dropped keys after emulator intercepts a key
+
+-----------------------------------------------
+17 May 2021
+- improve stretch mode code
+- add switches to lock full screen, enable/disable alt-F4, enable writing out the INI
+- add QUIT debug opcode to CPU
+- update manual
+- fix disassembler for debug opcodes
+
+-----------------------------------------------
+28 Jun 2021
+- fix GPU initialization, was broken back in 044
 
 
 
