@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.044"
+#define VERSION "QI399.047"
 #define DEBUGLEN 120
 
 typedef unsigned __int8 UINT8;
@@ -205,7 +205,7 @@ extern int hzRate;									// flag for 50 or 60hz
 extern int Recording;								// Flag for AVI recording
 extern int RecordFrame;								// Current frame recorded (currently we only write 1/4 of the frames)
 extern int MaintainAspect;							// Flag for Aspect ratio
-extern int StretchMode;								// Setting for video stretching
+extern int StretchMode;								// Setting for video stretching (STRETCH_xxx)
 extern int bUse5SpriteLimit;						// whether the sprite flicker is on
 extern Byte VDP[128*1024];							// Video RAM
 extern int bF18AActive;
@@ -502,3 +502,8 @@ void WindowThread();
 #define THROTTLE_OVERDRIVE 1
 #define THROTTLE_SYSTEMMAXIMUM 2
 
+// settings for StretchMode - do NOT change these indexes, they are used in the menus
+#define STRETCH_NONE 0
+#define STRETCH_DIB 1
+#define STRETCH_DX 2
+#define STRETCH_FULL 3

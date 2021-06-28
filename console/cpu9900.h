@@ -238,6 +238,7 @@ public:		// type protection later. Make work today.
 	void op_smax();
 	void op_brk();
 	void op_dbg();
+	void op_quit();
 
 	// F18 specific versions of opcodes (here to make the function pointers work better)
 	void op_idleF18();

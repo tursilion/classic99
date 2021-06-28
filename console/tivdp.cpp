@@ -324,6 +324,8 @@ extern int nVideoLeft, nVideoTop;
 extern int max_cpf;							// current CPU performance
 extern CPU9900 *pGPU;
 
+
+
 //////////////////////////////////////////////////////////
 // Helpers for the TV controls
 //////////////////////////////////////////////////////////
@@ -705,6 +707,9 @@ void VDPdisplay(int scanline)
 	DWORD *plong;
 	int nMax;
 
+	// reduce noisy lines
+	EnterCriticalSection(&VideoCS);
+
 	int reg0 = gettables(0);
 
 	int gfxline = scanline - 27;	// skip top border
@@ -740,6 +745,7 @@ void VDPdisplay(int scanline)
 
 		if (!bDisableBlank) {
 			if (!(VDPREG[1] & 0x40)) {	// Disable display
+				LeaveCriticalSection(&VideoCS);
 				return;
 			}
 		}
@@ -796,6 +802,8 @@ void VDPdisplay(int scanline)
 			}
 		}
 	}
+
+	LeaveCriticalSection(&VideoCS);
 }
 
 //////////////////////////////////////////////////////////
@@ -1601,6 +1609,8 @@ void doBlit()
 	int x,y;
 	HRESULT ret;
 
+	EnterCriticalSection(&VideoCS);
+
 	if (bShowFPS) {
 		static int cnt = 0;
 		static time_t lasttime = 0;
@@ -1758,11 +1768,6 @@ void doBlit()
 
 	}
 
-
-	if (!TryEnterCriticalSection(&VideoCS)) {
-		return;		// do it later
-	}
-
 	GetClientRect(myWnd, &rect1);
 	myDC=GetDC(myWnd);
 	SetStretchBltMode(myDC, COLORONCOLOR);
@@ -1770,7 +1775,7 @@ void doBlit()
 	// in full screen mode, GetClientRect lies about the screen size, which makes the DX blit fail
 	// So, just force our assumptions. (I think it includes the menu height...)
 	// TODO: I hate these numbers... fix that
-	if (StretchMode == 3) {
+	if (StretchMode == STRETCH_FULL) {
 		// full screen is the desktop size
 		rect1.top=0;
 		rect1.left=0;
@@ -1781,7 +1786,7 @@ void doBlit()
 	// even though aspect ratio is forced by the window resize for everything but full screen,
 	// people still complain. They maximize or full screen on their 16:9 monitor and then complain
 	// that the image isn't 4:3. In short, bah humbug!
-	if ((MaintainAspect) && (StretchMode != 0)) {
+	if ((MaintainAspect) && (StretchMode != STRETCH_NONE)) {
 		// make sure it fits the window and is 4:3 (1.33333)
 		// Since our borders are not 100%, 1.30 is a better match
 		const double DesiredRatio = 1.30;
@@ -1870,7 +1875,7 @@ void doBlit()
 	}
 
 	switch (StretchMode) {
-	case 1:	// DIB
+	case STRETCH_DIB:	// DIB
 		switch (FilterMode) {
 		case 0:		// none
 			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 256+16, 192+16, framedata, &myInfo, 0, SRCCOPY);
@@ -1893,7 +1898,7 @@ void doBlit()
 		if (NULL == lpdd) {
 			SetupDirectDraw(false);
 			if (NULL == lpdd) {
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				break;
 			}
 		}
@@ -1903,7 +1908,7 @@ void doBlit()
 		}
 
 		if (NULL == ddsBack) {
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			break;
 		}
 
@@ -1955,7 +1960,7 @@ void doBlit()
 		if (NULL == lpdd) {
 			SetupDirectDraw(true);
 			if (NULL == lpdd) {
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				break;
 			}
 		}
@@ -1965,7 +1970,7 @@ void doBlit()
 		}
 		
 		if (NULL == ddsBack) {
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			break;
 		}
 		if (DD_OK == ddsBack->GetDC(&tmpDC)) {	// color depth translation
@@ -2504,7 +2509,7 @@ void SetupDirectDraw(bool fullscreen) {
     if( hInstDDraw == NULL ) {
 		MessageBox(myWnd, "Can't load DLL for DirectDraw 7\nClassic99 Requires DirectX 7 for DX and Full screen modes", "Classic99 Error", MB_OK);
 		lpdd=NULL;
-		StretchMode=0;
+		StretchMode=STRETCH_NONE;
 		goto optout;
 	}
 
@@ -2513,7 +2518,7 @@ void SetupDirectDraw(bool fullscreen) {
 	if (pDDCreate(NULL, (void**)&lpdd, IID_IDirectDraw7, NULL)!=DD_OK) {
 		MessageBox(myWnd, "Unable to initialize DirectDraw 7\nClassic99 Requires DirectX 7 for DX and Full screen modes", "Classic99 Error", MB_OK);
 		lpdd=NULL;
-		StretchMode=0;
+		StretchMode=STRETCH_NONE;
 	} else {
 		if (fullscreen) {
 			DDSURFACEDESC2 myDesc;
@@ -2542,7 +2547,7 @@ void SetupDirectDraw(bool fullscreen) {
 				MessageBox(myWnd, "Requested graphics mode is not supported on the primary display.", "Classic99 Error", MB_OK);
 				if (lpdd) lpdd->Release();
 				lpdd=NULL;
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				MoveWindow(myWnd, myRect.left, myRect.top, myRect.right-myRect.left, myRect.bottom-myRect.top, true);
 				goto optout;
 			}
@@ -2553,7 +2558,7 @@ void SetupDirectDraw(bool fullscreen) {
 				MessageBox(myWnd, "Unable to set cooperative level\nFullscreen DX is not available", "Classic99 Error", MB_OK);
 				if (lpdd) lpdd->Release();
 				lpdd=NULL;
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				MoveWindow(myWnd, myRect.left, myRect.top, myRect.right-myRect.left, myRect.bottom-myRect.top, true);
 				goto optout;
 			}
@@ -2561,7 +2566,7 @@ void SetupDirectDraw(bool fullscreen) {
 			if (lpdd->SetDisplayMode(x,y,c,0,0) != DD_OK) {
 				MessageBox(myWnd, "Unable to set display mode.\nRequested DX mode is not available", "Classic99 Error", MB_OK);
 				MoveWindow(myWnd, myRect.left, myRect.top, myRect.right-myRect.left, myRect.bottom-myRect.top, true);
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				goto optout;
 			}
 
@@ -2572,7 +2577,7 @@ void SetupDirectDraw(bool fullscreen) {
 				MessageBox(myWnd, "Unable to set cooperative level\nDX mode is not available", "Classic99 Error", MB_OK);
 				if (lpdd) lpdd->Release();
 				lpdd=NULL;
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				goto optout;
 			}
 
@@ -2589,7 +2594,7 @@ void SetupDirectDraw(bool fullscreen) {
 			MessageBox(myWnd, "Unable to create primary surface\nDX mode is not available", "Classic99 Error", MB_OK);
 			if (lpdd) lpdd->Release();
 			lpdd=NULL;
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			goto optout;
 		}
 
@@ -2625,7 +2630,7 @@ void SetupDirectDraw(bool fullscreen) {
 			lpdds=NULL;
 			lpdd->Release();
 			lpdd=NULL;
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			goto optout;
 		}
 
@@ -2687,7 +2692,7 @@ int ResizeBackBuffer(int w, int h) {
 		if (NULL == lpdd) {
 			MessageBox(myWnd, "Unable to create back buffer surface\nDX mode is not available", "Classic99 Error", MB_OK);
 			ddsBack=NULL;
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			LeaveCriticalSection(&VideoCS);
 			return 1;
 		}
@@ -2702,7 +2707,7 @@ int ResizeBackBuffer(int w, int h) {
 	if (lpdd->CreateSurface(&CurrentDDSD, &ddsBack, NULL) != DD_OK) {
 		MessageBox(myWnd, "Unable to create back buffer surface\nDX mode is not available", "Classic99 Error", MB_OK);
 		ddsBack=NULL;
-		StretchMode=0;
+		StretchMode=STRETCH_NONE;
 		LeaveCriticalSection(&VideoCS);
 		return 1;
 	}

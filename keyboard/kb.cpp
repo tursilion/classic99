@@ -70,6 +70,7 @@ extern int fJoystickActiveOnKeys;
 extern int CtrlAltReset;
 extern int gDontInvertCapsLock;
 extern int enableSpeedKeys;
+extern int enableAltF4;
 extern volatile HWND dbgWnd;
 
 enum LASTMETA {
@@ -265,6 +266,7 @@ void decode(unsigned char sc)
 			case VK_F11:
 			case VK_F12:
 				// ignore the rest
+				is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
 				return;
 		}
 	}
@@ -275,6 +277,7 @@ void decode(unsigned char sc)
         case VK_F1:		// ctrl+F1 - edit->paste
         case VK_F2:		// ctrl+F2 - edit->copy screen
         case VK_HOME:	// ctrl+HOME - edit->debugger
+			is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
             return;
         }
     }
@@ -285,17 +288,16 @@ void decode(unsigned char sc)
 			case VK_F7:		// CPU Overdrive
 			case VK_F8:		// System Maximum
 			case VK_F11:	// Turbo toggle (normal/maximum)
+				is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
 				return;
 		}
 	}
-
-	// TODO: would be fun to have a debug vis of the Classic99 keyboard state
-	// This would help track down a bug -- when using ESDX and Q to fire in Parsec,
-	// the ship stops moving while Q is held, but resumes on release. Using
-	// period to fire, this doesn't happen, and it's reported tha this does not
-	// happen on a real TI. It happens whether the PS/2 keyboard emulation is enabled
-	// or not, and yet Windows appears to be getting the correct keypresses.
-	// What's going on here?
+	if (enableAltF4) {
+		if ((GetAsyncKeyState(VK_MENU) & 0x8000) && (sc == VK_F4)) {
+			is_up = 0;	// ignore it
+			return;
+		}
+	}
 
 	// Handle translation to US PS/2 keyboard raw scancodes
 	if ((sc != 0xe0) && (sc != 0xf0) && (NULL == pCheat)) {
@@ -328,6 +330,7 @@ void decode(unsigned char sc)
 	if (CtrlAltReset) {
 		if (sc == 0x55) {		// '='
 			if ((bLastFctn)&&(!bLastCtrl)) {
+				is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
 				return;
 			}
 		}
@@ -338,6 +341,7 @@ void decode(unsigned char sc)
 		if (sc != 0xf0) {
 			ignorecount--;
 		}
+		is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
 		return;
 	}
 
