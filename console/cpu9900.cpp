@@ -3395,6 +3395,11 @@ void CPU9900::opcode3(Word in)
 GPUF18A::GPUF18A() {
     // build default 9900
     buildcpu();
+    pType="F18A";
+}
+
+void GPUF18A::buildcpu() {
+    CPU9900::buildcpu();
 
     // override with F18A replacements
 
@@ -3458,8 +3463,6 @@ GPUF18A::GPUF18A() {
         if (opcode[idx] == &CPU9900::op_rset) opcode[idx]=&CPU9900::op_bad;
         if (opcode[idx] == &CPU9900::op_lrex) opcode[idx]=&CPU9900::op_bad;
     }
-
-    pType="F18A";
 }
 
 void GPUF18A::reset() {
