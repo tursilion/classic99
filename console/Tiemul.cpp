@@ -3599,7 +3599,7 @@ void do1()
 							if (PasteCount==0) {
 								if (((*PasteIndex>31)&&(*PasteIndex<127))||(*PasteIndex==13)) {
 									if (nSystem == 0) {
-										// TI-99/4A code is different - it expects to get the character
+										// TI-99/4 code is different - it expects to get the character
 										// from GROM, so we need to hack 8375 after it's written
 										Word WP = pCurrentCPU->GetWP();
 										wcpubyte(0x8375, toupper(*PasteIndex));
