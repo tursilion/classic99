@@ -136,6 +136,8 @@ extern bool bDisableColorLayer, bDisablePatternLayer;
 extern int bEnable80Columns, bEnable128k, bF18Enabled, bInterleaveGPU;
 extern int bShowFPS;
 extern int bShowKeyboard;
+extern int statusReadLine;
+extern int statusReadCount;
 // sams config
 extern int sams_enabled, sams_size;
 extern Byte staticCPU[0x10000];					// main memory for debugger
@@ -4423,7 +4425,7 @@ void DebugUpdateThread(void*) {
 				sprintf(buf1, "  ST : %s %s %s %s %s %s %s\r\n", (val&BIT_LGT)?"LGT":"   ", (val&BIT_AGT)?"AGT":"   ", (val&BIT_EQ)?"EQ":"  ",
 					(val&BIT_C)?"C":" ", (val&BIT_OV)?"OV":"  ", (val&BIT_OP)?"OP":"  ", (val&BIT_XOP)?"XOP":" ");
 				csOut+=buf1;
-				sprintf(buf1, " MASK: %X\r\n", val&INTMASK);
+				sprintf(buf1, " MASK: %X  STRead: %d (%d%%)  \r\n", val&INTMASK, statusReadLine, statusReadCount*100/262);
 				csOut+=buf1;
 
 				csOut+="\r\n";

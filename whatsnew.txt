@@ -2100,7 +2100,9 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 28 Jun 2021
 - fix GPU initialization, was broken back in 044
 
-
+-----------------------------------------------
+21 Jul 2021
+- add "enableEscape" to INI file, so the escape key can be disabled (github only release)
 
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)

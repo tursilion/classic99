@@ -321,6 +321,11 @@ extern int bEnable80Columns;						// 80 column hack
 extern int bEnable128k;								// 128k hack
 extern int bF18Enabled;								// F18A support
 extern int bInterleaveGPU;							// simultaneous GPU (not really)
+extern int vdpscanline;								// used for load stats
+int statusReadLine=0;								// the line we last read status at
+int statusReadCount=0;								// how many lines since we last read status
+int statusFrameCount=0;								// entire frames missed since update
+bool statusUpdateRead = false;						// frame has finished, watch for status test again
 
 // Assorted
 char qw[80];										// temp string
@@ -362,6 +367,7 @@ int SpeechEnabled;									// whether speech is enabled
 volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
 int enableSpeedKeys = 0;							// allow the INI to make F6,F7,F8,F11 available all the time
 int enableAltF4 = 0;								// allow alt+F4 to close the emulator
+int enableEscape = 1;								// allow Escape to act as Fctn-9 (back)
 
 time_t STARTTIME, ENDTIME;
 volatile long ticks;
@@ -636,6 +642,8 @@ void ReadConfig() {
 	cfg_cpf = max_cpf;
 	// map through certain function keys as emulator speed control
 	enableSpeedKeys = GetPrivateProfileInt("emulation", "enableSpeedKeys",		enableSpeedKeys, INIFILE);
+	// map through certain function keys as emulator speed control
+	enableEscape = GetPrivateProfileInt("emulation",    "enableEscape",		    enableEscape, INIFILE);
 	// Pause emulator when window inactive: 0-no, 1-yes
 	PauseInactive=	GetPrivateProfileInt("emulation",	"pauseinactive",		PauseInactive,	INIFILE);
 	// Disable speech if desired
@@ -970,6 +978,7 @@ void SaveConfig() {
 		WritePrivateProfileInt(	"emulation",	"maxcpf",				max_cpf,					INIFILE);
 	}
 	WritePrivateProfileInt(		"emulation",	"enableSpeedKeys",		enableSpeedKeys,			INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableEscape",			enableEscape,	  		    INIFILE);
 	WritePrivateProfileInt(		"emulation",	"pauseinactive",		PauseInactive,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"ctrlaltreset",			CtrlAltReset,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"invertcaps",			!gDontInvertCapsLock,		INIFILE);
@@ -4641,9 +4650,28 @@ Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 		VDPS&=0x1f;			// top flags are cleared on read (tested on hardware)
 		vdpaccess=0;		// reset byte flag
 
+		// track polling for interrupt
+		if (statusUpdateRead) {
+			// new frame, first access since frame was reset by reading the status register, so remember when it was
+			statusUpdateRead = false;
+			statusReadLine = vdpscanline;
+			// calculate scanlines since interrupt pulse
+			if (vdpscanline > 192+27) {
+				statusReadCount = 262*statusFrameCount + (vdpscanline-192-27);
+			} else {
+				statusReadCount = 262*statusFrameCount + (vdpscanline+(262-(192+27)));
+			}
+		}
+		if (z & VDPS_INT) {
+			// we cleared an interrupt, so go ahead and allow it again
+			statusUpdateRead = true;
+			statusFrameCount = 0;
+		} 
+
 		// TODO: hack to make Miner2049 work. If we are reading the status register mid-frame,
 		// and neither 5S or F are set, return a random sprite index as if we were counting up.
 		// Remove this when the proper scanline VDP is in. (Miner2049 cares about bit 0x02)
+		// (This is still not valid to remove because sprites are still not processed in real time)
 		if ((z&(VDPS_5SPR|VDPS_INT)) == 0) {
 			// This search code borrowed from the sprite draw code
 			int highest=31;
@@ -6122,7 +6150,7 @@ int rcru(Word ad)
 
 	if ((CRU[0]==1)&&(ad<16)&&(ad>0)) {				// read elapsed time from timer
 		if (ad == 15) {
-            // this reflects the state of the interrupt request PIN, so 
+			// this reflects the state of the interrupt request PIN, so 
             // it's a little more complex than just one interrupt. Technically, it's
             // ALL interrupts that run through the 9901, and is affected by the mask.
             // For now, we just have the VDP, eventually we'll have others.
@@ -6174,6 +6202,19 @@ int rcru(Word ad)
 	// are we checking VDP interrupt?
     // it should reflect on bit 15 in clock mode, too, IF !INT2 is enabled in the mask (done above)
 	if (ad == 0x02) {		// that's the only int we have
+		// TODO: should I put this on clock mode bit 15? Who would do that?
+		if (statusUpdateRead) {
+			// new frame, first access since frame was reset by reading the status register, so remember when it was
+			statusUpdateRead = false;
+			statusReadLine = vdpscanline;
+			// calculate scanlines since interrupt pulse
+			if (vdpscanline > 192+27) {
+				statusReadCount = 262*statusFrameCount + (vdpscanline-192-27);
+			} else {
+				statusReadCount = 262*statusFrameCount + (vdpscanline+(262-(192+27)));
+			}
+		}
+			
 		if (VDPINT) {
 			return 0;		
 		} else {

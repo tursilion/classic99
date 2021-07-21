@@ -305,7 +305,11 @@ int F18APalette[64];
 Word VDPADD;								// VDP Address counter
 int vdpaccess;								// VDP address write flipflop (low/high)
 int vdpwroteaddress;						// VDP (instruction) countdown after writing an address (weak test)
-int vdpscanline;							// current line being processed, 0-262 (TODO: 0 is top border, not top blanking)
+int vdpscanline;							// current line being processed, 0-262
+											// I think it's more or less right:
+											// 0-26 = top blanking
+											// 27-219 = 192 lines of display
+											// 220-261 = bottom blanking + vblank
 Byte vdpprefetch,vdpprefetchuninited;		// VDP Prefetch
 unsigned long hVideoThread;					// thread handle
 int hzRate;									// flag for 50 or 60hz
@@ -323,7 +327,7 @@ extern int drawspeed;						// frameskip... sorta. Not sure this is still valuabl
 extern int nVideoLeft, nVideoTop;
 extern int max_cpf;							// current CPU performance
 extern CPU9900 *pGPU;
-
+extern int statusFrameCount;
 
 
 //////////////////////////////////////////////////////////
@@ -875,6 +879,7 @@ void updateVDP(int cycleCount)
 			// set the vertical interrupt
 			VDPS|=VDPS_INT;
 			end_of_frame = 1;
+			statusFrameCount++;
 		} else if (vdpscanline > 261) {
 			vdpscanline = 0;
 			SetEvent(BlitEvent);

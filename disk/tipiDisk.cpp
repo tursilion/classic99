@@ -1616,7 +1616,7 @@ bool netvarError(char *err) {
 }
 
 SOCKET connectTCP(const char *hostname, const char *port) {
-	debug_write("Accessing %s:%s", hostname, port);
+	debug_write("Accessing '%s:%s'", hostname, port);
 	// TODO: I think port is mandatory?
 	if (('\0' == hostname[0]) || ('\0' == port[0])) {
 		debug_write("Bad syntax on TCP open, failing");
@@ -1785,6 +1785,10 @@ R/RS: Read (read simple just omits the header bytes for BASIC)
 	- returns the result
 	
 Returns empty string for anything else.
+
+While not explicitly documented, it appears that strings have leading and trailing whitespace stripped.
+I don't know what counts as whitespace in this case, so I'm just going to strip anything under exclamation point.
+I'm going to strip both reads and writes so we are okay with old variables, if any.
 */
 // Based generously on TipiVariable.pu by ElectricLab, because it's late and I'm sleepy ;)
 
