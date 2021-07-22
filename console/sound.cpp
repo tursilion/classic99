@@ -156,6 +156,11 @@ int dac_pos = 0;
 double dacupdatedistance = 0.0;
 double dacramp = 0.0;       // a little slider to ramp in the DAC volume so it doesn't click so loudly at reset
 
+// more hack for speech to use the sound jitter buffer
+extern INT16 SpeechTmp[SPEECHRATE*2];				// two seconds worth of buffer
+extern int nSpeechTmpPos;
+extern CRITICAL_SECTION csSpeechBuf;
+
 // external debug helper
 void debug_write(char *s, ...);
 
@@ -305,6 +310,8 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	int nClocksPerSample = (int)(nTimePerSample / nTimePerClock + 0.5);		// +0.5 to round up if needed
 	int newdacpos = 0;
 	int inSamples = nSamples;
+	double nSpeechOut = 0;
+	double nSpeechCnt = (double)SPEECHRATE / (double)AudioSampleRate;		// ratio of speech samples to output samples
 
 	while (nSamples) {
 		// emulate drift to zero
@@ -429,13 +436,18 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		output = nOutput[0]*nVolumeTable[nVolume[0]]*nFade[0] +
 				nOutput[1]*nVolumeTable[nVolume[1]]*nFade[1] +
 				nOutput[2]*nVolumeTable[nVolume[2]]*nFade[2] +
-				nOutput[3]*nVolumeTable[nVolume[3]]*nFade[3]
-				+ ((dac_buffer[newdacpos++] / 255.0)*dacramp);
-		// output is now between 0.0 and 5.0, may be positive or negative
-		output/=5.0;	// you aren't supposed to do this when mixing. Sorry. :)
+				nOutput[3]*nVolumeTable[nVolume[3]]*nFade[3] +
+				((dac_buffer[newdacpos++] / 255.0)*dacramp) +
+				(SpeechTmp[(int)nSpeechOut] / 32767.0);
+		// output is now between 0.0 and 6.0, may be positive or negative
+		output/=6.0;	// you aren't supposed to do this when mixing. Sorry. :)
 		if (newdacpos >= dac_pos) {
 			// not enough DAC samples!
 			newdacpos--;
+		}
+		nSpeechOut += nSpeechCnt;
+		if ((int)nSpeechOut >= nSpeechTmpPos) {
+			nSpeechOut--;
 		}
 
 		short nSample=(short)((double)0x7fff*output); 
@@ -451,6 +463,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 
 	}
 	// roll the dac output buffer
+	EnterCriticalSection(&csAudioBuf);
 	if (inSamples < dac_pos) {
 		memmove(dac_buffer, &dac_buffer[newdacpos], dac_pos-newdacpos);
 		dac_pos-=newdacpos;
@@ -461,6 +474,16 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	} else {
 		dac_pos = 0;
 	}
+	LeaveCriticalSection(&csAudioBuf);
+	// same with speech
+	EnterCriticalSection(&csSpeechBuf);
+	if ((int)nSpeechOut < nSpeechTmpPos) {
+		memmove(SpeechTmp, &SpeechTmp[(int)nSpeechOut], (nSpeechTmpPos-(int)nSpeechOut)*2);
+		nSpeechTmpPos -= (int)nSpeechOut;
+	} else {
+		nSpeechTmpPos = 0;
+	}
+	LeaveCriticalSection(&csSpeechBuf);
 }
 
 #else

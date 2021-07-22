@@ -470,7 +470,11 @@ void CPU9900::SetX(Word x) {
 
 Word CPU9900::ExecuteOpcode(bool nopFrame) {
     if (nopFrame) {
-        in = 0x10FF;                // JMP $ - NOP, but because we don't ADDPC below it doesn't move ;)
+        in = 0x1000;                // JMP $ - NOP, but because we don't ADDPC below it doesn't move ;)
+        // note, I was confused that a nop should step back, but 0x10FF is a jump to itself forever
+        // this was breaking the HALT code because we didn't step back to ourselves. Because we
+        // didn't do the ADDPC, we were actually moving backwards in memory for the duration of the
+        // halt...
     } else {
         in=ROMWORD(PC);
         ADDPC(2);

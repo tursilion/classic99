@@ -2104,6 +2104,14 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 21 Jul 2021
 - add "enableEscape" to INI file, so the escape key can be disabled (github only release)
 
+-----------------------------------------------
+22 Jul 2021
+- rewrote SpeechDLL using the latest code from MAME - now emulates the correct speech chip
+- fixed bug with speech cpu halt that was causing crashes - broken in 399.037
+- reworked the audio buffering as well for speech, now uses the audio jitter buffer. This may add some latency but fixes the froggy sound
+- updated cartpack.dll just to remove the TE2 speech warning
+
+
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)

@@ -2,18 +2,19 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
-      <UniqueIdentifier>{344f53de-3f1a-4e94-9a52-600d7f7073ff}</UniqueIdentifier>
+      <UniqueIdentifier>{aa98c750-0e13-4c92-b7a9-86416c7680c3}</UniqueIdentifier>
       <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
     </Filter>
     <Filter Include="Header Files">
-      <UniqueIdentifier>{46e5f3b0-8be0-44be-8a34-15a47d7addef}</UniqueIdentifier>
+      <UniqueIdentifier>{e9311e9b-e06c-4f15-9daa-f80522434d53}</UniqueIdentifier>
       <Extensions>h;hpp;hxx;hm;inl</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{4cf4cc48-815e-46dd-ae85-89ab6c2e5e03}</UniqueIdentifier>
+      <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe</Extensions>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="spchroms.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="SpeechDll.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -23,30 +24,24 @@
     <ClCompile Include="tms5220.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tms5220r.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="tms5110.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="tms5110r.c">
+    <ClCompile Include="spchrom.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="spchroms.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="StdAfx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="tms5220.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="mame_interface.h">
+    <ClInclude Include="tms5110r.hxx">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="tms5110.h">
+    <ClInclude Include="spchrom.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mame_wannabe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

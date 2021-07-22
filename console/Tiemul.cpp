@@ -94,7 +94,6 @@
 #include "..\resource.h"
 #include "tiemul.h"
 #include "cpu9900.h"
-#include "..\SpeechDll\5220intf.h"
 #include "..\addons\rs232_pio.h"
 #include "..\keyboard\kb.h"
 #include "..\keyboard\ti.h"
@@ -147,10 +146,11 @@ extern int AudioSampleRate;				// in hz
 extern unsigned int CalculatedAudioBufferSize;		// round audiosample rate up to a multiple of frame rate
 extern CRITICAL_SECTION csAudioBuf;
 
-// speech 
-#define SPEECHUPDATECOUNT (max_cpf/5)
+// speech
+#define SPEECHUPDATETIMESPERFRAME 5
 INT16 SpeechTmp[SPEECHRATE*2];				// two seconds worth of buffer
 int nSpeechTmpPos=0;
+CRITICAL_SECTION csSpeechBuf;
 double nDACLevel=0.0;						// DAC level percentage (from cassette port) - added into the audio buffer on update
 HANDLE hSpeechBufferClearEvent=INVALID_HANDLE_VALUE;		// notification of speech buffer looping
 
@@ -1195,6 +1195,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	InitializeCriticalSection(&DebugCS);
 	InitializeCriticalSection(&csDriveType);
 	InitializeCriticalSection(&csAudioBuf);
+	InitializeCriticalSection(&csSpeechBuf);
     InitializeCriticalSection(&TapeCS);
     InitializeCriticalSection(&csDisasm);
 
@@ -3826,23 +3827,21 @@ void do1()
 				total_cycles_looped=true;
 				speech_cycles=total_cycles;
 			} else {
-				// check speech
-				if ((max_cpf > 0) && (SPEECHUPDATECOUNT > 0)) {
-					if (total_cycles - speech_cycles >= (unsigned)SPEECHUPDATECOUNT) {
-						while (total_cycles - speech_cycles >= (unsigned)SPEECHUPDATECOUNT) {
+				// at 5 times per frame that's 300 updates per second, which at 8khz is 26.6 samples
+				if ((max_cpf > 0) && (SPEECHUPDATETIMESPERFRAME > 0)) {
+					if (total_cycles - speech_cycles >= (unsigned)(max_cpf/SPEECHUPDATETIMESPERFRAME)) {
+						while (total_cycles - speech_cycles >= (unsigned)(max_cpf/SPEECHUPDATETIMESPERFRAME)) {
 							static int nCnt=0;
 							int nSamples=26;
 							// should only be once
-							// now we're expecting 1/300th of a second, which at 8khz
-							// is 26.6 samples
-							nCnt++;
+							++nCnt;
 							if (nCnt > 2) {	// handle 2/3
 								nCnt=0;
 							} else {
 								nSamples++;
 							} 
 							SpeechUpdate(nSamples);
-							speech_cycles+=SPEECHUPDATECOUNT;
+							speech_cycles+=(max_cpf/SPEECHUPDATETIMESPERFRAME);
 						}
 					}
 				}
@@ -4460,7 +4459,7 @@ void wspeechbyte(Word x, Byte c)
 	if ((SpeechWrite)&&(SpeechEnabled)) {
 		if (!SpeechWrite(c, CPUSpeechHalt)) {
 			if (!CPUSpeechHalt) {
-				debug_write("Speech halt triggered.");
+//				debug_write("Speech halt triggered.");
 				CPUSpeechHalt=true;
 				CPUSpeechHaltByte=c;
 				pCPU->StartHalt(HALT_SPEECH);
@@ -4471,23 +4470,24 @@ void wspeechbyte(Word x, Byte c)
 		} else {
 			// must be unblocked!
 			if (CPUSpeechHalt) {
-				debug_write("Speech halt cleared at %d cycles.", cnt*10);
+//				debug_write("Speech halt cleared at %d cycles.", cnt*10);
 			}
 			// always clear it, just to be safe
 			pCPU->StopHalt(HALT_SPEECH);
 			CPUSpeechHalt = false;
 			cnt = 0;
+			// speech chip, if attached, writes eat 64 additional cycles (verified hardware)
+			// but we don't eat those cycles if we are halted, to allow finer grain resolution
+			// of the halt...?
+			pCurrentCPU->AddCycleCount(64);
 		}
-        // speech chip, if attached, writes eat 64 additional cycles (verified hardware)
-        // TODO: not verified if this is still true after a halt occurs, but since a halt
-        // is variable length, maybe it doesn't matter...
-		pCurrentCPU->AddCycleCount(64);
 	}
 }
 
 //////////////////////////////////////////////////////
 // Speech Update function - runs every x instructions
 // Pass in number of samples to process.
+// This is called 300 times per second
 //////////////////////////////////////////////////////
 void SpeechUpdate(int nSamples) {
 	if ((speechbuf==NULL) || (SpeechProcess == NULL)) {
@@ -4504,27 +4504,42 @@ void SpeechUpdate(int nSamples) {
 		return;
 	}
 
+	EnterCriticalSection(&csSpeechBuf);
 	SpeechProcess((unsigned char*)&SpeechTmp[nSpeechTmpPos], nSamples);
 	nSpeechTmpPos+=nSamples;
+	LeaveCriticalSection(&csSpeechBuf);
 }
 
+// this is called 60 times per second
 void SpeechBufferCopy() {
 	DWORD iRead, iWrite;
 	Byte *ptr1, *ptr2;
 	DWORD len1, len2;
-	static DWORD lastRead=0;
+	static DWORD lastWrite=0;
+
+	// mixing with the main audio buffer
+	return;
 
 	if (nSpeechTmpPos == 0) {
 		// no data to write
 		return;
 	}
 
+	EnterCriticalSection(&csSpeechBuf);
+
 	// just for statistics
 	speechbuf->GetCurrentPosition(&iRead, &iWrite);
-//	debug_write("Read/Write bytes: %5d/%5d", iRead-lastRead, nSpeechTmpPos*2);
-	lastRead=iRead;
+	if (iWrite > lastWrite) {
+		debug_write("Speech write gap of %d (read=%d, write=%d, expected %d)", iWrite-lastWrite, iRead, iWrite, lastWrite);
+	} else if (iWrite < lastWrite) {
+		debug_write("Speech write over of %d (read=%d, write=%d, expected %d)", lastWrite-iWrite, iRead, iWrite, lastWrite);
+	} else {
+		debug_write("Speech write ok");
+	}
+	lastWrite=iWrite+nSpeechTmpPos*2;	// this is where we ENDED last write
 
-	if (SUCCEEDED(speechbuf->Lock(iWrite, nSpeechTmpPos*2, (void**)&ptr1, &len1, (void**)&ptr2, &len2, DSBLOCK_FROMWRITECURSOR))) 
+	// Note: flags make lock ignore the write cursor, but it should be about the same
+	if (SUCCEEDED(speechbuf->Lock(iWrite, nSpeechTmpPos*2, (void**)&ptr1, &len1, (void**)&ptr2, &len2, 0 /*DSBLOCK_FROMWRITECURSOR*/))) 
 	{
 		memcpy(ptr1, SpeechTmp, len1);
 		if (len2 > 0) {							// handle wraparound
@@ -4538,6 +4553,8 @@ void SpeechBufferCopy() {
 //		debug_write("Speech buffer lock failed");
 		// don't reset the buffer, we may get it next time
 	}
+
+	LeaveCriticalSection(&csSpeechBuf);
 }
 
 //////////////////////////////////////////////////////

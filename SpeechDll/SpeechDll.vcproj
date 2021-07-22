@@ -4,6 +4,10 @@
 	Version="8.00"
 	Name="SpeechDll"
 	ProjectGUID="{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}"
+	SccProjectName="SAK"
+	SccAuxPath="SAK"
+	SccLocalPath="SAK"
+	SccProvider="SAK"
 	>
 	<Platforms>
 		<Platform
