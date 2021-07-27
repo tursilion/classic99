@@ -492,10 +492,20 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 // complex music, but I don't know how much we can expect out of the 1-bit speaker.
 // It's good enough that I almost shipped a release of Classic99 with it turned on ;)
 unsigned char nOutputApp[4]={1,1,1,1};		// output scale
+
+#if 0
 unsigned char app_volume_table[16] = {
    31, 25, 20, 16, 13, 10,  8,  6,
    5,  4,  3,  3,  2,  2,  1,  0
 }; 
+#else
+// ignore volume - better this way
+// still not 100% sure the cutoff is in the right place, but seems okay
+unsigned char app_volume_table[16] = {
+   31, 31, 31, 31, 31, 31, 31, 31,
+   31, 31, 31, 31, 31,  0,  0,  0
+}; 
+#endif
 void sound_update(short *buf, double nAudioIn, int nSamples) {
 	// nClock is the input clock frequency, which runs through a divide by 16 counter
 	// The frequency does not divide exactly by 16

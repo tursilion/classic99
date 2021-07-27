@@ -342,6 +342,7 @@ unsigned int index1;								// General counter variable
 int drawspeed=0;									// flag used in display updating
 int max_cpf=DEFAULT_60HZ_CPF;						// Maximum cycles per frame (default)
 int cfg_cpf=max_cpf;								// copy of same
+int cfg_overdrive = 50;								// how much faster CPU overdrive tries for
 int slowdown_keyboard = 1;							// slowdown keyboard autorepeat in the GROM code
 int cpucount, cpuframes;							// CPU counters for timing
 int timercount;										// Used to estimate runtime
@@ -640,6 +641,8 @@ void ReadConfig() {
 	// Proper CPU throttle (cycles per frame) - ipf is deprecated - this defines "normal" and probably should go away too
 	max_cpf=		GetPrivateProfileInt("emulation",	"maxcpf",				max_cpf,		INIFILE);
 	cfg_cpf = max_cpf;
+	// Overdrive CPU multiplier
+	cfg_overdrive=	GetPrivateProfileInt("emulation",	"overdrive",			cfg_overdrive,	INIFILE);
 	// map through certain function keys as emulator speed control
 	enableSpeedKeys = GetPrivateProfileInt("emulation", "enableSpeedKeys",		enableSpeedKeys, INIFILE);
 	// map through certain function keys as emulator speed control
@@ -977,6 +980,7 @@ void SaveConfig() {
 	if (0 != max_cpf) {
 		WritePrivateProfileInt(	"emulation",	"maxcpf",				max_cpf,					INIFILE);
 	}
+	WritePrivateProfileInt(		"emulation",	"overdrive",			cfg_overdrive,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableSpeedKeys",		enableSpeedKeys,			INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableEscape",			enableEscape,	  		    INIFILE);
 	WritePrivateProfileInt(		"emulation",	"pauseinactive",		PauseInactive,				INIFILE);
@@ -6498,7 +6502,7 @@ void __cdecl TimerThread(void *)
 
 						case THROTTLE_OVERDRIVE:
 						case THROTTLE_SYSTEMMAXIMUM:
-							InterlockedExchange((LONG*)&cycles_left, max_cpf * 50);
+							InterlockedExchange((LONG*)&cycles_left, max_cpf * cfg_overdrive);
 							break;
 						}
 
