@@ -116,6 +116,24 @@ enum {
     BREAK_ST
 };
 
+// reserved calibration data - you can hack the INI for better control
+// cause for now I'm not putting this into the options panel.
+class joyStruct {
+public:
+	joyStruct();
+	void reset();
+	void changeMode(int n);
+
+	unsigned int mode;		// joystick mode - 0=keyboard, 1-16 = PC joystick 1-16
+	unsigned int Xaxis;		// axis number for X (0=X, 1=Y, 2=Z, 3=R, 4=U, 5=V, 6=POV)
+	unsigned int Yaxis;		// same, but for Y
+	unsigned int btnMask;	// hex mask for buttons - 32-bit! Defaults to all.
+	unsigned int minXDead;	// minimum X value before -X is detected (default 0x4000)
+	unsigned int maxXDead;	// maximum X value before +X is detected (default 0xC000)
+	unsigned int minYDead;	// minimum Y value before -Y is detected (default 0x4000)
+	unsigned int maxYDead;	// maximum X value before +Y is detected (default 0xC000)
+};
+
 #define BlitEvent Video_hdl[0]
 
 #define TYPE_AUTO		'*'		// Magic! Actually, uses the autodetection - V9T9 filename based! Values can be zeroed.

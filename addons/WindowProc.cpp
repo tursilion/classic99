@@ -93,7 +93,8 @@ extern void GenerateSIDBuffer();
 extern int max_cpf, cfg_cpf;
 // needed for configuration
 extern char AVIFileName[256];
-extern int drawspeed, fJoy, joy1mode, joy2mode;
+extern int drawspeed, fJoy;
+extern joyStruct joyStick[2];
 extern int fJoystickActiveOnKeys;
 extern int slowdown_keyboard;
 extern HINSTANCE hInstance;						// global program instance
@@ -1246,8 +1247,8 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				    memset(CPUMemInited, 0, sizeof(CPUMemInited));	// no CPU mem written to yet
 				    memset(VDPMemInited, 0, sizeof(VDPMemInited));	// or VDP
 				    bWarmBoot = false;						// if it was a warm boot, it's done now
-				    // set both joysticks as active
-				    installedJoysticks = 0x03;
+				    // set all joysticks as available
+				    installedJoysticks = 0xffff;
 				    // but don't reset g_bCheckUninit
 				    DoPlay();
 				    // these must come AFTER DoPlay()
@@ -2350,12 +2351,8 @@ INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 					// joysticks
 					fJoy=IsDlgButtonChecked(hwnd, IDC_CHKJOYST)?1:0;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY1KEY))  joy1mode=0;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY1JOY1)) joy1mode=1;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY1JOY2)) joy1mode=2;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY2KEY))  joy2mode=0;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY2JOY1)) joy2mode=1;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY2JOY2)) joy2mode=2;
+					joyStick[0].changeMode(SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_GETCURSEL, 0, 0));
+					joyStick[1].changeMode(SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_GETCURSEL, 0, 0));
 					fJoystickActiveOnKeys=0;		// reset here too
 
 					// Special - tell the CPU Throttle menu item the new state
@@ -2413,9 +2410,28 @@ INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 				CheckRadioButton(hwnd, IDC_THROTTLECPU, IDC_UNTHROTTLEALL, IDC_UNTHROTTLEALL);
 			}
 
-			CheckRadioButton(hwnd, IDC_JOY1KEY, IDC_JOY1JOY2, IDC_JOY1KEY+joy1mode);
-			CheckRadioButton(hwnd, IDC_JOY2KEY, IDC_JOY2JOY2, IDC_JOY2KEY+joy2mode);
-			CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_1024K, sams_enabled?sams_size+IDC_AMS_128K:IDC_AMS_0K);
+			// TODO: AMS configuration doesn't work right now anyway
+//			CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_1024K, sams_enabled?sams_size+IDC_AMS_128K:IDC_AMS_0K);
+
+			SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_RESETCONTENT, 0, 0);
+			SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_RESETCONTENT, 0, 0);
+			SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_ADDSTRING, 0, (LPARAM)"0 - Keyboard");
+			SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_ADDSTRING, 0, (LPARAM)"0 - Keyboard");
+			for (int idx=JOYSTICKID1; idx<JOYSTICKID1+16; ++idx) {
+				JOYCAPS caps;
+				if (JOYERR_NOERROR == joyGetDevCaps(idx, &caps, sizeof(caps))) {
+					char buf[256];
+					_snprintf(buf, sizeof(buf), "%d - %s", idx-JOYSTICKID1+1, caps.szPname);
+					buf[sizeof(buf)-1]='\0';
+					SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_ADDSTRING, 0, (LPARAM)buf);
+					SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_ADDSTRING, 0, (LPARAM)buf);
+				}
+			}
+			if (joyStick[0].mode < 0) joyStick[0].mode = 0;	// -1 erases the list, so don't allow that
+			if (joyStick[1].mode < 0) joyStick[1].mode = 0;
+			SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_SETCURSEL, joyStick[0].mode, 0);
+			SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_SETCURSEL, joyStick[1].mode, 0);
+
 			return TRUE;
 
     } 

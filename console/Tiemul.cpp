@@ -172,7 +172,7 @@ int enableDebugOpcodes = 0;									// enable debug opcodes for CPU
 bool bScrambleMemory = false;								// whether to set RAM to random values on reset
 bool bWarmBoot = false;										// whether to leave memory alone on reset
 int HeatMapFadeSpeed = 25;									// how many pixels per access to fade - bigger = more CPU but faster fade
-int installedJoysticks = 3;									// bitmask - both joysticks are installed
+int installedJoysticks = 0xffff;							// bitmask - up to 16 possible joystick devices (TI only uses 2 though)
 
 // Cartridge Pack
 HMODULE hCartPackDll;										// Handle to speech DLL
@@ -297,8 +297,8 @@ char key[256];										// keyboard state buffer
 // Win32 Joysticks
 JOYINFOEX myJoy;
 int fJoy;
-int joy1mode, joy2mode;
 int fJoystickActiveOnKeys;
+joyStruct joyStick[2];
 
 // Audio
 int latch_byte;										// latched byte
@@ -410,6 +410,28 @@ extern CString TipiPSK;
 extern CString TipiName;
 
 #define INIFILE ".\\classic99.ini"
+
+///////////////////////////////////
+// JoyStruct
+///////////////////////////////////
+
+joyStruct::joyStruct() { reset(); }
+void joyStruct::reset() {
+	mode = 0;
+	Xaxis = 0;
+	Yaxis = 1;
+	btnMask = 0xffffffff;
+	minXDead = 0x4000;
+	maxXDead = 0xC000;
+	minYDead = 0x4000;
+	maxYDead = 0xC000;
+}
+void joyStruct::changeMode(int n) {
+	if (n != mode) {
+		reset();
+		mode = n;
+	}
+}
 
 ///////////////////////////////////
 // Built-in Cart library
@@ -677,9 +699,24 @@ void ReadConfig() {
 
 	// Joystick active: 0 - off, 1 on
 	fJoy=		GetPrivateProfileInt("joysticks", "active",		fJoy,		INIFILE);
-	// 0-keyboard, 1-PC joystick 1, 2-PC joystick 2
-	joy1mode=	GetPrivateProfileInt("joysticks", "joy1mode",	joy1mode,	INIFILE);
-	joy2mode=	GetPrivateProfileInt("joysticks", "joy2mode",	joy2mode,	INIFILE);
+	joyStick[0].mode=	 (unsigned)GetPrivateProfileInt("joysticks", "joy1mode",	joyStick[0].mode,	 INIFILE);
+	joyStick[0].Xaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy1xaxis",	joyStick[0].Xaxis,   INIFILE);
+	joyStick[0].Yaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy1yaxis",	joyStick[0].Yaxis,   INIFILE);
+	joyStick[0].btnMask= (unsigned)GetPrivateProfileInt("joysticks", "joy1btns",	joyStick[0].btnMask, INIFILE);
+	joyStick[0].minXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1minX",	joyStick[0].minXDead,INIFILE);
+	joyStick[0].minYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1minY",	joyStick[0].minYDead,INIFILE);
+	joyStick[0].maxXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1maxX",	joyStick[0].maxXDead,INIFILE);
+	joyStick[0].maxYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1maxY",	joyStick[0].maxYDead,INIFILE);
+
+	joyStick[1].mode=	 (unsigned)GetPrivateProfileInt("joysticks", "joy2mode",	joyStick[1].mode,	 INIFILE);
+	joyStick[1].Xaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy2xaxis",	joyStick[1].Xaxis,   INIFILE);
+	joyStick[1].Yaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy2yaxis",	joyStick[1].Yaxis,   INIFILE);
+	joyStick[1].btnMask= (unsigned)GetPrivateProfileInt("joysticks", "joy2btns",	joyStick[1].btnMask, INIFILE);
+	joyStick[1].minXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2minX",	joyStick[1].minXDead,INIFILE);
+	joyStick[1].minYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2minY",	joyStick[1].minYDead,INIFILE);
+	joyStick[1].maxXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2maxX",	joyStick[1].maxXDead,INIFILE);
+	joyStick[1].maxYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2maxY",	joyStick[1].maxYDead,INIFILE);
+
 	fJoystickActiveOnKeys = 0;		// just reset this
 
 	// Cartridge group loaded (0-apps, 1-games, 2-user)
@@ -996,8 +1033,24 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"emulation",	"enableINIWrite",		bEnableINIWrite,			INIFILE);
 
 	WritePrivateProfileInt(		"joysticks",	"active",				fJoy,						INIFILE);
-	WritePrivateProfileInt(		"joysticks",	"joy1mode",				joy1mode,					INIFILE);
-	WritePrivateProfileInt(		"joysticks",	"joy2mode",				joy2mode,					INIFILE);
+
+	WritePrivateProfileInt(		"joysticks",	"joy1mode",				joyStick[0].mode,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1xaxis",			joyStick[0].Xaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1yaxis",			joyStick[0].Yaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1btns",				joyStick[0].btnMask,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1minX",				joyStick[0].minXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1minY",				joyStick[0].minYDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1maxX",				joyStick[0].maxXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1maxY",				joyStick[0].maxYDead,		INIFILE);
+
+	WritePrivateProfileInt(		"joysticks",	"joy2mode",				joyStick[1].mode,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2xaxis",			joyStick[1].Xaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2yaxis",			joyStick[1].Yaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2btns",				joyStick[1].btnMask,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2minX",				joyStick[1].minXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2minY",				joyStick[1].minYDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2maxX",				joyStick[1].maxXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2maxY",				joyStick[1].maxYDead,		INIFILE);
 
 	WritePrivateProfileInt(		"roms",			"cartgroup",			nCartGroup,					INIFILE);
 	WritePrivateProfileInt(		"roms",			"cartidx",				nCart,						INIFILE);
@@ -1467,8 +1520,8 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	nXSize = 256+16;			// default size, but not used while screenscale is set
 	nYSize = 192+16;
 	fJoy=1;						// enable joysticks
-	joy1mode=0;					// keyboard
-	joy2mode=1;					// joystick 1
+	joyStick[0].mode=0;			// keyboard (constructor actually covers this, but will be explicit since we need to for joy2)
+	joyStick[1].mode=1;			// joystick 2
 	fJoystickActiveOnKeys=0;	// not reading joystick in the last 3 seconds or so (180 frames)
 	hzRate=HZ60;				// 60 hz
 	MaintainAspect=1;			// Keep aspect ratio
@@ -1528,8 +1581,8 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
     // set the title
     szDefaultWindowText = AppName;
 
-	// assume both joysticks are there
-	installedJoysticks = 3;
+	// assume whatever joysticks are there
+	installedJoysticks = 0xffff;
 
 	// Update user menu - this will be a function later
 	hMenu=GetMenu(myWnd);   // root menu
@@ -5988,60 +6041,107 @@ int CheckJoysticks(Word ad, int col) {
 	{	
 		// TODO: This still reads the joystick many times for a single scan, but it's better ;)
 		if (fJoy) {
-			int device;
+			int device = -1;
+			int index = 0;
 
-			device=-1;
-
+			// allow for joystick number 1-16
 			if (col==joy2col) {
-				switch (joy2mode) {
-					case 1: device=JOYSTICKID1; break;
-					case 2: device=JOYSTICKID2; break;
-				}
-			} else {
-				switch (joy1mode) {
-					case 1: device=JOYSTICKID1; break;
-					case 2: device=JOYSTICKID2; break;
-				}
+				index = 1;	// else it's joystick 1, so index 0
 			}
 
-			if ((device == JOYSTICKID1)&&((installedJoysticks & 0x01) == 0)) {
-				return 1;
-			} else if ((device == JOYSTICKID2)&&((installedJoysticks & 0x02) == 0)) {
-				return 1;
+			if ((joyStick[index].mode > 0)&&(joyStick[index].mode <= 16)) {
+				device = (joyStick[index].mode-1)+JOYSTICKID1;
 			}
 
 			if (device!=-1) {
+				// check if we previously disabled this stick
+				if ((installedJoysticks&(1<<(device-JOYSTICKID1))) == 0) {
+					return 1;
+				}
+
 				memset(&myJoy, 0, sizeof(myJoy));
 				myJoy.dwSize=sizeof(myJoy);
-				myJoy.dwFlags=JOY_RETURNBUTTONS | JOY_RETURNX | JOY_RETURNY | JOY_USEDEADZONE;
+				myJoy.dwFlags=JOY_RETURNALL | JOY_USEDEADZONE;
 				MMRESULT joyret = joyGetPosEx(device, &myJoy);
 				if (JOYERR_NOERROR == joyret) {
-					if (0!=myJoy.dwButtons) {
+					// TODO: we do all this work to calculate both axes plus the buttons, but we only
+					// actually want one direction OR the button, so we should make the joystick read smarter, cache
+					// myJoy for a frame or so and just pull out the part we actually need...
+
+					if (0!=(myJoy.dwButtons & joyStick[index].btnMask)) {
 						joyFire=1;
 					}
-					if (myJoy.dwXpos<0x4000) {
-						joyX=-4;
+
+					unsigned int half = (joyStick[index].maxXDead-joyStick[index].minXDead)/2;
+					unsigned int axis;
+					switch(joyStick[index].Xaxis) {
+						case 0: axis = myJoy.dwXpos; break;
+						case 1: axis = myJoy.dwYpos; break;
+						case 2: axis = myJoy.dwZpos; break;
+						case 3: axis = myJoy.dwRpos; break;
+						case 4: axis = myJoy.dwUpos; break;
+						case 5: axis = myJoy.dwVpos; break;
+						case 6: 
+							if (myJoy.dwPOV <= 35999) {
+								// use sin() (x component)			 degrees*100 to radians
+								axis = (unsigned int)(sin(myJoy.dwPOV * 0.000174533)*(half*2)+half+joyStick[index].minXDead);
+							} else {
+								axis = joyStick[index].minXDead+half;
+							}
+							break;
+						case 7: 
+							if (myJoy.dwPOV <= 35999) {
+								// use cos() (y component)			 degrees*100 to radians
+								axis = (unsigned int)(cos(myJoy.dwPOV * 0.000174533)*(half*2)+half+joyStick[index].minXDead);
+							} else {
+								axis = joyStick[index].minXDead+half;
+							}
+							break;
+
+						default: axis = joyStick[index].minXDead+half;
 					}
-					if (myJoy.dwXpos>0xC000) {
+					if (axis<joyStick[index].minXDead) {
+						joyX=-4;
+					} else if (axis>joyStick[index].maxXDead) {
 						joyX=4;
 					}
-					if (myJoy.dwYpos<0x4000) {
-						joyY=4;
+
+					half = (joyStick[index].maxYDead-joyStick[index].minYDead)/2;
+					switch(joyStick[index].Yaxis) {
+						case 0: axis = myJoy.dwXpos; break;
+						case 1: axis = myJoy.dwYpos; break;
+						case 2: axis = myJoy.dwZpos; break;
+						case 3: axis = myJoy.dwRpos; break;
+						case 4: axis = myJoy.dwUpos; break;
+						case 5: axis = myJoy.dwVpos; break;
+						case 6: 
+							if (myJoy.dwPOV <= 35999) {
+								// use sin() (x component)			 degrees*100 to radians, inverted for y
+								axis = (unsigned int)((-sin(myJoy.dwPOV * 0.000174533))*(half*2)+half+joyStick[index].minYDead);
+							} else {
+								axis = joyStick[index].minYDead+half;
+							}
+							break;
+						case 7:
+							if (myJoy.dwPOV <= 35999) {
+								// use cos() (y component)			 degrees*100 to radians, inverted for y
+								axis = (unsigned int)((-cos(myJoy.dwPOV * 0.000174533))*(half*2)+half+joyStick[index].minYDead);
+							} else {
+								axis = joyStick[index].minYDead+half;
+							}
+							break;
+						default: axis = joyStick[index].minYDead+half;
 					}
-					if (myJoy.dwYpos>0xC000) {
+					if (axis<joyStick[index].minYDead) {
+						joyY=4;
+					} else if (axis>joyStick[index].maxYDead) {
 						joyY=-4;
 					}
 				} else {
 					// disable this joystick so we don't slow to a crawl
 					// trying to access it. We'll check again on a reset
-					if (device == JOYSTICKID1) {
-						debug_write("Disabling joystick 1 - error %d reading it.", joyret);
-						installedJoysticks&=0xfe;
-					} else {
-						// JOYSTICKID2
-						debug_write("Disabling joystick 2 - error %d reading it.", joyret);
-						installedJoysticks&=0xfd;
-					}
+					debug_write("Disabling joystick %d - error %d reading it.", (device-JOYSTICKID1)+1, joyret);
+					installedJoysticks&=~(1<<(device-JOYSTICKID1));
 				}
 			} else {	// read the keyboard
 				// if just activating the joystick, so make sure there's no fctn-arrow keys active
@@ -6091,26 +6191,21 @@ int CheckJoysticks(Word ad, int col) {
 			}
 		}
 
+		// TODO: this is where we actually extract the data we actually care about...
 		if (ad == 3)
 		{	
-			if ((key[KEYS[joykey][col][0]])||(joyFire))	// button reads normally
+			if (joyFire)	// button reads normally
 			{
 				ret=0;
 			}
 		}
 		else
 		{
-			if (key[KEYS[joykey][col][ad-3]])		// stick return (*not* inverted. Duh)
-			{	
-				ret=0;
-			}
-			if (ret) {
-				switch (ad-3) {						// Check real joystick
+			switch (ad-3) {						// Check real joystick
 				case 1: if (joyX ==-4) ret=0; break;
 				case 2: if (joyX == 4) ret=0; break;
 				case 3: if (joyY ==-4) ret=0; break;
 				case 4: if (joyY == 4) ret=0; break;
-				}
 			}
 		}
 	}
