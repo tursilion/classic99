@@ -150,6 +150,8 @@ void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce up/down
 
 // hack for now - a little DAC buffer for cassette ticks and CPU modulation
 // fixed size for now
+extern bool enableBackgroundHum;
+extern double CRU_TOGGLES;
 extern double nDACLevel;
 unsigned char dac_buffer[1024*1024];
 int dac_pos = 0;
@@ -850,6 +852,13 @@ void updateDACBuffer(int nCPUCycles) {
 	}
 	int average = 1;
 	double value = nDACLevel;
+
+	// emulate noise
+	if (enableBackgroundHum) {
+		if (VDPS&VDPS_INT) value += 0.05;	// interrupt line (TODO: this is the internal bit, need to account for the mask)
+		value += CRU_TOGGLES;
+	}
+	CRU_TOGGLES = 0;
 
 	for (int idx=0; idx<3; idx++) {
 		// A little check for eliminate high frequency tones

@@ -152,6 +152,8 @@ INT16 SpeechTmp[SPEECHRATE*2];				// two seconds worth of buffer
 int nSpeechTmpPos=0;
 CRITICAL_SECTION csSpeechBuf;
 double nDACLevel=0.0;						// DAC level percentage (from cassette port) - added into the audio buffer on update
+double CRU_TOGGLES = 0.0;
+bool enableBackgroundHum = false;
 HANDLE hSpeechBufferClearEvent=INVALID_HANDLE_VALUE;		// notification of speech buffer looping
 
 HMODULE hSpeechDll;											// Handle to speech DLL
@@ -548,6 +550,9 @@ void ReadConfig() {
 
 	// audio rate
 	AudioSampleRate =		GetPrivateProfileInt("audio",	"samplerate",	AudioSampleRate,			INIFILE);
+
+	// backgroud hum
+	enableBackgroundHum = 	GetPrivateProfileInt("audio",	"backgroundNoise",	enableBackgroundHum?1:0,INIFILE) != 0;
 
 	// load the new style config
 	EnterCriticalSection(&csDriveType);
@@ -982,6 +987,7 @@ void SaveConfig() {
 	if (NULL != GetSidEnable) {
 		WritePrivateProfileInt(	"audio",		"sid_blaster",			GetSidEnable(),				INIFILE);
 	}
+	WritePrivateProfileInt(		"audio",		"backgroundNoise",		enableBackgroundHum,		INIFILE);
 
 	// write the new data
 	EnterCriticalSection(&csDriveType);
@@ -4761,7 +4767,8 @@ Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 				}
 			}
 			if (highest > 0) {
-				z=(z&0xe0)|(rand()%highest);
+				//z=(z&0xe0)|(rand()%highest);
+				z=(z&0xe0)|(highest);
 			}
 		}
 
@@ -5866,7 +5873,8 @@ void wcru(Word ad, int bt)
                         break;
 
                     case 18:
-                    case 19:
+						CRU_TOGGLES += 0.1;		// TODO: technically, it should be a change in the value of these three bits
+                    case 19:					// but this works well enough for now. This noise is picked up in the audio.
                     case 20:
                         // keyboard column select
 //                        debug_write("Keyboard column now: %d", (CRU[0x14]==0 ? 1 : 0) | (CRU[0x13]==0 ? 2 : 0) | (CRU[0x12]==0 ? 4 : 0));

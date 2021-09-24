@@ -40,6 +40,41 @@
 // M.Brent
 ///////////////////////////////////////////////////////
 
+
+#if 0
+F18A Reset from Matt:
+
+0 in all registers, except:
+
+VR1 = >40 (no blanking, the 4K/16K bit is ignored in the F18A)
+VR3 = >10 (color table at >0400)
+VR4 = >01 (pattern table at >0800)
+VR5 = >0A (sprite table at >0500)
+VR6 = >02 (sprite pattern table at >1000)
+VR7 = >1F (fg=black, bg=white)
+VR30 = sprite_max (set from external jumper setting)
+VR48 = 1 (increment set to 1)
+VR51 = 32 (stop sprite to max)
+VR54 = >40 (GPU PC MSB)
+VR55 = >00 (GPU PC LBS)
+VR58 = 6 (GROMCLK divider)
+
+The real 9918A will set all VRs to 0, which basically makes the screen black, blank, and off, 4K VRAM selected, and no interrupts. 
+
+Note that nothing restores the F18A palette registers to the power-on defaults, other than a power on.
+
+As for the GPU, the VR50 >80 reset will *not* stop the GPU, and if the GPU code is modifying VDP registers, then it can overwrite the reset values.  However, since the reset does clear VR50, the horizontal and vertical interrupt enable bits will be cleared, and thus the GPU will not be triggered on those events.
+
+The reset also changes VR54 and VR55, but they are *not* loaded to the GPU PC (program counter).  The only events that change the GPU PC are:
+
+* normal GPU instruction execution.
+* the external hardware reset.
+* writing to VR55 (GPU PC LSB).
+* writing >00 to VR56 (load GPU PC from VR54 and VR55, then idle).
+
+#endif
+
+
 #define WIN32_LEAN_AND_MEAN
 #define _WIN32_WINNT 0x0500
 

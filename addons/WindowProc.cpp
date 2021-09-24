@@ -149,6 +149,7 @@ void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte, bool force);
 // sound
 extern int nRegister[4];						// frequency registers
 extern int nVolume[4];							// volume attenuation
+extern bool enableBackgroundHum;
 // back buffer for sizing
 extern DDSURFACEDESC2 CurrentDDSD;
 // debugger
@@ -2234,6 +2235,8 @@ INT_PTR CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
                 case IDOK: 
 					max_volume=SendDlgItemMessage(hwnd, IDC_SLDVOL, TBM_GETPOS, 0, 0);
 					AudioSampleRate=nRate;
+					enableBackgroundHum = SendDlgItemMessage(hwnd, IDC_CHKNOISE, BM_GETCHECK, 0, 0)==BST_CHECKED;
+
 #if 0
 					if (NULL == SetSidEnable) {
 						if (nLocalSidEnable) {
@@ -2275,6 +2278,7 @@ INT_PTR CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 					SendDlgItemMessage(hwnd, IDC_22KHZ, BM_SETCHECK, BST_CHECKED, 0);
 					break;
 			}
+			SendDlgItemMessage(hwnd, IDC_CHKNOISE, BM_SETCHECK, enableBackgroundHum?BST_CHECKED:BST_UNCHECKED, 0);
 #if 0
 			if (NULL != GetSidEnable) {
 				nLocalSidEnable = GetSidEnable();
