@@ -371,6 +371,7 @@ volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
 int enableSpeedKeys = 0;							// allow the INI to make F6,F7,F8,F11 available all the time
 int enableAltF4 = 0;								// allow alt+F4 to close the emulator
 int enableEscape = 1;								// allow Escape to act as Fctn-9 (back)
+bool mouseCaptured = false;							// used for mouse support - just TIPI today
 
 time_t STARTTIME, ENDTIME;
 volatile long ticks;
@@ -6421,7 +6422,7 @@ int rcru(Word ad)
 	if ((ad>=11)&&(ad<=31)) {
 		// this is an I/O pin - return whatever was last written
 		ret = CRU[ad];
-        debug_write("Read CRU I/O 0x%04X (got %d)", ad, ret);
+        //debug_write("Read CRU I/O 0x%04X (got %d)", ad, ret);
     }
 
 	return(ret);
@@ -6702,7 +6703,7 @@ void Counting()
 // Debug step helpers
 void DoPause() {
 	if (0 != max_cpf) {
-		TriggerBreakPoint();
+		TriggerBreakPoint(true,false);
 	}
 }
 

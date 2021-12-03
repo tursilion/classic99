@@ -111,7 +111,7 @@ CString ImageDisk::BuildFilename(FileInfo *pFile) {
 
 // verify that a disk image is formatted in a way we can manage
 bool ImageDisk::VerifyFormat(FILE *fp, bool &bIsPC99, int &Gap1, int &PreIDGap, int &PreDatGap, int &SLength, int &SekTrack, int &TrkLen) {
-    char buf[256];
+     char buf[256];
 
     if (NULL == fp) {
         debug_write("File not open to be verified.");
@@ -246,6 +246,7 @@ bool ImageDisk::GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf) {
 		// Note: V9T9 reversed the order of side 2 of DSSD disks, so if the sector
 		// range is from 360-719, we have to reverse it to get the right offset
 		// (only if the option is set!) OR IS THIS A RUMOR?? I've never seen one!
+		// TODO: this option removed from dialog 10/21/2021, remove fully eventually
 		if ((bUseV9T9DSSD) && (nSector >= 360) && (nSector <= 719)) {
 			debug_write("Note: using swapped V9T9 order for sector %d", nSector);
 			nSector = (719-nSector) + 360;
@@ -339,6 +340,7 @@ bool ImageDisk::PutSectorToDisk(FILE *fp, int nSector, unsigned char *wrbuf) {
 		// Note: V9T9 reversed the order of side 2 of DSSD disks, so if the sector
 		// range is from 360-719, we have to reverse it to get the right offset
 		// (only if the option is set!) OR IS THIS A RUMOR?? I've never seen one!
+		// TODO: this option removed from dialog 10/21/2021, remove fully eventually
 		if ((bUseV9T9DSSD) && (nSector >= 360) && (nSector <= 719)) {
 			debug_write("WNote: using swapped V9T9 order for sector %d", nSector);
 			nSector = (719-nSector) + 360;

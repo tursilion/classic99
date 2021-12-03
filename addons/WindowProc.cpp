@@ -324,6 +324,11 @@ void OpenUserCart(OPENFILENAME &ofn) {
 		// since only V9T9 carts should be indexed that way. Another good reason for the RPK carts...
 		// Anyway, we'll make a semi-honest effort for them...case must match!
 		pPartIdx = strstr(ofn.lpstrFile, "(Part ");
+		if (pPartIdx == NULL) {
+			// And... of course, someone decided they didn't like "Part" and used "File" for a set,
+			// so again, %$%#@$ you very much. THE FILENAME IS THE METADATA, %$#%@#$@$#!
+			pPartIdx = strstr(ofn.lpstrFile, "(File ");
+		}
 
 		if (NULL != pPartIdx) {
 			pPartIdx+=6;
@@ -389,7 +394,7 @@ void OpenUserCart(OPENFILENAME &ofn) {
                     // name /bank switched/ carts. THANK YOU VERY $%#%#$%# MUCH. I only
                     // spent 15 years establishing the standard. Now I am spending hours
                     // on "why doesn't my ROM work?????" Because it %$#@%$#@ LIES TO THE EMULATOR.
-                    // %$@%$@# eat me.
+					// We should have used a header.
                     if ((Users[nUsr].Img[nCnt].nType == TYPE_ROM) && (Users[nUsr].Img[nCnt].nLength > 8192)) {
                         // at least we can assume it's non-inverted. Thank you for small favors.
                         debug_write("Cartridge image is improperly named - C.BIN images max 8k. Treating as type 8.");

@@ -563,8 +563,6 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,106,151,10
     CONTROL         "Write TIFILES headers",IDC_FIAD_WRITETIFILES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,41,88,10
     GROUPBOX        "Image Options",IDC_STATIC,7,136,302,36
-    CONTROL         "Use V9T9 Reverse DSSD Layout",IDC_IMAGE_USEV9T9DSSD,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,151,118,10
     CONTROL         "Dir: Enable Long Filenames",IDC_FIAD_ENABLELONGFILENAMES,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,119,101,10
     CONTROL         "Dir: Allow more than 127 files",IDC_FIAD_ALLOWMORE127FILES,

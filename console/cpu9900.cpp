@@ -1053,6 +1053,8 @@ void CPU9900::op_blwp()
 
     // Note that there is no "read source" (BLWP R0 /does/ branch with >8300, it doesn't fetch R0)
     // TODO: We need to time out this instruction and verify that analysis.
+    // TODO: Or verify again the 9900 Family Systems Design manual - it seems like fetch source DOES
+    // happen but is ignored. BL does this correctly already.
 
     Word x1;
     

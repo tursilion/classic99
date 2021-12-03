@@ -218,7 +218,7 @@ enum {
 	OPT_FIAD_ENABLELONGFILENAMES,
 	OPT_FIAD_ALLOWMORE127FILES,
 
-	OPT_IMAGE_USEV9T9DSSD,	// reverse sector order for side 2
+	OPT_IMAGE_USEV9T9DSSD,	// reverse sector order for side 2 -- deprecated
 
 	OPT_DISK_AUTOMAPDSK1,	// scan for DSK1 strings while loading, and patch them on the fly
 	OPT_DISK_WRITEPROTECT,	// disallow writes to the disk

@@ -296,7 +296,7 @@ void setvol(int chan, int vol) {
 	nVolume[chan]=vol&0xf;
 }
 
-// this #if is here for the Apple2 experiment...
+// this #if is here for the Apple2 experiment... use #if 1 for the TI code
 #if 1
 // fill the output audio buffer with signed 16-bit values
 // nAudioIn contains a fixed value to add to all samples (used to mix in the casette audio)

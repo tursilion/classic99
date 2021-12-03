@@ -107,7 +107,7 @@ public:
     bool ReadFileSectorsToAddress(FileInfo *pFile, unsigned char *pAdr);
 
 	// configuration data
-	bool bUseV9T9DSSD;			// use the reverse sector order for DSSD disks that V9T9 did
+	bool bUseV9T9DSSD;			// use the reverse sector order for DSSD disks that V9T9 did - deprecated
     bool detected;              // used to throttle the PC99 image detection debug a bit
 };
 

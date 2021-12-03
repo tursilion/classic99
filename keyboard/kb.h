@@ -42,7 +42,7 @@
 void decode(unsigned char sc);
 void init_kb(void);
 unsigned char remapnumlock(unsigned char in);
-unsigned char remapscrolllock(unsigned char in);
+//unsigned char remapscrolllock(unsigned char in);  // not used in Classic99
 void InjectCheatKey();
 
 // an Atmel thing

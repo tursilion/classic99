@@ -1283,6 +1283,7 @@ const unsigned char Make379Copy::cpyVDPRegs[] = {
 
 // The same as CopyCart, but this one stores its data in GROM. Straight up replacement
 // of my old MakeCart program, should support all listed options.
+// Now also lets you save cart space for Supercart/minimem programs
 class MakeGromCopy {
 public:
 	static const unsigned char hdr[54];
@@ -1370,6 +1371,7 @@ public:
 	void Go() {
 		// Options supported:
 		// StartHigh, EndHigh;
+		// StartMid, EndMid;
 		// StartLow, EndLow;
 		// StartVDP, EndVDP;
 		// Boot;
@@ -1450,6 +1452,9 @@ public:
 		}
 		if (opt.EndHigh != 0) {
 			CopyGromMemory(opt.StartHigh, opt.EndHigh, false);
+		}
+		if (opt.EndMid != 0) {
+			CopyGromMemory(opt.StartMid, opt.EndMid, false);
 		}
 		if (opt.EndLow != 0) {
 			CopyGromMemory(opt.StartLow, opt.EndLow, false);
@@ -2140,6 +2145,10 @@ INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							if ((opt.StartLow!=0)&&(x>=opt.StartLow)&&(x<=opt.EndLow)) {
 								opt.Boot = x;
 							}
+							if (x == 0x0070) {
+								// start in GPL, ie for TI BASIC
+								opt.Boot = x;
+							}
 							if (opt.Boot == 0) {
 								if ((0 == nOption) && (opt.EndVDP != 0)) {
 									// allow saving E/A format VDP memory without a program
@@ -2631,6 +2640,7 @@ INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						case 2:		// enable/disable for GROM
 							SetDefaultEnables(hwnd);
 
+                            EnableDlgItem(hwnd, IDC_CHKCARTMEM, TRUE);
                             EnableDlgItem(hwnd, IDC_VDPREGS, TRUE);
 							EnableDlgItem(hwnd, IDC_NAME, TRUE);
 							EnableDlgItem(hwnd, IDC_KEYBOARD, TRUE);
@@ -2695,7 +2705,6 @@ INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                             // disable autoboot by default
                             SendDlgItemMessage(hwnd, IDC_BOOT, WM_SETTEXT, 0, (LPARAM)"0");
 
-                            EnableDlgItem(hwnd, IDC_CHKCARTMEM, TRUE);
 	                        EnableDlgItem(hwnd, IDC_CHKEA, FALSE);
 	                        EnableDlgItem(hwnd, IDC_CHKCHARSET, FALSE);
 							EnableDlgItem(hwnd, IDC_CHKVDPRAM, FALSE);
@@ -2715,7 +2724,7 @@ INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 		case WM_INITDIALOG:
 			SetDefaultEnables(hwnd);
-			gDisableDebugKeys = true;		// don't allow global debug keys in emu (override scroll lock)
+			gDisableDebugKeys = true;		// don't allow global debug keys in emu
 
 			sprintf(buf, "%04X", pCurrentCPU->GetPC());
 			SendDlgItemMessage(hwnd, IDC_BOOT, WM_SETTEXT, 0, (LPARAM)buf);

@@ -72,6 +72,9 @@ extern int gDontInvertCapsLock;
 extern int enableSpeedKeys;
 extern int enableEscape;
 extern int enableAltF4;
+extern bool mouseCaptured;
+extern HWND myWnd;
+extern const char *szDefaultWindowText;
 extern volatile HWND dbgWnd;
 
 enum LASTMETA {
@@ -299,6 +302,16 @@ void decode(unsigned char sc)
 			return;
 		}
 	}
+
+	// check for escape disabling mouse capture before we check if escape is otherwise disabled
+	if (sc == VK_ESCAPE) {
+		if (mouseCaptured) {
+			ReleaseCapture();
+			mouseCaptured = false;
+		}
+		SetWindowText(myWnd, szDefaultWindowText);
+	} 
+
 	if (!enableEscape) {
 		// disable escape if told to
 		if (sc == VK_ESCAPE) {
@@ -402,7 +415,7 @@ void decode(unsigned char sc)
 
 		default:	// any other key
 dodefault:
-			// certain keys are remapped for numlock and scroll lock
+			// certain keys are remapped for numlock (but not scroll lock in Classic99)
 			if (!numlock) {
 				sc=remapnumlock(sc);
 			}
@@ -629,6 +642,8 @@ unsigned char remapnumlock(unsigned char in) {
 	return in;
 }
 
+#if 0
+// not used in Classic99
 // when scroll lock is on, we remap the arrow keys to ESDX
 unsigned char remapscrolllock(unsigned char in) {
 	if (isextended) {
@@ -649,6 +664,7 @@ unsigned char remapscrolllock(unsigned char in) {
 	}
 	return in;
 }
+#endif
 
 // Please do not remove
 void InjectCheatKey() {

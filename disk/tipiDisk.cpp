@@ -128,6 +128,7 @@ extern HWND myWnd;
 extern RECT gWindowRect;
 extern int WindowActive;
 extern int nCurrentDSR;
+extern bool mouseCaptured;
 
 CString TipiURI[3];
 CString TipiAuto;
@@ -1589,6 +1590,12 @@ bool handleMouse(unsigned char *buf, int len) {
                 }
                 if (GetAsyncKeyState(VK_RBUTTON)&0x8000) {
                     btn |= 0x02;
+                }
+
+                if (!mouseCaptured) {
+                    SetCapture(myWnd);
+                    mouseCaptured = true;
+                    SetWindowText(myWnd, "Classic99 - Press ESC to release Mouse Capture");
                 }
             }
 
