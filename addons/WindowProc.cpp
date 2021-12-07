@@ -121,6 +121,8 @@ extern char AppName[];
 extern Byte SidCache[29];
 extern int WindowActive;
 extern int enableSpeedKeys;
+extern double gMouseScale;		// TIPI mouse
+extern bool mouseCaptured;
 
 // window
 extern int nVideoLeft, nVideoTop;
@@ -655,6 +657,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// winuser.h has the VK_key key defines
 	// also fill in the key[] array for on/off
+	// WM_USER is used to alias ShowCursor(wParam)
     
 	PAINTSTRUCT ps;
     HDC hDC;
@@ -665,6 +668,26 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	if (myWnd == hwnd) {	// Main TI window
 		switch(msg) {
+		case WM_USER:	
+			// wrap ShowCursor()
+			if (wParam) {
+				ShowCursor(TRUE);
+			} else {
+				ShowCursor(FALSE);
+			}
+			break;
+
+		case WM_MOUSEWHEEL:
+			{
+				if (mouseCaptured) {
+					int delta = (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+					gMouseScale += (double)delta/10.0;
+					if (gMouseScale > 5) gMouseScale = 5;
+					if (gMouseScale < 0.1) gMouseScale = 0.1;
+				}
+			}
+			break;
+
 		case WM_INITMENUPOPUP:
 			if (IsClipboardFormatAvailable(CF_TEXT)) {
 				EnableMenuItem(GetMenu(myWnd), ID_EDITPASTE, MF_ENABLED | MF_BYCOMMAND);
@@ -4007,7 +4030,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 				strcpy(buf, FormatBreakpoint(idx));
 				SendDlgItemMessage(hwnd, IDC_COMBO1, CB_ADDSTRING, NULL, (LPARAM)buf);
 			}
-			SendDlgItemMessage(hwnd, IDC_COMBO1, CB_LIMITTEXT, 16, NULL);
+			SendDlgItemMessage(hwnd, IDC_COMBO1, CB_LIMITTEXT, 32, NULL);
 			// fall through
 		case WM_APP:
 			// refresh the dialog

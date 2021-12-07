@@ -2120,7 +2120,15 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 - enhanced joystick configuration in config file
 - added background noise emulation (enable in options->audio, sounds best at 44100hz)
 
-
+-----------------------------------------------
+6 Dev 2021
+- Detect "File x of y" in filenames
+- Remove reverse DSSD layout option
+- Fix input length of debugger breakpoints to allow full commands with newer syntax to be entered
+- Mouse capture for TIPI 
+	- click on window while mouse-aware TIPI app is running to capture, press ESC to release.
+	- use mouse wheel to adjust sensitivity - up for faster, down for slower
+	
 
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)

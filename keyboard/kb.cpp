@@ -307,6 +307,9 @@ void decode(unsigned char sc)
 	if (sc == VK_ESCAPE) {
 		if (mouseCaptured) {
 			ReleaseCapture();
+            PostMessage(myWnd, WM_USER, 1, 1);  // request window thread to show real cursor
+			ClipCursor(NULL);	// free movement
+			ShowCursor(TRUE);	// show mouse
 			mouseCaptured = false;
 		}
 		SetWindowText(myWnd, szDefaultWindowText);

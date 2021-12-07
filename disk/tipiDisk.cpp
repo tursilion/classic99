@@ -139,6 +139,7 @@ CString TipiPSK;
 CString TipiName;
 TipiWebDisk tipiDsk;
 bool initDone = false;
+double gMouseScale = 1.0;   // changed with scrollwheel for now, should be in config
 // TODO: netvars are not persistent and have only
 // one namespace - should be adequate for now though
 std::map<std::string,std::string> ti_vars;
@@ -1236,7 +1237,7 @@ bool bufferConfig(FileInfo *pFile) {
     buf[off+1+buf[off]] = 0xff;  // fix terminator
     off+=256;
 
-    // TODO: mouse acceleration
+    // TODO: mouse acceleration - gMouseScale is a double...
     snprintf((char*)&buf[off+1], 29, "MOUSE_SCALE=50");
     buf[off] = strlen((char*)&buf[off+1])&0xff; 
     buf[off+1+buf[off]] = 0xff;  // fix terminator
@@ -1571,17 +1572,24 @@ bool handleMouse(unsigned char *buf, int len) {
             // TODO: Also, double-clicks will still trigger the paste function...
             double scaleX = 256.0/(gWindowRect.right-gWindowRect.left)+.5;
             double scaleY = 192.0/(gWindowRect.bottom-gWindowRect.top)+.5;
+            scaleX *= gMouseScale;
+            scaleY *= gMouseScale;
             POINT pt;
             GetCursorPos(&pt); // screen coordinates!
             double x = (pt.x-lastMouse.x) * scaleX;
             double y = (pt.y-lastMouse.y) * scaleY;
             lastMouse = pt;
 
+            // also work out the window position
+            RECT client;
+            GetClientRect(myWnd, &client);  // get client rect in window coordinates
+            MapWindowPoints(myWnd, NULL, (LPPOINT)&client, 2);   // convert to screen coords (ok per MSDN)
+
             // so, buttons only if you're pointing at the window
             // that's awkward, but I don't know how else to do it...
             // (short of capture, that is...)
             int btn = 0;
-            if (WindowFromPoint(pt) == myWnd) {
+            if ((WindowFromPoint(pt) == myWnd)||(mouseCaptured)) {
                 if (GetAsyncKeyState(VK_LBUTTON)&0x8000) {
                     btn |= 0x01;
                 }
@@ -1592,16 +1600,37 @@ bool handleMouse(unsigned char *buf, int len) {
                     btn |= 0x02;
                 }
 
-                if (!mouseCaptured) {
-                    SetCapture(myWnd);
-                    mouseCaptured = true;
-                    SetWindowText(myWnd, "Classic99 - Press ESC to release Mouse Capture");
+                if ((btn)&&(!mouseCaptured)) {
+                    // we don't want to capture unless the click is in the client arean
+                    // (ie: not the title bar or the menu bar)
+                    // TODO: What about the menus themselves? Should be okay for function but
+                    // will cause an undesired capture...
+
+                    // right and bottom are outside of the area, top and left are inclusive
+                    if ((pt.x>=client.left)&&(pt.x<client.right)&&(pt.y>=client.top)&&(pt.y<client.bottom)) {
+                        PostMessage(myWnd, WM_USER, 0, 0);  // request window thread to hide real cursor
+                        ClipCursor(&client);            // lock the mouse motion
+                        SetCapture(myWnd);              // capture mouse events
+                        mouseCaptured = true;
+                        SetWindowText(myWnd, "Classic99 - Press ESC to release Mouse Capture");
+                    }
                 }
             }
 
-            rxMessageBuf[0] = (unsigned char)((int)round(x));
-            rxMessageBuf[1] = (unsigned char)((int)round(y));
-            rxMessageBuf[2] = btn;
+            // when not captured, don't report movement
+            if (!mouseCaptured) {
+                rxMessageBuf[0] = 0;
+                rxMessageBuf[1] = 0;
+                rxMessageBuf[2] = 0;
+            } else {
+                rxMessageBuf[0] = (unsigned char)((int)round(x));
+                rxMessageBuf[1] = (unsigned char)((int)round(y));
+                rxMessageBuf[2] = btn;
+
+                // then snap the mouse back to center for infinite movement
+                SetCursorPos(client.left + (client.right-client.left)/2, client.top + (client.bottom-client.top)/2);
+                GetCursorPos(&lastMouse);
+            }
         }
     }
     return true;
