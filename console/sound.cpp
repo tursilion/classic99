@@ -1,6 +1,6 @@
 /*
 From Matt - check this decrement:
-2:15 PM] dnotq: The counters don't consider the 0-count as it's own state.  It was very interesting that I literally took the AY up-counters, changed them to count down (changed ++ to -), and changed the reset when count >= period condition to load-period when count = 0, and they just worked.
+[2:15 PM] dnotq: The counters don't consider the 0-count as it's own state.  It was very interesting that I literally took the AY up-counters, changed them to count down (changed ++ to -), and changed the reset when count >= period condition to load-period when count = 0, and they just worked.
 [2:16 PM] dnotq: It took me a while to realize this, since when you mentioned 0-count is maximum period, that threw me for a bit.
 [2:17 PM] tursilion: yeah, I said that. But I think the SN was the first and everyone else cloned them ;)
 [2:17 PM] dnotq: But the "compare-to-0 and load" is done during the period of the count.  Easier to show than to explain in English.
@@ -301,7 +301,7 @@ void setvol(int chan, int vol) {
 // fill the output audio buffer with signed 16-bit values
 // nAudioIn contains a fixed value to add to all samples (used to mix in the casette audio)
 // (this emu doesn't run speech through there, though, speech gets its own buffer for now)
-// TODO: I don't use this anymore and I think it needs to be removed.... (what did I mean by this??)
+// TODO: nAudioIn is not used here anymore, can be removed
 void sound_update(short *buf, double nAudioIn, int nSamples) {
 	// nClock is the input clock frequency, which runs through a divide by 16 counter
 	// The frequency does not divide exactly by 16
@@ -958,6 +958,7 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	// as noted, the goal is to get it on a per-scanline basis
 	while (nWriteAhead < pDat->nJitterFrames) {
 		if (SUCCEEDED(soundbuf->Lock(pDat->nLastWrite, CalculatedAudioBufferSize/(hzRate), (void**)&ptr1, &len1, (void**)&ptr2, &len2, 0))) {
+			// TODO: nDACLevel is not used here anymore, can be removed
 			if (len1 > 0) {
 				sound_update(ptr1, nDACLevel, len1/2);		// divide by 2 for 16 bit samples
 			}

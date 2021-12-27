@@ -4829,7 +4829,7 @@ Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 void wvdpbyte(Word x, Byte c)
 {
 	int RealVDP;		
-	
+
 	if (x<0x8c00 || (x&1)) 
 	{
 		return;							/* not going to write at that block */
@@ -5355,7 +5355,6 @@ Byte ReadValidGrom(int nBase, Word x) {
 
 Byte rgrmbyte(Word x, READACCESSTYPE rmw)
 {
-	unsigned int z;										// temp variable
 	int nBank;
 
 	if (x>=0x9c00)
@@ -6025,7 +6024,7 @@ void wcru(Word ad, int bt)
 // Read a bit from CRU
 //////////////////////////////////////////////////////////////////
 int CheckJoysticks(Word ad, int col) {
-	int joyX, joyY, joyFire, joykey;
+	int joyX, joyY, joyFire;
 	int joy1col, joy2col;
 	int ret=1;
 
@@ -6038,12 +6037,10 @@ int CheckJoysticks(Word ad, int col) {
 		// 99/4A
 		joy1col=4;
 		joy2col=0;
-		joykey=1;
 	} else {
 		// 99/4
 		joy1col=2;
 		joy2col=4;
-		joykey=0;
 	}
 
 	if ((col == joy1col) || (col == joy2col))				// reading joystick
@@ -6246,12 +6243,12 @@ BIT	HW	C99	Purpose						Status
 9	1	0	keyboard q					Implemented, but wrong?
 10	1	1	keyboard l					Implemented
 11	0	1	unused						Implemented as loopback, but wrong?
-12	1	1	reserved					Implemented as loopback
+12	1	1	reserved					Implemented as loopback -- pulled HIGH on hardware
 13	0	1	unused						Implemented as loopback, but wrong?
 14	0	1	unused						Implemented as loopback, but wrong?
 15	1	1	unused						Implemented as loopback
 16	0	0	reserved					Implemented as loopback
-17	0	0	reserved					Implemented as loopback
+17	0	0	reserved					Implemented as loopback - checked on the 99/4 but seems not wired up
 18	0	0	keyboard select bit 2		Implemented as loopback
 19	0	0	keyboard select bit 1		Implemented as loopback
 20	0	0	keyboard select bit 0		Implemented as loopback
@@ -6413,9 +6410,8 @@ int rcru(Word ad)
 		ret = CheckJoysticks(ad, col);
 		if (1 == ret) {
 			// if nothing else matched, try the keyboard array
-			if (key[KEYS[keyboard][col][ad-3]])				// normal key
-			{	
-					ret=0;
+			if (key[KEYS[keyboard][col][ad-3]])	{			// normal key
+				ret=0;
 			}
 		}
 	}
