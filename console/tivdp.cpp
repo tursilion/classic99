@@ -1000,6 +1000,17 @@ void VDPgraphics(int scanline, int isLayer2)
 				ch=o&0xff;              // debug character simply increments
                 if (o&0x100) {
                     // sprites in the second block
+					if (VDPREG[1]&0x02) {
+						// double-size sprites, group them as such
+						// 0..2..4..6..8....62
+						// 1..3..5..7..9....63
+						// 64.66.68.........126
+						// 65.67.69.........127
+						int band=(o&0xff)/64;
+						int off=(o/32)&1;
+						int x=(o%32)*2;
+						ch = band*64+x+off;
+					}
                     p_add=SDT+(ch<<3)+i3;   // calculate pattern address
                     fgc = 15-(VDPREG[7]&0x0f);  // color the opposite of the screen color
                     bgc = 0;                // transparent background
