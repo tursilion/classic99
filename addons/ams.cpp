@@ -43,6 +43,14 @@
 // at all times should allow just a single SAMS management routine (set up a variable that identifies card size 
 // and mask all necessary initial bits to zero, which will also eliminate potential issues with cards smaller 
 // than 1M too).
+//
+// Note from FALCOR4: With the 1M and smaller cards, when you execute a register write, the LSbyte is written to 
+// the LS612 but when the TI next writes the MSByte it overwrites the LSbyte that it just wrote which makes the 
+// LSbyte of the WORD irrelevant.  That's why it really doesn't matter what you have in the LSbyte of a WORD that 
+// you write to the SAMS card if it is 1M or smaller.  However, it does matter with the 4M card (and any other 
+// larger increments that may come along), which has a separate latch that captures the LSbyte of a WORD that is 
+// written to the registers.  That's why it's recommended that software assumes a larger card and to be fully 
+// compatible with any SAMS.
 
 // define sizes for memory arrays 
 static const int MaxMapperPages	= 0x2000;       // MUST be a power of 2

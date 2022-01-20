@@ -68,6 +68,7 @@
 #include "tiemul.h"
 #include "rs232_pio.h"
 
+// CRU system talks 
 int nCRUOut = 0;	// all bits are zeroed
 int nCRUIn = 0;		// all bits are zeroed
 
@@ -75,31 +76,139 @@ int nCRUIn = 0;		// all bits are zeroed
 int nPortDataOut;		// 8 bits of data output
 int nPortDataIn;		// 8 bits of data input (these are on the same IO pins and selected via CRU)
 
+HANDLE hPort = INVALID_HANDLE_VALUE;
+int dataIn;
+
 // takes the shifted and translated address (ie: the bit number)
 // return is 1 or 0
+// address will be from 0x00 to 0x80
 int ReadRS232CRU(int ad) {
-//	debug_write("TI reading CRU %d (value %d)", ad, nCRUIn & (1<<ad));
-	return nCRUIn & (1<<ad);
+	int rs232=0;
+
+	if (ad < 8) {
+		// PIO
+		//	debug_write("TI reading CRU %d (value %d)", ad, nCRUIn & (1<<ad));
+		debug_write("PIO not really supported");
+		return nCRUIn & (1<<ad);
+	} else if ((ad>=32)&&(ad<64)) {
+		// RS232/1
+		ad-=32;
+		rs232=0;
+	} else {
+		// RS232/2
+		ad-=64;
+		rs232=1;
+		debug_write("RS232/2 not supported");
+		// TODO: don't allow it for now
+		return 0;
+	}
+
+	// ad is offset, and rs232 indexes the uart to access
+	// I'm not sure how I want to do this... maybe an async
+	// process to receive the bytes so we can manage the status
+	// bits correctly? Fetching like I do here, we have no way
+	// to check for a pending byte...
+	switch (ad) {
+		case CRUR_RX_BUF_8_BITS  :
+		case CRUR_RX_BUF_8_BITS+1:
+		case CRUR_RX_BUF_8_BITS+2:
+		case CRUR_RX_BUF_8_BITS+3:
+		case CRUR_RX_BUF_8_BITS+4:
+		case CRUR_RX_BUF_8_BITS+5:
+		case CRUR_RX_BUF_8_BITS+6:
+		case CRUR_RX_BUF_8_BITS+7:
+			if (INVALID_HANDLE_VALUE == hPort) {
+				return 0;
+			} else {
+				if (ad == CRUR_RX_BUF_8_BITS) {
+					// try to fetch a new byte
+					DWORD read=0;
+					dataIn = 0;
+					ReadFile(hPort, &dataIn, 1, &read, NULL);
+					return (dataIn&1)?1:0;
+				} else {
+					return (dataIn&(1<<(ad-CRUR_RX_BUF_8_BITS))) ?1:0;
+				}
+			}
+			break;
+
+		case CRUR_RX_ERROR       :
+		case CRUR_PARITY_ERROR   :
+		case CRUR_OVERFLOW       :
+		case CRUR_FRAME_ERROR    :
+		case CRUR_FIRST_BIT      :
+		case CRUR_RXING_BYTE     :
+		case CRUR_RIN            :
+		case CRUR_RX_INT         :
+		case CRUR_EMISSION_INT   :
+		case CRUR_TIMER_INT      :
+		case CRUR_CTSRTS_INT     :
+		case CRUR_RX_FULL        :
+		case CRUR_EMISSION_EMPTY :
+		case CRUR_OUTPUT_EMPTY   :
+		case CRUR_TIMER_ERROR    :
+		case CRUR_TIMER_ELAPSED  :
+		case CRUR_RTS            :
+		case CRUR_DSR            :
+		case CRUR_CTS            :
+		case CRUR_DSRCTS_CHANGED :
+		case CRUR_REG_LOADING    :
+		case CRUR_INT_OCCURRED   :
+		default:
+			return 0;
+	}
 }
 
 // Emulator writes to RS232 card's CRU
 void WriteRS232CRU(int ad, int bt) {
-	if (bt) {
-//		debug_write("TI writing CRU %d (value %d)", ad, 1);
-		// writing 1
-		int nVal = 1<<ad;
-		nCRUOut |= nVal;
-		// handle mirroring
-		nVal &= ~(CRU_HANDSHAKE|CRU_SPARE);
-		nCRUIn |= nVal;
+	int rs232 = 0;
+
+	if (ad < 8) {
+		debug_write("PIO not really supported");
+		if (bt) {
+			//debug_write("TI writing CRU %d (value %d)", ad, 1);
+			// writing 1
+			int nVal = 1<<ad;
+			nCRUOut |= nVal;
+			// handle mirroring
+			nVal &= ~(CRU_HANDSHAKE|CRU_SPARE);
+			nCRUIn |= nVal;
+		} else {
+			//debug_write("TI writing CRU %d (value %d)", ad, 0);
+			// writing 0
+			int nVal = ~(1<<ad);
+			nCRUOut &= nVal;
+			// handle mirroring
+			nVal |= (CRU_HANDSHAKE|CRU_SPARE);
+			nCRUIn &= nVal;
+		}
+	} else if ((ad>=32)&&(ad<64)) {
+		// RS232/1
+		ad-=32;
+		rs232=0;
 	} else {
-//		debug_write("TI writing CRU %d (value %d)", ad, 0);
-		// writing 0
-		int nVal = ~(1<<ad);
-		nCRUOut &= nVal;
-		// handle mirroring
-		nVal |= (CRU_HANDSHAKE|CRU_SPARE);
-		nCRUIn &= nVal;
+		// RS232/2
+		ad-=64;
+		rs232=1;
+		debug_write("RS232/2 not supported");
+		return;
+	}
+
+	switch (ad) {
+		case CRUW_VALUE_11_BITS  :
+		case CRUW_LOAD_EMISSION  :
+		case CRUW_LOAD_RECEIVE   :
+		case CRUW_LOAD_INTERVAL  :
+		case CRUW_LOAD_CONTROL   :
+		case CRUW_TEST_MODE      :
+		case CRUW_RTS            :
+		case CRUW_ABORT          :
+		case CRUW_EN_RX_INT      :
+		case CRUW_EN_TX_INT      :
+		case CRUW_EN_TIMER_INT   :
+		case CRUW_EN_CTSDSR_INT  :
+		case CRUW_RESET          :
+			break;
 	}
 }
 
