@@ -111,7 +111,7 @@ CString ImageDisk::BuildFilename(FileInfo *pFile) {
 
 // verify that a disk image is formatted in a way we can manage
 bool ImageDisk::VerifyFormat(FILE *fp, bool &bIsPC99, int &Gap1, int &PreIDGap, int &PreDatGap, int &SLength, int &SekTrack, int &TrkLen) {
-     char buf[256];
+     unsigned char buf[256];
 
     if (NULL == fp) {
         debug_write("File not open to be verified.");

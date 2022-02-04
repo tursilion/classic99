@@ -1922,7 +1922,7 @@ void startsound()
 	unsigned int idx, idx2;
 	UCHAR *ptr1, *ptr2;
 	unsigned long len1, len2, len;
-	char buf[80];
+//	char buf[80];
 	latch_byte=0;
 
 	if (FAILED(DirectSoundCreate(NULL, &lpds, NULL)))
@@ -2213,7 +2213,7 @@ void wrword(Word x, Word y)
 void WindowThread() {
 	MSG msg;
 	HACCEL hAccels;		// keyboard accelerator table for the debug window
-	char buf[128];
+	//char buf[128];
 	static FILE *fp=NULL;
 	int cnt, idx, wid;
 
@@ -3238,7 +3238,7 @@ void saveroms()
 					if (NULL == fp) {
 						debug_write("Failed to write NVRAM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
 					} else {
-						char buf[8192];
+						unsigned char buf[8192];
 						debug_write("Saving NVRAM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
 						ReadMemoryBlock(pBank[nCart].Img[idx].nLoadAddr, buf, min(sizeof(buf), pBank[nCart].Img[idx].nLength));
 						fwrite(buf, 1, pBank[nCart].Img[idx].nLength, fp);

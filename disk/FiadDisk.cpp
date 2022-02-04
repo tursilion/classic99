@@ -716,7 +716,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 			// calculate some of the other fields
 			{
 				FILE *fp;
-				char buf[128];
+				unsigned char buf[128];
 
 				fp=fopen(csFileName, "r");		// text mode!
 				if (NULL != fp) {
@@ -2288,7 +2288,7 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 		}
 		if (pFile->RecordNumber != 0) {
 			// write out this many sectors
-			char buf[256];
+			unsigned char buf[256];
 			memset(buf, 0, sizeof(buf));
 
 			fseek(fp, (pFile->RecordNumber-1)*256+HEADERSIZE, SEEK_SET);

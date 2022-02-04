@@ -1784,7 +1784,7 @@ public:
 		//  data range is stored in HighStart to HighEnd
 		//  (but is expected to be >6000 to >7FFF). No other
 		//  options are valid.
-		char buf[8192];
+		unsigned char buf[8192];
 
 		FILE *fp=fopen(opt.FileName, "wb");
 		if (NULL == fp) {

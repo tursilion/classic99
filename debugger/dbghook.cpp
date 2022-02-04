@@ -131,11 +131,11 @@ void initDbgHook() {
 #endif
 }
 
-void handleBreakpoint(char *buf, unsigned int p) {
+void handleBreakpoint(unsigned char *buf, unsigned int p) {
 	// todo later
 }
 
-void handleMemory(char *buf, unsigned int p) {
+void handleMemory(unsigned char *buf, unsigned int p) {
 	unsigned short type;
 	unsigned int address;
 	unsigned short data;
@@ -197,7 +197,7 @@ void handleMemory(char *buf, unsigned int p) {
 }
 
 void processDbgPackets() {
-	char buf[2048];
+	unsigned char buf[2048];
 	struct sockaddr recvaddr;
 	int recvsize = sizeof(sockaddr);
 	int ret;
@@ -207,7 +207,7 @@ void processDbgPackets() {
 	}
 
 	for (int cntdown = 0; cntdown<25; cntdown++) {	// maximum packets processed to prevent DOS
-		ret = recvfrom(sock, buf, sizeof(buf), 0, &recvaddr, &recvsize);
+		ret = recvfrom(sock, (char*)buf, sizeof(buf), 0, &recvaddr, &recvsize);
 		// walk through the data in buf. All entries should be 
 		if (SOCKET_ERROR == ret) {
 			if (WSAEWOULDBLOCK != WSAGetLastError()) {
@@ -233,7 +233,7 @@ void processDbgPackets() {
 		}
 
 		// now send back the answer
-		if (SOCKET_ERROR == sendto(sock, buf, ret, 0, &recvaddr, sizeof(recvaddr))) {
+		if (SOCKET_ERROR == sendto(sock, (char*)buf, ret, 0, &recvaddr, sizeof(recvaddr))) {
 			debug_write("Error writing dbghook reply: %d", WSAGetLastError());
 			// probably should do more...
 		}
