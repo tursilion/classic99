@@ -131,6 +131,7 @@ s_FILEINFO::s_FILEINFO() {
 	LengthSectors=0;
 	FileType=0;
 	ImageType=IMAGE_UNKNOWN;
+	HeaderSize=-1;
 	RecordsPerSector=0;
 	BytesInLastSector=0;
 	RecordLength=0;
@@ -182,6 +183,7 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	nCurrentRecord = p->nCurrentRecord;
 	nLocalData = p->nLocalData;
 	ImageType = p->ImageType;
+	HeaderSize = p->HeaderSize;
 	bOpen = p->bOpen;
 	bDirty = p->bDirty;
 //	bFree = p->bFree;		// watch out for this one!

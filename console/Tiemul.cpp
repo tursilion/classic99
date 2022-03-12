@@ -3108,6 +3108,7 @@ void readroms() {
         // TEXAS INSTRUMENTS -> POWERED BY
         memcpy(&GROMBase[0].GROM[0x1800], "POWERED  BY", 11);
         memcpy(&GROMBase[0].GROM[0x1900], "CLASSIC99", 9);
+        // TODO: move this line up to the 'press any key' line from where it is
         memcpy(&GROMBase[0].GROM[0x1A00], "HTTP://HARMLESSLION.COM", 23);
 
         // patch the startup code to draw it

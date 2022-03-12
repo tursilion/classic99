@@ -91,6 +91,7 @@ typedef struct s_FILEINFO {
 	int nCurrentRecord;
 	int nDataSize;
 	int ImageType;		// varies per driver
+	int HeaderSize;		// varies per driver, only meant for FiadDisk
 	int nLocalData;		// 32-bits for the driver to use as it likes
 	CString csOptions;	// options string is always before the filename as "?x." - x may be longer though
 	unsigned char *pData;

@@ -180,10 +180,7 @@ bool bufferStatus(FileInfo *pFile);
 
 #define MAX_RAM_FILE 128*1024
 
-// on the day this changes (for instance, we support
-// direct access to RAW files, etc), add a headersize
-// variable to FileInfo and make sure the detection code
-// updates it, then use that instead.
+// keeping this instead of using the structure headersize for TIPI
 #define HEADERSIZE 128
 
 static const unsigned char LoadPAB[] = {

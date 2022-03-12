@@ -680,7 +680,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_MOUSEWHEEL:
 			{
 				if (mouseCaptured) {
-					int delta = (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+					int delta = (int)((double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA + 0.5);
 					gMouseScale += (double)delta/10.0;
 					if (gMouseScale > 5) gMouseScale = 5;
 					if (gMouseScale < 0.1) gMouseScale = 0.1;
