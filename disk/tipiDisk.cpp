@@ -2513,7 +2513,8 @@ bool TipiWebDisk::TryOpenFile(FileInfo *pFile) {
 		return false;
 	}
 
-    // TODO: TIPI allows headerless files, but as what type? It's not the open mode...
+    // TODO: TIPI allows headerless files as DF128 - it never writes headerless files
+    // Looks like we need to delete this whole block and bring in the DF128 code from FiadDisk
 #if 0
     // special case - a headerless file normally detects as DF128, but
     // I'm going to allow software to open them as IF128 too.

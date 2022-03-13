@@ -559,7 +559,7 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,67,115,10
     CONTROL         "Read Windows files without ext. as Text",IDC_FIAD_READTEXTWITHOUTEXT,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,93,145,10
-    CONTROL         "Read Windows files without ext. as DF128",IDC_FIAD_ALLOWNOHEADERASDF128,
+    CONTROL         "Do not write or require headers for DF128",IDC_FIAD_ALLOWNOHEADERASDF128,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,106,151,10
     CONTROL         "Write TIFILES headers",IDC_FIAD_WRITETIFILES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,41,88,10
     GROUPBOX        "Image Options",IDC_STATIC,7,136,302,36

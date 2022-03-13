@@ -1453,6 +1453,7 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 
 	// check the output type - this has no effect on the override
 	if (IMAGE_UNKNOWN == pFile->ImageType) {
+		// first check if it's going to be a headerless DF128
 		if (bAllowNoHeaderAsDF128) {
 			if (((pFile->FileType & (TIFILES_INTERNAL|TIFILES_VARIABLE)) == 0) &&
 				(pFile->RecordLength == 128)) {
@@ -1460,10 +1461,14 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 				debug_write("Writing DF128 as headerless raw file.");
 				pFile->ImageType = IMAGE_IMG;
 			}
-		} else if (bWriteV9T9) {
-			pFile->ImageType = IMAGE_V9T9;
-		} else {
-			pFile->ImageType = IMAGE_TIFILES;
+		}
+		// if we didn't set it above, choose the correct default
+		if (IMAGE_UNKNOWN == pFile->ImageType) {
+			if (bWriteV9T9) {
+				pFile->ImageType = IMAGE_V9T9;
+			} else {
+				pFile->ImageType = IMAGE_TIFILES;
+			}
 		}
 	}
 	// check override
