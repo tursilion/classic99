@@ -2134,6 +2134,22 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 - fix detection of PC99 disks caused by signed char confusion.
 - audit code for other potential cases - test the functions you use! :)
 
+-----------------------------------------------
+13 Mar 2022
+
+- rename disk option for DF128 to reflect new behaviour
+- fix critical bug saving program image files
+
+NOTE: v55 has a critical file system bug. Do not use nor store it.
+
+-----------------------------------------------
+17 Mar 2022
+
+- the new DF128 handling revealed a long standing bug in the PROGRAM LOAD handler that didn't properly validate 
+headers. If you have PROGRAM files that used to load and don't now, the header is probably corrupt. You can send
+it to me and I can probably fix it - but the most common cause is renaming V9T9 files without using a V9T9 aware tool.
+
+
 -TODO: delete the "V9T9 reverse DSSD layout" - never seen one, and if we do, we should fix it ;)
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
 -TODO: Rewrite AMS code to bring it into the mainline memory system for improved debugging (ie: always run a 1MB memory space)
@@ -2146,5 +2162,5 @@ And with apologies, I switched the spacing from tabs to spaces... which will mak
 -TODO: Fix multiple scanning of joysticks (scan on timer tick?)
 -TODO: Implement cassette ports on sound card? (would require precise timing!)
 -TODO: Allow debugger to display in hex or decimal
--TODO: F18A support (to some extent at least - CPU support partially in place)
+-TODO: F18A support (to some extent at least - CPU support partially in place, so is some multicolor sprite, palette, dual layers...)
 -TODO: support relative paths including '.' (part of a file system update I am documenting)

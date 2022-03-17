@@ -695,8 +695,8 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 					pFile->RecordLength = 80;		// even if it's not really, this is ok
 				}
 
-				// allow most user fields, but make sure it's at least display
-				pFile->FileType &= ~TIFILES_INTERNAL;
+				// allow most user fields, but make sure it's at least display and not program
+				pFile->FileType &= ~(TIFILES_INTERNAL|TIFILES_PROGRAM);
 				pFile->Status &= ~FLAG_INTERNAL;
 
 				if (!(pFile->Status & FLAG_VARIABLE)) {
@@ -762,7 +762,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 			pFile->RecordLength = 128;
 		}
 
-		pFile->FileType &= ~(TIFILES_INTERNAL | TIFILES_VARIABLE);		// display/fixed format
+		pFile->FileType &= ~(TIFILES_INTERNAL | TIFILES_VARIABLE | TIFILES_PROGRAM);		// display/fixed format
 		pFile->Status &= ~(FLAG_INTERNAL | FLAG_VARIABLE);
 
 		// fill in some of the other fields
