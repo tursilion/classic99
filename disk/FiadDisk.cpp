@@ -2257,6 +2257,7 @@ bool FiadDisk::ReadSector(FileInfo *pFile) {
 // They are the same as in a PAB.
 // FileType, RecordsPerSector, BytesInLastSector, RecordLength, NumberRecords
 // On return, LengthSectors must contain the actual number of sectors read,
+// TODO: the mixing of pFile and lclFile is confusing and errorprone.
 bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 	FILE *fp;
 	FileInfo lclFile;
@@ -2341,9 +2342,9 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 // FileType, RecordsPerSector, BytesInLastSector, RecordLength, NumberRecords
 // On return, LengthSectors must contain the actual number of sectors written,
 // leave as 0 if 0 was originally specified.
+// TODO: the mixing of pFile and lclFile is confusing and errorprone.
 bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	FILE *fp;
-	FileInfo lclFile;
 	CString csFilename = BuildFilename(pFile);
 
 	if (pFile->LengthSectors == 0) {
@@ -2359,8 +2360,8 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 		WriteFileHeader(pFile, fp);
 
 		// TODO: might rethink this in the future - it MIGHT be okay for IMAGE_IMG?
-		if ((IMAGE_TIFILES != lclFile.ImageType) && (IMAGE_V9T9 != lclFile.ImageType)) {
-			debug_write("Only TIFILES or V9T9 supported for sector write on %s", csFilename);
+		if ((IMAGE_TIFILES != pFile->ImageType) && (IMAGE_V9T9 != pFile->ImageType)) {
+			debug_write("Only TIFILES or V9T9 supported for sector write (hdr) on %s", csFilename);
 			pFile->LastError = ERR_FILEERROR;
 			return false;
 		}
@@ -2402,6 +2403,7 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	debug_write("Writing drive %d file %s sector %d-%d from VDP %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->DataBuffer);
 
 	// verify the file exists and get its current data
+	FileInfo lclFile;
 	DetectImageType(&lclFile, csFilename);
 	if (IMAGE_UNKNOWN == lclFile.ImageType) {
 		debug_write("Can't get file type of %s", csFilename);
@@ -2409,10 +2411,11 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 		return false;
 	}
 	if ((IMAGE_TIFILES != lclFile.ImageType) && (IMAGE_V9T9 != lclFile.ImageType)) {
-		debug_write("Only TIFILES or V9T9 supported for sector write on %s", csFilename);
+		debug_write("Only TIFILES or V9T9 supported for sector write (data) on %s", csFilename);
 		pFile->LastError = ERR_FILEERROR;
 		return false;
 	}
+    pFile->HeaderSize = lclFile.HeaderSize;
 
 	// Write the requested sectors to the file (r+ is read and write of existing file)
 	fp=fopen(csFilename, "r+b");
