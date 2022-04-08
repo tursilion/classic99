@@ -233,7 +233,7 @@ unsigned char *getWebFile(CString &filename, int &outSize) {
             return NULL;
         }
         // assuming, not checking for the '.'
-        url = TipiURI[idx] + filename.Mid(5);
+        url = TipiURI[idx] + '/' + filename.Mid(5); // confirmed there is an automatic slash added
     }
 
     debug_write("Load URL is '%s'", url.GetString());
@@ -587,7 +587,7 @@ nextfile:
 
         // check for success, if it failed we just reboot
     	if (0 != (VDP[0x3100+1]&0xe0)) {
-            debug_write("CALL TIPI load failed, reboot.");
+            debug_write("CALL TIPI load failed, TIPI resets TI.");
             // the Classic99 code will "return" to the caller's
             // R11, so we need to load the address we want there,
             // then we can still safely change WP here... 
@@ -634,7 +634,7 @@ nextfile:
         int outSize = 0;
         unsigned char *buf = getWebFile(filename, outSize);
         if (NULL == buf) {
-            debug_write("CALL TIPI load failed, reboot.");
+            debug_write("CALL TIPI load failed, TIPI resets TI.");
             // the Classic99 code will "return" to the caller's
             // R11, so we need to load the address we want there,
             // then we can still safely change WP here... 
@@ -645,7 +645,7 @@ nextfile:
         }
         if (outSize < 128+6) {
             // if it's not a TIFILES file with PROGRAM header, then skip it
-            debug_write("CALL TIPI load got bad file, reboot.");
+            debug_write("CALL TIPI load got bad file, TIPI resets TI.");
             // the Classic99 code will "return" to the caller's
             // R11, so we need to load the address we want there,
             // then we can still safely change WP here... 
@@ -656,7 +656,7 @@ nextfile:
         }
         // might as well check it's a PROGRAM image too, won't bother with the rest
         if (buf[10] != TIFILES_PROGRAM) {
-            debug_write("CALL TIPI load is non-PROGRAM TIFILES image, reboot.");
+            debug_write("CALL TIPI load is non-PROGRAM TIFILES image, TIPI resets TI.");
             // the Classic99 code will "return" to the caller's
             // R11, so we need to load the address we want there,
             // then we can still safely change WP here... 

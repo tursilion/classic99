@@ -13,6 +13,13 @@ From Matt - check this decrement:
 [2:27 PM] tursilion: ah, I see. That makes sense :) I should check if Classic99 does that right
 */
 
+// Real TI testing on wait states:
+// I got times of 6.96, 7.36 and 9.36 us of active time on the sound chip WE pin. 
+// Semi-random, though 7.36 was notably less common. Need to check the waveforms but
+// that'll largely correspond to the hold time from the sound chip plus the multiplexer.
+// That does mean the hold time in cycles might not be fixed? A cycle is 0.3uS, so that's
+// 20.88 cycles, 22.08 cycles, and 28.08 cycles. I'm using a fixed 28 cycles in TIEMUL.H,
+// so that matches earlier observations, except I didn't notice how much it varied.
 
 // Testing on a real TI:
 // The sound chip itself outputs an always positive sound wave peaking roughly at 2.8v.

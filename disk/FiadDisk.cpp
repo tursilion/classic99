@@ -2274,6 +2274,7 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 		pFile->BytesInLastSector = lclFile.BytesInLastSector;
 		pFile->RecordLength = lclFile.RecordLength;
 		pFile->NumberRecords = lclFile.NumberRecords;
+        pFile->HeaderSize = lclFile.HeaderSize;
 
 		debug_write("Information request on file %s (Type >%02x, %d Sectors, Records Per Sector %d, EOF Offset %d, Record Length %d, Number Records %d)", 
 			pFile->csName, pFile->FileType, pFile->LengthSectors, pFile->RecordsPerSector, pFile->BytesInLastSector, pFile->RecordLength, pFile->NumberRecords);
@@ -2306,6 +2307,7 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 		pFile->LastError = ERR_FILEERROR;
 		return false;
 	}
+    pFile->HeaderSize = lclFile.HeaderSize;
 
 	// check the new headersize is fixed in all codepaths
 	if (pFile->HeaderSize == -1) {
