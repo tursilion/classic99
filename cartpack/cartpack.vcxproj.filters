@@ -124,15 +124,6 @@
     <None Include="roms\DEMOG.BIN">
       <Filter>DataFiles\ROMS</Filter>
     </None>
-    <None Include="roms\RXBG.Bin">
-      <Filter>DataFiles\ROMS</Filter>
-    </None>
-    <None Include="roms\RXBD.Bin">
-      <Filter>DataFiles\ROMS</Filter>
-    </None>
-    <None Include="roms\RXBC.Bin">
-      <Filter>DataFiles\ROMS</Filter>
-    </None>
     <None Include="roms\TE-IIG.BIN">
       <Filter>DataFiles\ROMS</Filter>
     </None>

@@ -373,9 +373,6 @@
     <None Include="roms\PCardD.ROM" />
     <None Include="roms\PENNIES" />
     <None Include="roms\QUEST" />
-    <None Include="roms\RXBC.Bin" />
-    <None Include="roms\RXBD.Bin" />
-    <None Include="roms\RXBG.Bin" />
     <None Include="roms\ScottAdams\ADVENTURE" />
     <None Include="roms\ScottAdams\AdventurePatchedG.bin" />
     <None Include="roms\ScottAdams\COUNT" />

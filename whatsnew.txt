@@ -2157,6 +2157,14 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 - add path separator on TIPI URIx paths
 - change reset debug statement on TIPI to indicate more clearly what is happening
 
+-----------------------------------------------
+13 Apr 2022
+
+- Cartpack update only:
+- Added RXB2022 by Rich
+- Added JUWEL+GEM by Harry (also added to carts menu!)
+- Contributors folders likewise updated for documentation etc
+
 
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
 -TODO: Rewrite AMS code to bring it into the mainline memory system for improved debugging (ie: always run a 1MB memory space)

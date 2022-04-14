@@ -78,19 +78,20 @@
 #define IDR_TIWORKSHOP                  312
 #define IDR_TURBOFORTHD                 324
 #define IDR_TURBOFORTHC                 325
-#define IDR_RXBC                        326
-#define IDR_RXBD                        327
+#define IDR_RXB8                        326
 #define IDR_RXBG                        328
 #define IDR_XB27EEPROM                  341
 #define IDR_XB27GROM                    342
 #define IDR_XB27ROM                     343
 #define IDR_FBFORTH                     345
+#define IDR_XB29GROM                    346
+#define IDR_XB29ROM                     347
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        116
+#define _APS_NEXT_RESOURCE_VALUE        348
 #define _APS_NEXT_COMMAND_VALUE         40001
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
