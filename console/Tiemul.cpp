@@ -207,6 +207,7 @@ extern bool bWarmBoot;
 extern FILE *fpDisasm;          // file pointer for logging disassembly, if active
 extern int disasmLogType;       // 0 = all, 1 = exclude < 2000, valid only when fpDisasm is not NULL
 extern CRITICAL_SECTION csDisasm; 
+int logAudio = 0;				// whether to log audio
 
 // disk
 extern bool bCorruptDSKRAM;
@@ -5713,6 +5714,9 @@ void SetSuperBank2() {
 //  After any write to an I/O pin, the pin is switched to output mode (until reset!)
 //  Note that 7-15 are input-only bits, to change those pins you need to write to 23-31. Writing to 7-15 loads the interrupt mask (or the clock).
 //  Reading an output pin returns the current output value.
+//
+//  Also check against https://www.ninerpedia.org/wiki/Programmable_Systems_Interface_TMS_9901
+//
 //////////////////////////////////////////////////////////////////
 void wcru(Word ad, int bt)
 {

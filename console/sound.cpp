@@ -223,6 +223,79 @@ int sms_volume_table[16]={
 };
 double nVolumeTable[16];
 
+// audio per-frame logging (sound chip only)
+// uses vgmcomp2 PSG per-channel format
+FILE *fp1 = NULL;
+FILE *fp2 = NULL;
+FILE *fp3 = NULL;
+FILE *fp4 = NULL;
+unsigned int noiseFlags = 0;
+const unsigned int NOISE_FLAG_RETRIGGER = 0x00010000;
+const unsigned int NOISE_FLAG_PERIODIC = 0x00100000;
+const unsigned int NOISE_FLAG_CHAN3 = 0x01000000;
+
+void closeAudioLogFiles() {
+	if (NULL != fp1) fclose(fp1);
+	if (NULL != fp2) fclose(fp2);
+	if (NULL != fp3) fclose(fp3);
+	if (NULL != fp4) fclose(fp4);
+	fp1 = NULL;
+	fp2 = NULL;
+	fp3 = NULL;
+	fp4 = NULL;
+}
+
+bool openAudioLogFiles() {
+	// ensure we are creating new files across the board
+	closeAudioLogFiles();
+
+	// todo: support 50hz
+	fp1 = fopen("classic99_ton00.60hz", "w");
+	if (NULL == fp1) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();	// for consistency, but doesn't do anything here... ;)
+		return false;
+	}
+	fp2 = fopen("classic99_ton01.60hz", "w");
+	if (NULL == fp2) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();
+		return false;
+	}
+	fp3 = fopen("classic99_ton02.60hz", "w");
+	if (NULL == fp3) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();
+		return false;
+	}
+	fp4 = fopen("classic99_noi04.60hz", "w");
+	if (NULL == fp4) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();
+		return false;
+	}
+	return true;
+}
+
+void writeAudioLogState() {
+	// nVolumeTable is a floating representation of the volume, should work well enough
+	// But, because of floats and mappings, might not map 100% back and forth
+	// That's fine for my purposes.
+	if (NULL != fp1) {
+		fprintf(fp1, "0x%08X,0x%02X\n", nRegister[0], (int)(255*nVolumeTable[nVolume[0]]));
+	}
+	if (NULL != fp2) {
+		fprintf(fp2, "0x%08X,0x%02X\n", nRegister[1], (int)(255*nVolumeTable[nVolume[1]]));
+	}
+	if (NULL != fp3) {
+		fprintf(fp3, "0x%08X,0x%02X\n", nRegister[2], (int)(255*nVolumeTable[nVolume[2]]));
+	}
+	if (NULL != fp4) {
+		fprintf(fp4, "0x%08X,0x%02X\n", nRegister[3]|noiseFlags, (int)(255*nVolumeTable[nVolume[3]]));
+		noiseFlags &= ~(NOISE_FLAG_RETRIGGER);
+	}
+}
+
 // return 1 or 0 depending on odd parity of set bits
 // function by Dave aka finaldave. Input value should
 // be no more than 16 bits.
@@ -275,17 +348,32 @@ void setfreq(int chan, int freq) {
 		freq&=0x07;
 		nRegister[3]=freq;
 
+		// TODO: note: there's a small chance of race on these flags
+		// Oh well.
+		noiseFlags |= NOISE_FLAG_RETRIGGER;
+
 		// reset shift register
 		LFSR=0x4000;	//	(15 bit)
 		switch (nRegister[3]&0x03) {
 			// these values work but check the datasheet dividers
-			case 0: nCounter[3]=0x10; break;
-			case 1: nCounter[3]=0x20; break;
-			case 2: nCounter[3]=0x40; break;
+			case 0: nCounter[3]=0x10; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
+			case 1: nCounter[3]=0x20; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
+			case 2: nCounter[3]=0x40; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
 			// even when the count is zero, the noise shift still counts
 			// down, so counting down from 0 is the same as wrapping up to 0x400
-			case 3: nCounter[3]=(nRegister[2]?nRegister[2]:0x400); break;		// is never zero!
+			case 3: nCounter[3]=(nRegister[2]?nRegister[2]:0x400); 
+					noiseFlags |= NOISE_FLAG_CHAN3;
+					break;		// is never zero!
 		}
+
+		// check periodic
+		if (nRegister[3]&0x04) {
+			// white noise - but the flag is inverted
+			noiseFlags &= ~(NOISE_FLAG_PERIODIC);
+		} else {
+			noiseFlags |= NOISE_FLAG_PERIODIC;
+		}
+
 	} else {
 		// limit freq
 		freq&=0x3ff;

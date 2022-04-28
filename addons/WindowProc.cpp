@@ -123,6 +123,9 @@ extern int WindowActive;
 extern int enableSpeedKeys;
 extern double gMouseScale;		// TIPI mouse
 extern bool mouseCaptured;
+extern int logAudio;
+extern bool openAudioLogFiles();
+extern void closeAudioLogFiles();
 
 // window
 extern int nVideoLeft, nVideoTop;
@@ -3937,6 +3940,20 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 					} else {
 						BreakOnDiskCorrupt = true;
 						CheckMenuItem(GetMenu(hwnd), ID_DEBUG_BREAKONDISKCORRUPT, MF_CHECKED);
+					}
+					break;
+
+				case ID_DEBUG_LOGAUDIO:
+					if (logAudio) {
+						closeAudioLogFiles();
+						logAudio = 0;
+						CheckMenuItem(GetMenu(hwnd), ID_DEBUG_LOGAUDIO, MF_UNCHECKED);
+					} else {
+						MessageBox(myWnd, "Audio logging will survive reset, make sure to stop it!", "Warning", MB_OK);
+						if (openAudioLogFiles()) {
+							logAudio = true;
+							CheckMenuItem(GetMenu(hwnd), ID_DEBUG_LOGAUDIO, MF_CHECKED);
+						}
 					}
 					break;
 

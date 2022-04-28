@@ -290,6 +290,10 @@ extern int fJoystickActiveOnKeys;
 extern unsigned char ignorecount;
 extern unsigned char fctnrefcount,shiftrefcount,ctrlrefcount;
 
+// audio per-frame logging
+extern int logAudio;
+extern void writeAudioLogState();
+
 // menu display
 extern int bEnableAppMode;
 extern void SetMenuMode(bool showTitle, bool showMenu);
@@ -915,6 +919,7 @@ void updateVDP(int cycleCount)
 			VDPS|=VDPS_INT;
 			end_of_frame = 1;
 			statusFrameCount++;
+			if (logAudio) writeAudioLogState();
 		} else if (vdpscanline > 261) {
 			vdpscanline = 0;
 			SetEvent(BlitEvent);

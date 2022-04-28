@@ -265,6 +265,8 @@ BEGIN
         MENUITEM "&Dump RAM (F10)",             ID_DEBUG_DUMPRAM
         MENUITEM "Trigger &Load Interrupt (F12)", ID_DEBUG_LOADINT
         MENUITEM SEPARATOR
+        MENUITEM "Log Audio",                   ID_DEBUG_LOGAUDIO
+        MENUITEM SEPARATOR
         MENUITEM "Break on Illegal Opcode",     ID_DEBUG_BREAKONILLEGALOPCODE
         MENUITEM "Break on Disk Corrupt",       ID_DEBUG_BREAKONDISKCORRUPT
     END
