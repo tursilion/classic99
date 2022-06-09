@@ -43,8 +43,9 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.058c"
+#define VERSION "QI399.059"
 #define DEBUGLEN 120
+#define DEBUGLINES 40
 
 typedef unsigned __int8 UINT8;
 typedef unsigned __int8 Byte;
@@ -275,8 +276,9 @@ void memrnd(void *pRnd, int nCnt);
 extern int PauseInactive;							// what to do when the window is inactive
 extern int SpeechEnabled;							// whether or not speech is enabled
 extern volatile int ThrottleMode;					// system throttling mode
+extern int Fast16BitRam;
 
-extern char lines[34][DEBUGLEN];					// debug lines
+extern char lines[DEBUGLINES][DEBUGLEN];			// debug lines
 extern bool bDebugDirty;
 
 extern char *PasteString;							// Used for Edit->Paste

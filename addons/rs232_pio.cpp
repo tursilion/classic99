@@ -88,7 +88,7 @@ int ReadRS232CRU(int ad) {
 	if (ad < 8) {
 		// PIO
 		//	debug_write("TI reading CRU %d (value %d)", ad, nCRUIn & (1<<ad));
-		debug_write("PIO not really supported");
+		if (ad > 0) debug_write("PIO not really supported");
 		return nCRUIn & (1<<ad);
 	} else if ((ad>=32)&&(ad<64)) {
 		// RS232/1
@@ -164,7 +164,7 @@ void WriteRS232CRU(int ad, int bt) {
 	int rs232 = 0;
 
 	if (ad < 8) {
-		debug_write("PIO not really supported");
+		if (ad > 0) debug_write("PIO not really supported");
 		if (bt) {
 			//debug_write("TI writing CRU %d (value %d)", ad, 1);
 			// writing 1

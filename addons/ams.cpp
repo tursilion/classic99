@@ -63,7 +63,7 @@ static EmulationMode emulationMode = None;		// Default to no emulation mode
 static AmsMemorySize memorySize = Mem128k;		// Default to 128k AMS Card
 static MapperMode mapperMode = Map;				// Default to mapping addresses
 
-static Word mapperRegisters[MaxMapperRegisters] = { 0 };
+Word mapperRegisters[MaxMapperRegisters] = { 0 };
 static Byte systemMemory[MaxMapperPages * MaxPageSize] = { 0 };
 Byte staticCPU[0x10000] = { 0 };				// 64k for the base memory
 

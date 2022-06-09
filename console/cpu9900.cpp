@@ -61,7 +61,7 @@
 // disable it on cartridges for v2.2 consoles, if we ever do it.
 
 #define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 #include <stdio.h>
 #include <windows.h>
 #include <vector>

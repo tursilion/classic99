@@ -411,13 +411,14 @@
 #define ID_VIEW_LOGDISASMTODISK         40193
 #define ID_STRETCHMODE_DXFULLSCREEN     40194
 #define ID_DEBUG_LOGAUDIO               40195
+#define ID_CPUTHROTTLING_16             40196
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        356
-#define _APS_NEXT_COMMAND_VALUE         40196
+#define _APS_NEXT_COMMAND_VALUE         40197
 #define _APS_NEXT_CONTROL_VALUE         1176
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

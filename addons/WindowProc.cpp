@@ -47,7 +47,7 @@
 //*****************************************************
 
 #define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 
 #include <stdio.h>
 #include <windows.h>
@@ -105,9 +105,9 @@ extern struct CARTS *Users;
 extern int nTotalUserCarts;
 extern struct _break BreakPoints[];
 extern int nBreakPoints;
-extern char lines[34][DEBUGLEN];				// debug lines
+extern char lines[DEBUGLINES][DEBUGLEN];				// debug lines
 extern bool bDebugDirty;
-extern struct history Disasm[20];				// last 20 addresses for disasm
+extern struct history Disasm[DEBUGLINES];				// last x addresses for disasm
 extern bool bScrambleMemory;
 extern RECT gWindowRect;
 extern bool bCorruptDSKRAM;
@@ -147,6 +147,7 @@ extern int statusReadCount;
 // sams config
 extern int sams_enabled, sams_size;
 extern Byte staticCPU[0x10000];					// main memory for debugger
+extern Word mapperRegisters[16];
 Byte ReadRawAMS(int address);
 void WriteRawAMS(int address, int value);
 void dumpMapperRegisters();
@@ -191,6 +192,16 @@ HWND hHeatMap=NULL;
 HWND hBrkHlp=NULL;
 HWND hTVDlg=NULL;
 HBITMAP hHeatBmp=NULL;
+
+// used for dynamic titles
+static char speedTitle[256];
+
+// used for debug window edit controls
+void newPaint(HWND hWnd, LPPAINTSTRUCT lpPS);
+LRESULT CALLBACK newEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+HWND ctrl1,ctrl2;
+HFONT mainfont;
+char szCaption1[4096] = {0}, szCaption2[4096] = {0};
 
 // used to initialize the disk config dialog 
 int g_DiskCfgNum;
@@ -1599,8 +1610,6 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_OPTIONS_CPUTHROTTLING:
 				{
-					static char speedTitle[256];
-
 					// Make sure nothing's left over from the old speed
 					InterlockedExchange((LONG*)&cycles_left, 0);
 
@@ -1614,7 +1623,12 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 					case THROTTLE_NORMAL:
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_CHECKED);
-						szDefaultWindowText = AppName;
+						if (Fast16BitRam) {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - 16-bit RAM", AppName);
+							szDefaultWindowText = speedTitle;
+						} else {
+							szDefaultWindowText = AppName;
+						}
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_UNCHECKED);
@@ -1622,6 +1636,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 					case THROTTLE_SLOW:
 						snprintf(speedTitle, sizeof(speedTitle), "%s - Slow CPU", AppName);
+						if (Fast16BitRam) {
+							strncat(speedTitle, " - 16-bit RAM", sizeof(speedTitle)-strlen(speedTitle)-1);
+						}
 						szDefaultWindowText = speedTitle;
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_CHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
@@ -1636,6 +1653,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						} else {
 							snprintf(speedTitle, sizeof(speedTitle), "%s - CPU Overdrive", AppName);
 						}
+						if (Fast16BitRam) {
+							strncat(speedTitle, " - 16-bit RAM", sizeof(speedTitle)-strlen(speedTitle)-1);
+						}
 						szDefaultWindowText = speedTitle;
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_UNCHECKED);
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
@@ -1648,6 +1668,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 							snprintf(speedTitle, sizeof(speedTitle), "%s - System Maximum (F6/F11 for normal)", AppName);
 						} else {
 							snprintf(speedTitle, sizeof(speedTitle), "%s - System Maximum", AppName);
+						}
+						if (Fast16BitRam) {
+							strncat(speedTitle, " - 16-bit RAM", sizeof(speedTitle)-strlen(speedTitle)-1);
 						}
 						szDefaultWindowText = speedTitle;
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_UNCHECKED);
@@ -1693,6 +1716,24 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				max_cpf=cfg_cpf;
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
+				break;
+
+			case ID_CPUTHROTTLING_16:
+				// lParam of 1 means internal message, value already changed
+				if (lParam != 1) {
+					Fast16BitRam = !Fast16BitRam;
+				}
+				if (Fast16BitRam) {
+					snprintf(speedTitle, sizeof(speedTitle), "%s - 16-bit RAM", AppName);
+					szDefaultWindowText = speedTitle;
+					CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_16, MF_CHECKED);
+					if (lParam != 1) {
+						MessageBox(myWnd, "Warning: 16-bit RAM setting also affects AMS. This mode is accurate only for 32k apps.", "Performance warning", MB_OK);
+					}
+				} else {
+					szDefaultWindowText = AppName;
+					CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_16, MF_UNCHECKED);
+				}
 				break;
 
 			case ID_OPTIONS_AUDIO: 
@@ -3222,6 +3263,13 @@ void LaunchDebugWindow() {
 	Sleep(100);
 	if (NULL == dbgWnd) {
 		dbgWnd=CreateDialog(NULL, MAKEINTRESOURCE(IDD_DEBUG), myWnd, DebugBoxProc);
+
+		// the new bigger debug views flicker pretty badly,
+		// so we need to subclass them
+		ctrl1 = GetDlgItem(dbgWnd, IDC_MAINEDIT);
+		SetWindowLongPtr(ctrl1, GWLP_WNDPROC, (LONG_PTR)newEditProc);
+		ctrl2 = GetDlgItem(dbgWnd, IDC_SECONDEDIT);
+		SetWindowLongPtr(ctrl2, GWLP_WNDPROC, (LONG_PTR)newEditProc);
 	}
 	ShowWindow(dbgWnd, SW_SHOW);
 	Sleep(100);
@@ -3236,6 +3284,115 @@ void UpdateMakeMenu(HWND hwnd, int enable) {
 		EnableMenuItem(menu, ID_MAKE_SAVEPROGRAM, MF_BYCOMMAND | (enable?MF_ENABLED:MF_GRAYED));
 		DrawMenuBar(hwnd);
 	}
+}
+
+// TODO: this creates a new bitmap every frame... optimize and also check for handle leaks
+// We can improve it by reusing the same bitmap every frame
+static void newPaint(HWND hWnd, LPPAINTSTRUCT lpPS)
+{
+    RECT rc;
+    HFONT hfntOld = NULL;
+	char *cap;
+    HDC hdcMem;
+    HBITMAP hbmMem, hbmOld;
+    HBRUSH hbrBkGnd;
+
+	// check which control
+	if (hWnd == ctrl1) {
+		cap = szCaption1;
+	} else if (hWnd == ctrl2) {
+		cap = szCaption2;
+	} else {
+		return;
+	}
+
+	// create the bitmap to draw into
+    GetClientRect(hWnd, &rc);
+	hdcMem = CreateCompatibleDC(lpPS->hdc);
+    hbmMem = CreateCompatibleBitmap(lpPS->hdc,
+                                    rc.right-rc.left,
+                                    rc.bottom-rc.top);
+    hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
+
+	// erase the bitmap
+    hbrBkGnd = CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
+    FillRect(hdcMem, &rc, hbrBkGnd);
+    DeleteObject(hbrBkGnd);
+
+	// add the font
+	if (mainfont != NULL) {
+		hfntOld = (HFONT)SelectObject(hdcMem, mainfont);
+	}
+
+	// draw it offscreen
+    SetBkMode(hdcMem, TRANSPARENT);
+    SetTextColor(hdcMem, GetSysColor(COLOR_WINDOWTEXT));
+    DrawText(hdcMem,
+             cap,
+             -1,
+             &rc,
+             DT_LEFT);
+
+    if (hfntOld) {
+        SelectObject(lpPS->hdc, hfntOld);
+    }
+
+	// blit the changed image
+    BitBlt(lpPS->hdc,
+           rc.left, rc.top,
+           rc.right-rc.left, rc.bottom-rc.top,
+           hdcMem,
+           0, 0,
+           SRCCOPY);
+
+	// clean up
+    SelectObject(hdcMem, hbmOld);
+    DeleteObject(hbmMem);
+    DeleteDC(hdcMem);
+}
+
+//https://docs.microsoft.com/en-us/previous-versions/ms969905(v=msdn.10)?redirectedfrom=MSDN
+//https://docs.microsoft.com/en-us/windows/win32/controls/subclassing-overview
+LRESULT CALLBACK newEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    PAINTSTRUCT ps;
+	char *cap;
+
+	if (hWnd == ctrl1) {
+		cap = szCaption1;
+	} else if (hWnd == ctrl2) {
+		cap = szCaption2;
+	} else {
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+	}
+
+    switch(msg) {
+    case WM_SETTEXT:
+        strncpy(cap, (LPSTR)lParam, sizeof(szCaption1));	// assumes both strings are same size
+        InvalidateRect(hWnd, NULL, TRUE);
+        break;
+
+    case WM_SETFONT:
+		// we use the parent window default font
+        break;
+
+	case WM_ERASEBKGND:
+		// doesn't seem to be sent anyway...
+		// lie and say we did it.
+		return (LRESULT)1;
+		break;
+
+    case WM_PAINT:
+        BeginPaint(hWnd, &ps);
+        newPaint(hWnd, &ps);
+        EndPaint(hWnd, &ps);
+        break;
+
+    default:
+        return DefWindowProc(hWnd, msg, wParam, lParam);
+        break;
+    }
+
+    return NULL;
 }
 
 INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -3337,7 +3494,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 					}
 					break;
 
-// max lines is 34, each line is 8 bytes
+// max lines is DEBUGLINES, each line is 8 bytes
 #define LINES_TO_STEP 32
 				case IDC_NEXT:
 					switch (nMemType) {
@@ -4028,6 +4185,8 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 			return TRUE;
 
 		case WM_INITDIALOG:
+			mainfont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+
 			CheckRadioButton(hwnd, IDC_RADIO1, IDC_RADIO5, IDC_RADIO1);
 			nMemType=0;
 			SendDlgItemMessage(hwnd, IDC_MAINEDIT, WM_SETTEXT, NULL, (LPARAM)"");
@@ -4150,7 +4309,7 @@ void DebugUpdateThread(void*) {
 				switch (nMemType) {
 					case 0:		// debug
 						if (bDebugDirty) {
-							for (idx=1; idx<34; idx++) {
+							for (idx=0; idx<DEBUGLINES; idx++) {
 								csOut+=lines[idx];
                                 csOut.TrimRight();
 								csOut+="\r\n";
@@ -4161,19 +4320,21 @@ void DebugUpdateThread(void*) {
 
 					case 1:		// disassembly
 						{
-							// work out how many lines we can display to get close to 20
+							// work out how many lines we can display
 							int nLineCnt=0;
 							struct history myHist;
 
 							// show line with bank only for multi-bank cartridges
-							for (idx=0; idx<20; idx++) {
+							// we want to generate a few extra lines to guarantee the cursor is stable
+							int precount = DEBUGLINES*2/3;
+							for (idx=precount-10; idx<DEBUGLINES; idx++) {
 								if ((xb)&&((Disasm[idx].pc & 0xE000) == 0x6000)) {
 									EmitDebugLine('b', Disasm[idx], csOut, nLineCnt);
 								} else {
 									EmitDebugLine(' ', Disasm[idx], csOut, nLineCnt);
 								}
 							}
-							while (nLineCnt > 20) {
+							while (nLineCnt > precount) {
 								// most likely at least a few
 								int nPos = csOut.Find('\n');
 								if (nPos == -1) break;
@@ -4192,7 +4353,7 @@ void DebugUpdateThread(void*) {
 
 							myHist.pc += EmitDebugLine('>', myHist, csOut, nLineCnt);
 
-							for (idx=0; idx<13; idx++) {
+							for (idx=nLineCnt; idx<DEBUGLINES; idx++) {
 								int nTmp = EmitDebugLine(' ', myHist, csOut, nLineCnt);
 								myHist.pc += nTmp;
 								while (nTmp > 2) {
@@ -4339,38 +4500,6 @@ void DebugUpdateThread(void*) {
 							break;
 
                     case MEMAMS:		// AMS Memory
-#if 0
-                        // hijacking this for SID
-                        {
-							// CPU must not call the read function, as it may call the memory
-							// mapped devices and affect them.
-							char buf3[32];
-							int c;
-							strncpy(buf3, szTopMemory[nMemType], 32);
-							buf3[31]='\0';
-                            tmpPC = 0;
-							for (idx2=0; idx2<34; idx2++) {
-								sprintf(buf1, "%04X: ", tmpPC);
-								strcpy(buf3, "");
-								for (idx=0; idx<8; idx++) {
-                                    if (tmpPC >= sizeof(SidCache)) break;
-									c=SidCache[tmpPC++];
-									sprintf(buf2, "%02X ", c);
-									strcat(buf1, buf2);
-									if ((c>=32)&&(c<=126)) {
-										buf2[0]=c;
-									} else {
-										buf2[0]='.';
-									}
-									buf2[1]='\0';
-									strcat(buf3, buf2);
-								}
-								strcat(buf1, buf3);
-								csOut+=buf1;
-								csOut+="\r\n";
-							}
-                        }
-#else
 						{
 							// CPU must not call the read function, as it may call the memory
 							// mapped devices and affect them.
@@ -4403,7 +4532,6 @@ void DebugUpdateThread(void*) {
 								csOut+="\r\n";
 							}
 						}
-#endif
 						break;
 				}
 				if (!csOut.IsEmpty()) {
@@ -4508,6 +4636,31 @@ void DebugUpdateThread(void*) {
 
 				sprintf(buf1, " VOL   %X   %X   %X  %X\r\n", nVolume[0], nVolume[1], nVolume[2], nVolume[3]);
 				csOut+=buf1;
+
+				csOut+="\r\n";
+
+				// AMS - 16 registers up to 16-bits each (normally 8 though)
+				sprintf(buf1, "AMS\r\n %04X %04X %04X %04X %04X %04X %04X %04X\r\n",
+					mapperRegisters[0],mapperRegisters[1],mapperRegisters[2],mapperRegisters[3],
+					mapperRegisters[4],mapperRegisters[5],mapperRegisters[6],mapperRegisters[7]);
+				csOut +=buf1;
+				sprintf(buf1, " %04X %04X %04X %04X %04X %04X %04X %04X\r\n",
+					mapperRegisters[8],mapperRegisters[9],mapperRegisters[10],mapperRegisters[11],
+					mapperRegisters[12],mapperRegisters[13],mapperRegisters[14],mapperRegisters[15]);
+				csOut +=buf1;
+
+				// SID - 29 8-bit registers
+				sprintf(buf1, "\r\nSID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+					SidCache[0], SidCache[1], SidCache[2], SidCache[3], SidCache[4], 
+					SidCache[5], SidCache[6], SidCache[7], SidCache[8], SidCache[9],
+					SidCache[10], SidCache[11], SidCache[12]);
+				csOut +=buf1;
+				sprintf(buf1, " %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+					SidCache[13], SidCache[14], SidCache[15], SidCache[16], 
+					SidCache[17], SidCache[18], SidCache[19], SidCache[20],
+					SidCache[21], SidCache[22], SidCache[23], SidCache[24], 
+					SidCache[25], SidCache[26], SidCache[27], SidCache[28]);
+				csOut +=buf1;
 
 				SendMessage(hWnd, WM_SETTEXT, NULL, (LPARAM)(LPCSTR)csOut);
 			}

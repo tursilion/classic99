@@ -73,7 +73,7 @@
 #pragma warning (disable: 4113 4761 4101)
 
 #define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 
 ////////////////////////////////////////////
 // Includes
@@ -317,7 +317,7 @@ Byte CPUSpeechHaltByte=0;
 Byte SidCache[29];                                  // cache of written sid registers
 
 // disassembly view
-struct history Disasm[20];							// history object
+struct history Disasm[DEBUGLINES];					// history object
 
 // video
 extern int bEnable80Columns;						// 80 column hack
@@ -333,7 +333,7 @@ bool statusUpdateRead = false;						// frame has finished, watch for status test
 // Assorted
 char qw[80];										// temp string
 volatile int quitflag;								// quit flag
-char lines[34][DEBUGLEN];							// debug lines
+char lines[DEBUGLINES][DEBUGLEN];					// debug lines
 bool bDebugDirty;									// whether debug has changed
 volatile int xbBank=0;								// Cartridge bank switch
 volatile int bInvertedBanks=false;					// whether switching uses Jon's inverted 379
@@ -369,6 +369,7 @@ int PauseInactive;									// what to do when the window is inactive
 int WindowActive;                                   // true if the Classic99 window is active
 int SpeechEnabled;									// whether speech is enabled
 volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
+int Fast16BitRam = 0;								// whether to disable wait states on the 32K memory space
 int enableSpeedKeys = 0;							// allow the INI to make F6,F7,F8,F11 available all the time
 int enableAltF4 = 0;								// allow alt+F4 to close the emulator
 int enableEscape = 1;								// allow Escape to act as Fctn-9 (back)
@@ -667,6 +668,8 @@ void ReadConfig() {
 	GetPrivateProfileString("emulation", "AVIFilename", AVIFileName, AVIFileName, 256, INIFILE);
 	// Throttle mode is all in one now, from -1: THROTTLE_SLOW, THROTTLE_NORMAL, THROTTLE_OVERDRIVE, THROTTLE_SYSTEMMAXIMUM
 	ThrottleMode =  GetPrivateProfileInt("emulation",   "throttlemode",         ThrottleMode,   INIFILE);
+	// 16-bit RAM is now supported
+	Fast16BitRam =  GetPrivateProfileInt("emulation",   "fast16bitram",         Fast16BitRam,   INIFILE);
 	// Proper CPU throttle (cycles per frame) - ipf is deprecated - this defines "normal" and probably should go away too
 	max_cpf=		GetPrivateProfileInt("emulation",	"maxcpf",				max_cpf,		INIFILE);
 	cfg_cpf = max_cpf;
@@ -1022,6 +1025,8 @@ void SaveConfig() {
 
 	WritePrivateProfileString(	"emulation",	"AVIFilename",			AVIFileName,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"throttlemode",			ThrottleMode,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"fast16bitram",			Fast16BitRam,				INIFILE);
+
 	if (0 != max_cpf) {
 		WritePrivateProfileInt(	"emulation",	"maxcpf",				max_cpf,					INIFILE);
 	}
@@ -1522,6 +1527,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	nCartGroup=0;				// Cartridge group (0-apps, 1-games, 2-user)
 	nCart=-1;					// loaded cartridge (-1 is none)
 	ThrottleMode = THROTTLE_NORMAL;	// normal throttle
+	Fast16BitRam = 0;			// 8-bit RAM
 	drawspeed=0;				// no frameskip
 	FilterMode=2;				// super 2xSAI
 	nDefaultScreenScale=1;		// 1x by default
@@ -1646,6 +1652,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	// Only some messages care about that param, though
 	SendMessage(myWnd, WM_COMMAND, ID_SYSTEM_0+nSystem, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
+	SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_16, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_DISK_CORRUPTDSKRAM, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_MAINTAINASPECT, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_FILTERMODE_NONE+FilterMode, 1);
@@ -3782,12 +3789,12 @@ void do1()
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
 			if (pCurrentCPU->enableDebug) {
 				// Update the disassembly trace
-				memmove(&Disasm[0], &Disasm[1], 19*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
-				Disasm[19].pc=pCurrentCPU->GetPC();
+				memmove(&Disasm[0], &Disasm[1], (DEBUGLINES-1)*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
+				Disasm[DEBUGLINES-1].pc=pCurrentCPU->GetPC();
 				if (pCurrentCPU == pGPU) {
-					Disasm[19].bank = -1;
+					Disasm[DEBUGLINES-1].bank = -1;
 				} else {
-					Disasm[19].bank = xbBank;
+					Disasm[DEBUGLINES-1].bank = xbBank;
 				}
 			}
 			// will fill in cycles below
@@ -3852,9 +3859,9 @@ void do1()
 
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
 			if (pCurrentCPU->enableDebug) {
-				Disasm[19].cycles = pCurrentCPU->GetCycleCount();
+				Disasm[DEBUGLINES-1].cycles = pCurrentCPU->GetCycleCount();
                 if (cycleCountOn) {
-                    cycleCounter[Disasm[19].pc] += Disasm[19].cycles;
+                    cycleCounter[Disasm[DEBUGLINES-1].pc] += Disasm[DEBUGLINES-1].cycles;
                 }
 			}
 		}
@@ -4047,36 +4054,51 @@ Byte rcpubyte(Word x,READACCESSTYPE rmw) {
 		}
     }
 
-    if (rmw != ACCESS_FREE) {
-		if ((x & 0x01) == 0) {					// this is a wait state (we cancel it below for ROM and scratchpad)
-			pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
-												// be right now that the CPU emulation does all Word accesses
-		}
-	}
-
 	switch (x & 0xe000) {
 		case 0x8000:
 			switch (x & 0xfc00) {
 				case 0x8000:				// scratchpad RAM - 256 bytes repeating.
-					if ((rmw != ACCESS_FREE) && ((x & 0x01) == 0)) {
-						pCurrentCPU->AddCycleCount(-4);			// never mind for scratchpad :)
-					}
+					// no wait states
 					return ReadMemoryByte(x | 0x0300, rmw);	// I map it all to >83xx
 				case 0x8400:				// Don't read the sound chip (can hang a real TI? maybe only on early ones?)
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					return 0;
 				case 0x8800:				// VDP read data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
 					}
 					return(rvdpbyte(x,rmw));
 				case 0x8c00:				// VDP write data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
 					}
 					return 0;
 				case 0x9000:				// Speech read data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
@@ -4084,12 +4106,24 @@ Byte rcpubyte(Word x,READACCESSTYPE rmw) {
                     // timing handled in rspeechbyte
 					return(rspeechbyte(x));
 				case 0x9400:				// Speech write data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
 					}
 					return 0;
 				case 0x9800:				// read GROM data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
@@ -4100,27 +4134,57 @@ Byte rcpubyte(Word x,READACCESSTYPE rmw) {
 						return nRet;
 					}
 				case 0x9c00:				// write GROM data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					return 0;
 				default:					// We shouldn't get here, but just in case...
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					return 0;
 			}
 		case 0x0000:					// console ROM
-			if ((rmw != ACCESS_FREE) && ((x & 0x01) == 0)) {
-				pCurrentCPU->AddCycleCount(-4);			// never mind for scratchpad :)
-			}
-			// fall through
+			// no wait states
+			return ReadMemoryByte(x, rmw);
+
 		case 0x2000:					// normal CPU RAM
 		case 0xa000:					// normal CPU RAM
 		case 0xc000:					// normal CPU RAM
+			if ((rmw != ACCESS_FREE)&&(!Fast16BitRam)) {	// also check 16-bit RAM flag. TODO: this also affects AMS!!
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
 			return ReadMemoryByte(x, rmw);
 
 		case 0xe000:					// normal CPU RAM
 #ifdef USE_GIGAFLASH
+			// TODO: not sure how Fast16BitRam would affects this. Probably shouldn't.
             readE000(x,rmw);            // but never returns anything valid
 #endif
+			if ((rmw != ACCESS_FREE)&&(!Fast16BitRam)) {	// also check 16-bit RAM flag. TODO: this also affects AMS!!
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
 			return ReadMemoryByte(x, rmw);
 
 		case 0x4000:					// DSR ROM (with bank switching and CRU)
+			if (rmw != ACCESS_FREE) {
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
 			if (ROMMAP[x]) {			
 				// someone loaded ROM here, override the DSR system
 				return ReadMemoryByte(x, rmw);
@@ -4185,6 +4249,12 @@ Byte rcpubyte(Word x,READACCESSTYPE rmw) {
 			break;
 
 		case 0x6000:					// cartridge ROM
+			if (rmw != ACCESS_FREE) {
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
 #ifdef USE_GIGAFLASH
         {
             Byte xx = read6000(x,rmw);
@@ -4242,6 +4312,12 @@ Byte rcpubyte(Word x,READACCESSTYPE rmw) {
 			break;
 
 		default:						// We shouldn't get here, but just in case...
+			if (rmw != ACCESS_FREE) {
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
 			return 0;
 	}
 }
@@ -6449,10 +6525,10 @@ void debug_write(char *s, ...)
 
 	EnterCriticalSection(&DebugCS);
 	
-	memcpy(&lines[0][0], &lines[1][0], 33*DEBUGLEN);				// scroll data
-	strncpy(&lines[33][0], buf, DEBUGLEN);							// copy in new line
-	memset(&lines[33][strlen(buf)], 0x20, DEBUGLEN-strlen(buf));	// clear rest of line
-	lines[33][DEBUGLEN-1]='\0';										// zero terminate
+	memcpy(&lines[0][0], &lines[1][0], (DEBUGLINES-1)*DEBUGLEN);				// scroll data
+	strncpy(&lines[DEBUGLINES-1][0], buf, DEBUGLEN);				// copy in new line
+	memset(&lines[DEBUGLINES-1][strlen(buf)], 0x20, DEBUGLEN-strlen(buf));	// clear rest of line
+	lines[DEBUGLINES-1][DEBUGLEN-1]='\0';							// zero terminate
 
 	LeaveCriticalSection(&DebugCS);
 
