@@ -372,6 +372,7 @@ volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
 int Fast16BitRam = 0;								// whether to disable wait states on the 32K memory space
 int enableSpeedKeys = 0;							// allow the INI to make F6,F7,F8,F11 available all the time
 int enableAltF4 = 0;								// allow alt+F4 to close the emulator
+int enableF10Menu = 0;								// allow F10 to activate the menu bar
 int enableEscape = 1;								// allow Escape to act as Fctn-9 (back)
 bool mouseCaptured = false;							// used for mouse support - just TIPI today
 
@@ -501,6 +502,16 @@ struct CARTS Systems[] = {
 #ifdef USE_GIGAFLASH
 #include "../addons/gigaflash.cpp"
 #endif
+
+// helper for the screen reader in the vdp code
+bool CpuInGPLMove() {
+	// GPL Move is in ROM from 0x61e to 0x6d0
+	if ((pCPU->GetPC() >= 0x61e) && (pCPU->GetPC() < 0x6d2)) {
+		return true;
+	} else {
+		return false;
+	}
+}
 
 // breakpoint helper 
 bool CheckRange(int nBreak, int x) {
@@ -679,6 +690,8 @@ void ReadConfig() {
 	enableSpeedKeys = GetPrivateProfileInt("emulation", "enableSpeedKeys",		enableSpeedKeys, INIFILE);
 	// map through certain function keys as emulator speed control
 	enableEscape = GetPrivateProfileInt("emulation",    "enableEscape",		    enableEscape, INIFILE);
+	// F10 can be set to enable the menu
+	enableF10Menu = GetPrivateProfileInt("emulation", "enableF10Menu",			enableF10Menu,   INIFILE);
 	// Pause emulator when window inactive: 0-no, 1-yes
 	PauseInactive=	GetPrivateProfileInt("emulation",	"pauseinactive",		PauseInactive,	INIFILE);
 	// Disable speech if desired
@@ -1043,6 +1056,7 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"emulation",	"sams_enabled",			sams_enabled,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"sams_size",			sams_size,					INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableAltF4",			enableAltF4,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableF10Menu",		enableF10Menu,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableINIWrite",		bEnableINIWrite,			INIFILE);
 
 	WritePrivateProfileInt(		"joysticks",	"active",				fJoy,						INIFILE);
@@ -3395,7 +3409,16 @@ void do1()
 		if (GetAsyncKeyState(VK_MENU)&0x8000) {
 			if (key[VK_F4]) {
 				PostMessage(myWnd, WM_QUIT, 0, 0);
+				key[VK_F4] = 0;
 			}
+		}
+	}
+	// check F10 menu if enabled
+	if (enableF10Menu) {
+		if (key[VK_F10]) {
+			// This magic sequence from https://stackoverflow.com/questions/256719/how-to-programmatically-activate-the-menu-in-windows-mobile
+			PostMessage((HWND)myWnd, WM_SYSCOMMAND, SC_KEYMENU, 0);
+			key[VK_F10] = 0;
 		}
 	}
 	

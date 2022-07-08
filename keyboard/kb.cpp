@@ -72,6 +72,7 @@ extern int gDontInvertCapsLock;
 extern int enableSpeedKeys;
 extern int enableEscape;
 extern int enableAltF4;
+extern int enableF10Menu;
 extern bool mouseCaptured;
 extern HWND myWnd;
 extern const char *szDefaultWindowText;
@@ -298,6 +299,12 @@ void decode(unsigned char sc)
 	}
 	if (enableAltF4) {
 		if ((GetAsyncKeyState(VK_MENU) & 0x8000) && (sc == VK_F4)) {
+			is_up = 0;	// ignore it
+			return;
+		}
+	}
+	if (enableF10Menu) {
+		if (sc == VK_F10) {
 			is_up = 0;	// ignore it
 			return;
 		}

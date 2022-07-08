@@ -1826,9 +1826,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     CString csOut;
                     if (GetAsyncKeyState(VK_SHIFT)&0x8000) {
                         // BASIC offset
-                        csOut = captureScreen(-96);
+                        csOut = captureScreen(-96, '.');
                     } else {
-                        csOut = captureScreen(0);
+                        csOut = captureScreen(0, '.');
                     }
                     if (csOut != "") {
           	            HGLOBAL hGlob;

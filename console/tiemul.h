@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.059"
+#define VERSION "QI399.060"
 #define DEBUGLEN 120
 #define DEBUGLINES 40
 
@@ -318,7 +318,7 @@ void SetupSams(int sams_mode, int sams_size);
 
 int getCharsPerLine();
 char VDPGetChar(int x, int y, int width, int height);
-CString captureScreen(int offsetByte);
+CString captureScreen(int offsetByte, char illegalByte);
 void GetTVValues(double *hue, double *sat, double *cont, double *bright, double *sharp);
 void SetTVValues(double hue, double sat, double cont, double bright, double sharp);
 void VDPmain(void);
