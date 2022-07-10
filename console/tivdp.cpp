@@ -83,14 +83,8 @@ The reset also changes VR54 and VR55, but they are *not* loaded to the GPU PC (p
 #include <ddraw.h>
 #include <commctrl.h>
 #include <commdlg.h>
-#include <atlbase.h>
-//You may derive a class from CComModule and use it if you want to override something,
-//but do not change the name of _Module
-extern CComModule _Module;
-#include <atlcom.h>
 #include <atlstr.h>
 #include <time.h>
-#include <sapi.h>
 
 #include "tiemul.h"
 #include "..\resource.h"
@@ -243,9 +237,6 @@ char *digpat[10][5] = {
 	"111"
 };
 
-// used for the screen reader
-bool CpuInGPLMove();
-
 // this draws a full frame for overdrive. It must be negative and more than
 // a reasonable number of CPU instructions, cause smaller magnitude negative
 // numbers mean the half-instruction update that we do...
@@ -376,9 +367,6 @@ extern int nVideoLeft, nVideoTop;
 extern int max_cpf;							// current CPU performance
 extern CPU9900 *pGPU;
 extern int statusFrameCount;
-
-// used for the screen reader output
-char oldBuf[2080];		// big enough for 80 column text mode
 
 //////////////////////////////////////////////////////////
 // Helpers for the TV controls
@@ -607,9 +595,6 @@ void VDPmain()
 	bDisableBlank=false;
 	bDisableSprite=false;
 	bDisableBackground=false;
-
-	// init screen reader
-	memset(oldBuf, 0, sizeof(oldBuf));
 
 	debug_write("Starting video loop");
 	redraw_needed=REDRAW_LINES;
@@ -1650,188 +1635,6 @@ unsigned int* drawTextLine(unsigned int *pDat, const char *buf) {
     return pDat;
 }
 
-// this is not really a VDP function - screen reader
-// it looks for diffs to the screen and generates hopefully text
-// that we can eventually feed to the microsoft speech synth
-// Note this could be really annoying when scrolling or when
-// it's wrong, so let's make sure there is a hotkey to disable
-// also a hotkey to read the whole screen would be ideal
-void CheckUpdateSpeechOutput() {
-	char newBuf[2080];	// for 80x26
-	static bool init = false;
-	static ISpVoice *pVoice = NULL;
-
-	// todo: screen reader disabled while I figure out the last bits of it
-	return;
-
-	if (!init) {
-		// speech init: https://docs.microsoft.com/en-us/previous-versions/windows/desktop/ms720163(v=vs.85)
-		// this doesn't honor the system settings - how can we make it do so?
-		if (FAILED(::CoInitialize(NULL))) {
-			debug_write("** Com initialize failed - no promises.\n");
-		} else {
-			HRESULT hr = CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_ALL, IID_ISpVoice, (void **)&pVoice);
-#if 0			
-			// teardown code...
-			if( SUCCEEDED( hr ) )
-			{
-				pVoice->Release();
-				pVoice = NULL;
-			}
-#endif
-		}
-		init = true;
-	}
-
-	if (NULL == pVoice) {
-		return;
-	}
-
-	// check if the screen is disabled - if so, all bets are off
-	int charsPerLine = getCharsPerLine();
-	if (charsPerLine == -1) {
-		// bitmap, illegal, or disabled mode
-		memset(oldBuf, 0, sizeof(oldBuf));
-		return;
-	}
-
-	// infer the screen offset - this is probably pretty hacky...
-	// but either 32 or 128 should be space... anything else is
-	// dunno!
-	int offset = 0;
-	if ((0 != memcmp(&VDP[PDT+(32*8)], "\0\0\0\0\0\0\0\0", 8)) &&
-		(0 == memcmp(&VDP[PDT+(128*8)], "\0\0\0\0\0\0\0\0", 8))) {
-		// 32 is NOT a space, but 128 IS
-		offset = -96;
-	}
-
-    // build an output string - unknown chars will be '.', Line ending is \r\n
-    CString csOut;
-    csOut = captureScreen(offset, ' ');
-
-	// convert to buffer
-	int r = 0;
-	int c = 0;
-	memset(newBuf, 0, sizeof(newBuf));
-	for (int outPos = 0; outPos < csOut.GetLength(); ++outPos) {
-		if (csOut[outPos] == '\r') {
-			c = 0;
-			++r;
-			if (r>23) break;	// no 26 line support yet
-			++outPos;	// to also skip the \n
-			continue;
-		}
-		char x = csOut[outPos];
-		if ((x >= ' ') && (x <= '~')) {
-			newBuf[r*charsPerLine+c] = x;
-		} else {
-			newBuf[r*charsPerLine+c] = ' ';
-		}
-		++c;
-		if (c >= charsPerLine) {
-			// unlikely, bug...
-			c = 0;
-		}
-	}
-
-	// strip anything repeated more than 3 times (most likely graphics)
-	for (int r = 0; r < 24; ++r) {	// no 26 line support
-		for (int c = 0; c < charsPerLine-2; ++c) {
-			int off = r*charsPerLine+c;
-			if ((newBuf[off]!=0)&&(newBuf[off] != ' ')&&(newBuf[off] == newBuf[off+1]) && (newBuf[off] == newBuf[off+2])) {
-				// replace the whole string
-				char c = newBuf[off];
-				while (newBuf[off] == c) {
-					newBuf[off++] = ' ';
-					if (off >= 24*charsPerLine) {
-						break;
-					}
-				}
-			}
-		}
-	}
-
-	// fast (hopefully) check for ANY diff
-	if (0 == memcmp(oldBuf, newBuf, charsPerLine*24)) {
-		return;
-	}
-
-	// check for scrolled screen (up scroll only)
-	for (int idx = 1; idx < 23; ++idx) {
-		int start = idx*charsPerLine;
-		int cnt = (24-idx)*charsPerLine;
-
-		// check lower parts against top of oldbuf
-		if (0 == memcmp(&oldBuf[start], &newBuf[0], cnt)) {
-			// there must be SOMETHING other than spaces for it to count
-			bool ok = false;
-			for (int idx=0; idx<cnt; ++idx) {
-				if ((newBuf[idx] > ' ')&&(newBuf[idx] <= '~')) {
-					ok = true;
-					break;
-				}
-			}
-			if (ok) {
-				debug_write("Screen scrolled %d lines\n", idx);
-				memmove(&oldBuf[0], &oldBuf[idx*charsPerLine], cnt);
-				memset(&oldBuf[cnt], 0, idx*charsPerLine);
-				break;
-			}
-		}
-	}
-
-	// now export a diff
-	csOut.Empty();
-	bool emit = false;
-	for (int r = 0; r < 24; ++r) {	// no 26 line support
-		int line = 0;
-		char lastchar = ' ';
-		CString csLine;
-		for (int c = 0; c < charsPerLine; ++c) {
-			int off = r*charsPerLine+c;
-			if (oldBuf[off] != newBuf[off]) {
-				// on the first diff, we need to wipe the rest of the line
-				memset(&oldBuf[off], 0, charsPerLine-c);
-				// now work on the new character
-				char newchar = newBuf[off];
-				// we can't really tell if something is a letter or graphics, but, if
-				// we check for solid blocks we can at least filter out the master title page
-				if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
-					(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
-					newchar = ' ';
-				}
-				if ((newchar >= ' ') && (newchar <= '~')) {
-					if ((newchar != ' ') || (lastchar !=  ' ')) {
-						csLine += newchar;
-						if (newchar > ' ') {
-							++line;
-						}
-						lastchar = newchar;
-					}
-				} else {
-					if (lastchar != ' ') {
-						csLine += ' ';
-						lastchar = ' ';
-					}
-				}
-			}
-		}
-		if (line > 0) {
-			csLine += " ";
-			csOut += csLine;
-			emit = true;
-		}
-	}
-
-	if (emit) {
-		// todo: the speak would go here
-		debug_write("%s\n", csOut);
-		pVoice->Speak(CStringW(csOut), 0, NULL);
-	}
-
-	memcpy(oldBuf, newBuf, sizeof(oldBuf));
-}
-
 ////////////////////////////////////////////////////////////////
 // Stretch-blit the buffer into the active window
 //
@@ -1865,15 +1668,6 @@ void doBlit()
 	if (time(NULL) != lasttime) {
 		SecondTick = true;
 		time(&lasttime);
-	}
-
-	// as a convenient place for a 1 second tick, check for new data
-	// since this is Blit, we can assume at least one update has occurred
-	if (SecondTick) {
-		// disallow in the middle of a GPL MOVE (ie: screen scroll is quite slow)
-		if (!CpuInGPLMove()) {
-			CheckUpdateSpeechOutput();
-		}
 	}
 
 	EnterCriticalSection(&VideoCS);

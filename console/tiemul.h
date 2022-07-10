@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.060"
+#define VERSION "QI399.061"
 #define DEBUGLEN 120
 #define DEBUGLINES 40
 

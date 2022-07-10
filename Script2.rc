@@ -173,6 +173,12 @@ BEGIN
         MENUITEM "Audio...",                    ID_OPTIONS_AUDIO
         MENUITEM "GRAM...",                     ID_OPTIONS_GRAM
         MENUITEM "Options...",                  ID_OPTIONS_OPTIONS
+        POPUP "Screen Reader"
+        BEGIN
+            MENUITEM "Continuous",                  ID_SCREENREADER_CONTINUOUS
+            MENUITEM "Read Once",                   ID_SCREENREADER_READONCE
+            MENUITEM "Stop Talking",                ID_SCREENREADER_STOPTALKING
+        END
     END
     POPUP "Video"
     BEGIN

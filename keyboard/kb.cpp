@@ -281,6 +281,9 @@ void decode(unsigned char sc)
         switch (sc) {
         case VK_F1:		// ctrl+F1 - edit->paste
         case VK_F2:		// ctrl+F2 - edit->copy screen
+		case VK_F4:		// ctrl+F4 - read screen
+		case VK_F9:		// ctrl+F9 - toggle continuous screen reader
+		case VK_F10:	// ctrl+F10 - stop talking
         case VK_HOME:	// ctrl+HOME - edit->debugger
 			is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
             return;

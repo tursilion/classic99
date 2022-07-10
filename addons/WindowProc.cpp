@@ -63,6 +63,7 @@
 #include "tiemul.h"
 #include "cpu9900.h"
 #include "..\addons\makecart.h"
+#include "..\addons\screenReader.h"
 #include "..\keyboard\kb.h"
 #include "..\disk\diskclass.h"
 #include "..\disk\FiadDisk.h"
@@ -1734,6 +1735,33 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					szDefaultWindowText = AppName;
 					CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_16, MF_UNCHECKED);
 				}
+				break;
+
+			case ID_SCREENREADER_CONTINUOUS:
+				{
+					bool val = GetContinuousRead();
+					if (lParam == 0) {
+						val = !val;
+						SetContinuousRead(val);
+					} else {
+						// sent from config - force to true
+						val = true;
+						SetContinuousRead(val);
+					}
+					if (val) {
+						CheckMenuItem(GetMenu(myWnd), ID_SCREENREADER_CONTINUOUS, MF_CHECKED);
+					} else {
+						CheckMenuItem(GetMenu(myWnd), ID_SCREENREADER_CONTINUOUS, MF_UNCHECKED);
+					}
+				}
+				break;
+
+			case ID_SCREENREADER_READONCE:
+				ReadScreenOnce();
+				break;
+
+			case ID_SCREENREADER_STOPTALKING:
+				ShutUp();
 				break;
 
 			case ID_OPTIONS_AUDIO: 

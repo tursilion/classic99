@@ -789,6 +789,7 @@
     </ClCompile>
     <ClCompile Include="addons\gpl.cpp" />
     <ClCompile Include="addons\loadsave_brk.cpp" />
+    <ClCompile Include="addons\screenReader.cpp" />
     <ClCompile Include="addons\ubercombined.cpp" />
     <ClCompile Include="addons\ubergrom.cpp" />
     <ClCompile Include="console\cpu9900.cpp">
@@ -989,6 +990,7 @@
     <ClInclude Include="addons\F18A.h" />
     <ClInclude Include="addons\gpl.h" />
     <ClInclude Include="addons\loadsave_brk.h" />
+    <ClInclude Include="addons\screenReader.h" />
     <ClInclude Include="addons\ubergrom.h" />
     <ClInclude Include="console\cpu9900.h" />
     <ClInclude Include="console\sound.h" />

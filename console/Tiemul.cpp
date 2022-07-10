@@ -98,6 +98,7 @@
 #include "..\keyboard\kb.h"
 #include "..\keyboard\ti.h"
 #include "..\addons\ams.h"
+#include "..\addons\screenReader.h"
 #include "..\disk\diskclass.h"
 #include "..\disk\fiaddisk.h"
 #include "..\disk\imagedisk.h"
@@ -503,16 +504,6 @@ struct CARTS Systems[] = {
 #include "../addons/gigaflash.cpp"
 #endif
 
-// helper for the screen reader in the vdp code
-bool CpuInGPLMove() {
-	// GPL Move is in ROM from 0x61e to 0x6d0
-	if ((pCPU->GetPC() >= 0x61e) && (pCPU->GetPC() < 0x6d2)) {
-		return true;
-	} else {
-		return false;
-	}
-}
-
 // breakpoint helper 
 bool CheckRange(int nBreak, int x) {
 	// check bank first (assumes ranges are only for addresses, not data)
@@ -567,6 +558,9 @@ void ReadConfig() {
 
 	// backgroud hum
 	enableBackgroundHum = 	GetPrivateProfileInt("audio",	"backgroundNoise",	enableBackgroundHum?1:0,INIFILE) != 0;
+
+	// continuous screen reader
+	SetContinuousRead(		GetPrivateProfileInt("audio",	"continuousReader",	GetContinuousRead()?1:0,INIFILE) != 0);
 
 	// load the new style config
 	EnterCriticalSection(&csDriveType);
@@ -1006,6 +1000,7 @@ void SaveConfig() {
 		WritePrivateProfileInt(	"audio",		"sid_blaster",			GetSidEnable(),				INIFILE);
 	}
 	WritePrivateProfileInt(		"audio",		"backgroundNoise",		enableBackgroundHum,		INIFILE);
+	WritePrivateProfileInt(		"audio",		"continuousReader",		GetContinuousRead()?1:0,	INIFILE);
 
 	// write the new data
 	EnterCriticalSection(&csDriveType);
@@ -1587,6 +1582,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	if (NULL != SetSidEnable) {
 		SetSidEnable(false);	// by default, off
 	}
+	initScreenReader();
 
 	// Read configuration - uses above settings as default!
 	ReadConfig();
@@ -1681,6 +1677,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	if (CtrlAltReset) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_CTRL_RESET, 1);
 	if (!gDontInvertCapsLock) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_INVERTCAPSLOCK, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_FLICKER, 1);
+	if (GetContinuousRead()) SendMessage(myWnd, WM_COMMAND, ID_SCREENREADER_CONTINUOUS, 1);
 	
 	if (nCart != -1) {
 		switch (nCartGroup) {
@@ -3401,6 +3398,30 @@ void do1()
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
             PostMessage(myWnd, WM_COMMAND, ID_EDIT_COPYSCREEN, 0);
             key[VK_F2]=0;
+        }
+	}
+
+	// read screen once (with control)
+	if (key[VK_F4]) {
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+			ReadScreenOnce();
+            key[VK_F4]=0;
+        }
+	}
+
+	// toggle continuous screen reader (with control)
+	if (key[VK_F9]) {
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+			PostMessage(myWnd, WM_COMMAND, ID_SCREENREADER_CONTINUOUS, 0);
+            key[VK_F9]=0;
+        }
+	}
+
+	// stop talking (with control)
+	if (key[VK_F10]) {
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+			ShutUp();
+            key[VK_F10]=0;
         }
 	}
 
@@ -5978,10 +5999,15 @@ void wcru(Word ad, int bt)
 
                     case 18:
 						CRU_TOGGLES += 0.1;		// TODO: technically, it should be a change in the value of these three bits
-                    case 19:					// but this works well enough for now. This noise is picked up in the audio.
+												// but this works well enough for now. This noise is picked up in the audio.
+                    case 19:					
                     case 20:
                         // keyboard column select
 //                        debug_write("Keyboard column now: %d", (CRU[0x14]==0 ? 1 : 0) | (CRU[0x13]==0 ? 2 : 0) | (CRU[0x12]==0 ? 4 : 0));
+						if ((CRU[18]==1)&&(CRU[19]==0)&&(CRU[20]==1)) {
+							// column selected arbitrarily ;)
+							CheckUpdateSpeechOutput();	// check screen reader on keyboard scan
+						}
                         break;
 
                     case 22:

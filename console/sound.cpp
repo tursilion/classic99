@@ -543,7 +543,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 			newdacpos--;
 		}
 		nSpeechOut += nSpeechCnt;
-		if ((int)nSpeechOut >= nSpeechTmpPos) {
+		while ((int)nSpeechOut >= nSpeechTmpPos) {
 			nSpeechOut--;
 		}
 

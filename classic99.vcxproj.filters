@@ -100,6 +100,9 @@
     <ClCompile Include="disk\tipiDisk.cpp">
       <Filter>disk</Filter>
     </ClCompile>
+    <ClCompile Include="addons\screenReader.cpp">
+      <Filter>addons</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -177,6 +180,9 @@
     </ClInclude>
     <ClInclude Include="disk\tipiDisk.h">
       <Filter>disk</Filter>
+    </ClInclude>
+    <ClInclude Include="addons\screenReader.h">
+      <Filter>addons</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
