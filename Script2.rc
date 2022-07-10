@@ -175,9 +175,9 @@ BEGIN
         MENUITEM "Options...",                  ID_OPTIONS_OPTIONS
         POPUP "Screen Reader"
         BEGIN
-            MENUITEM "Continuous",                  ID_SCREENREADER_CONTINUOUS
-            MENUITEM "Read Once",                   ID_SCREENREADER_READONCE
-            MENUITEM "Stop Talking",                ID_SCREENREADER_STOPTALKING
+            MENUITEM "Continuous (Ctrl+F9)",        ID_SCREENREADER_CONTINUOUS
+            MENUITEM "Read Once (Ctrl-F4)",         ID_SCREENREADER_READONCE
+            MENUITEM "Stop Talking (Ctrl-F10)",     ID_SCREENREADER_STOPTALKING
         END
     END
     POPUP "Video"
