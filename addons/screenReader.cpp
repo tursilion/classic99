@@ -48,11 +48,24 @@ extern CComModule _Module;
 #include <sapi.h>
 #include <time.h>
 #include <queue>
+#include <vector>
+#include <string>
 #include "tiemul.h"
 #include "screenReader.h"
 
+#include "diff.h"
+using namespace orgsyscall::yavom;  // thanks to Amos Brocco
+
+// TODO: continuous read might start to impact emulation performance,
+// as the dictionary grows sorting the screen may take longer and longer.
+// Moving it to the work thread is the ideal, but we need to capture the VDP
+// view of the screen on the caller, since the emulation has paused for us
+// and it's supposed to be a good time to capture it.
+
 // used for the screen reader output
 static char oldBuf[2080];		// big enough for 80 column text mode
+static std::vector<std::string> dictionary;  // TODO: this will grow forever.. but it shouldn't get too big?
+static std::vector<int> oldList;             // last screen's list
 static ISpVoice *pVoice = NULL;
 static time_t lastTime;
 static uintptr_t readerThread;
@@ -124,12 +137,37 @@ void __cdecl ReaderThreadFunc(void *) {
 		pVoice->Release();
 		pVoice = NULL;
 	}
+
+    debug_write("Speech dictionary size at exit: %d words\n", dictionary.size());
+}
+
+// add a word index to newList, adding to dictionary if necessary
+void addWord(std::string &word, std::vector<int> &newList, std::vector<int> &rowList, int row) {
+    // end of a word, is there a word to deal with?
+    if (!word.empty()) {
+        // yes. Determine an index for it
+        unsigned int index = 0;
+        while (index < dictionary.size()) {
+            if (dictionary[index] == word) {
+                break;
+            }
+            ++index;
+        }
+        if (index >= dictionary.size()) {
+            dictionary.push_back(word);
+            index = dictionary.size()-1;
+        }
+        newList.push_back(index);
+        rowList.push_back(row);
+
+        word.clear();
+    }
 }
 
 // initialize the speech system
 bool initScreenReader() {
 	// clear the old buffer
-	memset(oldBuf, 0, sizeof(oldBuf));
+	memset(oldBuf, ' ', sizeof(oldBuf));
 	lastTime = time(NULL)-1;
 
 	InitializeCriticalSection(&csSpeech);
@@ -148,7 +186,7 @@ CString fetchScreenBuffer(bool contMode) {
 	if (charsPerLine == -1) {
 		// bitmap, illegal, or disabled mode
 		if (contMode) {
-			memset(oldBuf, 0, sizeof(oldBuf));
+			memset(oldBuf, ' ', sizeof(oldBuf));
 		}
 		return "";
 	}
@@ -170,7 +208,7 @@ CString fetchScreenBuffer(bool contMode) {
 	// convert to buffer
 	int r = 0;
 	int c = 0;
-	memset(newBuf, 0, sizeof(newBuf));
+	memset(newBuf, ' ', sizeof(newBuf));
 	for (int outPos = 0; outPos < csOut.GetLength(); ++outPos) {
 		if (csOut[outPos] == '\r') {
 			c = 0;
@@ -180,7 +218,7 @@ CString fetchScreenBuffer(bool contMode) {
 			continue;
 		}
 		char x = csOut[outPos];
-		if ((x >= ' ') && (x <= '~')) {
+		if ((x >= ' ') && (x < '~')) {
 			newBuf[r*charsPerLine+c] = x;
 		} else {
 			newBuf[r*charsPerLine+c] = ' ';
@@ -192,10 +230,11 @@ CString fetchScreenBuffer(bool contMode) {
 		}
 	}
 
-	// strip anything repeated more than 3 times (most likely graphics)
+    // strip some annoying sequences
 	for (int r = 0; r < 24; ++r) {	// no 26 line support
 		for (int c = 0; c < charsPerLine-2; ++c) {
 			int off = r*charsPerLine+c;
+        	// strip anything repeated 3 or more times (most likely graphics)
 			if ((newBuf[off]!=0)&&(newBuf[off] != ' ')&&(newBuf[off] == newBuf[off+1]) && (newBuf[off] == newBuf[off+2])) {
 				// replace the whole string
 				char c = newBuf[off];
@@ -206,11 +245,119 @@ CString fetchScreenBuffer(bool contMode) {
 					}
 				}
 			}
+            // strip a solo underscore (sometimes used as a cursor)
+            if ((newBuf[off] == '_') && (newBuf[off+1] <= ' ')) {
+                newBuf[off] = ' ';
+            }
 		}
 	}
 
-	// fast (hopefully) check for ANY diff
+	bool emit = false;
+#if 1
+    // new version that uses the myers diff process to generate csOut
+    csOut.Empty();
+
+    if (!contMode) {
+        // we want the whole screen, so keep the old code for that
+	    emit = false;
+	    for (int r = 0; r < 24; ++r) {	// no 26 line support
+		    int line = 0;
+		    char lastchar = ' ';
+		    CString csLine;
+		    for (int c = 0; c < charsPerLine; ++c) {
+			    int off = r*charsPerLine+c;
+				// now work on the new character
+				char newchar = newBuf[off];
+				// we can't really tell if something is a letter or graphics, but, if
+				// we check for solid blocks we can at least filter out the master title page
+				if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
+					(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
+					newchar = ' ';
+				}
+				if ((newchar >= ' ') && (newchar < '~')) {
+					if ((newchar != ' ') || (lastchar !=  ' ')) {
+						csLine += newchar;
+						if (newchar > ' ') {
+							++line;
+						}
+						lastchar = newchar;
+					}
+				} else {
+					if (lastchar != ' ') {
+						csLine += ' ';
+						lastchar = ' ';
+					}
+				}
+		    }
+		    if (line > 0) {
+			    csLine += " ";
+			    csOut += csLine;
+			    emit = true;
+		    }
+	    }
+    } else {
+        // use the Myers diff algorithm to find additions. We don't care about
+        // deletions or sames. The one gotcha: it needs to be words that we
+        // diff on, not characters. Otherwise we may get some weird output.
+        std::vector<int> newList;       // list for this screen
+        std::vector<int> rowList;       // line mode (after enter) reads full lines - this tracks the line for each word
+
+        // so first, we need to make a dictionary. I guess we'll associate
+        // punctuation with words... it should generally work fine even if
+        // they run together because mixing up a single line is quite rare
+        // The dictionary vector as built will build forever, but I don't
+        // think it will ever get excessively large because the vocaularly
+        // used on the TI isn't all that big in general, even in text games.
+        std::string word;
+        for (int r = 0; r<24; ++r) {        // TOOD: no 26 line support
+            for (int c = 0; c < charsPerLine; ++c) {
+                // check for whitespace - keep the punctuation!
+                int idx = r*charsPerLine+c;
+                int newchar = newBuf[idx];
+				// we can't really tell if something is a letter or graphics, but, if
+				// we check for solid blocks we can at least filter out the master title page
+				if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
+					(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
+					newchar = ' ';
+				}
+                if ((newchar<=' ')||(newchar>='~')) {
+                    addWord(word, newList, rowList, r);
+                } else {
+                    // not whitespace, so add it to the word
+                    word += newchar;
+                }
+            }
+            // end of row also marks end of word
+            addWord(word, newList, rowList, r);
+        }
+
+        // now we have a vector of words - diff against the old one
+        auto moves = myers(oldList, newList);
+
+        csOut = "";
+        // use only additions to build a new output list
+        for (const auto &m : moves) {
+            if (std::get<0>(m) == OP::INSERT) {
+                auto inserts = std::get<3>(m);
+                for (int idx : inserts) {
+                    // DON'T MIX APIS. Then you don't need crap like this. Sheesh.
+                    csOut += dictionary[idx].c_str();
+                    csOut += ' ';
+                }
+            }
+        }
+
+        if (csOut.GetLength() > 0) {
+            debug_write("SAY: %s\n", csOut.GetString());
+            emit = true;
+        }
+
+        oldList = newList;
+    }
+#else
+    // check for screen scroll and early out only in continuous mode
 	if (contMode) {
+    	// fast (hopefully) check for ANY diff
 		if (0 == memcmp(oldBuf, newBuf, charsPerLine*24)) {
 			return "";
 		}
@@ -227,7 +374,7 @@ CString fetchScreenBuffer(bool contMode) {
 				// there must be SOMETHING other than spaces for it to count
 				bool ok = false;
 				for (int idx=0; idx<cnt; ++idx) {
-					if ((newBuf[idx] > ' ')&&(newBuf[idx] <= '~')) {
+					if ((newBuf[idx] > ' ')&&(newBuf[idx] < '~')) {
 						ok = true;
 						break;
 					}
@@ -235,7 +382,7 @@ CString fetchScreenBuffer(bool contMode) {
 				if (ok) {
 					debug_write("Screen scrolled %d lines\n", idx);
 					memmove(&oldBuf[0], &oldBuf[idx*charsPerLine], cnt);
-					memset(&oldBuf[cnt], 0, idx*charsPerLine);
+					memset(&oldBuf[cnt], ' ', idx*charsPerLine);
 					break;
 				}
 			}
@@ -244,7 +391,6 @@ CString fetchScreenBuffer(bool contMode) {
 
 	// now export a diff (or string)
 	csOut.Empty();
-	bool emit = false;
 	for (int r = 0; r < 24; ++r) {	// no 26 line support
 		int line = 0;
 		char lastchar = ' ';
@@ -254,7 +400,7 @@ CString fetchScreenBuffer(bool contMode) {
 			if ((oldBuf[off] != newBuf[off]) || (!contMode)) {
 				// on the first diff, we need to wipe the rest of the line
 				if (contMode) {
-					memset(&oldBuf[off], 0, charsPerLine-c);
+					memset(&oldBuf[off],  ' ', charsPerLine-c);
 				}
 				// now work on the new character
 				char newchar = newBuf[off];
@@ -264,7 +410,7 @@ CString fetchScreenBuffer(bool contMode) {
 					(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
 					newchar = ' ';
 				}
-				if ((newchar >= ' ') && (newchar <= '~')) {
+				if ((newchar >= ' ') && (newchar < '~')) {
 					if ((newchar != ' ') || (lastchar !=  ' ')) {
 						csLine += newchar;
 						if (newchar > ' ') {
@@ -290,6 +436,7 @@ CString fetchScreenBuffer(bool contMode) {
 	if (contMode) {
 		memcpy(oldBuf, newBuf, sizeof(oldBuf));
 	}
+#endif
 
 	if (emit) {
 		return csOut;
@@ -351,7 +498,7 @@ void SetContinuousRead(bool cont) {
 			LeaveCriticalSection(&csSpeech);
 			continuousRead = cont;	// turn it on last
 		} else {
-			continuousRead = cont;	// turn if off first
+			continuousRead = cont;	// turn it off first
 			debug_write("Continuous screen read disabled\n");
 			ShutUp();
 			EnterCriticalSection(&csSpeech);

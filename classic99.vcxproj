@@ -274,6 +274,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <OmitFramePointers>true</OmitFramePointers>
       <WholeProgramOptimization>true</WholeProgramOptimization>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -573,6 +574,7 @@
       <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <OpenMPSupport>false</OpenMPSupport>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -987,6 +989,7 @@
     <ClCompile Include="disk\ImageDisk.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="addons\diff.h" />
     <ClInclude Include="addons\F18A.h" />
     <ClInclude Include="addons\gpl.h" />
     <ClInclude Include="addons\loadsave_brk.h" />
@@ -1016,11 +1019,6 @@
     <ClInclude Include="disk\ImageDisk.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="addons\BASIC_ROM_header.a99">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">true</ExcludedFromBuild>
-    </None>
     <None Include="graphics\cursor1.cur" />
     <None Include="graphics\icon1.ico" />
     <CustomBuildStep Include="addons\BASIC_ROM_header.a99">

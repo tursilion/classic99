@@ -184,15 +184,15 @@
     <ClInclude Include="addons\screenReader.h">
       <Filter>addons</Filter>
     </ClInclude>
+    <ClInclude Include="addons\diff.h">
+      <Filter>addons</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Script2.rc" />
   </ItemGroup>
   <ItemGroup>
     <None Include="whatsnew.txt" />
-    <None Include="addons\BASIC_ROM_header.a99">
-      <Filter>addons</Filter>
-    </None>
     <None Include="graphics\icon1.ico">
       <Filter>graphics</Filter>
     </None>

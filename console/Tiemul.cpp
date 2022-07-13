@@ -6000,14 +6000,14 @@ void wcru(Word ad, int bt)
                     case 18:
 						CRU_TOGGLES += 0.1;		// TODO: technically, it should be a change in the value of these three bits
 												// but this works well enough for now. This noise is picked up in the audio.
-                    case 19:					
-                    case 20:
-                        // keyboard column select
-//                        debug_write("Keyboard column now: %d", (CRU[0x14]==0 ? 1 : 0) | (CRU[0x13]==0 ? 2 : 0) | (CRU[0x12]==0 ? 4 : 0));
 						if ((CRU[18]==1)&&(CRU[19]==0)&&(CRU[20]==1)) {
 							// column selected arbitrarily ;)
 							CheckUpdateSpeechOutput();	// check screen reader on keyboard scan
 						}
+                    case 19:					
+                    case 20:
+                        // keyboard column select
+//                        debug_write("Keyboard column now: %d", (CRU[0x14]==0 ? 1 : 0) | (CRU[0x13]==0 ? 2 : 0) | (CRU[0x12]==0 ? 4 : 0));
                         break;
 
                     case 22:
@@ -6564,24 +6564,21 @@ void debug_write(char *s, ...)
 	_vsnprintf(buf, 1023, s, (char*)((&s)+1));
 	buf[1023]='\0';
 
-	if (!quitflag) {
-		OutputDebugString(buf);
-		OutputDebugString("\n");
-	}
+	OutputDebugString(buf);
+	OutputDebugString("\n");
 
 	buf[DEBUGLEN-1]='\0';
 
-
 	EnterCriticalSection(&DebugCS);
 	
-	memcpy(&lines[0][0], &lines[1][0], (DEBUGLINES-1)*DEBUGLEN);				// scroll data
-	strncpy(&lines[DEBUGLINES-1][0], buf, DEBUGLEN);				// copy in new line
+	memcpy(&lines[0][0], &lines[1][0], (DEBUGLINES-1)*DEBUGLEN);			// scroll data
+	strncpy(&lines[DEBUGLINES-1][0], buf, DEBUGLEN);				        // copy in new line
 	memset(&lines[DEBUGLINES-1][strlen(buf)], 0x20, DEBUGLEN-strlen(buf));	// clear rest of line
-	lines[DEBUGLINES-1][DEBUGLEN-1]='\0';							// zero terminate
+	lines[DEBUGLINES-1][DEBUGLEN-1]='\0';							        // zero terminate
 
 	LeaveCriticalSection(&DebugCS);
 
-	bDebugDirty=true;												// flag redraw
+	bDebugDirty=true;												        // flag redraw
 }
 
 // Simple thread that watches the event and clears the buffer, then
