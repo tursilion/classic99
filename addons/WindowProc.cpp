@@ -118,6 +118,8 @@ extern unsigned char UberEEPROM[4*1024];
 extern bool bWindowInitComplete;
 extern CString csCf7Bios;
 extern int bEnableAppMode;
+extern int enableF10Menu;
+extern int enableAltF4;
 extern char AppName[];
 extern Byte SidCache[29];
 extern int WindowActive;
@@ -2415,6 +2417,16 @@ INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					if (IsDlgButtonChecked(hwnd, IDC_UNTHROTTLEALL)) {
 						ThrottleMode = THROTTLE_SYSTEMMAXIMUM;
 					}
+					if (IsDlgButtonChecked(hwnd, IDC_CHKALTF4)) {
+						enableAltF4 = true;
+					} else {
+						enableAltF4 = false;
+					}
+					if (IsDlgButtonChecked(hwnd, IDC_CHKF10)) {
+						enableF10Menu = true;
+					} else {
+						enableF10Menu = false;
+					}
 					{
 						// SAMS
 						int old_sams_enabled=sams_enabled;
@@ -2504,6 +2516,8 @@ INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 			SendDlgItemMessage(hwnd, IDC_SLDFRAMESKIP, TBM_SETPOS, TRUE, drawspeed);
 			SendDlgItemMessage(hwnd, IDC_CHKJOYST, BM_SETCHECK, fJoy?BST_CHECKED:BST_UNCHECKED, 0);
 			SendDlgItemMessage(hwnd, IDC_CHKSLOWKEY, BM_SETCHECK, slowdown_keyboard?BST_CHECKED:BST_UNCHECKED, 0);
+			SendDlgItemMessage(hwnd, IDC_CHKALTF4, BM_SETCHECK, enableAltF4?BST_CHECKED:BST_UNCHECKED, 0);
+			SendDlgItemMessage(hwnd, IDC_CHKF10, BM_SETCHECK, enableF10Menu?BST_CHECKED:BST_UNCHECKED, 0);
 			
 			// default
 			CheckRadioButton(hwnd, IDC_THROTTLECPU, IDC_UNTHROTTLEALL, IDC_THROTTLECPU);
