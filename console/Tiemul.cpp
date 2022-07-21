@@ -326,6 +326,15 @@ extern int bEnable128k;								// 128k hack
 extern int bF18Enabled;								// F18A support
 extern int bInterleaveGPU;							// simultaneous GPU (not really)
 extern int vdpscanline;								// used for load stats
+
+// these two variables are used to estimate a screen clear for the speech code -
+// if 768 bytes are written within 960 bytes of the start of screen memory, and they
+// are all the same byte, the screen is determined to be cleared. This is even okay
+// for text mode with 2 lines of fixed header (880 bytes would be written).
+// (768 is the size of regular 32x24, and 960 is the size of 40x24)
+unsigned char lastVideoByte = 255;
+int lastVideoCount = 0;
+
 int statusReadLine=0;								// the line we last read status at
 int statusReadCount=0;								// how many lines since we last read status
 int statusFrameCount=0;								// entire frames missed since update
@@ -407,6 +416,7 @@ CRITICAL_SECTION TapeCS;							// Tape CS
 
 extern const char *pCurrentHelpMsg;
 extern int VDPDebug;
+extern int SIT;
 extern int TVScanLines;
 extern CString TipiURI[3];
 extern CString TipiDirSort;
@@ -560,7 +570,7 @@ void ReadConfig() {
 	enableBackgroundHum = 	GetPrivateProfileInt("audio",	"backgroundNoise",	enableBackgroundHum?1:0,INIFILE) != 0;
 
 	// continuous screen reader
-	SetContinuousRead(		GetPrivateProfileInt("audio",	"continuousReader",	GetContinuousRead()?1:0,INIFILE) != 0);
+	ScreenReader::SetContinuousRead(		GetPrivateProfileInt("audio",	"continuousReader",	ScreenReader::GetContinuousRead()?1:0,INIFILE) != 0);
 
 	// load the new style config
 	EnterCriticalSection(&csDriveType);
@@ -1000,7 +1010,7 @@ void SaveConfig() {
 		WritePrivateProfileInt(	"audio",		"sid_blaster",			GetSidEnable(),				INIFILE);
 	}
 	WritePrivateProfileInt(		"audio",		"backgroundNoise",		enableBackgroundHum,		INIFILE);
-	WritePrivateProfileInt(		"audio",		"continuousReader",		GetContinuousRead()?1:0,	INIFILE);
+	WritePrivateProfileInt(		"audio",		"continuousReader",		ScreenReader::GetContinuousRead()?1:0,	INIFILE);
 
 	// write the new data
 	EnterCriticalSection(&csDriveType);
@@ -1582,7 +1592,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	if (NULL != SetSidEnable) {
 		SetSidEnable(false);	// by default, off
 	}
-	initScreenReader();
+	ScreenReader::initScreenReader();
 
 	// Read configuration - uses above settings as default!
 	ReadConfig();
@@ -1677,7 +1687,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	if (CtrlAltReset) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_CTRL_RESET, 1);
 	if (!gDontInvertCapsLock) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_INVERTCAPSLOCK, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_FLICKER, 1);
-	if (GetContinuousRead()) SendMessage(myWnd, WM_COMMAND, ID_SCREENREADER_CONTINUOUS, 1);
+	if (ScreenReader::GetContinuousRead()) SendMessage(myWnd, WM_COMMAND, ID_SCREENREADER_CONTINUOUS, 1);
 	
 	if (nCart != -1) {
 		switch (nCartGroup) {
@@ -3404,7 +3414,7 @@ void do1()
 	// read screen once (with control)
 	if (key[VK_F4]) {
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-			ReadScreenOnce();
+			ScreenReader::ReadScreenOnce();
             key[VK_F4]=0;
         }
 	}
@@ -3420,7 +3430,7 @@ void do1()
 	// stop talking (with control)
 	if (key[VK_F10]) {
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-			ShutUp();
+			ScreenReader::ShutUp();
             key[VK_F10]=0;
         }
 	}
@@ -4909,6 +4919,11 @@ Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 			}
 		}
 
+		// if we are reading, we are probably not clearing the screen, so clear the counter
+		// this way scrolling a screen that is mostly empty won't look like a clear
+		lastVideoByte = 255;
+		lastVideoCount = 0;
+
 		vdpaccess=0;		// reset byte flag (confirmed in hardware)
 		RealVDP = GetRealVDP();
 		UpdateHeatVDP(RealVDP);
@@ -4950,8 +4965,8 @@ Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 ///////////////////////////////////////////////////////////////
 void wvdpbyte(Word x, Byte c)
 {
-	int RealVDP;		
-
+	int RealVDP;
+	
 	if (x<0x8c00 || (x&1)) 
 	{
 		return;							/* not going to write at that block */
@@ -5124,15 +5139,20 @@ void wvdpbyte(Word x, Byte c)
 				}
 
 				if (bF18AActive) {
-					wVDPreg((Byte)(nReg&0x3f),(Byte)(nData));
+					nReg &= 0x3f;
+					wVDPreg((Byte)(nReg),(Byte)(nData));
 				} else {
 					if (nReg&0xf8) {
+						// todo: why am I doing this ignore?
 						debug_write("Warning: writing >%02X to VDP register >%X ignored (PC=>%04X)", nData, nReg, pCPU->GetPC());
 						return;
 					}
 					// verified correct against real hardware - register is masked to 3 bits
-					wVDPreg((Byte)(nReg&0x07),(Byte)(nData));
+					nReg &= 0x07;
+					wVDPreg((Byte)(nReg),(Byte)(nData));
 				}
+
+				// and tell the VDP we need a full screen redraw
 				redraw_needed=REDRAW_LINES;
 			}
 
@@ -5231,6 +5251,21 @@ void wvdpbyte(Word x, Byte c)
 			}
 		}
 
+		// check for probable screen clear for the speech system
+		// we assume the SIT is set up - it should be by now!
+		if (c == lastVideoByte) {
+			if ((RealVDP>=SIT)&&(RealVDP<SIT+960)) {
+				++lastVideoCount;
+				// TODO: for some reason when entering TI BASIC, it only does 767 on the ALL and then starts reading?
+				if (lastVideoCount >= 767) {
+					ScreenReader::ClearHistory();
+					lastVideoCount = 0;
+				}
+			}
+		} else {
+			lastVideoByte = c;
+		}
+
 		// verified on hardware
 		vdpprefetch=c;
 		vdpprefetchuninited = true;		// is it? you are reading back what you wrote. Probably not deliberate
@@ -5288,6 +5323,14 @@ void wVDPreg(Byte r, Byte v)
 				debug_write("WARNING: Setting VDP 4k mode at PC >%04X", pCurrentCPU->GetPC());
 			}
 		}
+	}
+
+	// check for speech clear on screen clear write
+	// has to be here because the clear may be too fast for the speech
+	// update to detect it.
+	if ((r == 1)&&((v&0x40)==0)) {
+		// screen blank
+		ScreenReader::ClearHistory();
 	}
 
 	// for the F18A GPU, copy it to RAM
@@ -6002,7 +6045,7 @@ void wcru(Word ad, int bt)
 												// but this works well enough for now. This noise is picked up in the audio.
 						if ((CRU[18]==1)&&(CRU[19]==0)&&(CRU[20]==1)) {
 							// column selected arbitrarily ;)
-							CheckUpdateSpeechOutput();	// check screen reader on keyboard scan
+							ScreenReader::CheckUpdateSpeechOutput();	// check screen reader on keyboard scan
 						}
                     case 19:					
                     case 20:

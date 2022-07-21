@@ -63,8 +63,7 @@ using namespace orgsyscall::yavom;  // thanks to Amos Brocco
 // and it's supposed to be a good time to capture it.
 
 // used for the screen reader output
-static char oldBuf[2080];		// big enough for 80 column text mode
-static std::vector<std::string> dictionary;  // TODO: this will grow forever.. but it shouldn't get too big?
+static std::vector<std::string> dictionary;  // this will grow forever.. but it shouldn't get too big? (we clear it with screen clear now)
 static std::vector<int> oldList;             // last screen's list
 static ISpVoice *pVoice = NULL;
 static time_t lastTime;
@@ -82,6 +81,8 @@ extern volatile int quitflag;
 static std::queue<CString> speechList;
 static CRITICAL_SECTION csSpeech;
 
+namespace ScreenReader {
+
 // this function actually feeds speech.
 // We break it up this way to allow the speech
 // to be non-blocking, as well as to allow the backlog
@@ -92,25 +93,25 @@ void __cdecl ReaderThreadFunc(void *) {
 	// speech init: https://docs.microsoft.com/en-us/previous-versions/windows/desktop/ms720163(v=vs.85)
 	// this doesn't honor the system settings - how can we make it do so?
 	if (FAILED(::CoInitialize(NULL))) {
-		debug_write("** Com initialize failed - no promises.\n");
+		debug_write("** Com initialize failed - no promises.");
 		pVoice = NULL;
 		return;
 	} else {
 		// creates a default voice
 		HRESULT hr = CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_ALL, IID_ISpVoice, (void **)&pVoice);
 		if (!SUCCEEDED(hr)) {
-			debug_write("Screen reader failed to initialize COM\n");
+			debug_write("Screen reader failed to initialize COM");
 			pVoice = NULL;
 			return;
 		}
 		// set system default voice - not working?
 		if (S_OK != pVoice->SetVoice(NULL)) {
-			debug_write("Failed to set default system voice.\n");
+			debug_write("Failed to set default system voice.");
 		}
 	}
 
 	if (pVoice == NULL) {
-		debug_write("Screen reader unexpectedly has NULL voice\n");
+		debug_write("Screen reader unexpectedly has NULL voice");
 		return;
 	}
 
@@ -125,7 +126,7 @@ void __cdecl ReaderThreadFunc(void *) {
 		LeaveCriticalSection(&csSpeech);
 
 		if (workStr.GetLength() > 0) {
-			//debug_write("%s\n", workStr);
+			//debug_write("%s", workStr);
 			pVoice->Speak(CStringW(workStr), SPF_IS_NOT_XML, NULL);
 		} else {
 			Sleep(200);
@@ -138,13 +139,28 @@ void __cdecl ReaderThreadFunc(void *) {
 		pVoice = NULL;
 	}
 
-    debug_write("Speech dictionary size at exit: %d words\n", dictionary.size());
+    debug_write("Speech dictionary size at exit: %d words", dictionary.size());
 }
 
 // add a word index to newList, adding to dictionary if necessary
+// hold the mutex when calling this function!
+// This function may also translate certain annoying words
 void addWord(std::string &word, std::vector<int> &newList, std::vector<int> &rowList, int row) {
     // end of a word, is there a word to deal with?
     if (!word.empty()) {
+		// some pocket translations - these are probably Classic99 specific, except maybe IT
+		
+		// keeping punctuation here may be a mistake...
+		if (word == "IT") word = "it";			// say "IT" as "it", not as "I.T."
+		else if (word == "IT.") word = "it.";	// say "IT" as "it", not as "I.T."
+		else if (word == "IT,") word = "it,";	// say "IT" as "it", not as "I.T."
+		else if (word == "TI") word = "T I";	// say "TI" as "T.I., not as "tie"
+		else if (word == "TI-99/4A") word = "T I-99/4A";	// say "TI" as "T.I., not as "tie"
+		else if (word == "TI-99") word = "T I-99";	// say "TI" as "T.I., not as "tie"
+		else if (word == "TI/001.2") word = "T I/001.2";	// say "TI" as "T.I., not as "tie" (Scott Adams built-in)
+		else if (word == "TI.") word = "T I.";	// say "TI" as "T.I., not as "tie"
+		else if (word == "TI,") word = "T I,";	// say "TI" as "T.I., not as "tie"
+
         // yes. Determine an index for it
         unsigned int index = 0;
         while (index < dictionary.size()) {
@@ -166,12 +182,13 @@ void addWord(std::string &word, std::vector<int> &newList, std::vector<int> &row
 
 // initialize the speech system
 bool initScreenReader() {
-	// clear the old buffer
-	memset(oldBuf, ' ', sizeof(oldBuf));
-	lastTime = time(NULL)-1;
-
+	// do this first!
 	InitializeCriticalSection(&csSpeech);
 
+	// clear the old buffer
+	ClearHistory();
+
+	lastTime = time(NULL)-1;
 	readerThread = _beginthread(ReaderThreadFunc, 0, NULL);
 
 	return true;
@@ -184,10 +201,6 @@ CString fetchScreenBuffer(bool contMode) {
 	// check if the screen is disabled - if so, all bets are off
 	int charsPerLine = getCharsPerLine();
 	if (charsPerLine == -1) {
-		// bitmap, illegal, or disabled mode
-		if (contMode) {
-			memset(oldBuf, ' ', sizeof(oldBuf));
-		}
 		return "";
 	}
 
@@ -253,8 +266,8 @@ CString fetchScreenBuffer(bool contMode) {
 	}
 
 	bool emit = false;
-#if 1
-    // new version that uses the myers diff process to generate csOut
+
+	// new version that uses the myers diff process to generate csOut
     csOut.Empty();
 
     if (!contMode) {
@@ -302,141 +315,64 @@ CString fetchScreenBuffer(bool contMode) {
         std::vector<int> newList;       // list for this screen
         std::vector<int> rowList;       // line mode (after enter) reads full lines - this tracks the line for each word
 
-        // so first, we need to make a dictionary. I guess we'll associate
-        // punctuation with words... it should generally work fine even if
-        // they run together because mixing up a single line is quite rare
-        // The dictionary vector as built will build forever, but I don't
-        // think it will ever get excessively large because the vocaularly
-        // used on the TI isn't all that big in general, even in text games.
-        std::string word;
-        for (int r = 0; r<24; ++r) {        // TOOD: no 26 line support
-            for (int c = 0; c < charsPerLine; ++c) {
-                // check for whitespace - keep the punctuation!
-                int idx = r*charsPerLine+c;
-                int newchar = newBuf[idx];
-				// we can't really tell if something is a letter or graphics, but, if
-				// we check for solid blocks we can at least filter out the master title page
-				if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
-					(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
-					newchar = ' ';
+		// process this under the lock
+		EnterCriticalSection(&csSpeech);
+
+			// so first, we need to make a dictionary. I guess we'll associate
+			// punctuation with words... it should generally work fine even if
+			// they run together because mixing up a single line is quite rare
+			// The dictionary vector as built will build forever, but I don't
+			// think it will ever get excessively large because the vocaularly
+			// used on the TI isn't all that big in general, even in text games.
+			std::string word;
+			for (int r = 0; r<24; ++r) {        // TOOD: no 26 line support
+				for (int c = 0; c < charsPerLine; ++c) {
+					// check for whitespace - keep the punctuation!
+					int idx = r*charsPerLine+c;
+					int newchar = newBuf[idx];
+					// we can't really tell if something is a letter or graphics, but, if
+					// we check for solid blocks we can at least filter out the master title page
+					if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
+						(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
+						newchar = ' ';
+					}
+					if ((newchar<=' ')||(newchar>='~')) {
+						addWord(word, newList, rowList, r);
+					} else {
+						// not whitespace, so add it to the word
+						word += newchar;
+					}
 				}
-                if ((newchar<=' ')||(newchar>='~')) {
-                    addWord(word, newList, rowList, r);
-                } else {
-                    // not whitespace, so add it to the word
-                    word += newchar;
-                }
-            }
-            // end of row also marks end of word
-            addWord(word, newList, rowList, r);
-        }
+				// end of row also marks end of word
+				addWord(word, newList, rowList, r);
+			}
 
-        // now we have a vector of words - diff against the old one
-        auto moves = myers(oldList, newList);
+			// now we have a vector of words - diff against the old one
+			auto moves = myers(oldList, newList);
 
-        csOut = "";
-        // use only additions to build a new output list
-        for (const auto &m : moves) {
-            if (std::get<0>(m) == OP::INSERT) {
-                auto inserts = std::get<3>(m);
-                for (int idx : inserts) {
-                    // DON'T MIX APIS. Then you don't need crap like this. Sheesh.
-                    csOut += dictionary[idx].c_str();
-                    csOut += ' ';
-                }
-            }
-        }
+			csOut = "";
+			// use only additions to build a new output list
+			for (const auto &m : moves) {
+				if (std::get<0>(m) == OP::INSERT) {
+					auto inserts = std::get<3>(m);
+					for (int idx : inserts) {
+						// DON'T MIX APIS. Then you don't need crap like this. Sheesh.
+						csOut += dictionary[idx].c_str();
+						csOut += ' ';
+					}
+				}
+			}
+
+		// safe to release the lock
+		LeaveCriticalSection(&csSpeech);
 
         if (csOut.GetLength() > 0) {
-            debug_write("SAY: %s\n", csOut.GetString());
+            debug_write("SAY: %s", csOut.GetString());
             emit = true;
         }
 
         oldList = newList;
     }
-#else
-    // check for screen scroll and early out only in continuous mode
-	if (contMode) {
-    	// fast (hopefully) check for ANY diff
-		if (0 == memcmp(oldBuf, newBuf, charsPerLine*24)) {
-			return "";
-		}
-
-		// check for scrolled screen (up scroll only)
-		for (int idx = 1; idx < 23; ++idx) {
-			int start = idx*charsPerLine;
-			int cnt = (24-idx-1)*charsPerLine;
-			if (cnt <= 0) continue;
-
-			// check lower parts against top of oldbuf
-			// check all but the bottom line, cause input prompts are sometimes cleared
-			if (0 == memcmp(&oldBuf[start], &newBuf[0], cnt)) {
-				// there must be SOMETHING other than spaces for it to count
-				bool ok = false;
-				for (int idx=0; idx<cnt; ++idx) {
-					if ((newBuf[idx] > ' ')&&(newBuf[idx] < '~')) {
-						ok = true;
-						break;
-					}
-				}
-				if (ok) {
-					debug_write("Screen scrolled %d lines\n", idx);
-					memmove(&oldBuf[0], &oldBuf[idx*charsPerLine], cnt);
-					memset(&oldBuf[cnt], ' ', idx*charsPerLine);
-					break;
-				}
-			}
-		}
-	}
-
-	// now export a diff (or string)
-	csOut.Empty();
-	for (int r = 0; r < 24; ++r) {	// no 26 line support
-		int line = 0;
-		char lastchar = ' ';
-		CString csLine;
-		for (int c = 0; c < charsPerLine; ++c) {
-			int off = r*charsPerLine+c;
-			if ((oldBuf[off] != newBuf[off]) || (!contMode)) {
-				// on the first diff, we need to wipe the rest of the line
-				if (contMode) {
-					memset(&oldBuf[off],  ' ', charsPerLine-c);
-				}
-				// now work on the new character
-				char newchar = newBuf[off];
-				// we can't really tell if something is a letter or graphics, but, if
-				// we check for solid blocks we can at least filter out the master title page
-				if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
-					(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
-					newchar = ' ';
-				}
-				if ((newchar >= ' ') && (newchar < '~')) {
-					if ((newchar != ' ') || (lastchar !=  ' ')) {
-						csLine += newchar;
-						if (newchar > ' ') {
-							++line;
-						}
-						lastchar = newchar;
-					}
-				} else {
-					if (lastchar != ' ') {
-						csLine += ' ';
-						lastchar = ' ';
-					}
-				}
-			}
-		}
-		if (line > 0) {
-			csLine += " ";
-			csOut += csLine;
-			emit = true;
-		}
-	}
-
-	if (contMode) {
-		memcpy(oldBuf, newBuf, sizeof(oldBuf));
-	}
-#endif
 
 	if (emit) {
 		return csOut;
@@ -467,6 +403,8 @@ void CheckUpdateSpeechOutput() {
 		return;
 	}
 
+	// The lock release between fetch and storing in speechList is okay, csOut is
+	// not dependent upon the dictionary or screen buffers
 	CString csOut = fetchScreenBuffer(true);
 
 	if (csOut.GetLength() > 0) {
@@ -492,14 +430,14 @@ void ReadScreenOnce() {
 void SetContinuousRead(bool cont) {
 	if (continuousRead != cont) {
 		if (cont) {
-			debug_write("Continuous screen read enabled\n");
+			debug_write("Continuous screen read enabled");
 			EnterCriticalSection(&csSpeech);
 				speechList.push("Continuous screen read enabled.");
 			LeaveCriticalSection(&csSpeech);
 			continuousRead = cont;	// turn it on last
 		} else {
 			continuousRead = cont;	// turn it off first
-			debug_write("Continuous screen read disabled\n");
+			debug_write("Continuous screen read disabled");
 			ShutUp();
 			EnterCriticalSection(&csSpeech);
 				speechList.push("Continuous screen read disabled.");
@@ -520,6 +458,18 @@ void ShutUp() {
 		// try to skip off the end of the current sentence
 		ULONG cnt = 0;
 		pVoice->Skip(L"Sentence", 9999, &cnt);
-		debug_write("Skipped %d sentences on shut up...\n", cnt);
+		debug_write("Skipped %d sentences on shut up...", cnt);
 	LeaveCriticalSection(&csSpeech);
 }
+
+// call this when the screen is cleared, and we will delete the diff buffer,
+// so that all text displayed is considered new.
+void ClearHistory() {
+	EnterCriticalSection(&csSpeech);
+		dictionary.clear();		// since we are starting from scratch, we can wipe the dictionary
+		oldList.clear();
+	LeaveCriticalSection(&csSpeech);
+	debug_write("Screen reader history cleared.");
+}
+
+}	// namespace

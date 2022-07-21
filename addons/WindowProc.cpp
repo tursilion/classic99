@@ -1741,14 +1741,14 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_SCREENREADER_CONTINUOUS:
 				{
-					bool val = GetContinuousRead();
+					bool val = ScreenReader::GetContinuousRead();
 					if (lParam == 0) {
 						val = !val;
-						SetContinuousRead(val);
+						ScreenReader::SetContinuousRead(val);
 					} else {
 						// sent from config - force to true
 						val = true;
-						SetContinuousRead(val);
+						ScreenReader::SetContinuousRead(val);
 					}
 					if (val) {
 						CheckMenuItem(GetMenu(myWnd), ID_SCREENREADER_CONTINUOUS, MF_CHECKED);
@@ -1759,11 +1759,11 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_SCREENREADER_READONCE:
-				ReadScreenOnce();
+				ScreenReader::ReadScreenOnce();
 				break;
 
 			case ID_SCREENREADER_STOPTALKING:
-				ShutUp();
+				ScreenReader::ShutUp();
 				break;
 
 			case ID_OPTIONS_AUDIO: 

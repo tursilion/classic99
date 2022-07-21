@@ -42,9 +42,14 @@
 // M.Brent
 ///////////////////////////////////////////////////////
 
-bool initScreenReader();
-void CheckUpdateSpeechOutput();
-void ReadScreenOnce();
-void SetContinuousRead(bool cont);
-bool GetContinuousRead();
-void ShutUp();
+namespace ScreenReader {
+
+    bool initScreenReader();
+    void CheckUpdateSpeechOutput();
+    void ReadScreenOnce();
+    void SetContinuousRead(bool cont);
+    bool GetContinuousRead();
+    void ShutUp();
+    void ClearHistory();
+
+}
