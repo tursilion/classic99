@@ -3329,7 +3329,7 @@ void do1()
         // TODO: so if the timer is starting at zero, which I assume it does (though it's not
         // clear, can we write a test program to find out?), then I assume the decrementer will
         // wrap around. This is an oddball case but we'll try it.
-		int nTimerCnt=CRUTimerTicks>>6;		// /64
+        int nTimerCnt=CRUTimerTicks>>6;		// /64
 		if (nTimerCnt) {
             if (timer9901 == 0) {
                 // handle the wraparound.. since we /started/ at

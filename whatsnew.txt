@@ -2165,6 +2165,11 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 - Added JUWEL+GEM by Harry (also added to carts menu!)
 - Contributors folders likewise updated for documentation etc
 
+-----------------------------------------------
+25 Apr 2023
+
+- fix auto-loader to clear out previous ROMs before loading
+
 
 -TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
 -TODO: Rewrite AMS code to bring it into the mainline memory system for improved debugging (ie: always run a 1MB memory space)

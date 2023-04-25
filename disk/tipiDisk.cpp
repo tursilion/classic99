@@ -1,3 +1,7 @@
+// TODO: after the second time you capture the mouse, the windows mouse
+// is not hidden and you can see it jittering in the middle of the screen.
+// Fix the hide/show thing.
+
 // This is just a SIMULATION of TIPI, you can not rely on programming
 // idiosyncrases to be correct. It IS possible to communicate with an
 // emulation of TIPI - there is a QEMU package, but at the moment
@@ -2081,6 +2085,8 @@ bool handleTcp(unsigned char *buf, int len) {
         // I think the real TIPI has server and client sockets in different spaces, thus the different
         // function. For me, it should work fine to just close it...
         // fall through...
+        // TODO; THIS IS WRONG. UNBIND NEEDS TO RELEASE ALL SOCKETS THAT ACCEPT CREATED. Maybe
+        // not critical, though... CLOSE is still valid on ACCEPTed sockets.
     case 0x02:  // close
         shutdown(sock[index], SD_BOTH);
         closesocket(sock[index]);

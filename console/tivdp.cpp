@@ -2209,7 +2209,7 @@ void DrawSprites(int scanline)
         }
 		for (i1=0; i1<=highest; i1++) {
 			curSAL=SAL+(i1<<2);
-			yy=VDP[curSAL]+1;				// sprite Y, it's stupid, cause 255 is line 0 
+			yy=VDP[curSAL]+1;				// sprite Y, it's stupid, cause 255 is line 0 - TODO: THIS IS OFF BY 1, WE ARE DRAWING AT 254, instead of 255
 			if (yy>225) yy-=256;			// fade in from top
 			t=yy;
 			for (i2=0; i2<i3; i2++,t++) {

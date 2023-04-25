@@ -325,6 +325,11 @@ void OpenUserCart(OPENFILENAME &ofn) {
 	Users[nUsr].pDisk=NULL;
 	Users[nUsr].szMessage=NULL;
 	nCnt=0;
+
+	// clear out all previous roms detected here
+	for (int idx=0; idx<MAXROMSPERCART; ++idx) {
+		Users[nUsr].Img[idx].nType = TYPE_NONE;
+	}
                             
     // we now have to support all the different legacy naming types, /AND/ a new concept with
     // no extension whatsoever. That confuses a lot of this code, so we skip over it in that case...

@@ -228,7 +228,7 @@ bool checkTIDiskSize(TICCDisk *disk, int nDrive) {
     int len = ftell(fp);
     fclose(fp);
 
-    if ((len != 90*1024) && (len != 260240) &&   // SSSD size
+	if ((len != 90*1024) && (len != 260240) &&   // SSSD size
         (len != 180*1024) ) {                    // DSSD size - TODO: PC99? In all my disks I only have SSSD and DSDD
         debug_write("%d bytes is not a valid size for a TICC disk, only 90k and 180k allowed!", len);
         return false;

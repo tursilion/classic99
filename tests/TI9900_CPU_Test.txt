@@ -1,0 +1,1011 @@
+***********************************                                             
+* CPU TEST 9900 - FOR THE TI-994A *                                             
+* JUNE 2002 - M.BRENT             *                                             
+***********************************                                             
+                                                                                
+* COMPATIBLE WITH THE SAVE UTIL                                                 
+       DEF START,SFIRST,SLAST,SLOAD                                             
+                                                                                
+       AORG >3000                                                               
+       REF VSBW,VMBW                                                            
+* BASIC SETTINGS, WORKSPACES, ETC                                               
+SLOAD  BSS 32                                                                   
+SPARE  BSS 32                                                                   
+TESTWS BSS 32                                                                   
+VECTOR DATA SLOAD                                                               
+VECTOS DATA >0000                                                               
+TITLE  TEXT 'TESTING:'                                                          
+COMPLT TEXT 'COMPLETE'                                                          
+FAILED TEXT 'FAILED!:'                                                          
+HEX    TEXT '0123456789ABCDEF'                                                  
+                                                                                
+* USED BY THE TESTS - E/A MANUAL                                                
+TABLE1 DATA >3124                                                               
+WORD DATA >F318                                                                 
+LIST DATA >0000,>0000,>FF3C                                                     
+COUNT DATA >0001                                                                
+LOC  DATA >0005                                                                 
+NEW  DATA >0005                                                                 
+OLDVAL  DATA >1225                                                              
+NEWVAL  DATA >8223                                                              
+SBTEST DATA >2331                                                               
+TRAN DATA BL1                                                                   
+BLTEST DATA SPARE,BLWP1                                                         
+TESTBI DATA >C102                                                               
+ONES DATA >FFFF                                                                 
+TEMP DATA >2016                                                                 
+SWPBT DATA >F312                                                                
+CHANGE DATA >6D03                                                               
+CLRTST DATA >1234                                                               
+SOCTST  DATA >AAAA                                                              
+BITS DATA >F018                                                                 
+TESTVA DATA >AA24                                                               
+                                                                                
+* TEST ADDRESS TABLE                                                            
+TABLE  DATA A,AB,ABS,AI,DEC,DECT,DIV                                            
+       DATA INC,INCT,MPY,NEG,S,SB,B                                             
+       DATA BL,BLWP,JEQ,JGT,JHE,JH                                              
+       DATA JL,JLE,JLT,JMP,JNC,JNE                                              
+       DATA JNO,JOP,JOC,RTWP,X,XOP                                              
+       DATA C,CB,CI,COC,CZC,LDCR                                                
+       DATA SBO,SBZ,STCR,TB,LI                                                  
+       DATA LIMI,LWPI,MOV,MOVB,STST                                             
+       DATA STWP,SWPB,ANDI,ORI,XOR                                              
+       DATA INV,CLR,SETO,SOC,SOCB                                               
+       DATA SZC,SZCB,SRA,SRL,SLA,SRC                                            
+       DATA 0                                                                   
+                                                                                
+* PROGRAM GO                                                                    
+START                                                                           
+SFIRST CLR R0                                                                   
+       LI R1,>2000                                                              
+L1     BLWP @VSBW                                                               
+       INC R0                                                                   
+       CI R1,768                                                                
+       JLT L1                                                                   
+                                                                                
+       LI R0,35                                                                 
+       LI R1,TITLE                                                              
+       LI R2,8                                                                  
+       BLWP @VMBW                                                               
+                                                                                
+       LWPI TESTWS                                                              
+       LI R5,TABLE                                                              
+MANLP  MOV *R5+,R4                                                              
+       JEQ DONE                                                                 
+                                                                                
+       LI R0,44                                                                 
+       MOV R4,R1                                                                
+       LI R2,4                                                                  
+       BLWP @VMBW                                                               
+       INCT R4                                                                  
+       INCT R4                                                                  
+       MOV R4,@VECTOS                                                           
+       BLWP @VECTOR                                                             
+       JMP MANLP                                                                
+                                                                                
+DONE   LI R0,35                                                                 
+       LI R1,COMPLT                                                             
+       LI R2,8                                                                  
+       BLWP @VMBW                                                               
+                                                                                
+L2     LIMI 0                                                                   
+       LIMI 2                                                                   
+       JMP L2                                                                   
+                                                                                
+FAIL   LI R0,35                                                                 
+       LI R1,FAILED                                                             
+       LI R2,8                                                                  
+       BLWP @VMBW                                                               
+       DECT R11                                                                 
+       DECT R11                                                                 
+       MOV R11,R9                                                               
+       LI R0,67                                                                 
+       BL @HEXDMP                                                               
+       MOV R3,R9                                                                
+       LI R0,99                                                                 
+       BL @HEXDMP                                                               
+       JMP L2                                                                   
+                                                                                
+HEXDMP MOV R9,R10                                                               
+       ANDI R10,>F000                                                           
+       SRL R10,12                                                               
+       LI R2,HEX                                                                
+       A R10,R2                                                                 
+       MOVB *R2,R1                                                              
+       BLWP @VSBW                                                               
+       MOV R9,R10                                                               
+       ANDI R10,>0F00                                                           
+       SRL R10,8                                                                
+       INC R0                                                                   
+       LI R2,HEX                                                                
+       A R10,R2                                                                 
+       MOVB *R2,R1                                                              
+       BLWP @VSBW                                                               
+       MOV R9,R10                                                               
+       ANDI R10,>00F0                                                           
+       SRL R10,4                                                                
+       INC R0                                                                   
+       LI R2,HEX                                                                
+       A R10,R2                                                                 
+       MOVB *R2,R1                                                              
+       BLWP @VSBW                                                               
+       ANDI R9,>000F                                                            
+       INC R0                                                                   
+       LI R2,HEX                                                                
+       A R9,R2                                                                  
+       MOVB *R2,R1                                                              
+       BLWP @VSBW                                                               
+       B *R11                                                                   
+                                                                                
+* OPCODE TESTS - TEXT MUST BE 4 CHARS                                           
+* WE'LL START SIMPLE WITH THE EXAMPLES                                          
+* IN THE E/A MANUAL FOR NOW                                                     
+A  TEXT 'A   '                                                                  
+  LI R5,>8                                                                      
+  A R5,@TABLE1                                                                  
+  STST R3                                                                       
+  MOV @TABLE1,R4                                                                
+  CI R4,>312C                                                                   
+  JEQ A1                                                                        
+  BL @FAIL                                                                      
+A1  CI R5,8                                                                     
+  JEQ A2                                                                        
+  BL @FAIL                                                                      
+A2  ANDI R3,>F800                                                               
+  CI R3,>C000                                                                   
+  JEQ A3                                                                        
+  BL @FAIL                                                                      
+A3  RTWP                                                                        
+                                                                                
+AB  TEXT 'AB  '                                                                 
+  LI R4,>7400                                                                   
+  LI R2,WORD                                                                    
+  INC R2                                                                        
+  AB R4,*R2+                                                                    
+  STST R3                                                                       
+  MOV @WORD,R5                                                                  
+  CI R5,>F38C                                                                   
+  JEQ AB1                                                                       
+  BL @FAIL                                                                      
+AB1  CI R2,WORD+2                                                               
+  JEQ AB2                                                                       
+  BL @FAIL                                                                      
+AB2  CI R4,>7400                                                                
+  JEQ AB3                                                                       
+  BL @FAIL                                                                      
+AB3  ANDI R3,>FC00                                                              
+  CI R3,>8C00                                                                   
+  JEQ AB4                                                                       
+  BL @FAIL                                                                      
+AB4  RTWP                                                                       
+                                                                                
+ABS  TEXT 'ABS '                                                                
+  LI R7,4                                                                       
+  ABS @LIST(7)                                                                  
+  STST R3                                                                       
+  MOV @LIST+4,R5                                                                
+  CI R5,>00C4                                                                   
+  JEQ ABS1                                                                      
+  BL @FAIL                                                                      
+ABS1 ANDI R3,>E800                                                              
+  CI R3,>8000                                                                   
+  JEQ ABS2                                                                      
+  BL @FAIL                                                                      
+ABS2 RTWP                                                                       
+AI  TEXT 'AI  '                                                                 
+  LI R6,0                                                                       
+  AI R6,>C                                                                      
+  STST R3                                                                       
+  CI R6,>C                                                                      
+  JEQ AI1                                                                       
+  BL @FAIL                                                                      
+AI1  ANDI R3,>F800                                                              
+  CI R3,>C000                                                                   
+  JEQ AI2                                                                       
+  BL @FAIL                                                                      
+AI2  RTWP                                                                       
+                                                                                
+DEC  TEXT 'DEC '                                                                
+  DEC @COUNT                                                                    
+  STST R3                                                                       
+  MOV @COUNT,R5                                                                 
+  CI R5,0                                                                       
+  JEQ DEC1                                                                      
+  BL @FAIL                                                                      
+DEC1 ANDI R3,>F800                                                              
+  CI R3,>3000                                                                   
+  JEQ DEC2                                                                      
+  BL @FAIL                                                                      
+DEC2 RTWP                                                                       
+                                                                                
+DECT TEXT 'DECT'                                                                
+  LI R4,>2C10                                                                   
+  DECT R4                                                                       
+  STST R3                                                                       
+  CI R4,>2C0E                                                                   
+  JEQ DECT1                                                                     
+  BL @FAIL                                                                      
+DECT1 ANDI R3,>F800                                                             
+  CI R3,>D000                                                                   
+  JEQ DECT2                                                                     
+  BL @FAIL                                                                      
+DECT2 RTWP                                                                      
+                                                                                
+DIV  TEXT 'DIV '                                                                
+  LI R4,>0000                                                                   
+  LI R5,>000C                                                                   
+  DIV @LOC,R4                                                                   
+  STST R3                                                                       
+  CI R4,>0002                                                                   
+  JEQ DIV1                                                                      
+  BL @FAIL                                                                      
+DIV1 CI R5,>0002                                                                
+  JEQ DIV2                                                                      
+  BL @FAIL                                                                      
+DIV2 ANDI R3,>0800                                                              
+  CI R3,>0000                                                                   
+  JEQ DIV3                                                                      
+  BL @FAIL                                                                      
+DIV3 LI R4,>0005                                                                
+  LI R5,>000C                                                                   
+  MOV R4,@LOC                                                                   
+  DIV @LOC,R4                                                                   
+  STST R3                                                                       
+  ANDI R3,>0800                                                                 
+  CI R3,>0800                                                                   
+  JEQ DIV4                                                                      
+  BL @FAIL                                                                      
+DIV4 RTWP                                                                       
+                                                                                
+INC  TEXT 'INC '                                                                
+  LI R4,0                                                                       
+  MOV R4,@COUNT                                                                 
+  INC @COUNT                                                                    
+  STST R3                                                                       
+  MOV @COUNT,R4                                                                 
+  CI R4,>0001                                                                   
+  JEQ INC1                                                                      
+  BL @FAIL                                                                      
+INC1 ANDI R3,>F800                                                              
+  CI R3,>C000                                                                   
+  JEQ INC2                                                                      
+  BL @FAIL                                                                      
+INC2 RTWP                                                                       
+                                                                                
+INCT TEXT 'INCT'                                                                
+  LI R5,>2100                                                                   
+  INCT R5                                                                       
+  STST R3                                                                       
+  CI R5,>2102                                                                   
+  JEQ INCT1                                                                     
+  BL @FAIL                                                                      
+INCT1 ANDI R3,>F800                                                             
+  CI R3,>C000                                                                   
+  JEQ INCT2                                                                     
+  BL @FAIL                                                                      
+INCT2 RTWP                                                                      
+                                                                                
+MPY  TEXT 'MPY '                                                                
+  LI R5,>0012                                                                   
+  LI R6,>1B31                                                                   
+  STST R2                                                                       
+  MPY @NEW,R5                                                                   
+  STST R3                                                                       
+  CI R5,>0000                                                                   
+  JEQ MPY1                                                                      
+  BL @FAIL                                                                      
+MPY1 CI R6,>005A                                                                
+  JEQ MPY2                                                                      
+  BL @FAIL                                                                      
+MPY2 MOV @NEW,R7                                                                
+  CI R7,>0005                                                                   
+  JEQ MPY3                                                                      
+  BL @FAIL                                                                      
+MPY3 C R2,R3                                                                    
+  JEQ MPY4                                                                      
+  BL @FAIL                                                                      
+MPY4 RTWP                                                                       
+                                                                                
+NEG  TEXT 'NEG '                                                                
+  LI R5,>A342                                                                   
+  NEG R5                                                                        
+  STST R3                                                                       
+  CI R5,>5CBE                                                                   
+  JEQ NEG1                                                                      
+  BL @FAIL                                                                      
+NEG1 ANDI R3,>E800                                                              
+  CI R3,>C000                                                                   
+  JEQ NEG2                                                                      
+  BL @FAIL                                                                      
+NEG2 RTWP                                                                       
+                                                                                
+S  TEXT 'S   '                                                                  
+  S @OLDVAL,@NEWVAL                                                             
+  STST R3                                                                       
+  MOV @NEWVAL,R5                                                                
+  CI R5,>6FFE                                                                   
+  JEQ S1                                                                        
+  BL @FAIL                                                                      
+S1  ANDI R3,>F800                                                               
+  CI R3,>D800                                                                   
+  JEQ S2                                                                        
+  BL @FAIL                                                                      
+S2  RTWP                                                                        
+                                                                                
+SB  TEXT 'SB  '                                                                 
+  LI R6,SBTEST                                                                  
+  LI R1,>1344                                                                   
+  SB *R6+,R1                                                                    
+  STST R3                                                                       
+  CI R6,SBTEST+1                                                                
+  JEQ SB1                                                                       
+  BL @FAIL                                                                      
+SB1  CI R1,>F044                                                                
+  JEQ SB2                                                                       
+  BL @FAIL                                                                      
+SB2  ANDI R3,>FC00                                                              
+  CI R3,>8000                                                                   
+  JEQ SB3                                                                       
+  BL @FAIL                                                                      
+SB3  RTWP                                                                       
+                                                                                
+B       TEXT 'B   '                                                             
+  LI R3,B1                                                                      
+  B *R3                                                                         
+  BL @FAIL                                                                      
+B1  RTWP                                                                        
+                                                                                
+BL  TEXT 'BL  '                                                                 
+  BL @BL1                                                                       
+BL2  BL @FAIL                                                                   
+BL1  CI R11,BL2                                                                 
+  JEQ BL3                                                                       
+  BL @FAIL                                                                      
+BL3  RTWP                                                                       
+                                                                                
+BLWP TEXT 'BLWP'                                                                
+  BLWP @BLTEST                                                                  
+BLWP2 BL @FAIL                                                                  
+BLWP1 CI R13,SLOAD                                                              
+  JEQ BLWP3                                                                     
+  BL @FAIL                                                                      
+BLWP3 CI R14,BLWP2                                                              
+  JEQ BLWP4                                                                     
+  BL @FAIL                                                                      
+BLWP4 LWPI SLOAD                                                                
+  RTWP                                                                          
+                                                                                
+JEQ  TEXT 'JEQ '                                                                
+  C R1,R1                                                                       
+  JEQ JEQ1                                                                      
+  BL @FAIL                                                                      
+JEQ1 LI R1,0                                                                    
+  CI R1,5                                                                       
+  JEQ JEQ2                                                                      
+  RTWP                                                                          
+JEQ2 BL @FAIL                                                                   
+JGT  TEXT 'JGT '                                                                
+  LI R1,2                                                                       
+  CI R1,1                                                                       
+  JGT JGT1                                                                      
+  BL @FAIL                                                                      
+JGT1 CI R1,>7FFE                                                                
+  JGT JGT2                                                                      
+  RTWP                                                                          
+JGT2 BL @FAIL                                                                   
+                                                                                
+JHE  TEXT 'JHE '                                                                
+  LI R1,>FFF0                                                                   
+  CI R1,>1                                                                      
+  JHE JHE1                                                                      
+  BL @FAIL                                                                      
+JHE1 LI R1,1                                                                    
+  CI R1,1                                                                       
+  JHE JHE2                                                                      
+  BL @FAIL                                                                      
+JHE2 CI R1,5                                                                    
+  JHE JHE3                                                                      
+  RTWP                                                                          
+JHE3 BL @FAIL                                                                   
+                                                                                
+JH      TEXT 'JH  '                                                             
+  LI R1,5                                                                       
+  CI R1,1                                                                       
+  JH JH1                                                                        
+  BL @FAIL                                                                      
+JH1  CI R1,5                                                                    
+  JH JH2                                                                        
+  RTWP                                                                          
+JH2  BL @FAIL                                                                   
+                                                                                
+JL  TEXT 'JL  '                                                                 
+  LI R1,1                                                                       
+  CI R1,5                                                                       
+  JL JL1                                                                        
+  BL @FAIL                                                                      
+JL1  CI R1,1                                                                    
+  JL JL2                                                                        
+  RTWP                                                                          
+JL2  BL @FAIL                                                                   
+                                                                                
+JLE  TEXT 'JLE '                                                                
+  LI R1,1                                                                       
+  CI R1,5                                                                       
+  JLE JLE1                                                                      
+  BL @FAIL                                                                      
+JLE1 CI R1,1                                                                    
+  JLE JLE2                                                                      
+  BL @FAIL                                                                      
+JLE2 CI R1,0                                                                    
+  JLE JLE3                                                                      
+  RTWP                                                                          
+JLE3 BL @FAIL                                                                   
+                                                                                
+JLT  TEXT 'JLT '                                                                
+  LI R1,>FFF0                                                                   
+  CI R1,5                                                                       
+  JLT JLT1                                                                      
+  BL @FAIL                                                                      
+JLT1 CI R1,>FFFF                                                                
+  JLT JLT2                                                                      
+  BL @FAIL                                                                      
+JLT2 CI R1,>FFF0                                                                
+  JLT JLT3                                                                      
+  RTWP                                                                          
+JLT3 BL @FAIL                                                                   
+                                                                                
+JMP  TEXT 'JMP '                                                                
+  JMP JMP1                                                                      
+  BL @FAIL                                                                      
+JMP2 JMP JMP3                                                                   
+  BL @FAIL                                                                      
+JMP1 JMP JMP2                                                                   
+  BL @FAIL                                                                      
+JMP3 RTWP                                                                       
+                                                                                
+JNC  TEXT 'JNC '                                                                
+  LI R1,5                                                                       
+  INC R1                                                                        
+  JNC JNC1                                                                      
+  BL @FAIL                                                                      
+JNC1 LI R1,>FFFF                                                                
+  INC R1                                                                        
+  JNC JNC2                                                                      
+  RTWP                                                                          
+JNC2 BL @FAIL                                                                   
+                                                                                
+JNE  TEXT 'JNE '                                                                
+  LI R1,5                                                                       
+  CI R1,1                                                                       
+  JNE JNE1                                                                      
+  BL @FAIL                                                                      
+JNE1 CI R1,5                                                                    
+  JNE JNE2                                                                      
+  RTWP                                                                          
+JNE2 BL @FAIL                                                                   
+                                                                                
+JNO  TEXT 'JNO '                                                                
+  LI R1,5                                                                       
+  NEG R1                                                                        
+  JNO JNO1                                                                      
+  BL @FAIL                                                                      
+JNO1 LI R1,>8000                                                                
+  NEG R1                                                                        
+  JNO JNO2                                                                      
+  RTWP                                                                          
+JNO2 BL @FAIL                                                                   
+                                                                                
+JOP  TEXT 'JOP '                                                                
+  LI R0,>0000                                                                   
+  LI R1,>0100                                                                   
+  CB R1,R0                                                                      
+  JOP JOP1                                                                      
+  BL @FAIL                                                                      
+JOP1 LI R1,>0300                                                                
+  CB R1,R0                                                                      
+  JOP JOP2                                                                      
+  RTWP                                                                          
+JOP2 BL @FAIL                                                                   
+                                                                                
+JOC  TEXT 'JOC '                                                                
+  LI R1,>FFFF                                                                   
+  INC R1                                                                        
+  JOC JOC1                                                                      
+  BL @FAIL                                                                      
+JOC1 LI R1,1                                                                    
+  INC R1                                                                        
+  JOC JOC2                                                                      
+  RTWP                                                                          
+JOC2 BL @FAIL                                                                   
+                                                                                
+RTWP TEXT 'RTWP'                                                                
+  LI R5,>A5A5                                                                   
+  LWPI SPARE                                                                    
+  LI R13,SLOAD                                                                  
+  LI R14,RTWP1                                                                  
+  LI R15,>8800                                                                  
+  RTWP                                                                          
+  BL @FAIL                                                                      
+RTWP1 STST R3                                                                   
+  CI R5,>A5A5                                                                   
+  JEQ RTWP2                                                                     
+  BL @FAIL                                                                      
+RTWP2 CI R3,>8800                                                               
+  JEQ RTWP3                                                                     
+  BL @FAIL                                                                      
+RTWP3 RTWP                                                                      
+                                                                                
+X  TEXT 'X   '                                                                  
+* >1002 IS JMP $+2                                                              
+  LI R5,>1002                                                                   
+  X R5                                                                          
+  BL @FAIL                                                                      
+  RTWP                                                                          
+                                                                                
+XOP     TEXT 'XOP '                                                             
+  MOV @RTWP1,@>8300 STST R3                                                     
+  MOV @RTWP3,@>8302 RTWP                                                        
+  LI R6,>1234                                                                   
+  XOP R6,2                                                                      
+XOP0 MOV @>83B6,R5                                                              
+  MOV *R5,R7                                                                    
+  CI R7,>1234                                                                   
+  JEQ XOP1                                                                      
+  BL @FAIL                                                                      
+XOP1 MOV @>83BA,R5                                                              
+  CI R5,SLOAD                                                                   
+  JEQ XOP2                                                                      
+  BL @FAIL                                                                      
+XOP2 MOV @>83BC,R5                                                              
+  CI R5,XOP0                                                                    
+  JEQ XOP3                                                                      
+  BL @FAIL                                                                      
+XOP3 MOV @>83A6,R3                                                              
+  ANDI R3,>0200                                                                 
+  CI R3,>0200                                                                   
+  JEQ XOP5                                                                      
+  BL @FAIL                                                                      
+XOP5 RTWP   
+                                                                    
+C  TEXT 'C   '                                                                  
+  LI R4,>FFFF                                                                   
+  LI R5,>0000                                                                   
+  C R4,R5                                                                       
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>8000                                                                   
+  JEQ C1                                                                        
+  BL @FAIL                                                                      
+C1  LI R4,>7FFF                                                                 
+  LI R5,>0000                                                                   
+  C R4,R5                                                                       
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>C000                                                                   
+  JEQ C2                                                                        
+  BL @FAIL                                                                      
+C2  LI R4,>8000                                                                 
+  LI R5,>0000                                                                   
+  C R4,R5                                                                       
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>8000                                                                   
+  JEQ C3                                                                        
+  BL @FAIL                                                                      
+C3  LI R4,>8000                                                                 
+  LI R5,>7FFF                                                                   
+  C R4,R5                                                                       
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>8000                                                                   
+  JEQ C4                                                                        
+  BL @FAIL                                                                      
+C4  LI R4,>7FFF                                                                 
+  LI R5,>7FFF                                                                   
+  C R4,R5                                                                       
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>2000                                                                   
+  JEQ C5                                                                        
+  BL @FAIL                                                                      
+C5  LI R4,>7FFF                                                                 
+  LI R5,>8000                                                                   
+  C R4,R5                                                                       
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>4000                                                                   
+  JEQ C6                                                                        
+  BL @FAIL                                                                      
+C6  RTWP                                                                        
+                                                                                
+CB  TEXT 'CB  '                                                                 
+  LI R4,>0000                                                                   
+  LI R5,>FF00                                                                   
+  CB R5,R4                                                                      
+  STST R3                                                                       
+  ANDI R3,>E400                                                                 
+  CI R3,>8000                                                                   
+  JEQ CB1                                                                       
+  BL @FAIL                                                                      
+CB1  LI R4,>0000                                                                
+  LI R5,>7F00                                                                   
+  CB R5,R4                                                                      
+  STST R3                                                                       
+  ANDI R3,>E400                                                                 
+  CI R3,>C400                                                                   
+  JEQ CB2                                                                       
+  BL @FAIL                                                                      
+CB2  LI R4,>7F00                                                                
+  LI R5,>8000                                                                   
+  CB R5,R4                                                                      
+  STST R3                                                                       
+  ANDI R3,>E400                                                                 
+  CI R3,>8400                                                                   
+  JEQ CB3                                                                       
+  BL @FAIL                                                                      
+CB3  LI R4,>7F00                                                                
+  LI R5,>7F00                                                                   
+  CB R5,R4                                                                      
+  STST R3                                                                       
+  ANDI R3,>E400                                                                 
+  CI R3,>2400                                                                   
+  JEQ CB4                                                                       
+  BL @FAIL                                                                      
+CB4  LI R4,>8000                                                                
+  LI R5,>7F00                                                                   
+  CB R5,R4                                                                      
+  STST R3                                                                       
+  ANDI R3,>E400                                                                 
+  CI R3,>4400                                                                   
+  JEQ CB5                                                                       
+  BL @FAIL                                                                      
+CB5  RTWP                                                                       
+                                                                                
+CI  TEXT 'CI  '                                                                 
+  LI R9,>2183                                                                   
+  CI R9,>F330                                                                   
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>4000                                                                   
+  JEQ CI1                                                                       
+  BL @FAIL                                                                      
+CI1  RTWP                                                                       
+                                                                                
+COC  TEXT 'COC '                                                                
+  LI R8,>E306                                                                   
+  COC @TESTBI,R8                                                                
+  STST R3                                                                       
+  ANDI R3,>2000                                                                 
+  CI R3,>2000                                                                   
+  JEQ COC1                                                                      
+  BL @FAIL                                                                      
+COC1 LI R8,>E301                                                                
+  COC @TESTBI,R8                                                                
+  STST R3                                                                       
+  ANDI R3,>2000                                                                 
+  CI R3,>0000                                                                   
+  JEQ COC2                                                                      
+  BL @FAIL                                                                      
+COC2 RTWP                                                                       
+                                                                                
+CZC  TEXT 'CZC '                                                                
+  LI R8,>2301                                                                   
+  CZC @TESTBI,R8                                                                
+  STST R3                                                                       
+  ANDI R3,>2000                                                                 
+  CI R3,>0000                                                                   
+  JEQ CZC1                                                                      
+  BL @FAIL                                                                      
+CZC1 LI R8,>2201                                                                
+  CZC @TESTBI,R8                                                                
+  STST R3                                                                       
+  ANDI R3,>2000                                                                 
+  CI R3,>2000                                                                   
+  JEQ CZC2                                                                      
+  BL @FAIL                                                                      
+CZC2 RTWP                                                                       
+                                                                                
+* NOT SURE HOW TO TEST THE CRU OFFHAND                                          
+LDCR    TEXT 'LDCR'                                                             
+  RTWP                                                                          
+                                                                                
+SBO  TEXT 'SBO '                                                                
+  RTWP                                                                          
+                                                                                
+SBZ  TEXT 'SBZ '                                                                
+  RTWP                                                                          
+                                                                                
+STCR TEXT 'STCR'                                                                
+  RTWP                                                                          
+                                                                                
+TB  TEXT 'TB  '                                                                 
+  RTWP                                                                          
+*                                                                               
+                                                                                
+LI  TEXT 'LI  '                                                                 
+  LI R7,5                                                                       
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>C000                                                                   
+  JEQ LI1                                                                       
+  BL @FAIL                                                                      
+LI1  RTWP                                                                       
+                                                                                
+LIMI TEXT 'LIMI'                                                                
+  LIMI 0                                                                        
+  STST R3                                                                       
+  ANDI R3,>000F                                                                 
+  CI R3,>0000                                                                   
+  JEQ LIMI1                                                                     
+  BL @FAIL                                                                      
+LIMI1 LIMI 2                                                                    
+  STST R3                                                                       
+  ANDI R3,>000F                                                                 
+  CI R3,>2                                                                      
+  JEQ LIMI2                                                                     
+  BL @FAIL                                                                      
+LIMI2 LIMI 0                                                                    
+  RTWP                                                                          
+                                                                                
+LWPI TEXT 'LWPI'                                                                
+  LI R5,>7654                                                                   
+  MOV R5,@SPARE                                                                 
+  LWPI SPARE                                                                    
+  CI R0,>7654                                                                   
+  JEQ LWPI1                                                                     
+  BL @FAIL                                                                      
+LWPI1 LWPI SLOAD                                                                
+  RTWP                                                                          
+                                                                                
+MOV  TEXT 'MOV '                                                                
+  LI R7,5                                                                       
+  MOV R7,R7                                                                     
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>C000                                                                   
+  JEQ MOV1                                                                      
+  BL @FAIL                                                                      
+MOV1 LI R9,>3416                                                                
+  MOV @ONES,R9                                                                  
+  STST R3                                                                       
+  ANDI R3,>E000                                                                 
+  CI R3,>8000                                                                   
+  JEQ MOV2                                                                      
+  BL @FAIL                                                                      
+MOV2 CI R9,>FFFF                                                                
+  JEQ MOV3                                                                      
+  BL @FAIL                                                                      
+MOV3 RTWP                                                                       
+MOVB TEXT 'MOVB'                                                                
+  LI R4,>542B                                                                   
+  MOVB @TEMP+1,R4                                                               
+  STST R3                                                                       
+  ANDI R3,>E400                                                                 
+  CI R3,>C400                                                                   
+  JEQ MOVB1                                                                     
+  BL @FAIL                                                                      
+MOVB1 CI R4,>162B                                                               
+  JEQ MOVB2                                                                     
+  BL @FAIL                                                                      
+MOVB2 RTWP                                                                      
+                                                                                
+STST TEXT 'STST'                                                                
+* STST IS PRETTY WELL TESTED BY NOW                                             
+  RTWP                                                                          
+                                                                                
+STWP TEXT 'STWP'                                                                
+  STWP R5                                                                       
+  CI R5,SLOAD                                                                   
+  JEQ STWP1                                                                     
+  BL @FAIL                                                                      
+STWP1 RTWP                                                                      
+                                                                                
+SWPB TEXT 'SWPB'                                                                
+  LI R0,SWPBT                                                                   
+  STST R4                                                                       
+  SWPB *R0+                                                                     
+  STST R3                                                                       
+  MOV @SWPBT,R5                                                                 
+  CI R5,>12F3                                                                   
+  JEQ SWPB1                                                                     
+  BL @FAIL                                                                      
+SWPB1 CI R0,SWPBT+2                                                             
+  JEQ SWPB2                                                                     
+  BL @FAIL                                                                      
+SWPB2 C R3,R4                                                                   
+  JEQ SWPB3                                                                     
+  BL @FAIL                                                                      
+SWPB3 RTWP                                                                      
+                                                                                
+ANDI TEXT 'ANDI'                                                                
+  LI R0,>D2AB                                                                   
+  ANDI R0,>6D03                                                                 
+  STST R3                                                                       
+  CI R0,>4003                                                                   
+  JEQ ANDI1                                                                     
+  BL @FAIL                                                                      
+ANDI1 ANDI R3,>E000                                                             
+  CI R3,>C000                                                                   
+  JEQ ANDI2                                                                     
+  BL @FAIL                                                                      
+ANDI2 RTWP                                                                      
+                                                                                
+ORI  TEXT 'ORI '                                                                
+  LI R5,>D2AB                                                                   
+  ORI R5,>6D03                                                                  
+  STST R3                                                                       
+  CI R5,>FFAB                                                                   
+  JEQ ORI1                                                                      
+  BL @FAIL                                                                      
+ORI1 ANDI R3,>E000                                                              
+  CI R3,>8000                                                                   
+  JEQ ORI2                                                                      
+  BL @FAIL                                                                      
+ORI2 RTWP                                                                       
+                                                                                
+XOR  TEXT 'XOR '                                                                
+  LI R2,>D2AA                                                                   
+  XOR @CHANGE,R2                                                                
+  STST R3                                                                       
+  CI R2,>BFA9                                                                   
+  JEQ XOR1                                                                      
+  BL @FAIL                                                                      
+XOR1 ANDI R3,>E000                                                              
+  CI R3,>8000                                                                   
+  JEQ XOR2                                                                      
+  BL @FAIL                                                                      
+XOR2 RTWP                                                                       
+                                                                                
+INV  TEXT 'INV '                                                                
+  LI R11,>157A                                                                  
+  INV R11                                                                       
+  STST R3                                                                       
+  CI R11,>EA85                                                                  
+  JEQ INV1                                                                      
+  BL @FAIL                                                                      
+INV1 ANDI R3,>E000                                                              
+  CI R3,>8000                                                                   
+  JEQ INV2                                                                      
+  BL @FAIL                                                                      
+INV2 RTWP                                                                       
+                                                                                
+CLR  TEXT 'CLR '                                                                
+  LI R11,CLRTST+1                                                               
+  CLR *R11                                                                      
+  MOV @CLRTST,R5                                                                
+  CI R5,>0000                                                                   
+  JEQ CLR1                                                                      
+  BL @FAIL                                                                      
+CLR1 RTWP                                                                       
+                                                                                
+SETO TEXT 'SETO'                                                                
+  SETO R5                                                                       
+  CI R5,>FFFF                                                                   
+  JEQ SETO1                                                                     
+  BL @FAIL                                                                      
+SETO1 RTWP                                                                      
+                                                                                
+SOC  TEXT 'SOC '                                                                
+  LI R5,>FF00                                                                   
+  SOC R5,@SOCTST                                                                
+  STST R3                                                                       
+  MOV @SOCTST,R6                                                                
+  CI R6,>FFAA                                                                   
+  JEQ SOC1                                                                      
+  BL @FAIL                                                                      
+SOC1 ANDI R3,>E000                                                              
+  CI R3,>8000                                                                   
+  JEQ SOC2                                                                      
+  BL @FAIL                                                                      
+SOC2 CI R5,>FF00                                                                
+  JEQ SOC3                                                                      
+  BL @FAIL                                                                      
+SOC3 RTWP                                                                       
+                                                                                
+SOCB TEXT 'SOCB'                                                                
+  LI R5,>F013                                                                   
+  LI R8,>AA24                                                                   
+  SOCB R5,R8                                                                    
+  STST R3                                                                       
+  CI R8,>FA24                                                                   
+  JEQ SOCB1                                                                     
+  BL @FAIL                                                                      
+SOCB1 CI R5,>F013                                                               
+  JEQ SOCB2                                                                     
+  BL @FAIL                                                                      
+SOCB2 ANDI R3,>E400                                                             
+  CI R3,>8000                                                                   
+  JEQ SOCB3                                                                     
+  BL @FAIL                                                                      
+SOCB3 RTWP                                                                      
+                                                                                
+SZC  TEXT 'SZC '                                                                
+  LI R5,>6D03                                                                   
+  LI R4,>D2AA                                                                   
+  SZC R5,R4                                                                     
+  STST R3                                                                       
+  CI R4,>92A8                                                                   
+  JEQ SZC1                                                                      
+  BL @FAIL                                                                      
+SZC1 CI R5,>6D03                                                                
+  JEQ SZC2                                                                      
+  BL @FAIL                                                                      
+SZC2 ANDI R3,>E000                                                              
+  CI R3,>8000                                                                   
+  JEQ SZC3                                                                      
+  BL @FAIL                                                                      
+SZC3 RTWP                                                                       
+                                                                                
+SZCB TEXT 'SZCB'                                                                
+  SZCB @BITS,@TESTVA                                                            
+  STST R3                                                                       
+  MOV @TESTVA,R5                                                                
+  CI R5,>0A24                                                                   
+  JEQ SZCB1                                                                     
+  BL @FAIL                                                                      
+SZCB1 MOV @BITS,R5                                                              
+  CI R5,>F018                                                                   
+  JEQ SZCB2                                                                     
+  BL @FAIL                                                                      
+SZCB2 ANDI R3,>E400                                                             
+  CI R3,>C000                                                                   
+  JEQ SZCB3                                                                     
+  BL @FAIL                                                                      
+SZCB3 RTWP                                                                      
+                                                                                
+SRA  TEXT 'SRA '                                                                
+  LI R5,>8224                                                                   
+  LI R0,>F326                                                                   
+  SRA R5,0                                                                      
+  STST R3                                                                       
+  CI R5,>FE08                                                                   
+  JEQ SRA1                                                                      
+  BL @FAIL                                                                      
+SRA1 ANDI R3,>F000                                                              
+  CI R3,>9000                                                                   
+  JEQ SRA2                                                                      
+  BL @FAIL                                                                      
+SRA2 RTWP                                                                       
+                                                                                
+SRL  TEXT 'SRL '                                                                
+  LI R0,>FFEF                                                                   
+  SRL R0,3                                                                      
+  STST R3                                                                       
+  CI R0,>1FFD                                                                   
+  JEQ SRL1                                                                      
+  BL @FAIL                                                                      
+SRL1 ANDI R3,>F000                                                              
+  CI R3,>D000                                                                   
+  JEQ SRL2                                                                      
+  BL @FAIL                                                                      
+SRL2 RTWP                                                                       
+                                                                                
+SLA  TEXT 'SLA '                                                                
+  LI R10,>1357                                                                  
+  SLA R10,5                                                                     
+  STST R3                                                                       
+  CI R10,>6AE0                                                                  
+  JEQ SLA1                                                                      
+  BL @FAIL                                                                      
+SLA1 ANDI R3,>F800                                                              
+  CI R3,>C800                                                                   
+  JEQ SLA2                                                                      
+  BL @FAIL                                                                      
+SLA2 RTWP                                                                       
+                                                                                
+SRC     TEXT 'SRC '                                                             
+  LI R2,>FFEF                                                                   
+  SRC R2,7                                                                      
+  STST R3                                                                       
+  CI R2,>DFFF                                                                   
+  JEQ SRC1                                                                      
+  BL @FAIL                                                                      
+SRC1 ANDI R3,>F000                                                              
+  CI R3,>9000                                                                   
+  JEQ SRC2                                                                      
+  BL @FAIL                                                                      
+SRC2 RTWP                                                                       
+                                                                                
+SLAST                                                                           
+       END       
