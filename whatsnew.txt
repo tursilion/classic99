@@ -2170,16 +2170,7 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 
 - fix auto-loader to clear out previous ROMs before loading
 
+-----------------------------------------------
+8 May 2023
 
--TODO: implement a warning about reading the VDP status bit when interrupt is not set (racy, can lose frame and sprite bits)
--TODO: Rewrite AMS code to bring it into the mainline memory system for improved debugging (ie: always run a 1MB memory space)
--TODO: Fix international keyboard support
--TODO: Implement support for the MESS "RPK" format (extend to support all Classic99 memory types?)
--TODO: Allow File->Open to load a TI BASIC, XB, EA#5 or EA#3 program (might be tricky to get BASIC vs XB)
--TODO: remove AVI recording - there are better external packages these days
--TODO: Add support for PIO (LPT) and RS232 (COM) access, possibly including low level
--TODO: Fix multiple scanning of joysticks (scan on timer tick?)
--TODO: Implement cassette ports on sound card? (would require precise timing!)
--TODO: Allow debugger to display in hex or decimal
--TODO: F18A support (to some extent at least - CPU support partially in place, so is some multicolor sprite, palette, dual layers...)
--TODO: support relative paths including '.' (part of a file system update I am documenting)
+- Update cartpack to add RXB2023
