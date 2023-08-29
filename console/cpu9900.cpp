@@ -60,6 +60,12 @@
 // CRUCLK is not available at the cartridge port of QI consoles, so we should
 // disable it on cartridges for v2.2 consoles, if we ever do it.
 
+// TODO:
+//         BLWP @vect
+// vect    DATA >9C00
+//         DATA here
+// The BLWP never completes. Perhaps the GROM gets hit a second time before the first cycle completes?
+
 #define WIN32_LEAN_AND_MEAN
 #define _WIN32_WINNT 0x0501
 #include <stdio.h>
@@ -199,6 +205,7 @@ void CPU9900::reset() {
     
     // TODO: Read WP & PC are obvious, what are the other 3? Does it do a TRUE BLWP? Can we see where a reset came from?
     // It matches the LOAD interrupt, so maybe yes! Test above theory on hardware.
+    // I believe we confirmed this to be true with the fellow debugging his 99/4...
     
     StopIdle();
     halted = 0;         // clear all possible halt sources
@@ -545,7 +552,7 @@ void CPU9900::op_a()
     x1=ROMWORD(S);  // read source
 
     fixD();
-    x2=ROMWORD(D);  // read dest
+    x2=ROMWORD(D,ACCESS_RMW);  // read dest
     x3=x2+x1; 
     WRWORD(D,x3);   // write dest
                                                                                         // most of these are the same for every opcode.
@@ -576,7 +583,7 @@ void CPU9900::op_ab()
     x1=RCPUBYTE(S);     // read source 
 
     fixD();
-    xD=ROMWORD(D);      // read destination
+    xD=ROMWORD(D,ACCESS_RMW);      // read destination
 
     BYTE_OPERATION(x3=x2+x1);   // xD->x2, result->xD, uses D
     
@@ -639,7 +646,7 @@ void CPU9900::op_ai()
     AddCycleCount(14);
 
     FormatVIII_1;   // read source
-    x1=ROMWORD(D);  // read dest
+    x1=ROMWORD(D,ACCESS_RMW);  // read dest
 
     x3=x1+S;
     WRWORD(D,x3);   // write dest
@@ -666,7 +673,7 @@ void CPU9900::op_dec()
     AddCycleCount(10);
 
     FormatVI;
-    x1=ROMWORD(S);  // read source
+    x1=ROMWORD(S,ACCESS_RMW);  // read source
 
     x1--;
     WRWORD(S,x1);   // write source
@@ -693,7 +700,7 @@ void CPU9900::op_dect()
     AddCycleCount(10);
 
     FormatVI;
-    x1=ROMWORD(S);  // read source
+    x1=ROMWORD(S,ACCESS_RMW);  // read source
 
     x1-=2;
     WRWORD(S,x1);   // write source
@@ -768,7 +775,7 @@ void CPU9900::op_div()
     x2=ROMWORD(S);  // read source MSW
 
     D=WP+(D<<1);
-    x3=ROMWORD(D);  // read dest
+    x3=ROMWORD(D,ACCESS_RMW);  // read dest
     
     // E/A: When the source operand is greater than the first word of the destination
     // operand, normal division occurs. If the source operand is less than or equal to
@@ -836,7 +843,7 @@ void CPU9900::op_inc()
     AddCycleCount(10);
 
     FormatVI;
-    x1=ROMWORD(S);      // read source
+    x1=ROMWORD(S,ACCESS_RMW);      // read source
     
     x1++;
     WRWORD(S,x1);       // write source
@@ -860,7 +867,7 @@ void CPU9900::op_inct()
     AddCycleCount(10);
 
     FormatVI;
-    x1=ROMWORD(S);      // read source
+    x1=ROMWORD(S,ACCESS_RMW);      // read source
     
     x1+=2;
     WRWORD(S,x1);       // write source
@@ -894,7 +901,7 @@ void CPU9900::op_mpy()
     x1=ROMWORD(S);      // read source
     
     D=WP+(D<<1);
-    x3=ROMWORD(D);      // read dest
+    x3=ROMWORD(D,ACCESS_RMW);      // read dest
     x3=x3*x1;
     WRWORD(D,(Word)(x3>>16));       // write dest MSW
     WRWORD(D+2,(Word)(x3&0xffff));  // write dest LSW
@@ -915,7 +922,7 @@ void CPU9900::op_neg()
     AddCycleCount(12);
 
     FormatVI;
-    x1=ROMWORD(S);  // read source
+    x1=ROMWORD(S,ACCESS_RMW);  // read source
 
     x1=(~x1)+1;
     WRWORD(S,x1);   // write source
@@ -943,7 +950,7 @@ void CPU9900::op_s()
     x1=ROMWORD(S);  // read source
 
     fixD();
-    x2=ROMWORD(D);  // read dest
+    x2=ROMWORD(D,ACCESS_RMW);  // read dest
     x3=x2-x1;
     WRWORD(D,x3);   // write dest
 
@@ -976,7 +983,7 @@ void CPU9900::op_sb()
     x1=RCPUBYTE(S);     // read source
 
     fixD();
-    xD = ROMWORD(D);    // read dest
+    xD = ROMWORD(D,ACCESS_RMW);    // read dest
 
     BYTE_OPERATION(x3=x2-x1);   // xD->x2, result->xD, uses D
 
@@ -1050,6 +1057,7 @@ void CPU9900::op_blwp()
     //  Write PC->R14
     //  Write ST->R15
     //  Read PC
+    // Hardware does those three writes top to bottom
 
     // Note that there is no "read source" (BLWP R0 /does/ branch with >8300, it doesn't fetch R0)
     // TODO: We need to time out this instruction and verify that analysis.
@@ -1531,6 +1539,7 @@ void CPU9900::op_x()
         // We don't emulate that lockup here in Classic99, but of course it
         // will just spin forever.
         // TODO: we should try this ;)
+        // TODO: that also means we probably need to SET_SKIP_INTERRUPT for this opcode??
     }
     AddCycleCount(8-4); // For X, add this time to the execution time of the instruction found at the source address, minus 4 clock cycles and 1 memory access. 
                         // we already accounted for the memory access (the instruction is going to be already in S)
@@ -2144,7 +2153,7 @@ void CPU9900::op_swpb()
     AddCycleCount(10);
 
     FormatVI;
-    x1=ROMWORD(S);      // read source
+    x1=ROMWORD(S,ACCESS_RMW);      // read source
 
     x2=((x1&0xff)<<8)|(x1>>8);
     WRWORD(S,x2);       // write source
@@ -2167,7 +2176,7 @@ void CPU9900::op_andi()
 
     FormatVIII_1;       // read immediate
 
-    x1=ROMWORD(D);      // read dest
+    x1=ROMWORD(D,ACCESS_RMW);      // read dest
     x2=x1&S;
     WRWORD(D,x2);       // write dest
     
@@ -2192,7 +2201,7 @@ void CPU9900::op_ori()
 
     FormatVIII_1;   // read immediate
 
-    x1=ROMWORD(D);  // read dest
+    x1=ROMWORD(D,ACCESS_RMW);  // read dest
     x2=x1|S;
     WRWORD(D,x2);   // write dest
   
@@ -2219,7 +2228,7 @@ void CPU9900::op_xor()
     x1=ROMWORD(S);  // read source
 
     fixD();
-    x2=ROMWORD(D);  // read dest
+    x2=ROMWORD(D,ACCESS_RMW);  // read dest
   
     x3=x1^x2;
     WRWORD(D,x3);   // write dest
@@ -2244,7 +2253,7 @@ void CPU9900::op_inv()
 
     FormatVI;
 
-    x1=ROMWORD(S);  // read source
+    x1=ROMWORD(S,ACCESS_RMW);  // read source
     x1=~x1;
     WRWORD(S,x1);   // write source
 
@@ -2309,7 +2318,7 @@ void CPU9900::op_soc()
     x1=ROMWORD(S);      // read source
 
     fixD();
-    x2=ROMWORD(D);      // read dest
+    x2=ROMWORD(D,ACCESS_RMW);      // read dest
     x3=x1|x2;
     WRWORD(D,x3);       // write dest
   
@@ -2337,7 +2346,7 @@ void CPU9900::op_socb()
     x1=RCPUBYTE(S);     // read source
 
     fixD();
-    xD=ROMWORD(D);      // read dest
+    xD=ROMWORD(D,ACCESS_RMW);      // read dest
 
     BYTE_OPERATION(x3=x1|x2);   // xD->x2, result->xD, uses D
 
@@ -2367,7 +2376,7 @@ void CPU9900::op_szc()
     x1=ROMWORD(S);      // read source
 
     fixD();
-    x2=ROMWORD(D);      // read dest
+    x2=ROMWORD(D,ACCESS_RMW);      // read dest
     x3=(~x1)&x2;
     WRWORD(D,x3);       // write dest
   
@@ -2395,7 +2404,7 @@ void CPU9900::op_szcb()
     x1=RCPUBYTE(S);     // read source
 
     fixD();
-    xD=ROMWORD(D);      // read dest
+    xD=ROMWORD(D,ACCESS_RMW);      // read dest
 
     BYTE_OPERATION(x3=(~x1)&x2);   // xD->x2, result->xD, uses D
 
@@ -2439,7 +2448,7 @@ void CPU9900::op_sra()
         if (D==0) D=16;
         AddCycleCount(8);
     }
-    x1=ROMWORD(S);              // read source
+    x1=ROMWORD(S,ACCESS_RMW);              // read source
     x4=x1&0x8000;
     x3=0;
   
@@ -2490,7 +2499,7 @@ void CPU9900::op_srl()
         if (D==0) D=16;
         AddCycleCount(8);
     }
-    x1=ROMWORD(S);          // read source
+    x1=ROMWORD(S,ACCESS_RMW);          // read source
     x3=0;
   
     for (x2=0; x2<D; x2++)
@@ -2538,7 +2547,7 @@ void CPU9900::op_sla()
         if (D==0) D=16;
         AddCycleCount(8);
     }
-    x1=ROMWORD(S);          // read source
+    x1=ROMWORD(S,ACCESS_RMW);          // read source
     x4=x1&0x8000;
     reset_EQ_LGT_AGT_C_OV;
 
@@ -2591,7 +2600,7 @@ void CPU9900::op_src()
         if (D==0) D=16;
         AddCycleCount(8);
     }
-    x1=ROMWORD(S);          // read source
+    x1=ROMWORD(S,ACCESS_RMW);          // read source
     for (x2=0; x2<D; x2++)
     { 
         x4=x1&0x1;
@@ -2871,7 +2880,7 @@ void CPU9900::op_slcF18(){
     // 0E00 slc     00001 110 0x Ts SSSS
 
     FormatVI;
-    x1=ROMWORD(S);
+    x1=ROMWORD(S,ACCESS_RMW);
 
     // circular left shift (TODO: once? does it rotate through carry??)
     x2=x1&0x8000;

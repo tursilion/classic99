@@ -2174,3 +2174,9 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 8 May 2023
 
 - Update cartpack to add RXB2023
+
+-----------------------------------------------
+29 Aug 2023
+
+- fix math for 4k mode
+- some RMW cycle fixes for the CPU (I think? Been a while)

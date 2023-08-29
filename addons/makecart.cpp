@@ -1603,6 +1603,7 @@ const unsigned char MakeGromCopy::Finish[] = {
 // an arbitrary PC. The header.bin code will need to be updated with this new
 // assumption. This always saves all 16k of VRAM and prepends the loader, both
 // banks should include startup code to jump to the right bank and start copying.
+// TODO: opt.bCharA1 needs to overwrite the character set if selected, I meant for it
 class MakeBasicCopy {
 public:
 	MakeBasicCopy(HWND in_hwnd, struct options in_opt) {

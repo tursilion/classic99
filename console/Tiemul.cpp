@@ -4805,7 +4805,8 @@ int GetRealVDP() {
 		// notes confirm mine.
 		//
 		//         static bits       shifted bits           rotated bit
-		RealVDP = (VDPADD&0x203f) | ((VDPADD&0x0fc0)<<1) | ((VDPADD&0x1000)>>7);
+		RealVDP = (VDPADD&0x203f) | ((VDPADD&0x0fc0)<<1) | ((VDPADD&0x1000)>>6);
+		// thanks to JasonACT for spotting a bug in this math ;)
 	}
 
 	// force 8k DRAMs (strip top row bit - this should be right - console doesn't work though)
@@ -5690,8 +5691,25 @@ Byte rpcodebyte(Word x)
 	}
 
 	// PCODE GROMs are distinct from the rest of the system
-
-//	debug_write("Read PCODE GROM (>%04X), >%04x, >%02x", x, GROMBase[PCODEGROMBASE].GRMADD, GROMBase[PCODEGROMBASE].grmdata);
+#if 0
+	// code I was using to reverse pCode for cartridge port
+	if ((pCurrentCPU->PC >= 0x404c)&&(pCurrentCPU->PC <= 0x4050)) {			// dummy read
+	} else if ((pCurrentCPU->PC >= 0x4070)&&(pCurrentCPU->PC <= 0x4094)) {	// copy loop 1
+	} else if ((pCurrentCPU->PC >= 0x59b4)&&(pCurrentCPU->PC <= 0x59ca)) {	// read word
+	} else if ((pCurrentCPU->PC >= 0x584a)&&(pCurrentCPU->PC <= 0x588a)) {	// VDP copy loop
+	} else if ((pCurrentCPU->PC >= 0x4190)&&(pCurrentCPU->PC <= 0x41b6)) {	// big/little endian read
+	} else if ((pCurrentCPU->PC >= 0x8300)&&(pCurrentCPU->PC <= 0x8348)) {	// scratchpad data fetch functions
+	} else if ((pCurrentCPU->PC >= 0x535e)&&(pCurrentCPU->PC <= 0x536a)) {	// byte data fetch
+	} else if ((pCurrentCPU->PC >= 0x5290)&&(pCurrentCPU->PC <= 0x52a4)) {	// two compare loops
+	} else if ((pCurrentCPU->PC >= 0x4f70)&&(pCurrentCPU->PC <= 0x4f9e)) {	// read a byte from an address
+	} else if ((pCurrentCPU->PC >= 0x4bba)&&(pCurrentCPU->PC <= 0x4bc8)) {	// copy loop
+	} else if ((pCurrentCPU->PC >= 0x53be)&&(pCurrentCPU->PC <= 0x53d0)) {	// another copy loop
+	} else if ((pCurrentCPU->PC >= 0x5118)&&(pCurrentCPU->PC <= 0x5130)) {	// more copy loop
+	} else {
+		debug_write("Read PCODE GROM (>%04X), >%04x, >%02x", x, GROMBase[PCODEGROMBASE].GRMADD, GROMBase[PCODEGROMBASE].grmdata);
+		TriggerBreakPoint();
+	}
+#endif
 
 	if (x&0x0002)
 	{
@@ -5729,7 +5747,18 @@ void wpcodebyte(Word x, Byte c)
 	}
 
 	// PCODE GROMs are distinct from the rest of the system
-//	debug_write("Write PCODE GROM (>%04X), >%04x, >%02x, %d", x, GROMBase[PCODEGROMBASE].GRMADD, c, GROMBase[PCODEGROMBASE].grmaccess);
+	if ((pCurrentCPU->PC >= 0x4058)&&(pCurrentCPU->PC <= 0x405e)) {	// first address set
+	} else if ((pCurrentCPU->PC >= 0x59b4)&&(pCurrentCPU->PC <= 0x59ca)) {	// read word
+	} else if ((pCurrentCPU->PC >= 0x584a)&&(pCurrentCPU->PC <= 0x588a)) {	// VDP copy loop
+	} else if ((pCurrentCPU->PC >= 0x4190)&&(pCurrentCPU->PC <= 0x41b6)) {	// big/little endian read
+	} else if ((pCurrentCPU->PC >= 0x4158)&&(pCurrentCPU->PC <= 0x4166)) {	// set address
+	} else if ((pCurrentCPU->PC >= 0x4f70)&&(pCurrentCPU->PC <= 0x4f9e)) {	// read a byte from an address
+	} else if ((pCurrentCPU->PC >= 0x50b2)&&(pCurrentCPU->PC <= 0x50cc)) {	// read a byte from an address
+	} else {
+		debug_write("Write PCODE GROM (>%04X), >%04x, >%02x, %d", x, GROMBase[PCODEGROMBASE].GRMADD, c, GROMBase[PCODEGROMBASE].grmaccess);
+		TriggerBreakPoint();
+	}
+
 
 	if (x&0x0002)
 	{
