@@ -64,9 +64,10 @@
 //};
 // 32-bit 0RGB colors
 //unsigned int TIPALETTE[16] = {
-//	0x00000000,0x00000000,0x0020C840,0x0058D878,0x005050E8,0x007870F8,0x00D05048,
-//	0x0040E8F0,0x00F85050,0x00F87878,0x00D0C050,0x00E0C880,0x0020B038,0x00C858B8,
-//	0x00C8C8C8,0x00F8F8F8
+//	0x00000000,0x00000000,0x0020C840,0x0058D878,
+//  0x005050E8,0x007870F8,0x00D05048,0x0040E8F0,
+//  0x00F85050,0x00F87878,0x00D0C050,0x00E0C880,
+//  0x0020B038,0x00C858B8,0x00C8C8C8,0x00F8F8F8
 //};
 // 12-bit 0RGB colors (we shift up to 24 bit when we load it)
 const int F18APaletteReset[64] = {
@@ -308,6 +309,10 @@ extern int drawspeed;						// frameskip... sorta. Not sure this is still valuabl
 extern int nVideoLeft, nVideoTop;
 extern int max_cpf;							// current CPU performance
 extern CPU9900 *pGPU;
+extern int gLogSNPSG;
+extern int nRegister[4];					// frequency registers
+extern int nVolume[4];						// volume attenuation
+void renderBML(int y);
 
 //////////////////////////////////////////////////////////
 // Helpers for the TV controls
@@ -342,10 +347,10 @@ void SetTVValues(double hue, double sat, double cont, double bright, double shar
 int gettables(int isLayer2)
 {
 	int reg0 = VDPREG[0];
-	if (nSystem == 0) {
-		// disable bitmap for 99/4
-		reg0&=~0x02;
-	}
+//	if (nSystem == 0) {
+//		// disable bitmap for 99/4
+//		reg0&=~0x02;
+//	} // phoenix doesn't have a 99/4 mode
 	if (!bEnable80Columns) {
 		// disable 80 columns if not enabled
 		reg0&=~0x04;
@@ -442,6 +447,10 @@ void vdpReset(bool isCold) {
     
     redraw_needed = REDRAW_LINES;
     memset(VDPREG, 0, sizeof(VDPREG));
+	VDPREG[0]=0;
+	VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
+    VDPREG[0x33]=32;                        // F18A sprites to process
+    VDPREG[0x1e]=4;                         // maximum sprites per line
 }
 
 ////////////////////////////////////////////////////////////
@@ -743,6 +752,12 @@ void VDPdisplay(int scanline)
 		}
 
 		if ((!bDisableBackground) && (gfxline < 192) && (gfxline >= 0)) {
+			// before we draw, see if the BML is under tiles
+			if ((bF18AActive)&&((VDPREG[31]&0xc0)==0x80)) {
+				// BML active but is under tiles
+				renderBML(gfxline);
+			}
+
             for (int isLayer2=0; isLayer2<2; ++isLayer2) {
                 reg0 = gettables(isLayer2);
 
@@ -777,9 +792,17 @@ void VDPdisplay(int scanline)
                     break;
                 }
             }
+
+			// before we draw, see if the BML is over tiles
+			if ((bF18AActive)&&((VDPREG[31]&0xc0)==0xc0)) {
+				// BML active but is over tiles
+				renderBML(gfxline);
+			}
 		} else {
+            // This case is hit if nothing else is being drawn, otherwise the graphics modes call DrawSprites
 			// as long as mode bit 2 is not set, sprites are okay
-			if ((VDPREG[1] & 0x10) == 0) {
+			bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+			if ((f18tilesprites) || ((VDPREG[1] & 0x10) == 0)) {
 				DrawSprites(gfxline);
 			}
 		}
@@ -787,7 +810,8 @@ void VDPdisplay(int scanline)
 		// we have to redraw the sprites even if the screen didn't change, so that collisions are updated
 		// as the CPU may have cleared the collision bit
 		// as long as mode bit 2 (text) is not set, and the display is enabled, sprites are okay
-		if ((VDPREG[1] & 0x10) == 0) {
+		bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+		if ((f18tilesprites) || ((VDPREG[1] & 0x10) == 0)) {
 			if ((bDisableBlank) || (VDPREG[1] & 0x40)) {
 				DrawSprites(gfxline);
 			}
@@ -864,6 +888,20 @@ void updateVDP(int cycleCount)
 			// set the vertical interrupt
 			VDPS|=VDPS_INT;
 			end_of_frame = 1;
+
+			// audio logging
+			if (gLogSNPSG) {
+				FILE *fp = fopen("SNPSGLOG.psgsn", "a");
+				if (NULL != fp) {
+					fprintf(fp, "0x%05X,0x%01X,0x%05X,0x%01X,0x%05X,0x%01X,0x%05X,0x%01X\n",
+						nRegister[0], nVolume[0],
+						nRegister[1], nVolume[1],
+						nRegister[2], nVolume[2],
+						nRegister[3]|(noiseTriggered?0x10000:0), nVolume[3]);
+					fclose(fp);
+				}
+				noiseTriggered = false;
+			}
 		} else if (vdpscanline > 261) {
 			vdpscanline = 0;
 			SetEvent(BlitEvent);
@@ -927,6 +965,7 @@ void draw_debug()
 
 /////////////////////////////////////////////////////////
 // Draw graphics mode
+// Layer 2 for F18A second tile layer!
 /////////////////////////////////////////////////////////
 void VDPgraphics(int scanline, int isLayer2)
 {
@@ -948,6 +987,17 @@ void VDPgraphics(int scanline, int isLayer2)
 				ch=o&0xff;              // debug character simply increments
                 if (o&0x100) {
                     // sprites in the second block
+					if (VDPREG[1]&0x02) {
+						// double-size sprites, group them as such
+						// 0..2..4..6..8....62
+						// 1..3..5..7..9....63
+						// 64.66.68.........126
+						// 65.67.69.........127
+						int band=(o&0xff)/64;
+						int off=(o/32)&1;
+						int x=(o%32)*2;
+						ch = band*64+x+off;
+					}
                     p_add=SDT+(ch<<3)+i3;   // calculate pattern address
                     fgc = 15-(VDPREG[7]&0x0f);  // color the opposite of the screen color
                     bgc = 0;                // transparent background
@@ -1167,8 +1217,9 @@ void VDPtext(int scanline, int isLayer2)
 		}
 	}
 
-    // no sprites in text mode, unless f18A unlocked
-    if ((bF18AActive) && (!isLayer2)) {
+    // no sprites in text mode, unless f18A unlocked and ECM active
+	bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+    if ((f18tilesprites) && (!isLayer2)) {
         // todo: layer 2 has sprite dependency concerns
 	    DrawSprites(scanline);
     }
@@ -1326,8 +1377,13 @@ void VDPtext80(int scanline, int isLayer2)
             }
 		}
 	}
-	// no sprites in text mode
-	// TODO: except on the F18A
+    // no sprites in text mode, unless f18A unlocked
+    // TODO: sprites don't render correctly in the wider 80 column mode...
+	bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+    if ((f18tilesprites) && (!isLayer2)) {
+        // todo: layer 2 has sprite dependency concerns
+	    DrawSprites(scanline);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -1914,15 +1970,24 @@ void DrawSprites(int scanline)
 	memset(SprColBuf, 0, 256*192);
 	SprColFlag=0;
 	
-	highest=31;
+ 	highest=31;
+    if (bF18AActive) {
+        // highest sprite to process (intended for 30 row mode, but always available)
+        if ((VDPREG[0x33]>1)&&(VDPREG[0x33]<33)) {
+            highest = VDPREG[0x33]-1;
+        }
+    }
 
 	// find the highest active sprite
+    // TODO: this is not executed in F18A 30 row mode
 	for (i1=0; i1<32; i1++)			// 32 sprites 
 	{
 		yy=VDP[SAL+(i1<<2)];
 		if (yy==0xd0)
 		{
-			highest=i1-1;
+            if (i1-1 < highest) {
+    			highest=i1-1;
+            }
 			break;
 		}
 	}
@@ -1940,11 +2005,14 @@ void DrawSprites(int scanline)
 		}
         int max = 5;                    // 9918A - fifth sprite is lost
         if (bF18AActive) {
-            max = VDPREG[0x33];         // F18A - configurable value
+            if (VDPREG[0x1e]) {
+                max = VDPREG[0x1e]+1;         // F18A - configurable value
+                if (max == 0) max = 5;	      // assume jumper set to 9918A mode
+            }
         }
 		for (i1=0; i1<=highest; i1++) {
 			curSAL=SAL+(i1<<2);
-			yy=VDP[curSAL]+1;				// sprite Y, it's stupid, cause 255 is line 0 
+			yy=VDP[curSAL]+1;				// sprite Y, it's stupid, cause 255 is line 0 - TODO: THIS IS OFF BY 1, WE ARE DRAWING AT 254, instead of 255
 			if (yy>225) yy-=256;			// fade in from top
 			t=yy;
 			for (i2=0; i2<i3; i2++,t++) {
@@ -1969,7 +2037,13 @@ void DrawSprites(int scanline)
 		if (yy>225) yy-=256;			// fade in from top: TODO: is this right??
 		xx=VDP[curSAL++];				// sprite X 
 		pat=VDP[curSAL++];				// sprite pattern
-		int dblSize = F18AECModeSprite ? VDP[curSAL] & 0x10 : VDPREG[1] & 0x2;
+		int dblSize;
+        if (F18AECModeSprite) {
+            dblSize = VDP[curSAL] & 0x10;
+            if (dblSize == 0) dblSize = VDPREG[1] & 0x2;
+        } else {
+            dblSize = VDPREG[1] & 0x2;
+        }
 		if (dblSize) {
 			pat=pat&0xfc;				// if double-sized, it must be a multiple of 4
 		}

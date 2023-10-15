@@ -91,6 +91,17 @@
 
 #include "z80.h"
 
+#include "ayemu_8912.h"
+ayemu_ay_t aypsg;
+ayemu_ay_reg_frame_t ayregs;
+void aywritesound(int reg, int c) {
+    ayregs[reg] = c;
+    ayemu_set_regs (&aypsg, ayregs);
+}
+void ay_update(short *buf, double nAudioIn, int nSamples) {
+    ayemu_gen_sound (&aypsg, buf, nSamples*2);
+}
+
 extern void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce up/down clicks
 
 ////////////////////////////////////////////
@@ -102,6 +113,11 @@ extern void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce 
 // Z80 hack
 Z80 myZ80;          // CPU state
 DISZ80 myZ80Dis;    // Disassembler
+bool isSGMCart = false; // true if file extenion is SGM, changes banking
+// Phoenix has no banking for SGM yet, so all faked in here
+int sgmBank[4]; // we only need 3, but I include the eeprom register here
+unsigned char YMData[16];  // not even CLOSE to right, just to make YM detection schemes work
+int YMadr;
 
 // Win32 Stuff
 HINSTANCE hInstance;						// global program instance
@@ -292,6 +308,7 @@ int cpucount, cpuframes;							// CPU counters for timing
 int timercount;										// Used to estimate runtime
 int CtrlAltReset = 0;								// if true, require control+alt+equals
 int gDontInvertCapsLock = 0;						// if true, caps lock is not inverted
+int gLogSNPSG = 0;									// update a PSG dump every frame, VGMComp2 format
 const char *szDefaultWindowText="Classic99";		// used to set Window back to normal after a change
 
 int timer9901;										// 9901 interrupt timer
@@ -456,17 +473,41 @@ zuint8 z80Read(void *ignoreSideEffects, zuint16 adr) {
             if ((z80PortOut[0x55]&0x03) == 0) {
                 // hardware cartridge access
 
+                // try for SGM
+                if (isSGMCart) {
+                    int cart = 0;
+                    switch (adr&0xe000) {
+                        case 0xe000:    
+                            cart = sgmBank[2]*8192;
+                            break;
+                        case 0xc000:
+                            cart = sgmBank[1]*8192;
+                            break;
+                        case 0xa000:
+                            cart = sgmBank[0]*8192;
+                            break;
+                        case 0x8000:
+                            cart = 0;
+                            break;
+                    }
+                    cart += adr&0x1fff;
+                    int len = (xb+1)*16384; // it's in megacart pages, but good enough for buffer safety
+                    while (cart > len) cart-=len;
+                    return CPU2[cart];
+                }
+
                 // handle banking first, Coleco carts can't tell read from write
                 if (!ignoreSideEffects) {
                     if (adr >= 0xffc0) {
                         z80PortOut[0x54] = (0xffff-adr) & 0x1f; // max of 32 banks in 512k
                         if ((0xffff-adr) > xb) {
-                            debug_write("Megacart bank to 0x%X, but mask is 0x%X", 0xffff-adr, xb);
+                            debug_write("Megacart bank to 0x%X, but mask is 0x%X, result 0x%X", 0xffff-adr, xb, (0xffff-adr)&xb);
+                            z80PortOut[0x54] &= xb;
                         }
                         // Wizard of Wor hacking... or any 512k cart really (todo: need in write as well?)
                         if ((z80PortOut[0x54] == 0x1f)||(z80PortOut[0x54] == 0x1e)) {
                             debug_write("Bank switch to 0x%02X, breakpoint.", z80PortOut[0x54]);
-                            //TriggerBreakPoint();
+                            TriggerBreakPoint();
                         }
                     }
                 }
@@ -475,7 +516,7 @@ zuint8 z80Read(void *ignoreSideEffects, zuint16 adr) {
                 // might work whether Megacart or not...?
                 // My emulation piggybacks on port 0x54. The real hardware doesn't and can't
                 // since the mapper is in the cart itself.
-                if (adr >= 0xc000) {
+                if ((adr >= 0xc000) && (xb > 1)) {	// ignore for 32k or smaller carts
                     return CPU2[adr-0xc000+(16384*(z80PortOut[0x54]&xb))];
                 } else {
                     // we loaded and inverted, so this should work
@@ -513,12 +554,18 @@ zuint8 z80Read(void *ignoreSideEffects, zuint16 adr) {
                                     if (adr >= 0xffc0) {
                                         z80PortOut[0x54] = (0xffff-adr) & 0x1f; // max of 32 banks in 512k
                                         if ((0xffff-adr) > xb) {
-                                            debug_write("Megacart bank to 0x%X, but mask is 0x%X", 0xffff-adr, xb);
+                                            debug_write("Megacart bank to 0x%X, but mask is 0x%X, result 0x%X", 0xffff-adr, xb, (0xffff-adr)&xb);
+                                            z80PortOut[0x54] &= xb;
+                                        }
+                                        // Wizard of Wor hacking... or any 512k cart really (todo: need in write as well?)
+                                        if ((z80PortOut[0x54] == 0x1f)||(z80PortOut[0x54] == 0x1e)) {
+                                            debug_write("Bank switch to 0x%02X, breakpoint.", z80PortOut[0x54]);
+                                            TriggerBreakPoint();
                                         }
                                     }
                                 }
 
-                                if (adr < 0xc000) {
+                                if ((adr < 0xc000) || (xb <= 1)) {
                                     // fixed bank  :  offset       top        page+1 (16k page)
                                     return phoenixRAM[adr-0x8000 + 512*1024 - 1 * 16*1024];
                                 } else {
@@ -580,7 +627,7 @@ zuint8 z80Read(void *ignoreSideEffects, zuint16 adr) {
             if (phoenixBios) {
                 // Phoenix BIOS
                 return z80ram[adr];
-            } else if (z80PortOut[0x7f]&0x02) {
+            } else if ((z80PortOut[0x7f]&0x02)||((z80PortOut[0x53]&0x01)==0)) {
                 // ColecoVision BIOS
                 return z80ram[adr + 0x8000];
             } else {
@@ -603,6 +650,11 @@ void z80Write(void*, zuint16 adr, zuint8 data) {
 
     switch (adr&0xe000) {
         case 0xe000:    
+            // special bit for SGM carts
+            // 0xfffc, 0xfffd, 0xfffe page the last 3 8k banks, while 0xffff talks to a serial(?) eeprom
+            if (adr > 0xfffb) sgmBank[adr-0xfffc] = data;
+
+            // fall through to the rest
         case 0xc000:
         case 0xa000:
         case 0x8000:    // the upper 32k always banks together
@@ -705,7 +757,7 @@ void z80Write(void*, zuint16 adr, zuint8 data) {
             if (phoenixBios) {
                 // Phoenix BIOS is read-only
                 break;
-            } else if (z80PortOut[0x7f]&0x02) {
+            } else if ((z80PortOut[0x7f]&0x02)||((z80PortOut[0x53]&0x01)==0)) {
                 // ColecoVision BIOS (read-only)
                 break;
             } else {
@@ -759,6 +811,14 @@ void z80Write(void*, zuint16 adr, zuint8 data) {
 //		  IN  - 0 - Joystick 1
 //				1 - Joystick 2
 
+// SGM detection:
+// Writes to AY registers 0 and 2, then reads them back.
+// AY chip is /always/ available, so this works
+// Writes 0x7f to map BIOS to RAM. If this succeeds,
+// it assumes machine is an Adam and does NOT turn on the SGM.
+// Otherwise, it turns on the SGM in port 0x53 and tries again.
+// Other RAM is then tested as normal for SGM space.
+
 bool z80JoystickMode = true;
 
 // skipSideEffects is non-zero if we should not trigger side effects
@@ -786,41 +846,48 @@ zuint8 z80In(void*skipSideEffects, zuint16 port) {
 	// read a byte from an I/O port
 	switch (port&0xe0) {
         case 0x40:  // extended port area (SGM/Phoenix)
-            // partially decoded (?) I'm echoing 4x and 5x
-            // TODO: test, it might echo over 0x4x as well...?
-
-            switch (port&0x0f) {
-                case 0: // sound address write
+            // These are fully decoded and do NOT mirror. 0x5x
+            switch (port&0x1f) {
+                case 0x10: // sound address write
                     // write-only
-                    debug_write("Read from 0x50 (snd addr)");
+                    if (!skipSideEffects) {
+                        debug_write("Read 0x00 from 0x50 (snd addr)");
+                        TriggerBreakPoint();
+                    }
                     return 0;
 
-                case 1: // sound data write
+                case 0x11: // sound data write
                     // write-only
-                    debug_write("Read from 0x51 (snd data write)");
+                    if (!skipSideEffects) {
+                        debug_write("Read 0x00 from 0x51 (snd data write)");
+                    }
                     return 0;
 
-                case 2: // sound data read
-                    // TODO: implement sound chips
-                    debug_write("Read from 0x52 (snd data)");
-                    return z80PortOut[port-1];  // return written data for now
+                case 0x12: // sound data read
+                    if (!skipSideEffects) {
+                        debug_write("Read 0x%02X from 0x52 (snd data[0x%02X])", ayregs[YMadr], YMadr);
+                    }
+                    // only if SGM is enabled? I think always on.
+                    return ayregs[YMadr];
 
-                case 3: // SGM and sound chip enable
+                case 0x13: // SGM and sound chip enable
                     // write-only
-                    debug_write("Read from 0x53 (SGM enable)");
+                    if (!skipSideEffects) {
+                        debug_write("Read 0x00 from 0x53 (SGM enable)");
+                    }
                     return 0;
 
-                case 4: // bank select
+                case 0x14: // bank select
                     return z80PortOut[0x54];
 
-                case 5: // on read, simply turns off the boot BIOS
+                case 0x15: // on read, simply turns off the boot BIOS
                     if (!skipSideEffects) {
                         phoenixBios = false;
                         debug_write("Disabling Phoenix BIOS...");
                     }
                     return 0;
 
-                case 6: // SD card detect
+                case 0x16: // SD card detect
                     {
                         unsigned char x = 0;
                         if (SDIsInserted()) {
@@ -831,13 +898,16 @@ zuint8 z80In(void*skipSideEffects, zuint16 port) {
                     }
                     break;
 
-                case 7: // SD card data read
-                    return SDRead();
+                case 0x17: // SD card data read
+                    if (!skipSideEffects) {
+                        return SDRead();
+                    }
+                    return 0xff;
 
-                case 8: // machine id
+                case 0x18: // machine id
                     return 8;   // Phoenix is 8, for some reason.
 
-                case 9: // megacart mask value
+                case 0x19: // megacart mask value
                     // TODO MIKE: this is not confirmed on hardware yet
                     // write only
                     return 0;
@@ -849,7 +919,10 @@ zuint8 z80In(void*skipSideEffects, zuint16 port) {
             return 0;
 
         case 0x60:  // SGM BIOS mapper
-            // write-only
+            // write-only, but return the joystick select
+            if (port == 0x7f) {
+                return z80PortOut[0x7f];
+            }
             return 0;
 
         case 0x80:  // keypad mode select
@@ -880,48 +953,55 @@ zuint8 z80In(void*skipSideEffects, zuint16 port) {
             return 0;
 			
 		case 0xe0:	// joystick
-			// todo: not doing joystick 2 right now
-            // Could use the Classic99 config...
-			if (port&0x1) {
-                if (z80JoystickMode) {
-                    return 0xff;
-                } else {
-                    return 0x7f;
+            {
+			    // todo: not doing joystick 2 right now
+                // Could use the Classic99 config...
+			    if (port&0x1) {
+                    if (z80JoystickMode) {
+                        return 0xff;
+                    } else {
+                        return 0x7f;
+                    }
                 }
-            }
 			
-			// keypad or stick?
-			if (z80JoystickMode) {
-				// TODO: also no roller controller
-				// read stick
-				zuint8 ret = 0xff;
-				if (key[VK_TAB]) ret &= ~0x40;	// fire 1
-				if (key[VK_LEFT]) ret &= ~0x08;
-				if (key[VK_RIGHT]) ret &=~0x02;
-				if (key[VK_UP]) ret &= ~0x01;
-				if (key[VK_DOWN]) ret &= ~0x04;
-				return ret;
-			} else {
-				// read keypad - returns values
-				zuint8 ret = 0x7f;
-				if (key['Q']) ret &= ~0x40;		// fire 2
-				// TODO: not sure if Coleco merges multiple keys like this
-				if (key['8']) ret = (ret&0xf0) | 1;
-				if (key['4']) ret = (ret&0xf0) | 2;
-				if (key['5']) ret = (ret&0xf0) | 3;
-				if (key['7']) ret = (ret&0xf0) | 5; 
-				if (key[VK_SUBTRACT]) ret = (ret&0xf0) | 6;		// dash for pound
-				if (key['2']) ret = (ret&0xf0) | 7;
-				if (key[VK_ADD]) ret = (ret&0xf0) | 9;		// equals for asterisk
-				if (key['0']) ret = (ret&0xf0) | 10;
-				if (key['9']) ret = (ret&0xf0) | 11;
-				if (key['3']) ret = (ret&0xf0) | 12;
-				if (key['1']) ret = (ret&0xf0) | 13;
-				if (key['6']) ret = (ret&0xf0) | 14;
-				return ret;
-			}
+			    // keypad or stick?
+			    if (z80JoystickMode) {
+				    // TODO: also no roller controller
+				    // read stick
+				    zuint8 ret = 0xff;
+				    if (key[VK_TAB]) ret &= ~0x40;	// fire 1
+				    if (key[VK_LEFT]) ret &= ~0x08;
+				    if (key[VK_RIGHT]) ret &=~0x02;
+				    if (key[VK_UP]) ret &= ~0x01;
+				    if (key[VK_DOWN]) ret &= ~0x04;
+				    return ret;
+			    } else {
+				    // read keypad - returns values
+				    zuint8 ret = 0x7f;
+				    if (key['Q']) ret &= ~0x40;		// fire 2
+				    // TODO: not sure if Coleco merges multiple keys like this
+				    if (key['8']) ret = (ret&0xf0) | 1;
+				    if (key['4']) ret = (ret&0xf0) | 2;
+				    if (key['5']) ret = (ret&0xf0) | 3;
+				    if (key['7']) ret = (ret&0xf0) | 5; 
+				    if (key[VK_SUBTRACT]) ret = (ret&0xf0) | 6;		// dash for pound
+				    if (key['O']) ret = (ret&0xf0) | 6;		// also O for pound
+				    if (key['2']) ret = (ret&0xf0) | 7;
+				    if (key[VK_ADD]) ret = (ret&0xf0) | 9;		// equals for asterisk
+				    if (key['P']) ret = (ret&0xf0) | 9;		// also P for asterisk
+				    if (key['0']) ret = (ret&0xf0) | 10;
+				    if (key['9']) ret = (ret&0xf0) | 11;
+				    if (key['3']) ret = (ret&0xf0) | 12;
+				    if (key['1']) ret = (ret&0xf0) | 13;
+				    if (key['6']) ret = (ret&0xf0) | 14;
+				    return ret;
+			    }
+            }
+            break;
+
+        default:
+            return port&0xff;
 	}
-	return 0;
 }
 
 void z80Out(void*, zuint16 port, zuint8 val) {
@@ -930,8 +1010,30 @@ void z80Out(void*, zuint16 port, zuint8 val) {
 
     port&=0xff;
 
+	// Check for write or access breakpoints
+	for (int idx=0; idx<nBreakPoints; idx++) {
+		switch (BreakPoints[idx].Type) {
+			case BREAK_EQUALS_PORT:
+				if ((CheckRange(idx, port)) && ((val&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
+					TriggerBreakPoint();
+				}
+				break;
+
+			case BREAK_DISK_PORTLOG:
+				if (CheckRange(idx, port)) {
+					if ((BreakPoints[idx].Data>0)&&(BreakPoints[idx].Data<10)) {
+						if (NULL != DumpFile[BreakPoints[idx].Data]) {
+							fputc(val, DumpFile[BreakPoints[idx].Data]);
+						}
+					}
+				}
+				break;
+		}
+	}
+
     // save it even if not valid
     z80PortOut[port] = val;
+//    debug_write("z80PortOut[0x%02x] = 0x%02x", port, val);
 
 //	if (!ignoreSideEffects) {
         // update the heat map
@@ -952,50 +1054,59 @@ void z80Out(void*, zuint16 port, zuint8 val) {
     // write a byte to a Z80 port
 	switch (port&0xe0) {
         case 0x00:  // Classic99/Rawhide debug port (Classic99 requires full strings)
-            // magic remapping for hex bytes (loses some punctuation)
-            if ((val > '9') && (val < '@')) {
-                val+=7;
-            }
-            if (val == 0x7f) {
-                strout[outpos] = 0;
-                debug_write("COLECO: %s", strout);
-                outpos = 0;
-                debug_write("COLECO requested breakpoint");
-                TriggerBreakPoint();
-            } else if (val < ' ') {
-                strout[outpos] = 0;
-                debug_write("COLECO: %s", strout);
-                outpos = 0;
-            } else {
-                strout[outpos++] = val;
-                if (outpos > 126) {
-                    strout[127]=0;
+            if (port == 0x00) {
+                // magic remapping for hex bytes (loses some punctuation)
+                if ((val > '9') && (val < '@')) {
+                    val+=7;
+                }
+                if (val == 0x7f) {
+                    // 0x7f triggers a breakpoint
+                    strout[outpos] = 0;
                     debug_write("COLECO: %s", strout);
                     outpos = 0;
+                    debug_write("COLECO requested breakpoint");
+                    TriggerBreakPoint();
+                } else if (val < ' ') {
+                    // any control code is EOL
+                    strout[outpos] = 0;
+                    debug_write("COLECO: %s", strout);
+                    outpos = 0;
+                } else {
+                    // else build the string, outputting if it reaches 127 bytes
+                    strout[outpos++] = val;
+                    if (outpos > 126) {
+                        strout[127]=0;
+                        debug_write("COLECO: %s", strout);
+                        outpos = 0;
+                    }
                 }
+                break;
+            } else if (port == 0x01) {
+                // print hex bytes to port 0x01
+                debug_write("COLECOHEX: %02X", val);
+                break;
             }
             break;
 
         case 0x40:  // extended port area (SGM/Phoenix)
             // These are fully decoded and do NOT mirror. 0x5x
             switch (port&0x1f) {
-                case 0x10: // sound address write
-                    // TODO: implement sound chips
-                    debug_write("Write 0x%02X to 0x50 (snd addr)", val);
+                case 0x10: // sound address write (always valid)
+//                    debug_write("Write 0x%02X to 0x50 (snd addr)", val);
+                    YMadr = val&0x0f;
                     return;
 
-                case 0x11: // sound data write
-                    // TODO: implement sound chips
-                    debug_write("Write 0x%02X to 0x51 (snd data)", val);
+                case 0x11: // sound data write (always valid)
+//                    debug_write("Write 0x%02X to 0x51 (snd data[0x%02X]=0x%02X)", val, YMadr, val);
+                    aywritesound(YMadr, val);
                     return;
 
-                case 0x12: // sound data read
+                case 0x12: // sound data read (always valid)
                     // read-only
                     debug_write("Write 0x%02X to 0x50 (snd data read)", val);
                     break;
 
-                case 0x13: // SGM and sound chip enable
-                    // nothing to do beyond what is set in z80PortOut above
+                case 0x13: // SGM enable
                     debug_write("Write 0x%02X to 0x53 (SGM enable)", val);
                     break;
 
@@ -1071,6 +1182,7 @@ void z80Out(void*, zuint16 port, zuint8 val) {
 
 	    case 0x80:  // set keypad mode
             z80JoystickMode=false; 
+            //debug_write("JOY: Keypad mode set by PC %04X",  myZ80.state.pc);
             break;	// todo should be some bounce time and roller side effect
 	
 	    case 0xa0:  // write to VDP
@@ -1084,10 +1196,15 @@ void z80Out(void*, zuint16 port, zuint8 val) {
 	
 	    case 0xc0:  // set joystick mode
             z80JoystickMode=true; 
+            //debug_write("JOY: Joystick mode set by PC %04X",  myZ80.state.pc);
             break;	// todo should be some bounce time and roller side effect
 	
 	    case 0xe0:  // write to Coleco sound chip
 		    wsndbyte(val);
+            if (port == 0x7f) {
+                debug_write("Access to SGM BIOS banking");
+            }
+            break;
 	}
 }
 
@@ -1680,7 +1797,7 @@ void CloseDumpFiles() {
 void ReloadDumpFiles() {
 	// scan all breakpoints and open any un-open files
 	for (int idx=0; idx<MAX_BREAKPOINTS; idx++) {
-		if (BreakPoints[idx].Type == BREAK_DISK_LOG) {
+		if ((BreakPoints[idx].Type == BREAK_DISK_LOG)||(BreakPoints[idx].Type == BREAK_DISK_PORTLOG)) {
 			if (NULL == DumpFile[BreakPoints[idx].Data]) {
 				char buf[128];
 				sprintf(buf, "dump%d.bin", BreakPoints[idx].Data);
@@ -2162,7 +2279,21 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	// start sound
 	debug_write("Starting Sound");
 	startsound();
-	
+    // AY sound
+    memset(&ayregs, 0xff, sizeof(ayregs));
+    ayemu_init(&aypsg);
+
+    ayemu_set_chip_type(&aypsg, AYEMU_AY, NULL);
+    ayemu_set_stereo(&aypsg, AYEMU_MONO, NULL);
+    ayemu_set_sound_format (&aypsg, AudioSampleRate, 1, 16);
+    ayemu_reset(&aypsg);
+
+    // mute channels (your program startup does this)
+    aywritesound(8,0);    // volume to zero
+    aywritesound(9,0);
+    aywritesound(10,0);
+    aywritesound(7,0xf8); // mixer to no noise
+
 	// Init disk
 	debug_write("Starting Disk");
 
@@ -2769,6 +2900,13 @@ void __cdecl emulti(void *)
 	}
 }
 
+// check for coleco signature
+bool checksig(const unsigned char *p) {
+    if ((*p == 0xaa)&&(*(p+1)==0x55)) return true;
+    if ((*p == 0x55)&&(*(p+1)==0xaa)) return true;
+    return false;
+}
+
 //////////////////////////////////////////////////////////
 // Read and process the load files
 //////////////////////////////////////////////////////////
@@ -3078,6 +3216,18 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 			case TYPE_379:
 			case TYPE_MBX:
             {
+                // coleco stuff all falls into this...
+                // if the extension is .sgm, then set the SGM flag
+                // the megaSG uses .cf0 but the ROMs that work here don't work there...
+                {
+		            char *pPos = strrchr(pImg->szFileName, '.');
+		            if ((NULL != pPos) && (0 == strcmp(pPos, ".sgm"))) {
+                        isSGMCart=true;
+                        debug_write("Treating as SuperGameCart");
+                        //z80PortOut[0x53]=1;     // SGM sound chip enable (hack for Penguin, but it breaks the boot!)
+                    }
+                }
+
 				// Non-inverted or Inverted XB style, but more than one bank! Up to 32MB mapped 8k at a time
 				// not certain the intended maximum for MBX, but it has a slightly different layout
 				// We still use the same loader here though.
@@ -3182,12 +3332,12 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 				bUsesMBX = false;
 
                 // check for megacart and invert bank order if so
-                if ((CPU2[0] != 0xaa) && (CPU2[0] != 0x55) && (nLen > 32768)) {
+                if ((!checksig(&CPU2[0])) && (nLen > 32768)) {
                     // no header, try the last 16k block
                     // first pad up to a proper multiple, just in case
                     int tLen = nLen/16384 + (nLen%16384 ? 1 : 0);
                     tLen *= 16384;
-                    if ((CPU2[tLen-16384]==0x55)||(CPU2[tLen-16384]==0xaa)) {
+                    if (checksig(&CPU2[tLen-16384])) {
                         debug_write("Looks like a ColecoVision Megacart, inverting bank order");
                         Byte *CNew=(Byte*)malloc(tLen);
                         if (NULL == CNew) {
@@ -3367,28 +3517,41 @@ void readroms() {
 
     // ColecoVision Phoenix stuff
     {
+        // assume not SGM, and clear the regs
+        isSGMCart = false;
+        memset(sgmBank, 0, sizeof(sgmBank));
+
+        // and the fake AY sound chip
+        memset(YMData, 0, sizeof(YMData));
+
         // reset the SD card
         SDReset();
 
         // clear the memories
         memset(z80PortOut, 0, sizeof(z80PortOut));
-        memset(phoenixRAM, 0, sizeof(phoenixRAM));
+        memrnd(phoenixRAM, sizeof(phoenixRAM));
+        memrnd(z80ram, sizeof(z80ram));
         memset(CallHits, 0, sizeof(CallHits));
         // special port inits
         z80PortOut[0x54] = 1;     // first bank selected ('0' is illegal)
         z80PortOut[0x55] = 0x30;  // cartridge active, no banking
         z80PortOut[0x56] = 0x03;  // disabled, 400Khz (no idea if this is right)
         z80PortOut[0x7f] = 0x02;  // CV bios active, not SGM RAM
+        
+        // TODO MIKE: hack SGM ON
+        //z80PortOut[0x53]=1;       // sgm on
 
         // TODO: technically, these memories /survive/ a reset, rather than reloading from bitstream
         // For now I don't plan to write to them!
 
         // read in the ColecoVision ROM at the Phoenix address of 0x4000
-        FILE *fp = fopen("D:\\emu\\COLECO\\COLECO.ROM", "rb");
+        FILE *fp = fopen("COLECO.ROM", "rb");
+        if (NULL == fp) fp = fopen("D:\\emu\\COLECO\\COLECO.ROM", "rb");
         fread(&z80ram[0x8000], 1, 8192, fp);
         fclose(fp);
         // read in the Phoenix ROM at the Phoenix address of 0x0000
-        fp = fopen("D:\\work\\phoenix\\repo\\collectorvision-game-system\\gameMenus\\coleco\\src\\phoenixBoot.rom", "rb");
+        fp = fopen("phoenixBoot.rom", "rb");
+        if (NULL == fp) fp = fopen("D:\\work\\phoenix\\repo\\collectorvision-game-system\\gameMenus\\coleco\\src\\phoenixBoot.rom", "rb");
         fread(&z80ram[0x0000], 1, 3*8192, fp);
         fclose(fp);
         
@@ -4867,6 +5030,9 @@ Byte rvdpbyte(Word x, bool rmw)
 			debug_write("F18A Data port mode off (status register read).");
 		}
 
+        // also make sure the DPM flipflop is reset
+        F18APaletteRegisterData = -1;
+
 		// Added by RasmusM
 		if ((bF18AActive) && (F18AStatusRegisterNo > 0)) {
 			return getF18AStatus();
@@ -5028,6 +5194,11 @@ void wvdpbyte(Word x, Byte c)
 						F18AStatusRegisterNo = nData & 0x0f;
 						return;
 					}
+                    if (nReg == 30) {
+						// Sprite flicker limit
+						VDPREG[nReg] = nData;
+						return;
+					}
 					if (nReg == 47) {
 						// Palette control
 						bF18ADataPortMode = (nData & 0x80) != 0;
@@ -5066,7 +5237,7 @@ void wvdpbyte(Word x, Byte c)
                         // 0x40 - trigger GPU on HSYNC
                         // 0x80 - reset VDP registers to poweron defaults (DONE)
                         if (nData & 0x80) {
-                            debug_write("Resetting F18A registers");
+                            debug_write("Resetting F18A registers (PC=>%04X)", pCPU->GetPC());
                             vdpReset(false);
                         }
                         return;
@@ -5165,7 +5336,7 @@ void wvdpbyte(Word x, Byte c)
 					F18APalette[F18APaletteRegisterNo] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
 					redraw_needed = REDRAW_LINES;
 				}
-				debug_write("F18A palette register >%02X set to >%04X", F18APaletteRegisterNo, F18APalette[F18APaletteRegisterNo]);
+				debug_write("F18A palette register >%02X set to >%06X", F18APaletteRegisterNo, F18APalette[F18APaletteRegisterNo]);
 				if (bF18AAutoIncPaletteReg) {
 					F18APaletteRegisterNo++;
 				}
@@ -5272,6 +5443,7 @@ void wVDPreg(Byte r, Byte v)
 			F18APalette[0]=0x000000;	// black
 		}
 		redraw_needed=REDRAW_LINES;
+        //debug_write("VDP Register 7 set to %02X by PC >%04X", v, myZ80.state.pc);
 	}
 
 	if (!bEnable80Columns) {
@@ -5280,7 +5452,7 @@ void wVDPreg(Byte r, Byte v)
 		if ((r == 1) && ((v&0x80) == 0)) {
 			// ignore if it's a console ROM access - it does this to size VRAM
 			if (pCurrentCPU->GetPC() > 0x2000) {
-				debug_write("WARNING: Setting VDP 4k mode at PC >%04X", pCurrentCPU->GetPC());
+				debug_write("WARNING: Setting VDP 4k mode at PC >%04X", myZ80.state.pc);
 			}
 		}
 	}
@@ -6603,92 +6775,8 @@ void Counting()
 	if (NULL != soundbuf) {
 		UpdateSoundBuf(soundbuf, sound_update, &soundDat);
 	}
-	if ((NULL != sidbuf) && (NULL != sid_update)) {
-		UpdateSoundBuf(sidbuf, sid_update, &sidDat);
-#if 0
-// HACK - REMOVE ME - CONVERT SID MUSIC TO 9919?
-// TO USE THIS HACK, BREAKPOINT IN THE SID DLL IN THE RESET
-// FUNCTION, AND GET THE ADDRESS OF mySid. THEN STEP OUT,
-// AND ASSIGN THAT ADDRESS TO g_mySid. The rest will just work.
-// Or implement GetSidPointer in the DLL. Sadly I've lost the code.
-//volume - voice.envelope.envelope_counter
-//
-//noise is generated on a voice when the voice.waveform == 0x08 (combinations do nothing anyway)
-//voice.waveform.freq is the frequency counter
-//
-//FREQUENCY = (REGISTER VALUE * CLOCK)/16777216 Hz
-//where CLOCK=1022730 for NTSC systems and CLOCK=985250 for PAL systems.
-//
-//the TI version clock is exactly 1000000, so it's 
-//FREQUENCY = REGISTER_VALUE / 16.777216
-//
-//The TI 9919 sound chip uses:
-//FREQUENCY = 111860.78125 / REGISTER_VALUE
-//and inversely, 
-//REGISTER_VALUE = 111860.78125 / FREQUENCY
-		if (NULL == g_mySid) {
-            if (NULL != GetSidPointer) {
-                g_mySid = GetSidPointer();
-            }
-        } else {
-			static int nDiv[3] = {1,1,1};		// used for scale adjust when a note is too far off (resets if all three channels are quiet)
-			bool bAllQuiet=true;
-			bool bNoise = false;
-
-			sidbuf->SetVolume(DSBVOLUME_MIN);	// don't play audibly
-			for (int i=0; i<3; i++) {
-				// pitch
-				double nFreq = g_mySid->voice[i]->wave.freq / 16.777216;
-				int code = (int)((111860.78125 / nFreq) / nDiv[i]);
-
-				// volume (is just the envelope enough? is there a master volume?)
-				// looks like this is 8-bit volume, convert to 4-bit attenuation
-                // TODO: is it linear instead of logarithmic?
-				int nVol = ((255-g_mySid->voice[i]->envelope.envelope_counter)>>4);
-				if (nVol != 0x0f) bAllQuiet = false;
-				int ctrl = 0x80+(0x20*i);	
-
-				// check for noise
-				if (g_mySid->voice[i]->wave.waveform & 0x08) {
-					// this is noise
-					bNoise = true;
-					// mute the tone and don't worry about adjusting it
-					wsndbyte((ctrl+0x10) | 0x0f);
-					// pick a noise - 5,6,7 are the white noise tones. Periodic may be useful too but for now...
-					if ((code == 0) || (code > 0x180)) {
-						code = 0xe7;
-					} else if (code > 0xc0) {
-						code = 0xe6;
-					} else {
-						code = 0xe5;
-					}
-					wsndbyte(code);
-					// set the volume on the noise channel
-					wsndbyte(0xf0 | nVol);
-				} else {
-					// this is tone
-					if (code > 0x3ff) {
-						//code=0;		// lowest possible pitch
-						nDiv[i]*=2;		// scale it an octave up
-						if (nDiv[i]>4) nDiv[i]=4;		// this is about the limit
-						code/=2;
-						if (code > 0x3ff) code=0;		// if still, get it next time
-					}
-					wsndbyte(ctrl|(code&0xf));
-					wsndbyte((code>>4)&0xff);
-					wsndbyte((ctrl+0x10) |  nVol);
-				}
-			}
-			if (bNoise == false) {
-				// make sure the noise channel is silent when not active
-				wsndbyte(0xff);
-			}
-			if (bAllQuiet) {
-				// reset the pitch divisors
-				nDiv[0] = nDiv[1] = nDiv[2] = 1;
-			}
-		}
-#endif
+	if (NULL != sidbuf) {
+		UpdateSoundBuf(sidbuf, ay_update, &sidDat);
 	}
 
 	LeaveCriticalSection(&csAudioBuf);

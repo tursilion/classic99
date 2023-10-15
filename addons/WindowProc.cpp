@@ -70,6 +70,7 @@
 
 extern unsigned char z80ram[64*1024];	// Z80 memory space
 extern unsigned char z80PortOut[256];
+extern int sgmBank[4]; // we only need 3, but I include the eeprom register here
 extern unsigned char phoenixRAM[512*1024];  // not used directly, copied into z80ram as needed, MAME style
 extern DISZ80 myZ80Dis;    // Disassembler
 extern Z80 myZ80;
@@ -80,6 +81,7 @@ extern HDC tmpDC;
 extern int VDPDebug;
 extern int CtrlAltReset;
 extern int gDontInvertCapsLock;
+extern int gLogSNPSG;
 extern int max_volume;
 extern int starttimer9901;
 extern int timer9901;										// 9901 interrupt timer
@@ -134,6 +136,12 @@ extern Byte staticCPU[0x10000];					// main memory for debugger
 // sound
 extern int nRegister[4];						// frequency registers
 extern int nVolume[4];							// volume attenuation
+// AY
+#include "ayemu_8912.h"
+extern ayemu_ay_t aypsg;
+extern ayemu_ay_reg_frame_t ayregs;
+void aywritesound(int reg, int c);
+
 // back buffer for sizing
 extern DDSURFACEDESC2 CurrentDDSD;
 // debugger
@@ -204,7 +212,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void ConfigureDisk(HWND hwnd, int nDiskNum);
 BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-int EmitDebugLine(char cPrefix, struct history obj, CString &csOut);
+int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines);
 void UpdateUserCartMRU();
 
 // add a string to the MRU list
@@ -924,7 +932,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				    memset(&ofn, 0, sizeof(OPENFILENAME));
 				    ofn.lStructSize=sizeof(OPENFILENAME);
 				    ofn.hwndOwner=hwnd;
-				    ofn.lpstrFilter="Coleco Carts\0*.bin;*.rom\0All Files\0*\0\0";
+				    ofn.lpstrFilter="Coleco Carts\0*.bin;*.rom;*.sgm\0All Files\0*\0\0";
 				    ofn.lpstrFile=buf;
 				    ofn.nMaxFile=MAX_PATH;
 				    ofn.lpstrFileTitle=buf2;
@@ -976,7 +984,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				memset(&ofn, 0, sizeof(OPENFILENAME));
 				ofn.lStructSize=sizeof(OPENFILENAME);
 				ofn.hwndOwner=hwnd;
-        	    ofn.lpstrFilter="Coleco Carts\0*.bin;*.rom\0All Files\0*\0\0";
+        	    ofn.lpstrFilter="Coleco Carts\0*.bin;*.rom;*.sgm\0All Files\0*\0\0";
 				strcpy(buf, "");
 				ofn.lpstrFile=buf;
 				ofn.nMaxFile=MAX_PATH;
@@ -1129,6 +1137,12 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
 				init_kb();								// Reset keyboard emulation
 				SetupSams(sams_enabled, sams_size);		// Prepare the AMS system
+                ayemu_reset(&aypsg);
+                // mute channels (your program startup does this)
+                aywritesound(8,0);    // volume to zero
+                aywritesound(9,0);
+                aywritesound(10,0);
+                aywritesound(7,0xf8); // mixer to no noise
 				if (NULL != InitSid) {
 					InitSid();							// reset the SID chip
 					if (NULL != SetSidBanked) {		
@@ -1162,9 +1176,6 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				vdpscanline=0;
 				vdpprefetch=0;
 				vdpprefetchuninited = true;
-				VDPREG[0]=0;
-				VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
-                VDPREG[0x33]=5;                         // F18A sprite limit register (with limit jumper on)
 				end_of_frame=0;							// No end of frame yet
 				CPUSpeechHalt=false;					// not halted for speech reasons
 				CPUSpeechHaltByte=0;					// byte pending for the speech hardware
@@ -1605,6 +1616,18 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					// create a modeless dialog to show the TV controls dialog
 					hTVDlg=CreateDialog(NULL, MAKEINTRESOURCE(IDD_TVOPTIONS), hwnd, TVBoxProc);
 					ShowWindow(hTVDlg, SW_SHOW);
+				}
+				break;
+
+			case ID_OPTIONS_LOGSNPSG:
+				if (1 != lParam) {
+					// toggle value
+					gLogSNPSG=gLogSNPSG?0:1;
+				}
+				if (gLogSNPSG) {
+					CheckMenuItem(GetMenu(myWnd), ID_OPTIONS_LOGSNPSG, MF_CHECKED);
+				} else {
+					CheckMenuItem(GetMenu(myWnd), ID_OPTIONS_LOGSNPSG, MF_UNCHECKED);
 				}
 				break;
 
@@ -2681,6 +2704,14 @@ const char *FormatBreakpoint(int idx) {
 			case BREAK_DISK_LOG:
 				szTmp[pos++]='L';
 				break;
+
+			case BREAK_DISK_PORTLOG:
+				szTmp[pos++]='P';
+				break;
+
+			case BREAK_EQUALS_PORT:
+				szTmp[pos++]='I';
+				break;
 		}
 
 		// write the address or range
@@ -2722,11 +2753,13 @@ const char *FormatBreakpoint(int idx) {
 			case BREAK_EQUALS_BYTE:
 			case BREAK_EQUALS_VDP:
 			case BREAK_EQUALS_VDPREG:
+			case BREAK_EQUALS_PORT:
 				// a byte
 				pos+=sprintf(&szTmp[pos], "=%02X", BreakPoints[idx].Data);
 				break;
 
 			case BREAK_DISK_LOG:
+			case BREAK_DISK_PORTLOG:
 				// a number
 				pos+=sprintf(&szTmp[pos], "=%d", BreakPoints[idx].Data);
 				break;
@@ -2861,6 +2894,32 @@ bool AddBreakpoint(char *buf1) {
 					nType=BREAK_NONE;
 				} else if ((nData < 1) || (nData > 9)) {
 					nType = BREAK_NONE;
+				}
+			}
+			break;
+
+		case 'P':	// port log
+			nType=BREAK_DISK_PORTLOG;
+			pTmp=strchr(buf1, '=');
+			if (NULL == pTmp) {
+				nType=BREAK_NONE;
+			} else {
+				// value from 1-9 for the disk file to write to
+				if (1 != sscanf(pTmp+1, "%x", &nData)) {
+					nType=BREAK_NONE;
+				} else if ((nData < 1) || (nData > 9)) {
+					nType = BREAK_NONE;
+				}
+			}
+			break;
+		case 'I':	// I/O Port
+			nType=BREAK_EQUALS_PORT;
+			pTmp=strchr(buf1, '=');
+			if (NULL == pTmp) {
+				nType=BREAK_NONE;
+			} else {
+				if (1 != sscanf(pTmp+1, "%x", &nData)) {
+					nType=BREAK_NONE;
 				}
 			}
 			break;
@@ -3218,11 +3277,12 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 										CString csOut;
 										for (int idx = x; idx <= y; ) {
 											struct history obj;
+                                            int lines = 0;
 											obj.bank=0;
 											obj.cycles=0;
 											obj.pc=idx;
 											csOut = "";
-											idx+=EmitDebugLine(' ', obj, csOut);
+											idx+=EmitDebugLine(' ', obj, csOut, lines);
 											csOut.Remove('\r');
 											fprintf(fp, "%s", (const char*)csOut);
 										}
@@ -3749,7 +3809,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 } 
 
 // helper for DebugUpdateThread - updates csOut
-int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
+int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines) {
 	char buf1[80];
 	CPU9900 *pLclCPU = pCPU;
 
@@ -3762,18 +3822,21 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
 	} else if ((cPrefix == ' ') && (obj.bank == -1)) {
 		cPrefix = 'G';
 		pLclCPU = pGPU;
-	}
+	} else if (cPrefix == '}') {
+        // GPU alt
+        pLclCPU = pGPU;
+    }
 
-
-    if (cPrefix == 'G') {
+    if ((cPrefix == 'G')||(cPrefix == '}')) {
         char buf2[80];
 	    int nSize = Dasm9900(buf2, PC, obj.bank);
-	    int nRet = nSize;
 	    if (obj.cycles > 0) {
 		    sprintf(buf1, "%c  %04X  %04X  %-27s (%d)\r\n", cPrefix, PC, pLclCPU->GetSafeWord(PC, obj.bank), buf2, obj.cycles);
 	    } else {
 		    sprintf(buf1, "%c  %04X  %04X  %-27s\r\n", cPrefix, PC, pLclCPU->GetSafeWord(PC, obj.bank), buf2);
 	    }
+        myZ80Dis.bytesProcessed = nSize;
+        myZ80Dis.hexDisBuf[0]='\0';
     } else {
         myZ80Dis.start = myZ80Dis.end = PC;
         dZ80_Disassemble(&myZ80Dis);
@@ -3784,11 +3847,13 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut) {
 	    }
     }
     csOut += buf1;
+    ++lines;
 
     for (unsigned int idx=4; idx<strlen(myZ80Dis.hexDisBuf); idx+=4) {
         sprintf(buf1, "       %-4.4s", &myZ80Dis.hexDisBuf[idx]);
         csOut+=buf1;
         csOut+="\r\n";
+        ++lines;
     }
 
 	return myZ80Dis.bytesProcessed;
@@ -3860,9 +3925,9 @@ void DebugUpdateThread(void*) {
 							// show line with bank only for multi-bank cartridges
 							for (idx=0; idx<20; idx++) {
 								if ((xb)&&((Disasm[idx].pc & 0xE000) == 0x6000)) {
-									nLineCnt+=EmitDebugLine('b', Disasm[idx], csOut)/2;
+									EmitDebugLine('b', Disasm[idx], csOut, nLineCnt);
 								} else {
-									nLineCnt+=EmitDebugLine(' ', Disasm[idx], csOut)/2;
+									EmitDebugLine(' ', Disasm[idx], csOut, nLineCnt);
 								}
 							}
 							while (nLineCnt > 20) {
@@ -3886,10 +3951,14 @@ void DebugUpdateThread(void*) {
 							}
 							myHist.cycles = 0;
 
-							myHist.pc += EmitDebugLine('>', myHist, csOut);
+                            if (pCurrentCPU == pGPU) {
+    							myHist.pc += EmitDebugLine('}', myHist, csOut, nLineCnt); 
+                            } else {
+                                myHist.pc += EmitDebugLine('>', myHist, csOut, nLineCnt);
+                            }
 
 							for (idx=0; idx<13; idx++) {
-								int nTmp = EmitDebugLine(' ', myHist, csOut);
+								int nTmp = EmitDebugLine(' ', myHist, csOut, nLineCnt);
 								myHist.pc += nTmp;
 								while (nTmp > 2) {
 									idx++;
@@ -4146,6 +4215,8 @@ void DebugUpdateThread(void*) {
 				}
 				csOut+=buf1;
 
+#if 0
+                // make room for the AY debug
                 if (pCurrentCPU == pGPU) {
     				val=pCurrentCPU->GetST();
 				    sprintf(buf1, "  ST : %s %s %s %s %s %s %s\r\n", (val&BIT_LGT)?"LGT":"   ", (val&BIT_AGT)?"AGT":"   ", (val&BIT_EQ)?"EQ":"  ",
@@ -4168,25 +4239,25 @@ void DebugUpdateThread(void*) {
 				    sprintf(buf1, " IM  : %X\r\n", myZ80.state.internal.im & 0x0f);
 				    csOut+=buf1;
                 }
-
-				csOut+="\r\n";
-
-#if 0
-                // CRU
-                sprintf(buf1, " 9901 %04X %04X %04X %c %c %c %c\r\n",
-                        timer9901, timer9901Read, starttimer9901,
-                        CRU[0]?'1':'0', CRU[1]?'1':'0', 
-                        CRU[2]?'1':'0', CRU[3]?'1':'0' );
-                csOut += buf1;
-#else
-				csOut+="\r\n";
 #endif
 
+				csOut+="\r\n";
+
+                // Banking Regs:
+                sprintf(buf1, " MC: %02X  SGC: %02X %02X %02X\r\n", z80PortOut[0x54], sgmBank[0], sgmBank[1], sgmBank[2]);
+                csOut+=buf1;
+
 				// Sound chip
+                // 9919
 				sprintf(buf1, " 9919 %03X %03X %03X %X\r\n", nRegister[0], nRegister[1], nRegister[2], nRegister[3]);
 				csOut+=buf1;
-
 				sprintf(buf1, " VOL   %X   %X   %X  %X\r\n", nVolume[0], nVolume[1], nVolume[2], nVolume[3]);
+				csOut+=buf1;
+
+                // AY
+				sprintf(buf1, " AY  %03X %03X %03X %02X\r\n", aypsg.regs.tone_a, aypsg.regs.tone_b, aypsg.regs.tone_c, aypsg.regs.noise);
+				csOut+=buf1;
+				sprintf(buf1, " VOL   %X  %X  %X  %02X\r\n", aypsg.regs.vol_a, aypsg.regs.vol_b, aypsg.regs.vol_c, ayregs[7]);
 				csOut+=buf1;
 
 				SendMessage(hWnd, WM_SETTEXT, NULL, (LPARAM)(LPCSTR)csOut);

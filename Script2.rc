@@ -172,6 +172,7 @@ BEGIN
         MENUITEM "Audio...",                    ID_OPTIONS_AUDIO
         MENUITEM "GRAM...",                     ID_OPTIONS_GRAM
         MENUITEM "Options...",                  ID_OPTIONS_OPTIONS
+        MENUITEM "Log SN PSG",                  ID_OPTIONS_LOGSNPSG
     END
     POPUP "Video"
     BEGIN
@@ -605,14 +606,14 @@ BEGIN
     DEFPUSHBUTTON   "Close",IDOK,135,213,50,14
     LTEXT           "M0000=FF   - break when the CPU memory byte at 0000 equals FF\r\nW0000=FFFF - break when the CPU memory word at 0000 equals FFFF\r\nV0000=FF   - break when the VDP memory byte at 0000 equals FF",IDC_STATIC,7,104,312,27
     LTEXT           "*0000      - break when address 0000 is accessed (read or write)\r\n>0000      - break when address 0000 is written to\r\n>V0000     - break when VDP address 0000 is written to\r\n>G0000     - break when GROM address 0000 is written to",IDC_STATIC,7,19,312,33
-    LTEXT           "U0=FF      - break when VDP register 0 equals FF\r\nR0=FFFF    - break when Register 0 equals FFFF",IDC_STATIC,7,82,312,17
+    LTEXT           "U0=FF      - break when VDP register 0 equals FF\r\nR0=FFFF    - break when Register 0 equals FFFF\r\nI0=FF      - break when I/O Port 0 writes FF",IDC_STATIC,7,78,312,24
     LTEXT           "T(0000-0001) Performs cycle counting between address 0000 and 0001 (PC)",IDC_STATIC,7,159,285,8
     LTEXT           "Note that all breakpoint addresses, except the CPU and VDP registers, may\r\nbe specified as a range in the same syntax as the cycle counting timer",IDC_STATIC,7,187,312,19
     LTEXT           "<0000      - break when address 0000 is read from (including by PC!)\r\n<V0000     - break when VDP address 0000 is read from \r\n<G0000     - break when GROM address 0000 is read from",IDC_STATIC,7,52,312,25
     LTEXT           "0000       - break when the PC is 0000",IDC_STATIC,7,7,153,8
     LTEXT           "Cartridge ROM addresses may be appended with :00 to indicate a specific bank",IDC_STATIC,7,135,305,8
     LTEXT           "All compare operations may include {0000} after the address to indicate a mask",IDC_STATIC,7,147,313,8
-    LTEXT           "L0000=#    - Log address to disk file # (1-9) (range okay)",IDC_STATIC,7,173,312,10
+    LTEXT           "L0000=#    - Log address to disk file # (1-9) (range okay) (P to monitor port)",IDC_STATIC,7,173,312,10
 END
 
 IDD_HEATMAP DIALOGEX 0, 0, 168, 186
@@ -882,6 +883,11 @@ BEGIN
 END
 
 IDD_DISKCFG AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_BRKHLP AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

@@ -109,6 +109,9 @@
     <ClCompile Include="addons\SDCard.cpp">
       <Filter>addons</Filter>
     </ClCompile>
+    <ClCompile Include="console\ay8912.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />

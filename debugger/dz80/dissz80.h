@@ -1,4 +1,22 @@
 /* dZ80 Disassembler Header */
+/*
+                         dZ80 Version 2.0 Source Code
+
+                       Copyright 1996-2002 Mark Incley.
+
+                           E-mail: dz80@inkland.org
+                            http://www.inkland.org
+
+
+Serious Bit
+-----------
+
+I have made this source code available so that it may be compiled on platforms
+other than MS-DOS and Windows. You may compile it and distribute the resulting
+executable only if no monies are charged for it.
+
+      ** YOU ARE NOT ALLOWED TO DISTRIBUTE THIS SOFTWARE COMMERICIALLY **
+*/
 
 #ifndef _MIDISSZ80_
 #define _MIDISSZ80_
@@ -13,7 +31,7 @@ extern "C" {
 #define	LUA_VERSION		"(scripting not included)"
 #endif
 
-#define	DZ80_WWW		"http://www.inkland.org"
+#define	DZ80_WWW		"http://www.inkland.org.uk"
 #define	DZ80_EMAIL		"dz80@inkland.org"
 
 #define Z80MEMSIZE				65536

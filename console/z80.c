@@ -869,6 +869,7 @@ INSTRUCTION(ld_vbc_a)	       {PC++; WRITE_8(BC, A);					    return  7;}
 INSTRUCTION(ld_vde_a)	       {PC++; WRITE_8(DE, A);					    return  7;}
 INSTRUCTION(ld_vWORD_a)	       {WRITE_8(READ_16((PC += 3) - 2), A);			    return 13;}
 INSTRUCTION(ld_a_i)	       {PC += 2; A = I; LD_A_I_LD_A_R;				    return  9;}
+//INSTRUCTION(ld_a_i)	   {PC += 2; A = I; F = (zuint8)(IFF2 << 2); return 9;} // this is what the Phoenix core was doing, broke Sky Jaguar
 INSTRUCTION(ld_a_r)	       {PC += 2; A = R_ALL; LD_A_I_LD_A_R;			    return  9;}
 INSTRUCTION(ld_i_a)	       {PC += 2; I = A;						    return  9;}
 INSTRUCTION(ld_r_a)	       {PC += 2; R = R7 = A;					    return  9;}

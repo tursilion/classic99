@@ -34,6 +34,9 @@ int inputPos = 0;
 int blockSize = 512;
 bool isAppCmd = false;
 unsigned __int64 fileOffset = 0;
+unsigned char writeBuf[532];
+unsigned int writePos = 0;
+bool isWriting = false;
 
 // status bit
 // 0 P A E C I R X
@@ -283,7 +286,7 @@ void processCmd() {
                 long DistanceLow = fileOffset&0xffffffff;
                 long DistanceHigh = (fileOffset>>32)&0xffffffff;
                 if (INVALID_SET_FILE_POINTER == SetFilePointer(hFile, DistanceLow, &DistanceHigh, FILE_BEGIN)) {
-                    debug_write("Failed to seek SD card file to block %u", (inputCmd[1]<<24)+(inputCmd[2]<<16)+(inputCmd[3]<<8)+inputCmd[4]);
+                    debug_write("Failed to seek SD card file to block %llu", fileOffset);
                     CloseHandle(hFile);
                     handleReply(STATUS_PARAM_ERROR, 0);
                     break;
@@ -321,8 +324,23 @@ void processCmd() {
             break;
 
         case 0x58:  // WRITE_BLOCK
-            debug_write("WRITE_BLOCK is not implemented yet.");
+            debug_write("READ_MULTIPLE is not implemented yet.");
             handleReply(STATUS_ILLEGAL_COMMAND, 0);
+#if 0
+            // this is at least PARTIALLY right, needs more testing. My Phoenix library might
+            // be broken for FAT16 writes...
+            fileOffset = (inputCmd[1]<<24)+(inputCmd[2]<<16)+(inputCmd[3]<<8)+inputCmd[4];
+            //fileOffset *= 512;  // TODO: this is a block address only on V2 cards, we asked for byte addresses
+            if (fileOffset % 512) {
+                debug_write("Attempt to write to non-sector aligned address %u", fileOffset);
+                handleReply(STATUS_CRC_ERROR, 0);
+                break;
+            }
+            writePos = -1;
+            isWriting = true;
+            debug_write("Starting WRITE_BLOCK to %u", fileOffset);
+            handleReply(0, 0);
+#endif
             break;
 
         case 0x59:  // WRITE_MULTIPLE
@@ -407,6 +425,8 @@ void SDReset() {
     replyPos = 0;
     replySize = 0;
     inputPos = 0;
+    writePos = 0;
+    isWriting = false;
     isAppCmd = false;
     blockSize = 512;
     changeState(RXCMD);
@@ -467,7 +487,15 @@ void SDSetCE(bool enable) {
         // clearing chip enable does not stop any operations
         // TODO: does it stop receipt of a command? I think so...
         if (!enable) {
+            if (isWriting) {
+                debug_write("Write was at %d bytes", writePos);
+            } else {
+                if (inputPos > 0) {
+                    debug_write("Input command was at %d bytes", inputPos);
+                }
+            }
             inputPos = 0;
+            isWriting = false;
             // going to NOT stop readout of a buffer though
         }
 
@@ -503,19 +531,72 @@ void SDWrite(unsigned char data) {
         return;
     }
 
-    if ((inputPos == 0) && (stateTimeout > 0)) {
-        debug_write("Receiving command %sCMD%d (0x%02X) while card is still busy", isAppCmd?"A":"", data&0x3f, data);
-    } else if (inputPos == 0) {
-        debug_write("Receiving command %sCMD%d (0x%02X)", isAppCmd?"A":"", data&0x3f, data);
-    }
+    // are we writing?
+    if (isWriting) {
+        if (writePos == -1) {
+            // waiting for start block
+            if (data == 0xfe) {
+                debug_write("Got start block for write data");
+                writePos = 0;
+            }
+        } else {
+            // receiving - we expect 514 bytes (512 bytes + 2 bytes CRC)
+            writeBuf[writePos++] = data;
+            if (writePos == 514) {
+                debug_write("Received all data, attempting to write...");
+                {
+                    bool ok = true;
 
-    // write the byte
-    inputCmd[inputPos++] = data;
-    if (inputPos >= 6) {
-        if (replyPos < replySize) {
-            debug_write("New command received when old command at pos %d", replyPos);
+                    HANDLE hFile = CreateFile(szCardFilename, GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                    if (INVALID_HANDLE_VALUE == hFile) {
+                        debug_write("Write failed to open SD card file.");
+                        ok = false;
+                    } else {
+                        long DistanceLow = fileOffset&0xffffffff;
+                        long DistanceHigh = (fileOffset>>32)&0xffffffff;
+                        if (INVALID_SET_FILE_POINTER == SetFilePointer(hFile, DistanceLow, &DistanceHigh, FILE_BEGIN)) {
+                            debug_write("Write failed to seek SD card file to block %llu", fileOffset);
+                            CloseHandle(hFile);
+                            ok = false;
+                        } else {
+                            if (!WriteFile(hFile, &writeBuf[0], blockSize, NULL, NULL)) {
+                                debug_write("Failed to write to SD card file");
+                                CloseHandle(hFile);
+                                ok = false;
+                            } else {
+                                CloseHandle(hFile);
+                                debug_write("Write to file address %llu (sector %llu)", fileOffset, fileOffset/512);
+                            }
+                        }
+                    }
+
+                    if (ok) {
+                        replyBuf[0] = 0x05; // data accepted
+                    } else {
+                        replyBuf[0] = 0x0d; // write error
+                    }
+                    replyPos = 0;
+                    replySize = 1;
+                    stateTimeout = 0;
+                }
+                isWriting = false;
+            }
         }
-        processCmd();
+    } else {
+        if ((inputPos == 0) && (stateTimeout > 0)) {
+            debug_write("Receiving command %sCMD%d (0x%02X) while card is still busy", isAppCmd?"A":"", data&0x3f, data);
+        } else if (inputPos == 0) {
+            debug_write("Receiving command %sCMD%d (0x%02X)", isAppCmd?"A":"", data&0x3f, data);
+        }
+
+        // write the byte
+        inputCmd[inputPos++] = data;
+        if (inputPos >= 6) {
+            if (replyPos < replySize) {
+                debug_write("New command received when old command at pos %d", replyPos);
+            }
+            processCmd();
+        }
     }
 }
 

@@ -173,6 +173,7 @@ int nVolume[4]={0,0,0,0};				// volume attenuation
 double nFade[4]={1.0,1.0,1.0,1.0};		// emulates the voltage drift back to 0 with FADECLKTICK (TODO: what does this mean with a non-zero center?)
 										// we should test this against an external chip with a clean circuit.
 int max_volume;
+bool noiseTriggered = false;			// this is only used by the log, and only it resets it
 
 // audio
 int AudioSampleRate=22050;				// in hz
@@ -244,6 +245,7 @@ void setfreq(int chan, int freq) {
 		// limit noise 
 		freq&=0x07;
 		nRegister[3]=freq;
+		noiseTriggered = true;
 
 		// reset shift register
 		LFSR=0x4000;	//	(15 bit)
