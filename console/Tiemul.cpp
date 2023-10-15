@@ -4855,7 +4855,10 @@ Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 			debug_write("F18A Data port mode off (status register read).");
 		}
 
-		// Added by RasmusM
+        // also make sure the DPM flipflop is reset
+        F18APaletteRegisterData = -1;
+
+        // Added by RasmusM
 		if ((bF18AActive) && (F18AStatusRegisterNo > 0)) {
 			return getF18AStatus();
 		}
@@ -6560,10 +6563,14 @@ int rcru(Word ad)
             return 1;   // this also preserves the Perfect Push 'tick' on audio gate
         }
     }
-    if ((ad >= 22) && (ad < 25)) {
-        // these are the cassette CRU output bits
-        return 1;
-    }
+	// JasonACT says that returning a fixed value for this is wrong
+	// He insists that reading these bits when reading the keyboard, 
+	// as Robotron does, is not oddball behaviour and should be
+	// properly emulated. This one's for you buddy! ;)
+    //if ((ad >= 22) && (ad < 25)) {
+    //    // these are the cassette CRU output bits
+    //    return 1;
+    //}
 
 	// no other hardware devices at this time, check keyboard/joysticks
 

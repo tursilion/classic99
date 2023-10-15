@@ -99,9 +99,10 @@ The reset also changes VR54 and VR55, but they are *not* loaded to the GPU PC (p
 //};
 // 32-bit 0RGB colors
 //unsigned int TIPALETTE[16] = {
-//	0x00000000,0x00000000,0x0020C840,0x0058D878,0x005050E8,0x007870F8,0x00D05048,
-//	0x0040E8F0,0x00F85050,0x00F87878,0x00D0C050,0x00E0C880,0x0020B038,0x00C858B8,
-//	0x00C8C8C8,0x00F8F8F8
+//	0x00000000,0x00000000,0x0020C840,0x0058D878,
+//  0x005050E8,0x007870F8,0x00D05048,0x0040E8F0,
+//  0x00F85050,0x00F87878,0x00D0C050,0x00E0C880,
+//  0x0020B038,0x00C858B8,0x00C8C8C8,0x00F8F8F8
 //};
 // 12-bit 0RGB colors (we shift up to 24 bit when we load it)
 const int F18APaletteReset[64] = {
@@ -368,6 +369,8 @@ extern int max_cpf;							// current CPU performance
 extern CPU9900 *pGPU;
 extern int statusFrameCount;
 
+void renderBML(int y);
+
 //////////////////////////////////////////////////////////
 // Helpers for the TV controls
 //////////////////////////////////////////////////////////
@@ -457,7 +460,11 @@ int gettables(int isLayer2)
             // TODO: bigger tables are possible with F18A
 		    /* Colour Table */
 		    CT=VDPREG[11]<<6;
-		    CTsize=32;
+            if ((bF18AActive) && (VDPREG[50]&0x02)) {
+		        CTsize=960; // TODO not enough, there's 80 column mode too
+            } else {
+		        CTsize=32;
+            }
             /* Screen Image Table */
 		    SIT=((VDPREG[10]&0x0f)<<10);
 
@@ -486,8 +493,21 @@ void vdpReset(bool isCold) {
 	    }
     }
     bF18AActive = false;
-	redraw_needed = REDRAW_LINES;
+
+    F18AStatusRegisterNo = 0;				// F18A Status register number
+    F18AECModeSprite = 0;					// F18A Enhanced color mode for sprites (0 = normal, 1 = 1 bit color mode, 2 = 2 bit color mode, 3 = 3 bit color mode)
+    F18ASpritePaletteSize = 16;				// F18A Number of entries in each palette: 2, 4, 8 (depends on ECM)
+    bF18ADataPortMode = 0;					// F18A Data-port mode
+    bF18AAutoIncPaletteReg = 0;				// F18A Auto increment palette register
+    F18APaletteRegisterNo = 0;				// F18A Palette register number
+    F18APaletteRegisterData = -1;			// F18A Temporary storage of data written to palette register
+    
+    redraw_needed = REDRAW_LINES;
     memset(VDPREG, 0, sizeof(VDPREG));
+	VDPREG[0]=0;
+	VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
+    VDPREG[0x33]=32;                        // F18A sprites to process
+    VDPREG[0x1e]=4;                         // maximum sprites per line
 }
 
 ////////////////////////////////////////////////////////////
@@ -793,6 +813,12 @@ void VDPdisplay(int scanline)
 		}
 
 		if ((!bDisableBackground) && (gfxline < 192) && (gfxline >= 0)) {
+			// before we draw, see if the BML is under tiles
+			if ((bF18AActive)&&((VDPREG[31]&0xc0)==0x80)) {
+				// BML active but is under tiles
+				renderBML(gfxline);
+			}
+
             for (int isLayer2=0; isLayer2<2; ++isLayer2) {
                 reg0 = gettables(isLayer2);
 
@@ -827,10 +853,17 @@ void VDPdisplay(int scanline)
                     break;
                 }
             }
+
+			// before we draw, see if the BML is over tiles
+			if ((bF18AActive)&&((VDPREG[31]&0xc0)==0xc0)) {
+				// BML active but is over tiles
+				renderBML(gfxline);
+			}
 		} else {
             // This case is hit if nothing else is being drawn, otherwise the graphics modes call DrawSprites
 			// as long as mode bit 2 is not set, sprites are okay
-			if ((bF18AActive) || ((VDPREG[1] & 0x10) == 0)) {
+			bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+			if ((f18tilesprites) || ((VDPREG[1] & 0x10) == 0)) {
 				DrawSprites(gfxline);
 			}
 		}
@@ -838,7 +871,8 @@ void VDPdisplay(int scanline)
 		// we have to redraw the sprites even if the screen didn't change, so that collisions are updated
 		// as the CPU may have cleared the collision bit
 		// as long as mode bit 2 (text) is not set, and the display is enabled, sprites are okay
-		if ((bF18AActive) || ((VDPREG[1] & 0x10) == 0)) {
+		bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+		if ((f18tilesprites) || ((VDPREG[1] & 0x10) == 0)) {
 			if ((bDisableBlank) || (VDPREG[1] & 0x40)) {
 				DrawSprites(gfxline);
 			}
@@ -1234,8 +1268,9 @@ void VDPtext(int scanline, int isLayer2)
 		}
 	}
 
-    // no sprites in text mode, unless f18A unlocked
-    if ((bF18AActive) && (!isLayer2)) {
+    // no sprites in text mode, unless f18A unlocked and ECM active
+	bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+    if ((f18tilesprites) && (!isLayer2)) {
         // todo: layer 2 has sprite dependency concerns
 	    DrawSprites(scanline);
     }
@@ -1352,6 +1387,8 @@ void VDPtext80(int scanline, int isLayer2)
                 // per-cell attributes, so update the colors
                 if (isLayer2) {
                     t = VDP[VDPREG[11]*64 + o];
+                    // BG is transparent (todo is that true?)
+	                fgc=t>>4;
                 } else {
                     t = VDP[VDPREG[3]*64 + o];
                 }
@@ -1393,7 +1430,8 @@ void VDPtext80(int scanline, int isLayer2)
 	}
     // no sprites in text mode, unless f18A unlocked
     // TODO: sprites don't render correctly in the wider 80 column mode...
-    if ((bF18AActive) && (!isLayer2)) {
+	bool f18tilesprites = (bF18AActive)&&((VDPREG[49]&0x30)!=0);	// text sprites are only okay in ECM modes
+    if ((f18tilesprites) && (!isLayer2)) {
         // todo: layer 2 has sprite dependency concerns
 	    DrawSprites(scanline);
     }
@@ -1963,9 +2001,17 @@ void doBlit()
 			}
 		}
 
-		if (DD_OK != lpdd->TestCooperativeLevel()) {
-			break;
-		}
+        try {
+		    if (DD_OK != lpdd->TestCooperativeLevel()) {
+			    break;
+		    }
+        }
+        catch (...) {
+            debug_write("TestCooperativeLevel exceptioned.. resetting DD\n");
+            lpdd->Release();
+            lpdd = NULL;
+            break;
+        }
 
 		if (NULL == ddsBack) {
 			StretchMode=STRETCH_NONE;
@@ -2113,7 +2159,79 @@ void doBlit()
 }
 
 //////////////////////////////////////////////////////////
+// Render BML into the backbuffer
+//////////////////////////////////////////////////////////
+void renderBML(int y) {
+	// we are only called if the BML is active
+	bool trans = (VDPREG[31]&0x20)!=0;
+	bool fat = (VDPREG[31]&0x10)!=0;
+	int pal = (VDPREG[31]&0x0f)<<2;
+	int adr = VDPREG[32]*64;
+	int bmx = VDPREG[33];
+	int bmy = VDPREG[34];
+	int bmw = VDPREG[35];
+	int bmh = VDPREG[36];
+
+	// non-fat bml is 2 bits per pixel, so each byte is 4 pixels
+	// TODO: is the BML width byte-based or pixel-based? assuming byte here.
+	if ((y >= bmy)&&(y < bmy+bmh)) {
+		// we're active on this scanline
+		if (fat) {
+			pal &= 0x30;	// only 2 bits from the palette
+			adr += (y-bmy)*(bmw/2);
+			// two fat pixels per byte, still render out 4 pixels
+			for (int x=bmx; x<bmx+bmw; x+=4) {
+				if (adr > 0x3fff) break;
+				int dat = VDP[adr++];
+				int c = ((dat>>4)&0xf);	// TODO: assuming Most significant first
+				if ((!trans)||(c)) {
+					c|=pal;
+					framedata[((199-y)<<8)+((199-y)<<4)+x+8] = F18APalette[c];
+					framedata[((199-y)<<8)+((199-y)<<4)+x+1+8] = F18APalette[c];
+				}
+				c = (dat&0xf);
+				if ((!trans)||(c)) {
+					c|=pal;
+					framedata[((199-y)<<8)+((199-y)<<4)+x+2+8] = F18APalette[c];
+					framedata[((199-y)<<8)+((199-y)<<4)+x+3+8] = F18APalette[c];
+				}
+			}
+		} else {
+			// four pixels per byte
+			adr += (y-bmy)*(bmw/4);
+			for (int x=bmx; x<bmx+bmw; x+=4) {
+				if (adr > 0x3fff) break;
+				int dat = VDP[adr++];
+				int c = ((dat>>6)&0x3);	// TODO: assuming Most significant first
+				if ((!trans)||(c)) {
+					c|=pal;
+					framedata[((199-y)<<8)+((199-y)<<4)+x+8] = F18APalette[c];
+				}
+				c = ((dat>>4)&0x3);
+				if ((!trans)||(c)) {
+					c|=pal;
+					framedata[((199-y)<<8)+((199-y)<<4)+x+1+8] = F18APalette[c];
+				}
+				c = ((dat>>2)&0x3);
+				if ((!trans)||(c)) {
+					c|=pal;
+					framedata[((199-y)<<8)+((199-y)<<4)+x+2+8] = F18APalette[c];
+				}
+				c = (dat&0x3);
+				if ((!trans)||(c)) {
+					c|=pal;
+					framedata[((199-y)<<8)+((199-y)<<4)+x+3+8] = F18APalette[c];
+				}
+			}
+		}
+	}
+}
+
+//////////////////////////////////////////////////////////
 // Draw Sprites into the backbuffer
+// A little hacky, but this will also handle the bitmap
+// layer for F18A, treating it as a big sprite. This is
+// the only place we can do that and get priorities right
 //////////////////////////////////////////////////////////
 void DrawSprites(int scanline)
 {
@@ -2178,15 +2296,24 @@ void DrawSprites(int scanline)
 	memset(SprColBuf, 0, 256*192);
 	SprColFlag=0;
 	
-	highest=31;
+ 	highest=31;
+    if (bF18AActive) {
+        // highest sprite to process (intended for 30 row mode, but always available)
+        if ((VDPREG[0x33]>1)&&(VDPREG[0x33]<33)) {
+            highest = VDPREG[0x33]-1;
+        }
+    }
 
 	// find the highest active sprite
+    // TODO: this is not executed in F18A 30 row mode
 	for (i1=0; i1<32; i1++)			// 32 sprites 
 	{
 		yy=VDP[SAL+(i1<<2)];
 		if (yy==0xd0)
 		{
-			highest=i1-1;
+            if (i1-1 < highest) {
+    			highest=i1-1;
+            }
 			break;
 		}
 	}
@@ -2194,7 +2321,7 @@ void DrawSprites(int scanline)
 	if (bUse5SpriteLimit) {
 		// go through the sprite table and check if any scanlines are obliterated by 4-per-line
 		i3=8;							// number of sprite scanlines
-		if (VDPREG[1] & 0x2) {			 // TODO: Handle F18A ECM where sprites are doubled individually
+		if (VDPREG[1] & 0x2) {			// TODO: Handle F18A ECM where sprites are doubled individually
 			// double-sized
 			i3*=2;
 		}
@@ -2204,8 +2331,10 @@ void DrawSprites(int scanline)
 		}
         int max = 5;                    // 9918A - fifth sprite is lost
         if (bF18AActive) {
-            max = VDPREG[0x33];         // F18A - configurable value
-            if (max == 0) max = 5;      // assume jumper set to 9918A mode
+            if (VDPREG[0x1e]) {
+                max = VDPREG[0x1e]+1;         // F18A - configurable value
+                if (max == 0) max = 5;	      // assume jumper set to 9918A mode
+            }
         }
 		for (i1=0; i1<=highest; i1++) {
 			curSAL=SAL+(i1<<2);
@@ -2234,7 +2363,13 @@ void DrawSprites(int scanline)
 		if (yy>225) yy-=256;			// fade in from top: TODO: is this right??
 		xx=VDP[curSAL++];				// sprite X 
 		pat=VDP[curSAL++];				// sprite pattern
-		int dblSize = F18AECModeSprite ? VDP[curSAL] & 0x10 : VDPREG[1] & 0x2;
+		int dblSize;
+        if (F18AECModeSprite) {
+            dblSize = VDP[curSAL] & 0x10;
+            if (dblSize == 0) dblSize = VDPREG[1] & 0x2;
+        } else {
+            dblSize = VDPREG[1] & 0x2;
+        }
 		if (dblSize) {
 			pat=pat&0xfc;				// if double-sized, it must be a multiple of 4
 		}
@@ -2249,7 +2384,7 @@ void DrawSprites(int scanline)
 		sc=0;						// current scanline
 		
 		// Added by Rasmus M
-		// TODO: For ECM 1 we need one more bit from R24 (Mike: is that ECM? I think it's always!)
+		// TODO: For ECM 1 we need one more bit from R24
 		int paletteBase = F18AECModeSprite ? (col >> (F18AECModeSprite - 2)) * F18ASpritePaletteSize : 0;
 		int F18ASpriteColorLine[8]; // Colors indices for each of the 8 pixels in a sprite scan line
 
@@ -2453,10 +2588,6 @@ void DrawSprites(int scanline)
 ////////////////////////////////////////////////////////////
 void pixel(int x, int y, int c)
 {
-	if ((x > 255)||(y>192)) {
-		debug_write("here");
-	}
-
 	framedata[((199-y)<<8)+((199-y)<<4)+x+8]=GETPALETTEVALUE(c);
 }
 

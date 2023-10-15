@@ -2932,6 +2932,11 @@ void CPU9900::op_pixF18(){
     
     x1=ROMWORD(S);
     x2=ROMWORD(D);
+    ad=0;
+
+    bool fat = (VDPREG[31]&0x10)!=0;
+    int x = x1>>8;
+    int y = x1&0xff;
 
     if (x2 & 0x8000) {
         // calculate BM2 address:
@@ -2947,11 +2952,12 @@ void CPU9900::op_pixF18(){
              ((x1&0xF800) >> 8) |                       // XXXXX
              ((x1&0x0007));                             // YYY
     } else {
-        // calculate overlay address -- I don't have the math for this.
-        // TODO: Is it chunky or planar? I assume chunky, 2 bits per pixel, linear.
-        // TODO: I don't have the reference in front of me to know what registers do what (size, start address, etc)
-        // so.. do this later.
-        ad = 0;     // todo: put actual math in place
+        // TODO: I assume that width is restricted to multiples of 8 and rounds up
+        // TODO: I assume that pix doesn't understand fat pixels??
+        ad = VDPREG[32]*64;
+        int w = ((VDPREG[35]+7)/8); // width in bytes
+        ad+=w*y;
+        ad+=(x/4);
     }
 
     // only parse the other bits if M and A are zero
@@ -2960,14 +2966,17 @@ void CPU9900::op_pixF18(){
 
         unsigned char pix = RCPUBYTE(ad);   // get the byte
         unsigned char orig = pix;           // save it
-        // TODO: if we are 2 bits per pixel, there is still masking to do??
-        pix &= 0x03;        // TODO: this is wrong, get the correct pixel into the LSb's
+        int shift;
+        shift = (x&3)*2;
+        shift = 6-shift;
+        pix = (pix>>shift)&0x03;
+        
         bool bComp = (pix == ((x2&0x0030)>>4));     // compare the pixels
         unsigned char newpix = x2&0x0003;           // new pixel
         bool bWrite = (x2&0x0400)!=0;               // whether to write
 
         // TODO: are C and E dependent on W being set? I am assuming yes.
-        if ((bWrite)&&(x2&0x0200)) {                // C - compare active (only important if we are writing anyway?)
+        if (x2&0x0200) {                // C - compare active (only important if we are writing anyway?)
             if (x2&0x0100) {
                 // E is set, comparison must be true
                 if (!bComp) bWrite=false;
@@ -2978,8 +2987,9 @@ void CPU9900::op_pixF18(){
         }
 
         if (bWrite) {
-            // TODO: properly merge the pixel (newpix) back in to orig
-            WCPUBYTE(ad, (orig&0xfc) | newpix);
+            orig &= ~(0xfc<<shift);
+            orig |= newpix<<shift;
+            WCPUBYTE(ad, orig);
         }
         if (x2 & 0x0800) {
             // read is set, so save the original read pixel color in PP
