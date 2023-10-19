@@ -2876,13 +2876,9 @@ void __cdecl emulti(void *)
 			// GPU 
 			if (bInterleaveGPU) {
 				// todo: this is a hack for interleaving F18GPU with the 9900 - and it works, but.. not correct at all.
-                long oldCycles = cycles_left;
 				if (pGPU->GetIdle() == 0) {
 					pCurrentCPU = pGPU;
 					for (int nCnt = 0; nCnt < 20; nCnt++) {	// /instructions/ per 9900 instruction - approximation!!
-                        if (cycles_left > 1) {
-                            cycles_left = 200;
-                        }
 						do1();
 						if (pGPU->GetIdle()) {
 							break;
@@ -2893,7 +2889,6 @@ void __cdecl emulti(void *)
 						}
 					}
 					pCurrentCPU = pCPU;
-                    cycles_left = oldCycles;
 				}
 			}
 		}
