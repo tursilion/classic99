@@ -244,6 +244,7 @@ BEGIN
     BEGIN
         MENUITEM "&Load Breakpoints",           ID_FILE_LOADBRK
         MENUITEM "&Save Breakpoints",           ID_FILE_SAVEBRK
+        MENUITEM "&Read Map File",              ID_FILE_READMAPFILE
         MENUITEM SEPARATOR
         MENUITEM "&Close",                      ID_FILE_CLOSE40101
     END

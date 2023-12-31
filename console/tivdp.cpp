@@ -816,6 +816,7 @@ void VDPdisplay(int scanline)
 			// before we draw, see if the BML is under tiles
 			if ((bF18AActive)&&((VDPREG[31]&0xc0)==0x80)) {
 				// BML active but is under tiles
+                // TODO: this doesn't work right because the draw functions all draw transparent pixels as solid for layer 1
 				renderBML(gfxline);
 			}
 
@@ -853,12 +854,6 @@ void VDPdisplay(int scanline)
                     break;
                 }
             }
-
-			// before we draw, see if the BML is over tiles
-			if ((bF18AActive)&&((VDPREG[31]&0xc0)==0xc0)) {
-				// BML active but is over tiles
-				renderBML(gfxline);
-			}
 		} else {
             // This case is hit if nothing else is being drawn, otherwise the graphics modes call DrawSprites
 			// as long as mode bit 2 is not set, sprites are okay
@@ -2173,17 +2168,17 @@ void renderBML(int y) {
 	int bmh = VDPREG[36];
 
 	// non-fat bml is 2 bits per pixel, so each byte is 4 pixels
-	// TODO: is the BML width byte-based or pixel-based? assuming byte here.
 	if ((y >= bmy)&&(y < bmy+bmh)) {
 		// we're active on this scanline
 		if (fat) {
 			pal &= 0x30;	// only 2 bits from the palette
-			adr += (y-bmy)*(bmw/2);
+			adr += (y-bmy)*(bmw/4);
 			// two fat pixels per byte, still render out 4 pixels
 			for (int x=bmx; x<bmx+bmw; x+=4) {
 				if (adr > 0x3fff) break;
+                if (x >= 253) break;    // TOOD: not strictly correct, we should draw the visible pixels
 				int dat = VDP[adr++];
-				int c = ((dat>>4)&0xf);	// TODO: assuming Most significant first
+				int c = ((dat>>4)&0xf);	// Most significant first
 				if ((!trans)||(c)) {
 					c|=pal;
 					framedata[((199-y)<<8)+((199-y)<<4)+x+8] = F18APalette[c];
@@ -2201,8 +2196,9 @@ void renderBML(int y) {
 			adr += (y-bmy)*(bmw/4);
 			for (int x=bmx; x<bmx+bmw; x+=4) {
 				if (adr > 0x3fff) break;
+                if (x >= 253) break;    // TOOD: not strictly correct, we should draw the visible pixels
 				int dat = VDP[adr++];
-				int c = ((dat>>6)&0x3);	// TODO: assuming Most significant first
+				int c = ((dat>>6)&0x3);	// Most significant first
 				if ((!trans)||(c)) {
 					c|=pal;
 					framedata[((199-y)<<8)+((199-y)<<4)+x+8] = F18APalette[c];
@@ -2282,6 +2278,12 @@ void DrawSprites(int scanline)
 
 	if (bDisableSprite) {
 		return;
+	}
+
+	// before we draw, see if the BML is over tiles (always under sprites)
+	if ((bF18AActive)&&((VDPREG[31]&0xc0)==0xc0)) {
+		// BML active but is over tiles
+		renderBML(scanline);
 	}
 
 	// check if b5OnLine is already latched, and set it if so.

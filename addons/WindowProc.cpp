@@ -3442,6 +3442,41 @@ LRESULT CALLBACK newEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     return NULL;
 }
 
+// TODO: we don't handle banking yet, so if you have address conflicts across
+// banks only the last one read will be recorded.
+extern void ImportMapFile(const char *fn);
+int LoadMap(HWND *myhwnd) {
+	OPENFILENAME ofn;                          // Structure for filename dialog
+	char buf[256], buf2[256];
+
+	memset(&ofn, 0, sizeof(OPENFILENAME));
+	ofn.lStructSize    = sizeof(OPENFILENAME);
+	ofn.hwndOwner      = NULL;
+	ofn.lpstrFilter    = "Map file\0*.lst;*.map;*.txt\0\0"; 
+	strcpy(buf, "");
+	ofn.lpstrFile      = buf;
+	ofn.nMaxFile       = 256;
+	strcpy(buf2, "");
+	ofn.lpstrFileTitle = buf2;
+	ofn.nMaxFileTitle  = 256;
+	ofn.Flags          = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	char szTmpDir[MAX_PATH];
+	GetCurrentDirectory(MAX_PATH, szTmpDir);
+
+    bool ret = GetOpenFileName(&ofn);
+
+    SetCurrentDirectory(szTmpDir);
+
+	if (ret) {
+		debug_write("Reading map file ....");
+		ImportMapFile(ofn.lpstrFile);
+		return true;
+	} else {
+		return false;
+	}
+}
+
 INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	char buf1[80];
 	int idx;
@@ -3460,6 +3495,10 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 					VDPDebug = false;
 					dbgWnd=NULL;
                     return TRUE; 
+
+				case ID_FILE_READMAPFILE:
+					LoadMap(&hwnd);
+					break;
 
 				case ID_FILE_LOADBRK:
 					LoadBreakpoints(&hwnd);

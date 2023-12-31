@@ -2180,3 +2180,8 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 
 - fix math for 4k mode
 - some RMW cycle fixes for the CPU (I think? Been a while)
+
+-----------------------------------------------
+31 Dec 2023
+
+- added ability to read WinAsm/EA listings and GCC map files in order to get symbols in the disassembly

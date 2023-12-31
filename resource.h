@@ -252,7 +252,6 @@
 #define IDC_IGNORECONSOLE               1174
 #define IDC_JOY1LIST                    1175
 #define IDC_JOY2LIST                    1176
-#define IDC_CHKF10MENU                  1177
 #define IDC_CHKF10                      1177
 #define ID_USER_0                       30000
 #define ID_SYSTEM_0                     39000
@@ -419,13 +418,14 @@
 #define ID_SCREENREADER_CONTINUOUS      40198
 #define ID_SCREENREADER_READONCE        40199
 #define ID_SCREENREADER_STOPTALKING     40200
+#define ID_FILE_READMAPFILE             40201
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        356
-#define _APS_NEXT_COMMAND_VALUE         40201
+#define _APS_NEXT_COMMAND_VALUE         40202
 #define _APS_NEXT_CONTROL_VALUE         1178
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

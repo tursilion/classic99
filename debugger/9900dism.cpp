@@ -22,6 +22,8 @@
 // Modified by Tursi for Classic99 
 #include <stdio.h>
 #include <windows.h>
+#include <map>
+#include <string>
 
 #include "tiemul.h"
 #include "cpu9900.h"
@@ -29,6 +31,99 @@
 
 // config value for the Classic99 debug opcodes
 extern int enableDebugOpcodes;
+
+// internal symbol table
+std::map<int,std::string> Symbols;
+
+// parse a symbol table - we recognize two forms
+// ONE: from WinAsm99 (and presumably TI Editor/Assembler)
+//		Starting with "------ Symbol Listing ------"
+//		One symbol per line consisting of 6 characters, a 3 character type, colon, and 4 digit address
+//		A WinAsm99 extension adds the full label name after this - use that if present
+//		We only import "ABS" type and we ignore values of 15 or less (These are usually registers)
+//
+// TWO: From GCC map file
+//		A line has 16 spaces followed by 0x and 12 zeros (for TI)
+//		Next are 4 bytes of address, then 16 more spaces, then the label
+//		We ignore the header lines.
+void ImportMapFile(const char *fn) {
+	FILE *fp;
+
+	Symbols.clear();
+
+	fp = NULL;
+	fopen_s(&fp, fn, "r");
+	if (NULL == fp) {
+		debug_write("Failed to open map file.");
+		return;
+	}
+	// we won't even track type, we'll just check if a line is something we think we recognize...
+	while (!feof(fp)) {
+		char buf[255];
+		memset(buf, 0, sizeof(buf));
+		if (NULL == fgets(buf, sizeof(buf), fp)) break;
+		// check WinAsm list file
+		if (0 == strncmp(&buf[7], " ABS:", 5)) {
+			// looks like it
+			int adr;
+			std::string str;
+
+			if (1 == sscanf(&buf[12],"%X",&adr)) {
+				// gonna call that good
+				if (strlen(buf) > 16) {
+					// grab the extended name
+					str = &buf[17];
+					while ((!str.empty()) && (str.back() < ' ')) {
+						str = str.substr(0, str.length()-1);
+					}
+					if ((!str.empty())&&(!isalpha(str[0]))) {
+						str.clear();
+					}
+				}
+				if (str.empty()) {
+					// grab the EA name
+					buf[7]='\0';
+					str = &buf[1];
+					if ((!str.empty())&&(!isalpha(str[0]))) {
+						str.clear();
+					}
+				}
+				// filter out register equates
+				if (adr < 16) str.clear();
+
+				if (!str.empty()) {
+					Symbols.emplace(std::make_pair(adr, str));
+					debug_write("SYMBOL: %s - %04X", str.c_str(), adr);
+				}
+			}
+		} else if (0 == strncmp(buf, "                0x000000000000", 30)) {
+			// might be a GCC map line
+			int adr;
+			std::string str;
+
+			if (1 == sscanf(&buf[30],"%X",&adr)) {
+				// gonna call that good
+				str = &buf[50];
+				while ((!str.empty()) && (str.back() < ' ')) {
+					str = str.substr(0, str.length()-1);
+				}
+				// filter out register equates
+				if (adr < 16) str.clear();
+				// filter out informational tags
+				if (str.substr(0,9) == "PROVIDE (") str.clear();
+				if (str.substr(0,6) == ". = 0x") str.clear();
+				if (str.substr(0,8) == "_end = .") str.clear();
+
+				if (!str.empty()) {
+					Symbols.emplace(std::make_pair(adr, str));
+					debug_write("SYMBOL: %s - %04X", str.c_str(), adr);
+				}
+			}
+		}
+	}
+	fclose(fp);
+	debug_write("Read %d symbols.", Symbols.size());
+}
 
 // Although no longer used by the disassembler -- the debugger still uses these "safe" functions.
 Word GetSafeCpuWord(int x, int bank) {
@@ -206,12 +301,32 @@ static const enum opcodes ops6to10[64]=
 	_ill,	_ill,	_idle,	_ill,	_rtwp,	_spi_en,_spi_ds,_ill	/*11000-11111*/
 };
 
-
 static int myPC;
+
+// look up an address in the symbol map - not thread or multi-call safe! only one return per statement.
+const char *adr2string(int base) {
+	static char ret[128];
+	std::string str;
+
+	auto fnd = Symbols.find(base);
+	if (fnd == Symbols.end()) {
+		str.clear();
+	} else {
+		str = fnd->second;
+	}
+
+	if (!str.empty()) {
+		snprintf(ret, sizeof(ret), "[%s]", str.c_str());
+	} else {
+		ret[0] = '\0';
+	}
+
+	return ret;
+}
 
 static char *print_arg (int mode, int arg, int bank)
 {
-	static char temp[20];
+	static char temp[128];
 	int	base;
 
 	switch (mode)
@@ -225,9 +340,9 @@ static char *print_arg (int mode, int arg, int bank)
 		case 0x2:	/* symbolic|indexed */
 			base = RDWORD(myPC, bank); myPC+=2;
 			if (arg) 	/* indexed */
-				sprintf (temp, "@>%04x(R%d)", base, arg);
+				sprintf (temp, "@>%04x%s(R%d)", base, adr2string(base), arg);
 			else		/* symbolic (direct) */
-				sprintf (temp, "@>%04x", base);
+				sprintf (temp, "@>%04x%s", base, adr2string(base));
 			break;
 		case 0x3:	/* workspace register indirect auto increment */
 			sprintf (temp, "*R%d+", arg);
@@ -373,7 +488,7 @@ int Dasm9900 (char *buffer, int pc, int bank)
 				darg = OPBITS(12,15);
 				sarg = RDWORD(myPC, bank); myPC+=2;
 
-				sprintf (buffer, "%-4s R%d,>%04x", token[opc], darg, sarg);
+				sprintf (buffer, "%-4s R%d,>%04x%s", token[opc], darg, sarg, adr2string(sarg));
 				break;
 			case _lwpi: case _limi:
 				sarg = RDWORD(myPC, bank); myPC+=2;
@@ -391,7 +506,7 @@ int Dasm9900 (char *buffer, int pc, int bank)
 		}
 	}
 	else
-		sprintf (buffer, "data >%04x", OP);
+		sprintf (buffer, "data >%04x%s", OP, adr2string(OP));
 
 	return myPC - pc;
 }
