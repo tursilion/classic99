@@ -2185,3 +2185,9 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 31 Dec 2023
 
 - added ability to read WinAsm/EA listings and GCC map files in order to get symbols in the disassembly
+
+-----------------------------------------------
+1 Feb 2024
+
+- fix GROM addressing for writes after a GROM memory wraparound (needed for UberGROM)
+
