@@ -1757,6 +1757,9 @@ void CPU9900::op_ldcr()
     
     AddCycleCount(20);  // base count
 
+    // TODO: E/A says the source address is always even - check if that is true even
+    // on a byte transfer?
+
     FormatIV;
     if (D==0) D=16;     // this also makes the timing of (0=52 cycles) work - 2*16=32+20=52
     x1=(D<9 ? RCPUBYTE(S) : ROMWORD(S));    // read source
@@ -1852,6 +1855,9 @@ void CPU9900::op_stcr()
 
     AddCycleCount(42);  // base value
 
+    // TODO: E/A says the source address is always even - check if that is true even
+    // on a byte transfer?
+
     FormatIV;
     if (D==0) D=16;
     x1=0; x3=1;
@@ -1869,6 +1875,7 @@ void CPU9900::op_stcr()
 
     if (D<9) 
     {
+        // TODO: E/A says the entire word is zeroed if not read, does that include bytes?
         WCPUBYTE(S,(Byte)(x1&0xff));  // Read source, write source
     }
     else 

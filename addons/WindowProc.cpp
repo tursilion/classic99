@@ -3616,8 +3616,8 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									// it is a number, not a register
 									x+=(LINES_TO_STEP*8);
 
-                                    if (nMemType == MEMAMS) {
-                                        // TODO: just assumes 1MB
+                                    if ((nMemType == MEMAMS)||(nMemType == MEMGROM)) {
+                                        // TODO: just assumes 1MB, GROM assumes 16 bases
                                         x &= 0xfffff;
                                     } else {
 									    if (nMemType == MEMVDP) {
@@ -3678,8 +3678,8 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									// it is a number, not a register
 									x-=(LINES_TO_STEP*8);
 
-                                    if (nMemType == MEMAMS) {
-                                        // TODO: just assumes 1MB
+                                    if ((nMemType == MEMAMS)||(nMemType == MEMGROM)) {
+                                        // TODO: just assumes 1MB, GROM assumes 16 bases
                                         x &= 0xfffff;
                                     } else {
 									    if (x < 0) {
@@ -3915,8 +3915,8 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									}
 									break;
 								case MEMGROM:		// GROM
-                                    x&=0xffff;
-									ok=MessageBox(hwnd, "Modify GROM? (Base 0 only, non-permanent)", "Classic99 Debugger", MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+                                    x&=0xfffff;
+									ok=MessageBox(hwnd, "Modify GROM? (non-permanent)", "Classic99 Debugger", MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
 									break;
 								default:
 									ok=IDNO;
@@ -4058,11 +4058,13 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 										break;
 
 									case MEMGROM:		// GROM 
-										// only base zero handled
+										// base set by first byte of address
                                         if (byte) {
     										GROMBase[0].GROM[x]=y;
                                         } else {
                                             // parse the string and write each byte...
+                                            int base = (x&0xf0000)>>16;
+                                            x&=0xffff;
 							                char *p=strchr(buf,'=');
 							                p++;
 							                while (isspace(*p)) p++;
@@ -4076,6 +4078,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
                                                 }
                                                 p+=2;
 
+                                                // TODO: bug: this can't write to MPD or UberGROM
                                                 GROMBase[0].GROM[x]=y;
 
                                                 ++x;
@@ -4355,6 +4358,7 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines) 
 //		-Cartridge: GROM and UberGROM Configuration/status, ROM bank, DSR bank, pCode
 //		-SAMS registers
 //		-RS232/PIO card (someday)
+extern Byte ReadSafeGrom(int nBase, int adr);
 void DebugUpdateThread(void*) {
 	static int nOldCPC=-1;
 	static int nOldGPC=-1;
@@ -4548,9 +4552,6 @@ void DebugUpdateThread(void*) {
 						break;
 
 					case MEMGROM:		// GROM
-							// VDP and GROM *must not* call the read functions, as it will
-							// change the address!! (But, since we don't do bank switching in them...)
-							// Bug: GROM base 0 only
 							char buf3[32];
 							int c;
 							strncpy(buf3, szTopMemory[nMemType], 32);
@@ -4563,26 +4564,30 @@ void DebugUpdateThread(void*) {
 									tmpPC=GetSafeCpuByte(WP+c, xbBank)*256 + GetSafeCpuByte(WP+c+1, xbBank);
 								}
 							}
-							for (idx2=0; idx2<34; idx2++) {
-								sprintf(buf1, "%04X: ", tmpPC);
-								strcpy(buf3, "");
-								for (idx=0; idx<8; idx++) {
-									c=GROMBase[0].GROM[tmpPC++];
-									tmpPC&=0xffff;
-									sprintf(buf2, "%02X ", c);
-									strcat(buf1, buf2);
-									if ((c>=32)&&(c<=126)) {
-										buf2[0]=c;
-									} else {
-										buf2[0]='.';
-									}
-									buf2[1]='\0';
-									strcat(buf3, buf2);
-								}
-								strcat(buf1, buf3);
-								csOut+=buf1;
-								csOut+="\r\n";
-							}
+                            {
+                                int base = (tmpPC&0xf0000)>>16;
+                                tmpPC&=0xffff;
+							    for (idx2=0; idx2<34; idx2++) {
+								    sprintf(buf1, "%X%04X: ", base, tmpPC);
+								    strcpy(buf3, "");
+								    for (idx=0; idx<8; idx++) {
+                                        c=ReadSafeGrom(base, tmpPC++);
+									    tmpPC&=0xffff;
+									    sprintf(buf2, "%02X ", c);
+									    strcat(buf1, buf2);
+									    if ((c>=32)&&(c<=126)) {
+										    buf2[0]=c;
+									    } else {
+										    buf2[0]='.';
+									    }
+									    buf2[1]='\0';
+									    strcat(buf3, buf2);
+								    }
+								    strcat(buf1, buf3);
+								    csOut+=buf1;
+								    csOut+="\r\n";
+							    }
+                            }
 							break;
 
                     case MEMAMS:		// AMS Memory

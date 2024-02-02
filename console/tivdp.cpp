@@ -40,6 +40,7 @@
 // M.Brent
 ///////////////////////////////////////////////////////
 
+// TODO: F18A on soft reset doesn't turn off the BML
 
 #if 0
 F18A Reset from Matt:

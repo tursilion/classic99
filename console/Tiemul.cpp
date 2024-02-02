@@ -5441,9 +5441,35 @@ void IncrementGROMAddress(Word &adrRef) {
 }
 
 //////////////////////////////////////////////////////////////////
+// Read a data byte from GROM with no side effects (debugger)
+// TODO: MPD and UberGROM may have side effects?
+//////////////////////////////////////////////////////////////////
+Byte ReadSafeGrom(int nBase, int adr) {
+	Byte z;
+
+	if ((Word)(adr) < 0x6000) {
+		// console GROMs always respond
+		nBase=0;
+	}
+
+	z=GROMBase[nBase].GROM[adr&0xffff];
+
+	// a test for the Distorter project - special cases - GROM base is always 0 for console GROMs!
+	if (bMpdActive) {
+		z=GetMpdOverride(adr, z);
+		// the rest of the MPD works like MESS does, copying data into the GROM array. Less efficient, better for debug though
+	}
+	if ((bUberGROMActive) && ((Word)(adr) >= 0x6000)) {
+		z=UberGromRead(adr, nBase);
+	}
+
+	return(z);
+}
+
+//////////////////////////////////////////////////////////////////
 // Read a byte from GROM
 //////////////////////////////////////////////////////////////////
-Byte ReadValidGrom(int nBase, Word x) {
+Byte ReadValidGrom(int nBase, Word x, bool sideEffects) {
 	Byte z;
 
 	// NOTE: Classic99 does not emulate the 6k GROM behaviour that causes mixed
@@ -5457,7 +5483,9 @@ Byte ReadValidGrom(int nBase, Word x) {
     // the combined banks lots of people use. But at least we'd do it.
 
 	// the -1 accounts for the prefetch to get the data we're going to read
-	if ((Word)(GROMBase[0].GRMADD-1) < 0x6000) {
+    // account for GROM wraparound
+	int nPrevAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+	if ((Word)(nPrevAddress) < 0x6000) {
 		// console GROMs always respond
 		nBase=0;
 	}
@@ -5498,11 +5526,11 @@ Byte ReadValidGrom(int nBase, Word x) {
 
 		// a test for the Distorter project - special cases - GROM base is always 0 for console GROMs!
 		if (bMpdActive) {
-			z=GetMpdOverride(GROMBase[0].GRMADD - 1, z);
+			z=GetMpdOverride(nPrevAddress, z);
 			// the rest of the MPD works like MESS does, copying data into the GROM array. Less efficient, better for debug though
 		}
-		if ((bUberGROMActive) && ((Word)(GROMBase[0].GRMADD-1) >= 0x6000)) {
-			z=UberGromRead(GROMBase[0].GRMADD-1, nBase);
+		if ((bUberGROMActive) && ((Word)(nPrevAddress) >= 0x6000)) {
+			z=UberGromRead(nPrevAddress, nBase);
 		}
 
 		// update all bases prefetch
@@ -5558,7 +5586,7 @@ Byte rgrmbyte(Word x, READACCESSTYPE rmw)
 		}
 	}
 
-	return ReadValidGrom(nBank, x);
+	return ReadValidGrom(nBank, x, true);
 }
 
 //////////////////////////////////////////////////////////////////
@@ -5626,18 +5654,21 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 
 		GROMBase[0].grmaccess=2;
 
-		// MPD overrides the GRAM switch below
-		if (bMpdActive) {
-			MpdHookGROMWrite(GROMBase[0].GRMADD-1, c);
-		}
-		if ((bUberGROMActive) && ((Word)(GROMBase[0].GRMADD-1) >= 0x6000)) {
-			UberGromWrite(GROMBase[0].GRMADD-1, nBase, c);
-		}
- 
 		// Since all GRAM devices were hacks, they apparently didn't handle prefetch the same
 		// way as I expected. Because of prefetch, the write address goes to the GROM address
 		// minus one. Well, they were hacks in hardware, I'll just do a hack here.
-		int nRealAddress = (GROMBase[0].GRMADD-1)&0xffff;
+        // note because we do real GROM wraparound now, that we need to assume the wraparound
+        // is in the same GROM, not the entire space.
+		int nRealAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+
+        // MPD overrides the GRAM switch below
+		if (bMpdActive) {
+			MpdHookGROMWrite(nRealAddress, c);
+		}
+		if ((bUberGROMActive) && ((Word)(nRealAddress) >= 0x6000)) {
+			UberGromWrite(nRealAddress, nBase, c);
+		}
+ 
 		if (GROMBase[0].bWritable[(nRealAddress&0xE000)>>13]) {
 			// Allow it! The user is crazy! :)
 			GROMBase[nBase].GROM[nRealAddress]=c;
