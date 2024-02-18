@@ -1,0 +1,501 @@
+*XB256 SOURCE CODE
+*SWAP SCREEN BUFFER at >0C00 to >0FFF (was 2C00-2FFF)
+*XB PATTERN TABLE at >1000 to >17FF (was 3000-37FF) >02 TO VDP R4
+*COLOR TABLE AT   at >1800 TO >181F (was 3800-3820) >60 TO VDP R3 
+ 
+		
+
+
+ 
+*****************************
+*CALL LINK("WINDOW",R1,C1,R2,C2)
+*****************************
+WINDOW	C *R13,R15		were any values passed?
+	JLT WINDO1		if lt then values were passed
+	BL @DFWNDW		set default window values
+	JMP CHRSRT
+	
+WINDO1	BL @GET4
+WINDO3	MOV *R3,R3
+	MOV *R4,R4
+	MOV *R5,R5
+	MOV *R6,R6
+	MOV R4,@WLCOL
+	MOV R6,@WRCOL
+	S R3,R5
+	INC R5
+	MOV R5,@WHIGHT
+	S R4,R6
+	INC R6
+	MOV R6,@WWIDTH
+	DEC R3
+	SLA R3,5
+	A R4,R3
+	DEC R3
+	MOV R3,@WFRSTR
+	DEC R5
+	SLA R5,5
+	A R3,R5
+	MOV R5,@WLASTR
+WINDO2	JMP CHRSRT
+*****************
+
+***************************************
+*CHSET2 restores the character definitions
+*CHSETL sets large characters plus lower case (CF7)
+***************************************
+HX0018	DATA >0018
+ 
+CHSETL	DECT @CHRSED	CHRSE1 now is >0016
+ 
+CHSET2	LI R0,>1400
+	BL @GPLCHR
+CHSET3	BL @INVID
+CHRSRT	B @RTN		back to compiler for next inst.
+
+GPLCHR	MOV R0,@FAC
+	BLWP @GPLLNK
+CHRSED	DATA >0018	small capital letters
+	MOV @HX0018,@CHRSED
+	AI R0,>0200
+	MOV R0,@FAC
+	BLWP @GPLLNK
+	DATA >004A	lower case letters
+	B *R11
+	
+
+****************************	
+DELAY	BL @GET1
+	MOV *R6,R6
+	
+	AI R6,8		\		
+	LI R4,6
+	MPY R4,R6	  This can be shared with SOUND in runtime
+	LI R4,100
+	DIV R4,R6	/
+	
+DELAY1	MOVB @>8379,R3
+DELAY2	LIMI 2
+	LIMI 0
+	CB @>8379,R3
+	JEQ DELAY2
+	DEC R6
+	JGT DELAY1
+	JMP CHRSRT
+ 
+***************************
+*CALL LINK("HILITE",ROW,COL,LEN)
+**************************
+HX8080	DATA >8080
+HILITE	CLR R1
+	BL @GET3
+	MOV *R6,R2	length for VMBW & VMBR
+	MOV *R4,R0
+	DEC R0
+	SLA R0,5
+	A *R5,R0
+	DEC R0
+	
+	LI R3,768	\
+	S R0,R3
+	C R3,R2		  Keeps from going off bottom
+	JGT HILIT1
+	MOV R3,R2	/
+	
+HILIT1	LI R1,GPBUFF
+	BLWP @VMBR
+	BL @INVTXS
+	JMP CHRSRT	97 words up
+	
+INVTXS	MOV R1,R3
+	MOV R2,R6
+INVTX1	MOV *R3,R4
+	XOR @HX8080,R4
+	MOV R4,*R3+
+	DECT R6
+	JGT INVTX1
+	BLWP @VMBW
+	B *R11
+ 
+******************************
+*CALL LINK("SCRLLF",N) omit n for cir. scroll; any number to fill w/ spaces
+******************************
+SCRLLF	BL @SCRLFS
+SCRLF1	BLWP @VMBR
+	MOV R6,R6
+	JNE SCRLF2
+	MOVB R8,@GPBUFF+50
+SCRLF2	MOVB @GPBUFF+50,@GPBUFF+50(R7)
+	A R5,R1
+	BLWP @VMBW
+	S R5,R1
+	A R9,R0
+*	LIMI 2
+*	LIMI 0
+	DEC R4
+	JNE SCRLF1
+SCRLF4	B @RTN
+ 
+*****************************
+*CALL LINK("SCRLRT",n)
+*****************************
+SCRLRT	BL @SCRLFS
+	NEG R5			-1
+	NEG R7			-LENGTH
+	S R2,R1
+	INC R1
+	JMP SCRLF1
+	
+SCRLFS	MOV @WFRSTR,R0
+	LI R1,GPBUFF+50
+	MOV @WWIDTH,R2
+	MOV @WHIGHT,R4
+	
+	CLR R6
+	C *R13,R15		see if a number was passed
+	JGT SCRLS1		if GT then no number
+	MOV *R13+,R6		R6<>0 and inct r13
+	
+SCRLS1	LI R5,1
+	MOV R2,R7
+	LI R8,>8080
+	LI R9,32
+	LI R10,128
+	B *R11
+ 
+************************
+*CALL LINK("SCRLUP",N)
+***********************
+SCRLUP	BL @SCRLFS
+SCRUP5	MOV R6,R6
+	JNE SCRUP1
+	BL @SPACES
+	JMP SCRUP2
+SCRUP1	BLWP @VMBR
+SCRUP2	A R10,R1
+SCRUP3	DEC R4
+	JEQ SCRUP4
+	A R9,R0
+	BLWP @VMBR
+	S R9,R0
+	BLWP @VMBW
+*	LIMI 2
+*	LIMI 0
+	A R9,R0
+	JMP SCRUP3
+SCRUP4	S R10,R1
+	BLWP @VMBW
+	JMP SCRLF4 	BACK
+	
+SPACES	CLR R3
+SPACE1	MOVB @HX8080,@GPBUFF+50(R3)
+	INC R3
+	C R3,R2
+	JLT SPACE1
+	B *R11
+ 
+************************
+*CALL LINK("SCRLDN",N)
+***********************
+SCRLDN	BL @SCRLFS
+	MOV @WLASTR,R0
+	NEG R9
+	JMP SCRUP5
+*******************************************	
+********************(CF7)
+*CALL LINK(SCPXLF,ASCII,LENGTH,#BITS,OPTIONAL STUFF)
+SCPXLF	BL @SCPXSB
+SCPXL2	MOVB @8(R1),@WKSP+13
+	MOVB *R1+,R6
+	SLA R6,0
+	MOVB R6,@>8C00
+	DEC R2
+	JNE SCPXL2
+	JMP SCPXLF
+********************
+*CALL LINK(SCPXRT,ASCII,LENGTH,#BITS,OPTIONAL STUFF)
+SCPXRT	BL @SCPXSB
+SCPXR2	MOVB @-8(R1),R6
+	MOVB *R1+,@WKSP+13
+	SRL R6,0
+	MOVB @WKSP+13,@>8C00
+	DEC R2
+	JNE SCPXR2
+	JMP SCPXRT
+************************************
+*CALL LINK(SCPXUP,ASCII,LENGTH,#BITS,OPTIONAL STUFF)
+SCPXUP	BL @SCPXSB
+	A R0,R1
+SCPXU2	MOVB *R1+,@>8C00
+	DEC R2
+	JNE SCPXU2
+	JMP SCPXUP
+************************************
+*CALL LINK(SCPXDN,ASCII,LENGTH,#BITS,OPTIONAL STUFF)
+SCPXDN	BL @SCPXSB
+	S R0,R1
+SCPXD2	MOVB *R1+,@>8C00
+	DEC R2
+	JNE SCPXD2
+	JMP SCPXDN
+	
+ 
+ 
+SCPXSB	C *R13,R15		more arguments in list?
+	JGT SCPXS8		if Gt we are done, go back
+	MOV R11,R12		store return address
+	BL @GET3
+	MOV *R4,R0		ASCII is now in R0
+	AI R0,>0260		>60 xb offset plus patt table/8
+	ANDI R0,>FEFF		0 to 255
+	SLA R0,3		x8
+	MOV *R5,R2		# chars is in r2
+	SLA R2,3		8 bytes per char
+SCPXS2	LI R1,GPBUFF+8
+	BLWP @VMBR
+*	LIMI 2
+*	LIMI 0	
+	MOVB @WKSP+1,@>8C02	\
+	ORI R0,>4000		  set up to write to VDP
+	MOVB R0,@>8C02		/
+	MOV R1,R3		buffer address to R3
+	MOV R2,R4		# bytes read to R4
+	A R3,R4		R4 points to next byte after chdefs
+SCPXS4	MOV @-8(R4),@-8(R3)	puts last byte in front of 1st byte
+	MOV *R3+,*R4+		puts 1st byte after last byte
+	CI R3,GPBUFF+16
+	JNE SCPXS4		loop till done
+	MOV *R6,R0		# bytes to shift
+	B *R12
+	
+SCPXS8	B @RTN
+	
+****************************************
+*CALL LINK("PLAY",ADDRESS
+******
+PLAY	BL @GET1
+	LI R9,>0100
+*next is to see if 2nd sound list is to be played
+	MOV *R6,R0
+	JEQ NOPLAY
+	MOV R0,R5
+	CLR R1
+	BL @VSBR		Read the first byte(R1 has 1 after the GETNUM
+	CI R1,>FD00		is it the flag to use second sound list player?
+	JNE PLYR1		no, so go on
+	INC R5			to bypass the >FD flag
+	
+	MOVB @MONWS+13,R4	if player2 is currently playing then this is not zero
+	JEQ PLYR2		not using player2 right now
+	MOV @MONWS+18,R0	puts current sl pointer to R0
+	BL @SLOFF		reads current sound list and turns off generators that were used	
+	
+PLYR2	MOV R5,@MONWS+18	address to R9 of monitor workspace
+	MOVB R9,@MONWS+13	byte 1 to R6 monitor ws to start playing
+	JMP SCPXS8		and back
+**********************	
+PLYR1	MOVB @>83CE,R4	countdown timer to R4 - if NE then a sound list is playing
+	JEQ PLYR1A		sound list not playing at this time
+	MOV @>83CC,R0		address of current sound list into R0
+	BL @SLOFF		and turn off generators currently being used
+	
+PLYR1A	SOCB R9,@>83FD	tell player that the sound list is in VDP
+PLYR1B	MOVB R9,@>83CE	puts a 1 at SL timer, SL routine decs to 0, then loads SL
+	MOV R5,@>83CC		address of sound list to >83cc
+	JMP SCPXS8	
+	
+NOPLAY	LI R5,>3532		address of GROM sound list >049F,>BFDF,>FF01	
+	SZCB R9,@>83FD	clears the last bit to play SL in GROM
+	CLR @MONWS+24
+	CLR @MONWS+12		R6 of MONWS is now 0 to kill player2
+	JMP PLYR1B
+*****************************************	
+SLOFF	LI R2,13
+	LI R1,GPBUFF
+	S R2,R0
+	BLWP @VMBR
+	
+	A R2,R1
+SLOFF1	DECT R1
+	MOVB *R1,R3
+	JGT SLOFF2		it will be less than 0 if it is a volume value; GT if length byte
+	ORI R3,>0FFF
+	MOVB R3,@>8400	turn off sound for that generator
+	INC R3			if it was the noise generator then was >FFFF and will be 0 after INC
+	JEQ SLOFF1
+	DEC R1
+	JMP SLOFF1
+SLOFF2	B *R11
+************************************** 
+FREEZE	SOC @VSBW2+2,@>83C2		>4000
+	JMP SCPXS8
+*********************************
+THAW	SZC @VSBW2+2,@>83C2
+	JMP SCPXS8
+**********************
+SYNC	CB @>8379,@-1
+	JHE SYNC1
+	LIMI 2
+	DATA >0300	LIMI
+LIMZRO	DATA >0000	ZERO
+	JMP SYNC
+SYNC1	MOVB @LIMZRO,@>8379	moves a zero byte to >8379
+	JMP SCPXS8
+*****************************************
+
+CWRITE	C *R13,R15   See if next word is a number or an instruction
+	JGT SCPXS8		if Gt we are done, go back
+	
+	BL @GET1
+	MOV *R6,R2		R2 points to string
+	MOVB *R2+,R3		length byte to msb r3
+	SRL R3,8		length is in R3
+	
+	A R2,R3		R4 points one past last char in string
+	MOVB @LIMZRO,*R3	put a zero there for a flag (was HX0001)
+	
+	MOVB *R2+,R5		msb of address to msb r5
+	MOVB *R2,@WKSP+11	lsb of address to lsb r5
+	
+	MOVB *R2+,@>8C02
+	ORI R5,>4000
+	MOVB R5,@>8C02	ready to write!
+	
+CWRIT8	CI R5,>4780	\
+	JLT CWRIT1	  writing to sprite motion table?
+	CI R5,>47EF
+	JGT CWRIT1	/
+	
+	MOVB *R2+,@>837A	update # sprites in motion
+ 
+CWRIT1	MOVB *R2+,R5		Length to r5
+	JEQ CWRITE		back if length is zero
+	SRL R5,8
+	CI R5,128
+	JLT CWRIT2
+	
+	ANDI R5,>007F
+CWRIT3	MOVB *R2,@>8C00
+	DEC R5
+	JGT CWRIT3
+	INC R2
+	JMP CWRIT1
+	
+CWRIT2	MOVB *R2+,@>8C00
+	DEC R5
+	JGT CWRIT2
+	JMP CWRIT1
+	
+**********************
+*ASSEMBLY LANGUAGE SUBS THAT WERE DONE PRIOR TO XB256 AND ARE NOW PART OF IT
+**********************
+EARLYC	BL @GET1		sprite early clock
+	CLR R0			call link("earlyc",1213)
+	MOV *R6,R1		sprite 12,color 13
+	LI R5,100
+	DIV R5,R0		now R7 has sprite #
+	SLA R0,2		x4
+	AI R0,>02FF
+	SWPB R1
+	AI R1,>7F00
+	BL @VSBW
+	C *R13,R15   See if next word is a number or an instruction
+	JLT EARLYC
+EARLRT	B @RTN
+*****************************
+ 
+DISPLY	BL @GET3
+	MOV *R4,R0
+	DEC R0
+	SLA R0,5		x32
+	A *R5,R0
+	DEC R0			now r0 points to screen pos to start.
+	MOV *R6,R9		r9 points to string, need if looping
+		
+DISP3B	LI R5,1		default value dir
+	MOV R5,R6		default # repeats
+	
+	C *R13,R15   See if next word is a number or an instruction
+	JGT DISP3E		no optional values passed
+	BL @GET1
+	MOV *R6,R5
+	LI R6,1
+
+DISP3C	C *R13,R15   See if next word is a number or an instruction
+	JGT DISP3E
+	BL @GET1
+	MOV *R6,R6
+
+DISP3E	MOV R9,R2		points to string
+	MOVB *R2+,R3
+	SRL R3,8		length in r3
+	JEQ EARLRT		back if a null length
+DISP4D	MOVB *R2+,R1
+*	AI R1,>6000
+	BL @VSBW96
+	MOV R5,R5
+	JNE NOWNDW
+***printing inside a wingow**********************
+	INC R0
+	MOV R0,R7
+	ANDI R7,>001F		get column info in R7
+	JEQ DWNROW		if EQ then have dropped down a row
+	C R7,@WRCOL
+	JLT DISP3F		keep printing if not at RH column
+	AI R0,32		add 32
+	ANDI R0,>FFE0		column = 0
+DWNROW	A @WLCOL,R0		add column
+	DEC R0			need to dec cause col 1 is really col 0
+	C R0,@WLASTR		out of bottom of window?
+	JLE DISP3F		nope
+	MOV @WFRSTR,R0	yup, so put in 1st screen position of window
+	JMP DISP3F
+***printing full screen**********************	
+NOWNDW	A R5,R0		screen direction
+	JGT DISP4E
+	AI R0,>02FF
+DISP4E	CI R0,>0300
+	JL DISP3F
+	AI R0,-768
+	CI R5,32
+	JNE DISP3F
+	INC R0
+	C R0,R5		if here R5=32
+	JNE DISP3F
+	CLR R0
+ 
+DISP3F	DEC R3
+	JNE DISP4D
+	DEC R6
+	JEQ EARLRT
+	JMP DISP3E
+	
+**************************************
+*CALL LINK("VWRITE",ADDRESS,A$)
+VWRITE	BL @GET2
+	MOV *R5,R0
+	MOV *R6,R1
+	MOVB *R1+,R2		length byte to r2
+	SRL R2,8		length to lsb
+	BLWP @VMBW
+	C *R13,R15   See if next word is a number or an instruction
+	JLT VWRITE
+	JMP EARLRT
+	
+*CALL LINK("VREAD",ADDRESS,LENGTH,A$)
+VREAD	BL @GET3
+	MOV *R4,R0		address
+	LI R1,GPBUFF
+	MOV *R5,R2		length
+	MOVB @1(R5),*R1+
+	BLWP @VMBR
+	LI R0,GPBUFF
+	MOV R6,R1
+	BLWP @STRSTR
+	C *R13,R15   See if next word is a number or an instruction
+	JLT VREAD
+VREAD1	JMP EARLRT
+*********************************
+
+
+

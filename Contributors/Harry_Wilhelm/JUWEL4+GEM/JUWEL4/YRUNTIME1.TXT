@@ -1,0 +1,1461 @@
+ 
+ 
+ 
+ 
+*RUNTIME MODULE FOR INTEGER ARITHMETIC
+ 
+*       DEF RUN
+*       DEF CON
+ 
+NUMASG EQU >2008
+NUMREF EQU >200C
+STRASG EQU >2010
+STRREF EQU >2014
+XMLLNK EQU >2018
+KSCAN  EQU >201C
+*VSBW   EQU >2020    Use our own BL routine for this-faster!
+VMBW   EQU >2024
+VSBR   EQU >2028
+VMBR   EQU >202C
+VWTR   EQU >2030
+ERR    EQU >2034
+ 
+ 
+FRSTST EQU >A100       address of start of string buffer space
+ 
+WKSP   EQU >8300
+BLWPWS EQU >8320        !BLWPWS must follow WKSP
+STRPAD BSS 64            temp storage for PAD >8300 to >833F
+GPBUFF BSS 256
+STKPNT DATA 0            stack pointer
+       DATA 0            backpointer for NULLST
+NULLST DATA 0            a null string for initialize
+SCRNPT DATA 0            points to current position on screen
+DATPNT DATA 0            points to current position in DATA statements
+NXTSTR DATA 0            points to next string space for creating strings
+ 
+******************
+SWPPAD MOV R11,@>83E6
+       MOV R0,@>83E8
+       LWPI >83E0
+       LI R0,>8300
+       LI R1,STRPAD
+ 
+SWPPA1 MOV *R1,R2
+       MOV *R0,*R1+
+       MOV R2,*R0+
+       CI R0,>8340
+       JNE SWPPA1
+       CLR @>83C4
+       MOV R4,R0
+       B *R3
+******************
+ 
+ERROR  BL @SWPPAD
+       BLWP @ERR
+ 
+CLRSCN MOV R11,R10
+       BL @>0020
+       JEQ XBRTN
+       B *R10
+XBRTN  BL @SWPPAD
+       B @>006A
+ 
+GASIZE LI R7,1           \
+GASIZ1 MOV *R10+,R5
+       JEQ GASIZ2
+       INC R5
+       S @OPTBAS,R5       used by start when initializing variables
+       MOV R7,R6
+       MPY R5,R6
+       JMP GASIZ1
+GASIZ2 B *R11            /
+ 
+CON    CLR R0        GPLWS used here
+       JMP RUN0
+RUNEA5
+RUNV
+RUN    SETO R0       GPLWS used here
+RUN0   BL @SWPPAD
+       LWPI WKSP
+       MOV @>83E0,R0
+       JEQ CON1
+ 
+       LI R10,NV0
+STAR1  CI R10,SC0
+       JEQ STAR2
+       CLR *R10+
+       JMP STAR1
+STAR2  LI R10,SV0
+       LI R2,NULLST
+STAR3  CI R10,SA0
+       JEQ STAR4
+       MOV R2,*R10+
+       JMP STAR3
+STAR4  CI R10,NA0
+       JEQ STAR6
+       BL @GASIZE
+STAR5  MOV R2,*R10+
+       DEC R7
+       JNE STAR5
+       JMP STAR4
+STAR6  CI R10,FRSTDT
+       JEQ STAR8
+       BL @GASIZE
+STAR7  CLR *R10+
+       DEC R7
+       JNE STAR7
+       JMP STAR6
+ 
+STAR8  LI R13,FRSTLN     start program from 1st line
+       MOV @>8386,R14    HIGHEST F REE ADDRESS
+       DEC R14
+       ANDI R14,>FFFE
+       MOV R14,@STKPNT
+       LI R14,>42E2
+       MOV R14,@SCRNPT
+       LI R14,FRSTDT
+       MOV R14,@DATPNT
+       LI R14,FRSTST
+       MOV R14,@NXTSTR
+ 
+       LI R14,SA0        pointer to start of array space
+       LI R15,GPBUFF     pointer to start of runtime module
+CON1   LI R0,CLRSCN
+       MOV R0,@>83C4
+       MOVB @>8379,@>83C0  random # seed
+RTN    LIMI 2
+       LIMI 0
+       MOV *R13+,R12
+       B *R12
+ 
+*BLWP @GETARR
+*DATA 4
+*gets pointer to actual element in array & puts into R4
+ 
+GETARR DATA BLWPWS-6,GETAR  R13 of WKSP becomes R0 of subroutine's wksp
+GETAR  MOV *R14+,R12     get following word of data after BLWP @GETARR
+       SLA R12,1          multiply x 2
+       A R13,R12         R12 points to R? in WKSP that points to array header
+       MOV *R12,R3        R3 points to array header
+       MOV R3,R10
+       BL @GASIZE        r7 will have # elements in array
+ 
+       CLR R6            R6 will end up with offset in array
+GETAR1 MOV *R3+,R5       get dim from array header
+       JEQ GETAR2        if a zero then done
+       INC R5
+       S @OPTBAS,R5
+       MOV R7,R8
+       CLR R7            prepare for divide
+       DIV R5,R7
+       MOV *R0+,R9
+       MOV *R9,R9
+       S @OPTBAS,R9
+       MPY R7,R9
+       A R10,R6
+       JMP GETAR1
+ 
+GETAR2 SLA R6,1          mpy x2 because each element takes 1 word
+       A R6,R3
+       MOV R3,*R12
+       RTWP
+ 
+GET4   MOV *R13+,R3
+       C R3,R14
+       JLT GET3
+       BLWP @GETARR
+       DATA 3
+GET3   MOV *R13+,R4
+       C R4,R14
+       JLT GET2
+       BLWP @GETARR
+       DATA 4
+GET2   MOV *R13+,R5
+       C R5,R14
+       JLT GET1
+       BLWP @GETARR
+       DATA 5
+GET1   MOV *R13+,R6
+       C R6,R14
+       JLT GET0
+       BLWP @GETARR
+       DATA 6
+GET0   B *R11
+ 
+*******************************************************************************
+*BLWP @CSN                                                                    *
+*put address of string into calling R0; after BLWP R0 will contain the number *
+*******************************************************************************
+CSN    DATA BLWPWS,CSN1
+ 
+CSN1   MOV *R13,R8
+       MOVB *R8+,R9
+       SRL R9,8
+       A R8,R9
+       CLR R12
+       CLR R6
+       LI R4,10
+CSN2   C R8,R9
+       JEQ CSN4
+       MOVB *R8+,R7
+       SRL R7,8
+       MOV R6,R6    idea here is that if we're into the digits of the string
+       JNE CSN3     then dont need to look for +,-, or space
+       CI R7,>0020  space
+       JEQ CSN2
+       CI R7,>002B  +
+       JEQ CSN2
+       CI R7,>002D  -
+       JNE CSN3
+       INV R12
+       JMP CSN2
+ 
+CSN3   AI R7,-48
+       CI R7,9
+       JH CSN4
+       MOV R6,R5
+       MPY R4,R5
+       A R7,R6
+       JMP CSN2
+ 
+CSN4   MOV R12,R12
+       JEQ CSN5
+       NEG R6
+CSN5   MOV R6,*R13
+       RTWP
+ 
+**************************************************************
+* BLWP @CNS  Convert integer number into a string            *
+*            R6: contains integer to be converted            *
+*            Results into GPBUFF+2
+**************************************************************
+CNS    DATA BLWPWS,CNS1
+ 
+CNS1   LI R1,GPBUFF+2
+       MOV @12(R13),R9   number to convert into R9
+       JNE CNS1A         jump if n.e. 0
+ 
+       LI R3,>0130       string for "0"
+       MOV R3,*R1        into buffer
+       JMP CNS9          and go back
+ 
+CNS1A  LI R2,GPBUFF+3
+       LI R3,10000
+       LI R5,10
+       CLR R7            length of string
+ 
+       MOV R9,R11        store number being converted, and see if negative
+       JGT CNS2          jump if positive
+ 
+       LI R0,>2D00       minus sign
+       MOVB R0,*R2+
+       NEG R9
+ 
+CNS2   CLR R8
+       DIV R3,R8
+ 
+       MOV R8,R8         if R8 <> 0 after divide then add it to string
+       JNE CNS7
+ 
+       MOV R7,R7         R7=length of string; if it's zero then don't add
+       JEQ CNS3          a leading zero to string
+ 
+CNS7   AI R8,48
+       SWPB R8
+       MOVB R8,*R2+
+       INC R7
+CNS3   MOV R3,R4
+       CLR R3
+       DIV R5,R3
+       MOV R3,R3
+       JNE CNS2
+ 
+       MOV R11,R11      \
+       JGT CNS8          If number being converted was negative then we need to
+       INC R7           / inc string length because of minus sign
+ 
+CNS8   SWPB R7
+       MOVB R7,*R1
+CNS9   RTWP
+**********************
+SQR    BL @GET2
+       MOV *R5,R10
+       JLT SQRERR
+ 
+       MOV R10,R0
+       MOV R10,R3
+       INC R0
+SQR5   SRL R3,2
+       JEQ SQR1
+       SRL R0,1
+       JMP SQR5
+ 
+SQR1   CLR R1
+       MOV R10,R2
+       DIV R0,R1
+       MOV R0,R3   store r0
+       A R1,R0
+       SRL R0,1
+       C R0,R3
+       JEQ SQR2    I.E. IF NO CHANGE THEN FOUND IT
+       JGT SQR1
+       S R1,R3
+       ABS R3
+       DEC R3
+       JNE SQR1
+SQR2   MOV R0,*R6
+       B @RTN
+SQRERR LI R0,>1C00       bad argument
+       B @ERROR
+********************
+POS    BL @GET4
+       MOV *R5,R5
+       DECT R5
+POS1   INC R5
+       MOV *R3,R8
+       MOV *R4,R10
+       MOVB *R8+,R7
+       SRL R7,8
+       MOVB *R10+,R9
+       SRL R9,8
+       MOV R5,R0
+       A R9,R0
+       C R7,R0
+       JLT POS0
+       A R5,R8
+POS2   CB *R10+,*R8+
+       JNE POS1
+       DEC R9
+       JNE POS2
+       INC R5
+       JMP POS3
+POS0   CLR R5
+POS3   MOV R5,*R6
+       B @RTN
+**********************
+JOYST  BL @GET3
+       MOVB @1(R4),@>8374
+       BLWP @KSCAN
+       MOVB @>8377,R2
+       SRA R2,8
+       MOV R2,*R5
+       MOVB @>8376,R2
+       SRA R2,8
+       MOV R2,*R6
+       B @RTN
+**********************
+SOUND  BL @GET1
+       MOV *R6,R6
+       JLT SOUND2
+SOUND1 MOVB @>83CE,R0
+       JEQ SOUND3
+       LIMI 2
+       LIMI 0
+       JMP SOUND1
+SOUND2 ABS R6
+SOUND3 AI R6,8
+       LI R4,6
+       MPY R4,R6
+       LI R4,100
+       DIV R4,R6
+       MOV R6,R6
+       JNE SOUND4
+       INC R6
+SOUND4 SWPB R6
+       MOVB R6,@>83CE
+ 
+       LI R9,>8400
+       LI R0,>7000
+SOUND5 BL @GET2
+       MOV *R6,R6
+       SLA R6,7
+       MOV *R5,R1
+       JGT SOUND6
+       ABS R1
+       DEC R1
+       SWPB R1
+       AI R1,>E000
+       MOVB R1,*R9
+       AI R6,>F000
+       JMP SOUND8
+SOUND6 LI R2,>0001
+       MOV R1,R3
+       SRL R3,1
+       AI R3,>B4F5
+       JNC SOUND7
+       INC R2
+SOUND7 DIV R1,R2
+       MOV R2,R4
+       SLA R4,4
+       SRC R2,4
+       SRL R2,4
+       AI R0,>1000
+       A R0,R2
+       MOVB R2,*R9
+       MOVB R4,*R9
+       AI R0,>1000
+       A R0,R6
+SOUND8 MOVB R6,*R9
+ 
+       C *R13,R15
+       JLT SOUND5
+ 
+       LI R0,>0379
+       LI R1,SNDOFF
+       LI R2,6
+       BLWP @VMBW
+       MOV R0,@>83CC
+       SOCB @SOUND6+3,@>83FD
+       B @RTN
+ 
+SNDOFF DATA >049F,>BFDF,>FF00
+******************************
+QMARK  BYTE 2,63,32,0
+ 
+INPUT  BL @GET1
+       C *R13,R15
+       JL INPUT2
+       LI R2,QMARK
+       JMP INPUT3
+INPUT2 MOV *R6,R2
+       BL @GET1
+INPUT3 MOV R6,R10
+ 
+       MOV @SCRNPT,R0
+       B @PRINT3+2
+ 
+INPUT4 ANDI R0,>0FFF
+       MOV R0,@>8320
+       MOV R0,@>832A
+       LI R4,>035D
+       MOV R4,@>835E
+       BLWP @GPLLNK
+       DATA >2858
+ 
+       MOV @>8320,R0     points to start
+       MOV @>832A,R2     points to end
+ 
+       LI R7,GPBUFF+1
+       MOV R7,R4
+       CLR R5            will have length
+       CLR R1
+ 
+INPUT5 C R0,R2           \
+       JHE INPUT7
+       BLWP @VSBR
+       CI R1,>7F00
+       JEQ INPUT6         puts string into GPBUFF
+       AI R1,->6000
+       MOVB R1,*R4+
+       INC R5
+INPUT6 INC R0
+       JMP INPUT5        /
+ 
+INPUT7 MOV R5,R5
+       JEQ INPU10
+ 
+INPUT8 DEC R4            \
+       CB *R4,@QMARK+2    a space
+       JNE INPUT9         trim trailing spaces
+       DEC R5
+       JGT INPUT8
+       JMP INPU10        /
+ 
+INPUT9 CB *R7+,@QMARK+2  \
+       JNE INPU11         trim leading spaces
+       DEC R5
+       JGT INPUT9        /
+ 
+INPU10 INC R7            \
+INPU11 DECT R7            move length byte
+       SWPB R5
+       MOVB R5,*R7       /
+ 
+       MOV R7,R0
+       MOV R10,R6
+       BL @ASTRNG
+       JEQ INPU12
+ 
+       BLWP @CSN         \
+       MOV R0,*R6         a number
+       JMP INPU13        /
+ 
+INPU12 MOV R6,R1
+       BLWP @STRSTR      a string
+ 
+INPU13 BLWP @SCROLL
+       MOV R0,@SCRNPT
+       B @RTN
+
+
+********************************************************************************
+*GPLLNK AND DSRLINK FROM THE SMART PROGRAMMER
+********************************************************************************
+ 
+GPLWS  EQU >83E0
+GR4    EQU GPLWS+8
+GR6    EQU GPLWS+12
+LDGADD EQU >60
+XTAB27 EQU >200E
+GETSTK EQU >166C
+ 
+GPLLNK DATA GLNKWS
+       DATA GLINK1
+ 
+RTNAD  DATA XMLRTN
+GXMLAD DATA >176C
+       DATA >50
+ 
+GLNKWS EQU $->18
+       BSS >08
+ 
+GLINK1 MOV @>83C4,@OLDINT     Store user interrupt
+       CLR @>83C4             Turn off user interrupt
+       MOV *R11,@GR4
+       MOV *R14+,@GR6
+       MOV @XTAB27,R12
+       MOV R9,@XTAB27
+       LWPI GPLWS
+       BL *R4
+       MOV @GXMLAD,@>8302(R4)
+       INCT @>8373
+       B @LDGADD
+ 
+XMLRTN MOV @GETSTK,R4
+       BL *R4
+       LWPI GLNKWS
+       MOV R12,@XTAB27
+       MOV @OLDINT,@>83C4     Restore user interrupt
+       RTWP
+ 
+*DSRLNK
+ 
+PUTSTK EQU >50
+TYPE   EQU >836D
+NAMLEN EQU >8356
+VWA    EQU >8C02
+VRD    EQU >8800
+GR4LB  EQU >83E9
+GSTAT  EQU >837C
+ 
+DSRLNK DATA DSRWS,DLINK1
+ 
+DSRWS  EQU $
+DR3LB  EQU $+7
+DLINK1 MOV R12,R12
+       JNE DLINK3
+       LWPI GPLWS
+       MOV @PUTSTK,R4
+       BL *R4
+       LI R4,>11
+       MOVB R4,@>402(R13)
+       JMP DLINK2
+       DATA 0
+       DATA 0,0,0
+DLINK2 MOVB @GR4LB,@>402(R13)
+       MOV @GETSTK,R5
+       MOVB *R13,@DSRAD1
+       INCT @DSRADD
+       BL *R5
+       LWPI DSRWS
+       LI R12,>2000
+DLINK3 INC R14
+       MOVB *R14+,@TYPE
+       MOV @NAMLEN,R3
+       AI R3,-8
+ 
+       BLWP @GPLLNK
+DSRADD BYTE >03
+DSRAD1 BYTE >00
+       MOVB @DR3LB,@VWA
+       MOVB R3,@VWA
+       SZCB R12,R15
+       MOVB @VRD,R3
+       SRL R3,5
+       MOVB R3,*R13
+       JNE SETEQ
+       COC @GSTAT,R12
+       JNE DSREND
+SETEQ  SOCB R12,R15
+DSREND RTWP
+********************************************************************************
+OLDINT BSS 2             A buffer to store the old interrupt
+********************************************************************************
+***************************
+LEN    BL @GET2
+       MOV *R5,R5
+LEN1   MOVB *R5,R4
+       SRL R4,8
+       MOV R4,*R6
+       B @RTN
+***************************
+ABS    BL @GET2
+       MOV *R5,*R6
+       ABS *R6
+       B @RTN
+***************************
+SGN    BL @GET2
+       CLR *R6
+       MOV *R5,R4
+       JEQ SGN2
+       JGT SGN1
+       DECT *R6
+SGN1   INC *R6
+SGN2   B @RTN
+***************************
+ASC    BL @GET2
+       MOV *R5,R5
+       INC R5
+       JMP LEN1
+*************************
+CHRS   BL @GET2
+       MOV R6,R1
+       LI R0,WKSP+6
+       MOV *R5,R3
+       ANDI R3,>00FF
+       AI R3,>0100
+       BLWP @STRSTR
+       B @RTN
+***************************
+STRS   BL @GET2
+       MOV R6,R1
+       MOV *R5,R6
+       BLWP @CNS
+       LI R0,GPBUFF+2
+       BLWP @STRSTR
+       B @RTN
+***************************
+CONCAT BL @GET3
+       MOV *R4,R4
+       MOV *R5,R5
+       LI R0,GPBUFF
+       MOV R0,R1
+       MOVB *R4,*R1
+       AB *R5,*R1+
+       JNC CONCA3
+       SETO *R0
+CONCA3 MOVB *R4+,R3
+       JEQ CONCA4
+       SRL R3,8
+CONCA1 MOVB *R4+,*R1+
+       DEC R3
+       JNE CONCA1
+CONCA4 MOVB *R5+,R3
+       JEQ CONCA5
+       SRL R3,8
+CONCA2 CI R1,GPBUFF+256
+       JHE CONCA5
+       MOVB *R5+,*R1+
+       DEC R3
+       JNE CONCA2
+CONCA5 MOV R6,R1
+       BLWP @STRSTR
+       B @RTN
+***************************
+VAL    BL @GET2
+       MOV *R5,R0
+       BLWP @CSN
+       MOV R0,*R6
+       B @RTN
+***************************
+INT    BL @GET2
+       MOV *R5,*R6
+       B @RTN
+***************************
+ 
+SEGS   LI R0,GPBUFF
+       MOV R0,R7
+       CLR *R7      in case of null string
+       BL @GET4
+       MOV *R3,R3
+       MOVB *R3,R2
+       SRL R2,8
+       MOV *R4,R4
+       MOV *R5,R5
+       JEQ SEGS3
+       C R4,R2      pointer past end of string?
+       JGT SEGS3
+ 
+       S R4,R2
+       INC R2
+       C R2,R5
+       JHE SEGS1
+       MOV R2,R5
+SEGS1  MOVB @WKSP+11,*R7+
+       A R4,R3
+SEGS2  MOVB *R3+,*R7+
+       DEC R5
+       JNE SEGS2
+SEGS3  MOV R6,R1
+       BLWP @STRSTR
+       B @RTN
+ 
+*****************************
+CGT    LI R2,>4000    0100 R2
+       JMP CEQ1       0100 R3
+ 
+CLT    CLR R2         0000 R2
+CLT1   CLR R3         0000 R3
+       JMP CMPARE
+ 
+CEQ    LI R2,>2000    0010 R2
+CEQ1   MOV R2,R3      0010 R3
+       JMP CMPARE
+ 
+CNE    LI R2,>4000    0100 R2
+       JMP CLT1       0000 R3
+ 
+CLE    LI R2,>2000    0010 R2
+       JMP CLT1       0000 R3
+ 
+CGE    LI R2,>2000    0010 R2
+       LI R3,>4000    0100
+ 
+CMPARE BL @GET3
+       MOV R6,R7
+       MOV R5,R6
+       BL @ASTRNG
+       JNE CMPAR5
+ 
+       MOV *R4,R4      compare strings
+       MOV *R6,R6
+       MOVB *R4+,R10
+       SRL R10,8       r10 has length of string at R4
+       MOVB *R6+,R11
+       SRL R11,8       R11 has length of string at R6
+       C R10,R11
+       JL CMPAR1
+       MOV R11,R12
+       JMP CMPAR2
+CMPAR1 MOV R10,R12
+CMPAR2 JEQ CMPAR4      shortest length to R12; if zero don't compare strings
+CMPAR3 CB *R4+,*R6+
+       JNE CMPAR6
+       DEC R12
+       JNE CMPAR3
+CMPAR4 C R10,R11
+       JMP CMPAR6
+ 
+CMPAR5 C *R4,*R6
+CMPAR6 STST R9
+       ANDI R9,>6000
+       C R2,R9
+       JEQ CMPAR7
+       C R3,R9
+       JEQ CMPAR7
+       CLR *R7
+       JMP CMPAR8
+CMPAR7 SETO *R7
+CMPAR8 B @RTN
+ 
+*****************************
+*IF     BL @GET1
+*       MOV *R6,R6
+*       JNE IF2
+*       INCT R13
+*       C *R13,R15
+*       JH IF3
+*IF2    MOV *R13,R13
+*IF3    B @RTN
+*****************************
+*XB STYLE IF/THEN/ELSE BELOW, BUT ONLY ONE IF AND ELSE PER LINE!!
+************************************
+IF	BL @GET1
+	MOV *R6,R6
+	JNE ENDIF		just go back and do the next line of code
+*now need to skip first part - look for ELSE or ENDIF
+IF2	MOV *R13+,R6		the inc will make it 1 past ELSE or ENDLIN
+	CI R6,ELSS   
+	JEQ ENDIF	
+	CI R6,ENDIF   
+	JNE IF2	
+	JMP ENDIF
+	
+****************************
+ELSS	LI R6,ENDIF
+ELSS1	C *R13+,R6		if come to ELSE then doing 1st part of ITE, need skip 2nd part
+	JNE ELSS1
+ENDIF	B @RTN
+******************************
+ 
+MINUS  BL @GET2
+       MOV *R5,*R6
+       NEG *R6
+       B @RTN
+*****************************
+MLTPLY BL @GET3
+ 
+       CI R4,RND
+       JEQ RAND2
+       CI R5,RND
+       JEQ RAND1
+ 
+       MOV *R5,R7
+       MPY *R4,R7
+       MOV R8,*R6
+       B @RTN
+ 
+RAND1  MOV R4,R5
+RAND2  MOV @>83C0,R1
+       CI R1,>C800     \
+       JL RAND5         attempt to auto randomize
+       MOVB @>8379,R1  /
+RAND5  LI R2,>6FE5
+       MPY R1,R2
+       AI R3,>7AB9
+       MOV R3,@>83C0
+       MOV *R5,R5
+ 
+RAND3  C R2,R5
+       JL RAND4
+       SRL R2,1
+       JMP RAND3
+ 
+RAND4  SWPB R3
+       DIV R5,R2
+       MOV R3,*R6
+       B @RTN
+*****************************
+DIVIDE BL @GET3
+       CLR R10      FLAG
+       CLR R7
+       MOV *R4,R8
+       JLT DIVID1
+       JMP DIVID2
+DIVID1 INV R10      if # being divided is <0 then flag=ffff
+       NEG R8
+DIVID2 MOV *R5,R3
+       JLT DIVID3
+       JMP DIVID4
+ 
+DIVID3 INV R10
+       NEG R3
+ 
+DIVID4 DIV R3,R7
+       MOV R10,R10
+       JEQ DIVID5
+       MOV R8,R8
+       JEQ DIVID6
+       INC R7
+DIVID6 NEG R7
+DIVID5 MOV R7,*R6
+       B @RTN
+*****************************
+ADD    BL @GET3
+       MOV *R4,*R6
+       A *R5,*R6
+       B @RTN
+*****************************
+SBTRCT BL @GET3
+       MOV *R4,*R6
+       S *R5,*R6
+       B @RTN
+*****************************
+NOT    BL @GET2
+       MOV *R5,*R6
+       INV *R6
+       B @RTN
+*****************************
+AND    BL @GET3
+       MOV *R5,*R6
+       MOV *R4,R8
+       INV R8
+       SZC R8,*R6
+       B @RTN
+*****************************
+XOR    BL @GET3
+       MOV *R5,R8
+       XOR *R4,R8
+       MOV R8,*R6
+       B @RTN
+*****************************
+OR     BL @GET3
+       MOV *R5,*R6
+       SOC *R4,*R6
+       B @RTN
+*****************************
+ 
+READ   C *R13,R15         is it an instruction
+       JH READBK         yes, all done with read
+       BL @GET1          otherwise get address of pointer
+       MOV @DATPNT,R8    data pointer to R8
+       CI R8,LASTDT      out of data statements?
+       JEQ READER        yep, report error
+       MOVB *R8,R7
+       SRL R7,8          length to R7
+       INC R7            add 1 for length byte
+       MOV R7,R9
+       A R8,R9           R9 points to next data in data section
+       MOV R9,@DATPNT    update data pointer
+       BL @ASTRNG        a string?
+       JEQ READ2         if yes goto READ2
+       MOV R8,R0         R0 points to length byte of string
+       BLWP @CSN         string to number
+       MOV R0,*R6        update numeric variable
+       JMP READ          keep going
+ 
+READ2  MOV R8,R0         string address into R0
+       MOV R6,R1         pointer to string
+       BLWP @STRSTR
+       JMP READ
+ 
+READBK B @RTN
+ 
+READER LI R0,>2100
+       BL @ERROR        DATA ERROR
+ 
+********************
+*BLWP @STRSTR - stores a string in the string buffer space
+*Calling R0 points to string
+*Calling R1 has address of pointer i.e. after GET1 put R6 into R1
+*******************************
+STRSTR DATA BLWPWS,STRST1
+ 
+STRST1 MOV *R13,R0
+       MOV @2(R13),R1
+ 
+       MOV *R1,R4
+       CLR @-2(R4)
+ 
+       MOVB *R0,R3
+       SRL R3,8
+       INC R3
+STRST2 MOV R3,R4
+       AI R4,3
+       ANDI R4,>FFFE
+       MOV @NXTSTR,R2
+       A R2,R4
+       C R4,@STKPNT
+       JLE STRST3
+       DECT R0      R0 gets doctored if GARBAG moves string
+       BL @GARBAG
+       INCT R0
+       JMP STRST2
+ 
+STRST3 MOV R4,@NXTSTR
+       MOV R1,*R2+
+       MOV R2,*R1
+STRST4 MOVB *R0+,*R2+
+       DEC R3
+       JGT STRST4
+       RTWP
+*************
+*BL @GARBAG  does a garbage collection & reports mem. error if necessary
+*************
+GARBAG LI R5,FRSTST
+       MOV R5,R6
+GARBA1 C R6,@NXTSTR
+       JEQ GARBA5
+       MOV @2(R6),R9
+       SRL R9,8
+       AI R9,4
+       ANDI R9,>FFFE
+       MOV *R6,R7
+       JEQ GARBA2
+       C R5,R6
+       JNE GARBA3
+       A R9,R5
+GARBA2 A R9,R6
+       JMP GARBA1
+GARBA3 MOV R5,*R7
+       INCT *R7
+ 
+       C R6,R0       \
+       JNE GARBA4     move R0 pointer in STRSTR if GARBAG moves string
+       MOV R5,R0     /
+GARBA4 MOV *R6+,*R5+
+       DECT R9
+       JNE GARBA4
+       JMP GARBA1
+ 
+GARBA5 C R5,R6
+       JNE GARBA6
+       CLR @>83C4
+       LI R0,>0B00
+       BL @ERROR
+GARBA6 MOV R5,@NXTSTR
+       B *R11
+ 
+*****************************
+RESTOR C *R13,R15
+       JH RESTO1
+       MOV *R13+,R0
+       JMP RESTO2
+RESTO1 LI R0,FRSTDT
+RESTO2 MOV R0,@DATPNT
+        B @RTN
+*****************************
+LET    BL @GET2
+       BL @ASTRNG
+       JEQ LET1
+       MOV *R6,*R5
+       JMP LET2
+LET1   MOV R5,R1
+       MOV *R6,R0
+       BLWP @STRSTR
+LET2   B @RTN
+*****************************
+STOP   B @XBRTN
+*****************************
+ONGOTO BL @GET1
+       MOV *R6,R6
+       DEC R6
+       SLA R6,1
+       A R6,R13
+*****************************
+GOTO   MOV *R13,R13
+       B @RTN
+*****************************
+ONGOSU BL @GET1
+       MOV *R6,R6
+       DEC R6
+       SLA R6,1
+       A R13,R6
+       MOV *R6,R8
+ONGOS1 C *R13,R15        \
+       JH GOSUB1          read through line numbers till R13
+       INCT R13           points to next instruction
+       JMP ONGOS1        /
+*****************************
+GOSUB  MOV *R13+,R8
+GOSUB1 DECT @STKPNT
+       C @NXTSTR,@STKPNT
+       JLE GOSUB2
+       BL @GARBAG
+GOSUB2 MOV @STKPNT,R12
+       MOV R13,*R12
+       MOV R8,R13
+       B @RTN
+*****************************
+RETURN MOV @STKPNT,R8
+*      CI R8,FRSTLN
+*      JL ONWARD, ELSE REPORT RETURN W/O GOSUB
+       MOV *R8,R13
+       INCT @STKPNT
+       B @RTN
+*****************************
+FOR    BL @GET4        !!!NEXT MUST occur after FOR in BASIC program
+       MOV *R4,*R3
+       MOV *R6,R8       test whether step is pos or neg
+       JLT FORX1
+       C *R4,*R5
+       JGT FORX4        pos step; if 1st # bigger than 2nd then bypass
+       JMP FORX2
+FORX1  C *R5,*R4        neg step; if 2nd # bigger than 1st then bypass
+       JGT FORX4
+FORX2  MOV *R5,*R13+
+       MOV *R6,*R13+
+FORX3  B @RTN
+ 
+FORX4  MOV R13,R5       pointer to R5
+       AI R5,-8         to jibe with NEXT address
+       AI R13,4         bypass 2 temp variables
+       LI R4,NEXT
+FORX5  C *R13+,R4       look for NEXT
+       JNE FORX5
+       C *R13+,R5       found NEXT, check if right one
+       JNE FORX5
+       JMP FORX3        return
+ 
+ 
+NEXT   MOV R13,R12       store R13 for noe
+       MOV *R13,R13      get pointer to variable name
+       MOV *R13+,R7      get address of variable in R7
+ 
+       LI R0,3           3 variables to bypas
+NEXT10 MOV *R13+,R1
+       C R1,R14          is this variable an array?
+       JLT NEXT12        no array, jump
+NEXT11 MOV *R1+,R2       bypass the right # elements in array
+       JEQ NEXT12        when zero is found then done with elements
+       INCT R13
+       JMP NEXT11
+NEXT12 DEC R0
+       JNE NEXT10
+ 
+       MOV *R13+,R5      actual limit to R5; step to R6 (not pointers!)
+       MOV *R13+,R6
+ 
+       MOV *R7,R1
+       A R6,*R7
+       MOV R6,R8
+       JLT NEXT1         if LT then step is negative
+       C *R7,R1
+       JLT DONE
+       C *R7,R5         positive step; if R7>R5 then done
+       JMP NEXT2
+NEXT1  C *R7,R1
+       JGT DONE
+       C R5,*R7         Negative step; compare limit with variable
+NEXT2  JGT DONE
+       B @RTN
+ 
+DONE   MOV R12,R13
+       INCT R13
+       B @RTN
+***************************
+KEY    BL @GET3
+       MOV *R4,R4
+       SWPB R4
+       MOVB R4,@>8374
+       BLWP @KSCAN
+       MOVB @>8375,R3
+       SRL R3,8
+       MOV R3,*R5
+       CLR R2
+       CI R3,>00FF
+       JEQ KEY3
+       MOV @>837C,R1
+       COC @HX2000,R1
+       JNE KEY2
+       INCT R2
+KEY2   DEC R2
+KEY3   MOV R2,*R6
+       B @RTN
+ 
+HX2000 DATA >2000
+*************************
+SCREEN BL @GET1
+       MOV *R6,R0
+       DEC R0
+       AI R0,>0710       REGISTER 7, foreground=black
+       BLWP @>2030       VWTR
+       B @RTN
+***************************
+COLOR  BL @GET3          WORKS LIKE XB
+       MOV *R4,R0
+       AI R0,>080F
+       MOV *R5,R1
+       DEC R1
+       SLA R1,4
+       A *R6,R1
+       DEC R1
+       SWPB R1
+       BL @VSBW
+       C *R13,R15
+       JLT COLOR
+       B @RTN
+****************************
+CHAR   BL @GET2
+       MOV *R5,R0
+       SLA R0,3
+       AI R0,>0300
+       LI R1,GPBUFF
+       MOV R1,R3
+       MOV *R6,R6
+       MOVB *R6+,R5
+       SRL R5,8
+       MOV R5,R2
+       JNE CHAR1
+       INC R2
+CHAR1  AI R2,15
+       ANDI R2,>FFF0
+       MOV R2,R4
+       SRL R2,1
+CHAR2  BL @CHARS1
+       MOV R7,R8
+       SLA R8,4
+       BL @CHARS1
+       A R7,R8
+       SWPB R8
+       MOVB R8,*R3+
+       DECT R4
+       JNE CHAR2
+       BLWP @VMBW
+       C *R13,R15
+       JLT CHAR
+       B @RTN
+ 
+CHARS1 DEC R5
+       JLT CHARS3
+       SETO R7
+CHARS2 INC R7
+       CB @CHARTB(R7),*R6
+       JNE CHARS2
+       JMP CHARS4
+CHARS3 CLR R7
+CHARS4 INC R6
+       B *R11
+ 
+CHARTB TEXT '0123456789ABCDEF'
+ 
+*******************************
+CLEAR  CLR R0
+       LI R1,>8000
+       LI R2,768
+       BL @VSBW
+       JMP CLEAR2
+CLEAR1 MOVB R1,@>8C00
+CLEAR2 DEC R2
+       JNE CLEAR1
+       B @RTN
+****************************
+GCHAR  BL @GET3
+       MOV *R4,R0
+       MOV *R5,R2
+       DEC R0
+       DEC R2
+       SLA R0,5
+       A R2,R0
+       SWPB R0
+       MOVB R0,@>8C02
+       SWPB R0
+       MOVB R0,@>8C02
+       NOP            !need  to kill time when reading
+       MOVB @>8800,R1
+       AI R1,>A000
+       SRL R1,8
+       MOV R1,*R6
+       B @RTN
+****************************
+VCHAR  BL @HCHGAD
+VCHAR1 BL @VSBW
+       DEC R6
+       JEQ HCHAR1
+       AI R0,>0020       down 1 row
+       CI R0,>4300       off bottom?
+       JL VCHAR1         no, keep looping
+       AI R0,>FD01       back up to top of screen, 1 col over to right
+       CI R0,>4020       if not  in top row then row1,col1
+       JL VCHAR1
+       CLR R0
+       JMP VCHAR1
+***************************
+HCHAR  BL @HCHGAD
+HCHAR4 BL @VSBW          Note use of BL, not BLWP
+HCHAR3 DEC R6
+       JEQ HCHAR1
+       INC R0
+       CI R0,>4300
+       JL HCHAR2
+       CLR R0
+       JMP HCHAR4
+HCHAR2 MOVB R1,@>8C00
+       JMP HCHAR3
+HCHAR1 B @RTN
+ 
+ 
+VSBW   ORI R0,>4000      WRITE OPERATION
+       SWPB R0
+       MOVB R0,@>8C02
+       SWPB R0
+       MOVB R0,@>8C02
+       MOVB R1,@>8C00
+       B *R11
+ 
+ 
+HCHGAD MOV R11,R10
+       BL @GET3
+       MOV *R4,R0    ROW to R0
+       MOV *R5,R2    COL to R2
+       MOV *R6,R1    ASCII to R1
+       C *R13,R15    See if next word is a number or an instruction
+       JLT HCHARX    optional number included
+       LI R6,1
+       JMP HCHARY
+HCHARX BL @GET1
+       MOV *R6,R6
+HCHARY DEC R0
+       DEC R2
+       SLA R0,5
+       A R2,R0
+       SWPB R1
+       AI R1,>6000
+       B *R10
+ 
+******************************
+ 
+PRINT  MOV @SCRNPT,R0
+       MOV R0,R9         R9 will be positive
+       CLR R10           flag so print knows when to return to INPUT
+       JMP PRINT2
+PRINT1 CLR R9
+PRINT2 MOV *R13,R8
+       CI R8,SEMI
+       JL PRINT9
+       CI R8,TAB
+       JH PRINBK
+       B *R8
+ 
+PRINT9 C R8,R15
+       JH PRINBK
+ 
+       BL @GET1
+       BL @ASTRNG
+       JEQ PRINT3
+       SETO R8
+       MOV *R6,R6
+       BLWP @CNS
+       LI R2,GPBUFF+2
+       MOV R6,R6
+       JLT PRINT4
+       MOVB *R2,@-1(R2)
+       INC @-2(R2)
+       LI R3,>2000
+       MOVB R3,*R2
+       DEC R2
+       JMP PRINT4
+PRINT3 MOV *R6,R2
+       CLR R8
+ 
+PRINT4 MOVB *R2+,R6
+       JEQ PRINT7
+       SRL R6,8
+       CI R0,>42E2        at beginning of line?
+       JEQ PRINT5
+       MOV R6,R7
+       A R0,R7
+       CI R7,>42FE
+       JH PRINT6
+PRINT5 MOVB *R2+,R1
+       AI R1,>6000
+       BL @VSBW
+       INC R0
+       DEC R6
+       JEQ PRINT7
+       CI R0,>42FE
+       JLT PRINT5
+PRINT6 BLWP @SCROLL
+       JMP PRINT5
+ 
+PRINT7 MOV R10,R10
+       JEQ PRINT8
+       B @INPUT4
+PRINT8 MOV R8,R8
+       JEQ PRINT1
+       CI R0,>42FE
+       JHE PRINT1
+       LI R1,>8000
+       BL @VSBW
+       INC R0
+       JMP PRINT1
+ 
+PRINBK MOV R9,R9
+       JLT PRINB3
+       JEQ PRINB2
+       ANDI R0,>0FFF
+PRINB2 LI R5,>42E2
+       BL @COMMA5
+PRINB3 MOV R0,@SCRNPT
+       B @RTN
+ 
+ 
+SEMI   SETO R9
+       INCT R13
+       JMP PRINT2
+COMMA  CI R0,>42F0
+       JL COMMA1
+COLON  CI R0,>42E2
+       JNE COLON1
+       LI R0,>02E2
+COLON1 LI R5,>42E2
+       JMP COMMA2
+COMMA1 LI R5,>42F0
+COMMA2 BL @COMMA5
+       JMP SEMI
+ 
+TAB    INCT R13
+       BL @GET1
+       LI R5,>42E1
+       A *R6,R5
+       BL @COMMA5
+       JMP PRINT1
+ 
+COMMA5 MOV R11,R12
+       LI R1,>8000
+COMMA6 C R0,R5
+       JEQ COMMA8
+       CI R0,>42FE
+       JL COMMA7
+       BLWP @SCROLL
+       JMP COMMA6
+COMMA7 BL @VSBW
+       INC R0
+       JMP COMMA6
+COMMA8 B *R12
+ 
+ 
+***********************
+*BL @ASTRNG  returns EQ if R6 points to a string, NE if R6 points to number
+***********************
+ASTRNG CI R6,SC0
+       JL ASTRN1
+       CI R6,NA0
+       JH ASTRN1
+       C R6,R6
+       JMP ASTRN2
+ASTRN1 C R6,R13          guaranteed Not equal
+ASTRN2 B *R11
+ 
+**********************
+*BLWP @SCROLL scrolls screen, sets R0 calling = >42E2
+**********************
+ 
+SCROLL DATA BLWPWS,SCROB
+ 
+*TEST OF FAST SCROLL!
+SCROB  LI R5,>8800
+       LI R6,>8C00
+       LI R7,>8C02
+       LI R0,>3F48
+SCROB1 LI R1,GPBUFF+20
+       AI R0,>C0D8
+       MOVB @BLWPWS+1,*R7
+       MOVB R0,*R7
+       LI R8,23
+SCROB2 MOVB *R5,*R1+
+       MOVB *R5,*R1+
+       MOVB *R5,*R1+
+       MOVB *R5,*R1+
+       MOVB *R5,*R1+
+       MOVB *R5,*R1+
+       MOVB *R5,*R1+
+       MOVB *R5,*R1+
+
+       DEC R8
+       JNE SCROB2
+       LI R1,GPBUFF+20
+       AI R0,>3FE0
+       MOVB @BLWPWS+1,*R7
+       MOVB R0,*R7
+       LI R8,23
+SCROB3 MOVB *R1+,*R6
+       MOVB *R1+,*R6
+       MOVB *R1+,*R6
+       MOVB *R1+,*R6
+       MOVB *R1+,*R6
+       MOVB *R1+,*R6
+       MOVB *R1+,*R6
+       MOVB *R1+,*R6
+ 
+
+       DEC R8
+       JNE SCROB3
+ 
+       CI R0,>4228
+       JNE SCROB1
+ 
+       LI R1,>7F80
+       MOVB R1,*R6
+       LI R5,28
+       MOVB R1,*R6
+       SWPB R1
+SCROB4 MOVB R1,*R6
+       DEC R5
+       JNE SCROB4
+       SWPB R1
+       MOVB R1,*R6
+       NOP
+       MOVB R1,*R6
+ 
+       LI R0,>42E2
+       MOV R0,*R13
+       RTWP
+ 
+*SCRLXB BLWP @>2018
+*      DATA >0026
+*      LI R0,>42E2
+*      MOV R0,*R13
+*      RTWP
+ 

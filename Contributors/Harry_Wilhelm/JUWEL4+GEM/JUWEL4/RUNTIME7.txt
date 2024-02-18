@@ -1,0 +1,248 @@
+
+*Disk access for the xb compiler  May 2 2015
+*This first cut will only do display variable files and only one file
+*open at a time
+	
+
+************************************
+*BLWP @CSN										 *
+*put address of string into calling R0; after BLWP R0 will contain the number *
+**************************************************************
+* BLWP @CNS	Convert integer number into a string		*
+*		R6: contains integer to be converted		*
+*		Results into GPBUFF+2
+**************************************************************
+*BL @GET1   Address of 1st argument in list goes to R6
+*BL @GET4	Address of 1st argument to R3, 4th to R6
+*****************************************************
+*DISPLAY format saves everything as a string
+**********************************************
+*C *R13,R15	See if next word is a number or an instruction
+*	JLT HCHARX	if LT then optional number included
+*      R15 is GPBUF if GT then next number is instruction
+*****************************
+*to find out if a variable or constant is a string:
+*	BL @ASTRNG		if R6 points to a string
+*	JEQ STRING		if EQ it's a string
+*****************************************
+*BLWP @STRSTR - stores a string in the string buffer space
+*Calling R0 points to length byte at front of string
+*Calling R1 has address of pointer i.e. after GET1 put R6 into R1
+*******************************
+*MG DSRLNK - EQ will be set on return if there was an error
+*R0 will have error code in MSB of R0
+**************************************
+
+*GPBUFF is >0118 bytes long
+
+********************
+EOF	BL @GET2	file # is in R5; temp variable in R6
+	MOV *R5,R8
+	BL @GTPABA
+	LI R1,>0900	opcode for status
+	BL @GODSR
+EOF3	MOVB R9,R0	restore msb pab address
+	DEC R0		byte 8 of pab
+	BL @VSBR	read byte 8
+	CLR R2
+	SLA R1,7
+	JNC EOF1
+	DEC R2		if a carry then disk is full
+EOF1	SLA R1,1
+	JNC EOF2
+	INC R2		if carry then at end of file
+EOF2	MOV R2,*R6
+	JMP OPENBK
+
+***************************************************
+*OPEN	next word is number, next word is 1st 2 bytes in PAB,
+*      then Device Name. If 4th word 
+*      word it is length such as 80
+*      
+
+PAB	DATA >0000,PAB+>0110,>5000,>0000,>6000
+*****************************************************
+OPEN	BL @GET3
+*file number pointed to by R9
+	MOV *R4,R8
+	BL @GTPABA	get vdp address of pab in R9
+*write the disk name to pab in VDP			
+	BL @WTDNAM
+*device name written to vdp, now prepare pab		
+	MOV *R5,@PAB	1st 2 bytes of PAB ready (computed by compiler)
+	LI R6,>0050	default length of 80	
+	C *R13,R15   See if next word is a number or an instruction
+	JGT OPEN1	no length was passed
+	BL @GET1	get pointer to length in R6
+	MOV *R6,R6	move the length to R6
+OPEN1	SLA R6,8	length to MSB
+	MOVB R6,@PAB+4	move length to byte 4,
+*PAB is ready, send to VDP and call DSRLNK
+	MOV R9,R0
+	LI R1,PAB
+	LI R2,9
+	MOV R9,R3
+	AI R3,>00C0			buffer starts >C0 bytes after beginning of PAB
+	MOV R3,@2(R1)	bytes 2+3 of PAB
+	BLWP @VMBW
+	CLR R1		0 is opcode for open
+	JMP CLOSE2
+*************************************************
+DELETE	BL @GET1
+	LI R9,>3700
+	BL @WTDNAM
+	LI R1,>0700	opcode for delete
+	JMP CLOSE2
+***********************************************	
+*WRITE disk name to PAB	
+WTDNAM	MOV R9,R0
+	AI R0,9	now R0 points to address in VDP
+	MOV *R6,R1	R1 points to string
+	MOVB *R1,R2	length byte to r2
+	SRL R2,8	to lsb
+	INC R2		one more to include length byte
+	BLWP @VMBW	write name of file to vdp	
+	B *R11
+***************************************************	
+GODSR	MOV R11,R10	because of BL @VSBW
+	MOV R9,R0	address of pab
+	BL @VSBW	send opcode to VDP
+*NEXT 4 LINES CLEAR BYTE1 OF PAB TO FIX ERROR BUG	
+*	SRL R1,1	CLOSE is >0101; after SRL MSB is 0 and a carry
+*	JNC GODSR2	not CLOSE so don't mess with byte 1 of PAB
+*	MOVB R1,@>8C00	clear R1 of PAB so no spurious error
+
+*	CI R1,>0100
+*	JNE GODSR2
+*	SWPB R1
+*	INC R0
+
+*	MOVB R1,@>8C00
+	INC R0
+	BL @VSBR
+	ANDI R1,>1F00
+	BL @VSBW
+GODSR2	AI R0,8	now R4 points to name length
+	MOV R0,@>8356		pointer to name length to >8356
+	
+	BLWP @DSRLNK
+	DATA 8
+	JEQ GODSRE	if EQ then there was an error
+*	MOV R9,R0	R0 points to PAB
+*	INCT R0	byte 2 of PAB
+*	BL @VSBR
+*	ANDI R1,>E000      mask all but bits 1,2,3 binary 11100000
+*	JNE GODSRE		if any bit is set there is an error
+*	MOV @>837C,R1		no bit set, check status byte
+*	SLA R1,3		shift out bit 2 (condition bit)
+*	JOC GODSRE		if a carry then bit was set, there was an error (bad dev name)
+GODSR1 B *R10
+
+*R0 will have error code (0 to 7)	
+GODSRE	MOV @ERRLN,R13	goto line # contained in ERRLN
+	MOV @DERRLN,@ERRLN	default line is LASTLN
+	B @RTN
+	
+*sub below gets address of PAB, put file# in R8, address will be in r9	
+GTPABA	LI R2,>0206
+	MPY R2,R8	now r9 is >0206,>040C,>0612
+	A @>8370,R9
+	AI R9,->01DD		>3800 for 3 files and standard XB. >C0 for PAB, then buffer 256BYTE
+
+	B *R11
+	
+*************************************************************************
+*CLOSE	next word is number
+CLOSE	BL @GET1	get the file number to close 
+	MOV *R6,R8
+	BL @GTPABA
+	LI R1,>0100	Close is >01; the LSB is >01; with SRL there is a carry
+CLOSE2	BL @GODSR
+OPENBK	B @RTN
+
+*************************************************************************
+*INPUTN  next word is number, words after that are strings or #s to input
+LINPTN
+INPUTN	BL @GET1	get the file number to input from but will ignore
+	MOV *R6,R8
+	BL @GTPABA
+INPTN1	C *R13,R15   See if next word is a number or an instruction
+	JGT OPENBK 	(was JH) if next number is instruction then return
+	LI R1,>0200
+	BL @GODSR	otherwise read from disk
+INPTNL	MOV R9,R0	Need to find out how many bytes were read
+	AI R0,5	5th byte of PAB
+	BL @VSBR	   read length byte
+	MOVB R1,@GPBUFF  put the length byte into GPBUFF
+	SRL R1,8		length to lsb of R0
+	MOV R1,R2
+	LI R1,GPBUFF+1	Put string after length byte
+	AI R0,>00BB		>00BB+5=>00C0 - start of buffer in vdp
+	BLWP @VMBR	copy string to gpbuff
+	LI R0,GPBUFF		gpbuff in R0
+	
+INPTN2 BL @GET1	fetch address of string or number into R6
+	BL @ASTRNG	see if it is a string or number
+	JEQ INPTN5
+*a number
+*R0 points to GPBUFF
+	BLWP @CSN
+	MOV R0,*R6	assign the number
+	JMP INPTN1
+*a string
+INPTN5	MOV R6,R1	now R1 points to the string.
+	BLWP @STRSTR
+	JMP INPTN1
+
+***************************************************
+*
+*PRINTN   next word is number, words after that are strings or #s to print
+*         look for trailing comma for pending print operation
+
+PRINTN	BL @GET1	get file number to print to (will ignore this for now)
+	MOV *R6,R8
+	BL @GTPABA
+PRNTN1	C *R13,R15	out of strings/numbers to print to file?
+	JGT OPENBK	(was JH) go back if done
+	BL @GET1	get pointer to string/number
+	BL @ASTRNG	see if it's a string
+	JEQ PRNTN8	handle strings at prntn8
+*a number if here 
+*N.B. in XB positive numbers padded with space on either side
+*Negative numbers have a - in front and padded with trailing space
+*length byte adjusted accordingly i.e. a zero has a length of 3
+*-1 has a length of 3  (this is XB format)
+	MOV *R6,R6
+	BLWP @CNS	now string is in gpbuff+2
+	LI R1,GPBUFF+2 R1 points to beginning of string
+	JMP PRNTN9	
+PRNTN8	MOV *R6,R1	address of string to R1
+PRNTN9	MOVB *R1,R2	put length byte into msb of R2 and inc r1
+	SRL R2,8	# bytes to write to buffer
+	INC R1
+	MOV R9,R0	start of PAB
+	AI R0,>00C0	start of buffer	
+	BLWP @VMBW	write string to buffer (without length byte)
+	AI R0,>FF45	Subtract >00c0 add 5 (5th byte of PAB)
+	MOV R2,R1	
+	SWPB R1	write the length byte
+	BL @VSBW	write the # bytes into PAB
+	LI R1,>0300 	Opcode for write
+	BL @GODSR
+	JMP PRNTN1
+	
+****************************************************
+*ERROR IS USED BY DISK ACCESS AND BY CALL LOAD, SO IT WAS MOVED TO RUNTIME3
+*ERROR	   look for line number following error
+*ERRLN contains line number to go to if error
+*ERROR	LI R3,LASTLN
+*	C *R13,R15	see if line number follows error
+*	JGT ERROR5
+*	MOV *R13+,R3
+*ERROR5	MOV R3,@ERRLN
+*	JMP OPENBK
+
+*RETURN - must doctor RETURN to look for RETURN NEXT or RETURN 1234(done)
+********************
+
+*Must make close file when program stops

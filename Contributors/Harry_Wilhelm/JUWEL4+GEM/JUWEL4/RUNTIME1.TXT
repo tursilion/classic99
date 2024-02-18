@@ -1,0 +1,1091 @@
+FRSTST EQU >A000	address of start of string buffer space 
+*iF USING LOW MEMORY THIS SHOULD BE AORG'D TO >2008
+
+*STRPAD	BSS >0040	place to store scratchpad (>8300 to >833F)
+*GPBUFF BSS >0118	room for 33 char defs+two more for scrolling
+*STRPAD	EQU >2008 when in low memory
+*GPBUFF	EQU >2048 when in low memory
+*end of GPBUFF equ >2160 when in low memory
+	
+******************************************
+*The code for saving in EA5 format is kept in STRPAD and GPBUFF
+*This is used when saving in EA5 format with runtime in low memory
+*It is ignored when saving inline to high memory
+
+PABADR	EQU >0700	address of start of PAB, just before buffer
+DSKBUF	EQU >09A0  	(was>0A00)	address of buffer for file saving
+
+*EAPAB	DATA >0600,DSKBUF,>0000,>0100,>0000
+*		0 1   2 3   4 5   6 7   8 9
+*PAB is at char 128, put there by XB program
+*********************************** 
+
+***************************** 
+
+STRPAD
+EA5WS	BSS >0020
+EA5	BSS >0020
+GPBUFF	BSS >00B0
+
+*CODE FROM >2028 TO 20F7 MUST BE POKED INTO MEMORY BY XB WHEN USING XB 2.8 G.E.M.
+
+	
+*CODE TO BE POKED STARTS AT >2028
+************************************
+*EA5	LWPI EA5WS
+*****************READ FILE NAME FROM SCREEN
+*	LI R0,>0222
+*	CLR R1
+*RDSCR1	BL @VSBR
+*	CI R1,>8100
+*	JL RDSCR2
+*	AI R1,>A001		inc LSB and remove screen offset from MSB
+*	AI R0,PABADR+10->0222
+*	BL @VSBW
+*GPBUFF	AI R0,>0223-PABADR-10  back to screen and incremented
+*	JMP RDSCR1
+*RDSCR2	SWPB R1
+*	LI R0,>0709
+*	BL @VSBW
+
+
+*	LI R10,>1FFA
+*	MOV @>FFE6,R4		now R4 points to startRUNEA
+*	LI R6,>FF9E		after this is XB stuff.
+*	S R4,R6    		LENGTH now in r6
+	
+*EA5B	SETO @HEADER		not the final file
+*	C R6,R10
+*	JGT EA5C      	if GT then more than 1 file from himemory
+* last file in himem
+*EA5B1	MOV R6,R1
+*	JMP EA5D
+ 
+*EA5C	MOV R10,R1
+
+*EA5D	MOV R1,@HEADER+2
+*	AI R1,6
+*	LI R0,>0706
+*	BL @VSBW
+*	SWPB R1
+*	INC R0
+*	BL @VSBW
+		
+*	MOV R4,@HEADER+4	
+*	LI R0,DSKBUF+>4000
+*	LI R1,HEADER
+*	LI R2,6
+*	BLWP @VMBW	
+*	SWPB R0
+*	MOVB R0,@>8C02
+*	SWPB R0
+*	MOVB R0,@>8C02
+*VMWLP1	MOVB *R1+,@>8C00
+*	DEC R2
+*	JNE VMWLP1
+	
+*	MOV R4,R1
+*	MOV @HEADER+2,R2	# bytes to write into R2
+*	BLWP @VMBW
+*VMWLP2	MOVB *R1+,@>8C00
+*	DEC R2
+*	JNE VMWLP2
+ 	
+*write  to disk	
+*	LI R0,PABADR+9		
+*	MOV R0,@>8356
+*	BLWP @DSRLNK
+*	DATA 8	
+*	JEQ RPTERR	
+
+
+*check for disk error	
+*	LI R0,PABADR+1
+*	BL @VSBR
+*	SRL R1,13
+*	JNE RPTERR
+	
+*	MOVB @>837C,R1
+*	ANDI R1,>2000    bit 2
+*	JEQ BKPDSR
+	
+*report error********************
+*RPTERR	LI R0,>02E2
+*	LI R2,FILERR
+*RPTER1	MOVB *R2+,R1
+*	JEQ RPTER2
+*	AI R1,>6000
+*	BL @VSBW
+
+*END OF CODE THAT MUST BE POKED IN.	
+********************************************************	
+*AT >20F8	
+	INC R0
+	DATA >10F8		JMP RPTER1
+RPTER2	MOV R2,@>832C
+	JMP BACK
+
+FILERR	TEXT 'FILE ERROR '
+	BYTE 0
+	DATA >838B,>0000	double colon and END
+
+**************************************
+	
+BKPDSR	MOV @HEADER,R7
+	JEQ BACK
+*increment file extension	
+
+	LI R0,PABADR+9
+	BL @VSBR
+	SRL R1,8
+	A R1,R0
+
+	BL @VSBR
+	AI R1,>0100
+	BL @VSBW
+	
+	A R10,R4
+	S R10,R6
+	DATA >1598		JGT EA5B
+*done with high memory, now for runtime in low memory	
+	LI R4,>2160		starting address of low memory runtime routines
+	LI R6,>1EA0		length of low mem runtime routines (2160-3fff)
+	CLR @HEADER		last file to write
+		
+	DATA >1095		JMP EA5B1
+ 	
+BACK	LWPI >83E0
+	B @>006A		back to TI XB
+
+HEADER BSS 6		3 word header at beginning of each ea5 file
+
+	BSS >0150-HEADER+EA5WS
+	TEXT 'FF'	
+	
+
+*********************************************************************
+*IF USING LOW MEMORY THE ACTUAL CODE WILL START AT >2160
+*RUNTIME MODULE FOR INTEGER ARITHMETIC 
+*fixed sound list in GROM bug 4/12/2015
+*	TEXT 'RUN   '
+*	DATA RUN
+*	TEXT 'RTN   '
+*	DATA RTN
+*if going to use runtime routines in low memory then must store pad in a different location than 3800	
+VMBW   DATA BLWPWS
+       DATA VMBW1
+ 
+VMBR   DATA BLWPWS
+       DATA VMBR1
+ 
+VMBW1  BL @VSBW2
+	LI R9,>8C00
+	SRL R7,3
+	JEQ VMBW1B
+VMBW1A	MOVB *R3+,*R9
+	MOVB *R3+,*R9
+	MOVB *R3+,*R9
+	MOVB *R3+,*R9
+	MOVB *R3+,*R9
+	MOVB *R3+,*R9
+	MOVB *R3+,*R9
+	MOVB *R3+,*R9
+	DEC R7
+	JNE VMBW1A
+VMBW1B	ANDI R8,7
+	JEQ VMBW5
+VMBW2  MOVB *R3+,*R9
+       DEC R8
+       JNE VMBW2
+VMBW5  RTWP
+***********************
+VMBR1  BL @VSBR2
+	LI R9,>8800
+	SRL R7,3
+	JEQ VMBR1B
+VMBR1A	MOVB *R9,*R3+
+	MOVB *R9,*R3+
+	MOVB *R9,*R3+
+	MOVB *R9,*R3+
+	MOVB *R9,*R3+
+	MOVB *R9,*R3+
+	MOVB *R9,*R3+
+	MOVB *R9,*R3+
+	DEC R7
+	JNE VMBR1A
+VMBR1B	ANDI R8,7
+	JEQ VMBR5
+VMBR2  MOVB *R9,*R3+
+       DEC R8
+       JNE VMBR2
+VMBR5  RTWP
+**********************
+	
+*RUNTIME MODULE FOR INTEGER ARITHMETIC
+VSBW96	AI R1,>6000		screen offset
+VSBW	SWPB R0
+	MOVB R0,@>8C02	bl routine, set up same as
+	SWPB R0
+H4000	ORI R0,>4000		blwp @vsbw
+	MOVB R0,@>8C02		to run faster
+	ANDI R0,>BFFF
+	MOVB R1,@>8C00
+	
+	B *R11
+ 
+VSBR	SWPB R0			now is BL @VSBR
+	MOVB R0,@>8C02
+	SWPB R0
+	MOVB R0,@>8C02
+	NOP
+	MOVB @>8800,R1
+	B *R11
+ 
+VWTR	DATA BLWPWS
+	DATA VWTR1
+ 
+KSCAN	DATA BLWPWS
+	DATA KSC1
+ 
+ERRXB	DATA >2038
+	DATA >2090
+ 
+KSC1	LWPI >83E0
+	MOV R11,@BLWPWS+22
+	BL @>000E
+	LWPI BLWPWS
+	MOV R11,@>83F6
+	RTWP
+ 
+*************************
+VSBR1	BL @VSBR2
+	MOVB @>8800,@>0002(R13)
+	RTWP
+**************************
+VWTR1	MOV *R13,R1
+	MOVB @>0001(R13),@>8C02
+H8000	ORI R1,>8000
+	MOVB R1,@>8C02
+	RTWP
+**************************
+VSBW2	LI R3,>4000
+	JMP VSB4
+VSBR2	CLR R3
+VSB4	 A *R13,R3
+	MOVB @BLWPWS+7,@>8C02
+	MOVB R3,@>8C02	ready to write/read to VDP
+	MOV @2(R13),R3	R1 calling to R3 (mem buffer)
+	MOV @4(R13),R7	R2 calling to R7 (length)
+	MOV R7,R8		copy of length
+	B *R11
+ 
+ 
+ 
+*FRSTST EQU >D000	address of start of string buffer space - maybe can be >A000
+ 
+FAC    EQU >834A
+NBR	EQU >8000	puts >8000 in code where NBR was
+WKSP	EQU >8300
+BLWPWS EQU >8320	!BLWPWS must follow WKSP
+*MONWS	BSS 32		workspace for the monitor
+MONWS	EQU >83A0	should be OK, 83a0 to 83c0 not used by compiler i hope!
+SCRENE	EQU MONWS+10		will be 0 if in screen1 or SETO if screen2
+*STRPAD BSS 64		temp storage for PAD >8300 to >8340
+*STRPAD	EQU >3800	buffer in low memory for pad
+*GPBUFF BSS >0118	room for 33 char defs+two more for scrolling
+STKPNT DATA 0		stack pointer
+	DATA 0		backpointer for NULLST
+NULLST DATA 0		a null string for initialize
+SCRNPT DATA 0		points to current position on screen
+ATPNTR DATA 0		screen pointer for accept/display at
+VLDSTR	DATA 0		pointer to validate string
+SIZLTH	DATA 0		stores size length
+DATPNT DATA 0		points to current position in DATA statements
+NXTSTR DATA 0		points to next string space for creating strings
+XBEA5	DATA 0		MSB is flag for xb/ea5 0 if xb, <>0 if ea5
+VSFLAG	DATA >FFFF
+ERRLN	DATA LASTLN	line number to go to on disk access error(default stop)
+DERRLN DATA LASTLN	default error line (LASTLN) which will halt program
+	
+*HX0001	DATA >0001	byte 0 used in rt4  gasize+2 IS 1
+HX0010	DATA >0010	used in rt3
+*HX001D	DATA >001D	??????
+HX001E	DATA >001E	used in rt3
+*HX0020	DATA >0020   ?????
+*HX06B0	DATA >06B0   ????
+*HX8000	DATA >8000	useed in runtime3
+*HX0870	DATA >0870	????
+*HX2000 DATA >2000	used in runtime 2  NOW CEQ+2
+HX6080	DATA >6080	used in runtime5
+*HXFF00	DATA >FF00	byte FF used in RT3 and RT5
+HXFFF0	DATA >FFF0	used in RT5
+ 
+ 
+ 
+******************
+*STORES >40 from scratchpad into buffer.	Lets us use fast memory for workspaces
+ 
+SWPPAD MOV R11,@>83E6	to R3 of workspace 83E0
+	MOV R0,@>83E8		to R4 of >83e0 workspace
+	LWPI >83E0
+	LI R0,>8300
+	LI R1,STRPAD		puts PAD at >3800, must change if use lowmem
+ 
+SWPPA1 MOV *R1,R2
+	MOV *R0,*R1+
+	MOV R2,*R0+
+	CI R0,>8340	was >8360, moved monws to >83a0 to fix disk access prob.
+	JNE SWPPA1
+	
+	CLR @>83C4
+	MOV R4,R0
+	B *R3
+******************
+ 
+RGSTRS DATA >0320,>0400,>0717,0	VDP registers needed in EA5
+ 
+ 
+ERRRPT	MOVB @XBEA5,R1
+	JNE XBRTN2		 if in EA5 then just quit
+ 
+ERROR1 BL @SWPPAD		restores scratchpad to startup values
+	BLWP @ERRXB		reports error
+ 
+****************************
+*INTERRUPT ROUTINE - scans for Fctn 4 if in XB, and does sound list
+ 
+*SCREEN is in r5 of MONWS - don't use!
+*Sound List processing routine below
+*R6=counter for 2nd slprocessor
+*R9=address 2nd sl processor
+*R12=old >83CC
+*R13=old >8344		screen	
+*R14=>8800
+*R15=>83CC	
+*R12=old sound list pointer (*R15)
+ 
+CLRSCN MOV R11,R10		comes here if running in XB
+	MOVB @>83DC,R11	don't scan for Fctn 4 if in GPL routine
+	JEQ CLRSC1
+	BL @>0020		scans for Fctn 4
+	JEQ XBRTN
+CLRSC1	MOV R10,R11
+EAINT	MOVB @HX8000+3,@>8374	keyboard mode 0
+	CLR @>83D6		clear the screen timeout counter
+	
+MONITR	LWPI MONWS
+*fix for soundlist from GROM bug
+	MOV @>83FC,R1   If rightmost bit is 0 then sound list is in grom
+	SRL R1,1
+	JNC SLP2	sound list in grom, check for 2nd sound list player
+
+	C *R15,R12
+	JEQ SLP2	if EQ sound list pointer not changed, check 2nd sound listo go on
+	CLR R1		CLR R1	
+	MOVB *R14,R1	read next byte from VDP
+	
+	JGT SLIST5	if 1 to 127 is a length byte so go on		
+	MOV *R15,R0	sound list pointer into R0, points to a 00 or a FE
+SLIST1	INC R0		point one past code			
+	MOVB *R14,R4	will either be 0 or msb of address to jump to
+	JEQ SLIST1	a zero, so read another byte
+	MOVB *R14,@MONWS+9	move LSB address to lsb R4
+	MOV R1,R1		compare to zero
+	JEQ SLIST4		if zero a simple jump	
+	CI R1,>FE00	FE is code for loop
+	JNE SLIST5	not a loop, so just skip (FF is the last possibility)
+	MOVB *R14,R1	loop counter into R1
+	MOVB *R14,R2	number to loop into R2
+	INCT R0 	R0 now points to count		
+	AI R1,>FF00	dec MSB R1
+	JEQ SLIST2	if it's a zero then done with loop
+	BL @VSBW	not a zero, so write decremented count back to vdp
+	JMP SLIST4	
+SLIST2	MOVB R2,R1	counter is now zero, so need to reset counter
+	BL @VSBW	reset counter
+	C *R0+,*R0+	R0 =R0+4 now points past loop counters
+	BL @VSBR	read byte to see if it's length or code
+	MOV R1,R1
+	JGT SLIST3	if R1 GT 0 then so its a sound list
+	JMP SLIST1	it was code(0 or FE) so do over
+SLIST3	MOV R0,R4	address of sound list to R4
+SLIST4	MOV R4,*R15	move jump address to sound list pointer
+SLIST5	MOV *R15,R12	store sound list pointer
+**Second sound list processor - needs >fd as 1st byte
+SLP2	MOV R6,R6	countdown =0?
+	JEQ MONITG
+	DEC R6
+	JNE MONITG
+	MOV R9,R0	address of second soundlist to r0
+	BL @VSBR
+	SRL R1,8
+	A R1,R9
+	INCT R9		now R9 points to new address
+SLP2A	MOVB @>8800,@>8400	data to 9919
+	DEC R1
+	JNE SLP2A
+	MOVB @>8800,R6		length byte
+	SWPB R6
+ 
+MONITG LWPI >83E0		no change in run state, go back
+	B *R11
+***************************************************************
+XBRTN	MOVB @XBEA5,R0
+	JEQ XBRTN1
+XBRTN2	LIMI 2
+	JMP XBRTN2
+*	BLWP @>0000		no place to go to if in EA5, so quit
+XBRTN1 MOV @SCRENE,R10
+	JEQ XBRTN3
+	BL @SCRN1B		saves screen2 and loads screen1
+XBRTN3	BL @SWPPAD		restores scratchpad so can return to XB
+	B @>006A
+****************************
+GASIZE LI R7,1		\
+GASIZ1 MOV *R10+,R5
+	JGT GASIZ2
+	B *R11
+GASIZ2	INC R5
+	S @OPTBAS,R5	used by start when initializing variables
+	MOV R7,R6
+	MPY R5,R6
+	JMP GASIZ1
+
+
+
+
+*Comes to RUNEA5 if running from EA5 
+*EA HOUSEKEEPING TO SET UP CHARACTERS
+*USING GPLWS!!
+RUNEA5 MOVB @HX8000+3,@>837C	clears the byte at >837C (RUNEA starts comes here)
+	BLWP @GPLLNK	
+	DATA >27E3		GPL routine to load characters, colors,registers
+*				could use jump table at >201c
+	LI R1,RGSTRS		\
+LDRGST MOV *R1+,R0
+	JEQ LDCLR		 modifies vdp registers to match XB
+	BLWP @VWTR
+	JMP LDRGST		/
+ 
+LDCLR	LI R0,>0800		\
+	LI R1,>1000
+LDCLR1 BL @VSBW		 fill color table with >10
+	INC R0
+	CI R0,>0820
+	JNE LDCLR1		/
+ 
+	BL @SPINIT		initialize sprite tables (also used by delsprite)
+
+*VDP is now set up to match XB
+
+	SETO @XBEA5	
+	SETO R0
+	LI R1,EAINT	
+	JMP RUN10
+	
+***************************
+CON	CLR R0			GPLWS used here
+	JMP RUN1
+****************************
+RUNV	LI R0,1	RUNV will run program but NOT clear out screen2
+	JMP RUN1
+*******************
+RUN	SETO R0
+RUN1	CLR @XBEA5
+	LI R1,CLRSCN
+	
+RUN10	MOV R1,@OLDINT
+ 
+	BL @SWPPAD
+	LWPI WKSP
+	MOVB @>0073,@>83C6	Puts a 2 in >83C6 which is keyboard mode 5
+	 
+	MOV @>83E0,R0		>83E0 was R0 when started up
+	JLT MONIT3		if SETO then initialize screen2
+	JGT STAR0		flag was a 1 so skip screen2 initialize
+
+*it was CALL LINK"CON") so check what screen we were in
+	MOV @MONWS+10,R0		if CON and SCRN1 then go back
+	JEQ RUN2Q
+	BL @SCRN2A		prog broke in SCRN2 so restore it
+RUN2Q	B @CYAN		was CON so skip initialization	
+*******************************************
+
+*THIS CODE CLEARS THE SCREEN, SETS COLORS IN SCREEN2
+MONIT3	CLR @MONWS+10		if not CON then SCRN1
+	MOV @SC1DC,@SC1CLR	screen1 default color
+	MOV @SC2DC,@SC2CLR	screen2 default color
+	
+	LI R0,>132C		\
+MONIT4	AI R0,>F0C4
+	LI R1,GPBUFF
+	LI R2,196		
+	BLWP @VMBR		  copies patterns and cursor to scrn2 table
+	AI R0,>1000
+	BLWP @VMBW
+	CI R0,>163C
+	JLT MONIT4		/
+	BL @INVID
+	
+	LI R0,>1800
+	LI R1,>F000	white on blue
+MONIT5	BL @VSBW
+	INC R0
+	CI R0,>1820
+	JNE MONIT5
+	
+	LI R0,>0C00		\
+	LI R1,>8000
+	BL @VSBW		 clears the screen
+	LI R2,767
+XB255A	MOVB R1,@>8C00
+	DEC R2
+	JNE XB255A		/
+	
+	BL @DFWNDW		sets default window borders
+***** 
+	
+STAR0	MOV @DERRLN,@ERRLN	default disk error line is last line (stop)
+	LI R10,NV0		XB and EA5 go here to continue initializing
+STAR1	CI R10,SC0
+	JEQ STAR2
+	CLR *R10+
+	JMP STAR1
+STAR2	LI R10,SV0
+	LI R2,NULLST
+STAR3	CI R10,SA0
+	JEQ STAR4
+	MOV R2,*R10+
+	JMP STAR3
+STAR4	CI R10,NA0
+	JEQ STAR6
+	BL @GASIZE
+	JLT STAR4		added to pass array 3/2/18
+STAR5	MOV R2,*R10+
+	DEC R7
+	JNE STAR5
+	JMP STAR4
+STAR6	CI R10,FRSTDT
+	JEQ STAR8
+	BL @GASIZE
+	JLT STAR6   		added for pass array 3/2/18
+STAR7	CLR *R10+
+	DEC R7
+	JNE STAR7
+	JMP STAR6
+ 
+STAR8	LI R13,FRSTLN		start program from 1st line
+ 
+	MOV @XBEA5,R0
+	JEQ STAR9
+	LI R14,RUNEA		all memory above RUNEA is free for stack etc.
+	JMP STAR10
+ 
+STAR9	MOV @>8386,R14	HIGHEST FREE ADDRESS-makes sure program doesn't hit XB
+	DEC R14								program
+	ANDI R14,>FFFE
+STAR10 MOV R14,@STKPNT
+	LI R14,>02E2
+	MOV R14,@SCRNPT
+	LI R14,FRSTDT
+	MOV R14,@DATPNT
+	LI R14,FRSTST
+	MOV R14,@NXTSTR
+ 
+	LI R14,SA0		pointer to start of array space
+	LI R15,GPBUFF		pointer to start of runtime module
+ 
+
+	LWPI MONWS	set up monitor workspace first
+	CLR R6		sets second soundlist timer to 0
+	CLR R13		screen	
+	LI R14,>8800	read address from VDP
+	LI R15,>83CC	pointer to sound list pointer
+	MOV *R15,R12	R12=old sound list pointer
+	LWPI WKSP
+ 
+ 
+	
+	CLR @SCRENE		flag for screen1
+	
+*CYAN	MOV @SCRENE,R10	which screen did we break/start in (monws+10)
+*	JEQ CYAN1		if =0 then in screen1
+*	BL @SCRN2A
+ 
+CYAN	MOV @OLDINT,@>83C4	interrupt hook scans for fctn 4
+	MOVB @>8379,@>83C0	random # seed
+*************************************************
+	
+RTN	LIMI 2			the main loop, all subs come back to here
+	LIMI 0
+	MOV *R13+,R12
+	B *R12			r12 has code. i.e. GOTO, SPRITE, etc.
+*************************************************
+*BLWP @GETARR
+*DATA 4
+*gets pointer to actual element in array & puts into R4
+**MAY 10, 2019 replaced R3 with R4
+*R3 is >8320 which is used by GPL input
+*R8 is >832A which is used by GPL input need to preserve these
+ 
+GETARR DATA BLWPWS-6,GETAR	R13 of WKSP becomes R0 of subroutine's wksp
+GETAR	MOV *R14+,R12	get following word of data after BLWP @GETARR
+	SLA R12,1		multiply x 2
+	A R13,R12		R12 points to R? in WKSP that points to array header
+	MOV *R12,R4		R4 points to array header
+	
+*******************trying to pass array
+GTAR1B	MOV *R4,R10		Compare value with zero
+	JGT GTAR1A		if GT 0 it is the dimension - i.e a normal array
+	MOV *R4,R4		if 0 or LT then passed array
+	JMP GTAR1B		need to jump back incase passed arrays are chained
+**************************************
+
+GTAR1A	MOV R4,R10
+	BL @GASIZE		r7 will have # elements in array
+	MOV R8,R11	R8 is >832a which is used when printing to screen
+	CLR R6			R6 will end up with offset in array
+GETAR1 MOV *R4+,R5		get dim from array header
+	JEQ GETAR2		if a zero then done
+	INC R5
+	S @OPTBAS,R5
+	MOV R7,R8
+	CLR R7			prepare for divide
+	DIV R5,R7
+	MOV *R0+,R9
+	MOV *R9,R9
+	S @OPTBAS,R9
+	MPY R7,R9
+	A R10,R6
+	JMP GETAR1
+ 
+GETAR2 SLA R6,1		mpy x2 because each element takes 1 word
+	A R6,R4
+	MOV R4,*R12
+	MOV R11,R8		restore >831A
+	RTWP
+************************************
+GET4	MOV *R13+,R3
+	C R3,R14
+	JLT GET3
+	BLWP @GETARR
+	DATA 3
+GET3	MOV *R13+,R4
+	C R4,R14
+	JLT GET2
+	BLWP @GETARR
+	DATA 4
+GET2	MOV *R13+,R5
+	C R5,R14
+	JLT GET1
+	BLWP @GETARR
+	DATA 5
+GET1	MOV *R13+,R6
+	C R6,R14
+	JLT GET0
+	BLWP @GETARR
+	DATA 6
+GET0	B *R11
+ 
+*******************************************************************************
+*BLWP @CSN										 *
+*put address of string into calling R0; after BLWP R0 will contain the number *
+*******************************************************************************
+CSN	DATA BLWPWS,CSN1
+ 
+CSN1	 MOV *R13,R8
+	MOVB *R8+,R9
+	SRL R9,8
+	A R8,R9
+	CLR R12
+	CLR R6
+	LI R4,10
+CSN2	C R8,R9
+	JEQ CSN4
+	MOVB *R8+,R7
+	SRL R7,8
+	MOV R6,R6		idea here is that if we're into the digits of the string
+	JNE CSN3		then dont need to look for +,-, or space
+	CI R7,>0020		space
+	JEQ CSN2
+	CI R7,>002B		+
+	JEQ CSN2
+	CI R7,>002D		-
+	JNE CSN3
+	INV R12
+	JMP CSN2
+ 
+CSN3	AI R7,-48
+	CI R7,9
+	JH CSN4
+	MOV R6,R5
+	MPY R4,R5
+	A R7,R6
+	JMP CSN2
+ 
+CSN4	MOV R12,R12
+	JEQ CSN5
+	NEG R6
+CSN5	MOV R6,*R13
+	RTWP
+ 
+**************************************************************
+* BLWP @CNS	Convert integer number into a string		*
+*		R6: contains integer to be converted		*
+*		Results into GPBUFF+2
+**************************************************************
+CNS	DATA BLWPWS,CNS1
+ 
+CNS1	LI R1,GPBUFF+2
+	MOV @12(R13),R9	number to convert is in R6 calling - to R9
+	JNE CNS1A		jump if n.e. 0
+ 
+	LI R3,>0130		string for "0"
+	MOV R3,*R1		into buffer
+	JMP CNS9		and go back
+ 
+CNS1A	LI R2,GPBUFF+3
+	LI R3,10000
+	LI R6,10
+	CLR R7			length of string
+ 
+	MOV R9,R11		store number being converted, and see if negative
+	JGT CNS2		 jump if positive
+ 
+	LI R0,>2D00		minus sign
+	MOVB R0,*R2+
+	NEG R9
+ 
+CNS2	CLR R8
+	DIV R3,R8
+ 
+	MOV R8,R8		if R8 <> 0 after divide then add it to string
+	JNE CNS7
+ 
+	MOV R7,R7		R7=length of string; if it's zero then don't add
+	JEQ CNS3		 a leading zero to string
+ 
+CNS7	AI R8,48
+	SWPB R8
+	MOVB R8,*R2+
+	INC R7
+CNS3	MOV R3,R4
+	CLR R3
+	DIV R6,R3
+	MOV R3,R3
+	JNE CNS2
+ 
+	MOV R11,R11		\
+	JGT CNS8		 If number being converted was negative then we need to
+	INC R7			/ inc string length because of minus sign
+ 
+CNS8	SWPB R7
+	MOVB R7,*R1
+CNS9	RTWP
+**********************
+SQR	BL @GET2
+	MOV *R5,R10
+	JLT SQRERR
+ 
+	MOV R10,R0
+	MOV R10,R3
+	INC R0
+SQR5	SRL R3,2
+	JEQ SQR1
+	SRL R0,1
+	JMP SQR5
+ 
+SQR1	CLR R1
+	MOV R10,R2
+	DIV R0,R1
+	MOV R0,R3		store r0
+	A R1,R0
+	SRL R0,1
+	C R0,R3
+	JEQ SQR2		I.E. IF NO CHANGE THEN FOUND IT
+	JGT SQR1
+	S R1,R3
+	ABS R3
+	DEC R3
+	JNE SQR1
+SQR2	MOV R0,*R6
+	B @RTN
+SQRERR LI R0,>1C00		bad argument
+	B @ERRRPT
+********************
+XPONEN	CLR R3			flag for whether answer is negative
+	BL @GET3
+	MOV *R4,R4		number to raise to a power
+	JGT XPONE8
+	SETO R3		flag to negate answer, but only if ^is odd
+	ABS R4			make r4 positive
+XPONE8	MOV *R5,R8		the power to raise it to
+	SRL R8,1		if carry then is odd
+	JOC XPONE9	
+	CLR R3			even, so answer will be positive
+*				R3=ffff if both r4 neg and r5 odd
+XPONE9	MOV *R5,R5
+	JGT XPONE1		if a positive number then exponentiate
+	JLT XPONEX		raising to neg number, ans either 0 or -1
+	LI R8,>0001		raising ^0, return a 1
+	JMP XPONE6
+XPONEX	MOV R3,R8
+	JMP XPONE6
+XPONE1	MOV R4,R8		number to r8
+ 
+XPONE2	DEC R5	
+	JEQ XPONEY		go back if done
+	MOV R8,R7		ready to multiply
+	MPY R4,R7
+	MOV R8,R8
+	JLT XPONEZ		if r8 is neg then answer is too big
+	MOV R7,R7		if r7 <>0 then answer is too big
+	JEQ XPONE2		if eq then passed test, not too big
+	
+XPONEZ	LI R8,>7FFF
+	MOV R3,R3
+	JEQ XPONE6
+	INC R8			with inc is >8000
+	JMP XPONE6
+XPONEY	MOV R3,R3
+	JEQ XPONE6
+	NEG R8
+XPONE6	MOV R8,*R6
+	B @RTN
+******************************
+ 
+POS	BL @GET4
+	MOV *R5,R5
+	DECT R5
+POS1	INC R5
+	MOV *R3,R8
+	MOV *R4,R10
+	MOVB *R8+,R7
+	SRL R7,8
+	MOVB *R10+,R9
+	SRL R9,8
+	MOV R5,R0
+	A R9,R0
+	C R7,R0
+	JLT POS0
+	A R5,R8
+POS2	CB *R10+,*R8+
+	JNE POS1
+	DEC R9
+	JNE POS2
+	INC R5
+	JMP POS3
+POS0	CLR R5
+POS3	MOV R5,*R6
+	B @RTN
+**********************
+
+JOYST	BL @GET3
+	MOVB @1(R4),@>8374
+	BLWP @KSCAN
+	MOVB @>8377,R2
+	SRA R2,8
+	MOV R2,*R5
+	MOVB @>8376,R2
+	SRA R2,8
+	MOV R2,*R6
+	B @RTN
+**********************
+SOUND	BL @GET1
+	MOV *R6,R6
+	JLT SOUND2
+SOUND1 MOVB @>83CE,R0
+	JEQ SOUND3
+	LIMI 2
+	LIMI 0
+	JMP SOUND1
+SOUND2 ABS R6
+SOUND3 AI R6,8
+	LI R4,6
+	MPY R4,R6
+	LI R4,100
+	DIV R4,R6
+	MOV R6,R6
+	JNE SOUND4
+	INC R6
+SOUND4 SWPB R6
+	MOVB R6,@>83CE
+ 
+	LI R9,>8400
+	LI R0,>7000
+SOUND5 BL @GET2
+	MOV *R6,R6
+	SLA R6,7
+	MOV *R5,R1
+	JGT SOUND6
+	ABS R1
+	DEC R1
+	SWPB R1
+	AI R1,>E000
+	MOVB R1,*R9
+	AI R6,>F000
+	JMP SOUND8
+SOUND6 LI R2,>0001
+	MOV R1,R3
+	SRL R3,1
+	AI R3,>B4F5
+	JNC SOUND7
+	INC R2
+SOUND7 DIV R1,R2
+	MOV R2,R4
+	SLA R4,4
+	SRC R2,4
+	SRL R2,4
+	AI R0,>1000
+	A R0,R2
+	MOVB R2,*R9
+	MOVB R4,*R9
+	AI R0,>1000
+	A R0,R6
+SOUND8 MOVB R6,*R9
+ 
+	C *R13,R15   See if next word is a number or an instruction
+	JLT SOUND5
+ 
+	LI R0,>0379			for compiled TML this becomes >1820 (buffer out of the way)
+	LI R1,SNDOFF
+	LI R2,6
+	BLWP @VMBW
+	MOV R0,@>83CC
+	MOV R0,@MONWS+24		for compiled TML this becomes >1001
+	SOCB @SOUND6+3,@>83FD
+	B @RTN
+ 
+SNDOFF DATA >049F,>BFDF,>FF00
+******************************
+QMARK	BYTE 2,63,32,0	string "? "
+*CLRLN IS BL SUB TO CLEAR LINE BEING INPUT AND PUT 2 EDGE CHARS ON SCREEN
+CLRLN	MOV R11,R10
+	MOV @SCRNPT,R0
+	LI R1,>807F
+CLRLN1	CI R0,>02FD
+	JGT CLRLN2
+	BL @VSBW
+	INC R0
+	JMP CLRLN1
+CLRLN2	SWPB R1
+	MOVB R1,@>8C00
+	MOVB R1,@>8C00
+	MOV @SCRNPT,R0
+	MOV @CLRLN1+2,@>832A  puts 02fd to 832a
+	B *R10
+
+LINPUT	JMP INPUT		r12 will have LINPUT or INPUT or ACCEPT	
+INPUT	BLWP @GPLLNK
+	DATA >0034		accept tone
+	BL @CLRLN		clears out line being input with edge chars
+ 
+	BL @GET1		fetch pointer to 1st num. to r6
+	C *R13,R15		does r13 point to instruction
+	JLT INPUT2		(was JL)if LT not instruction, get pointer
+	LI R2,QMARK		r2 points to string for quest. mark
+	JMP INPUT3
+INPUT2	MOV *R6,R2		store pointer to prompt string
+	BL @GET1		get new pointer
+	
+INPUT3 MOV R6,R10		store pointer to number
+	CLR R4			not using SIZE-if R4 NE then confuses print11/24/12
+*	MOV R12,@>37FE	scroll messes up R12
+	MOV R12,@RUNEA5	was MOV R12,@>37FE  DON't need to start EA5 again
+	B @PRINT3+2		print string or ?, returns with r0 to s.p.
+*INPUT4	MOV R10,R6
+	
+INPUT4	MOV @RUNEA5,R12	wasMOV @>37FE,R12
+	MOV R0,@>8320		start at this screen position
+	MOV R0,@>832A		highest cursor position
+	LI R4,>037D		off bottom of screen-allows 5 lines
+	MOV R4,@>835E		last position
+ 
+INPU4A BLWP @GPLLNK		line editor (accept comes here too)
+	DATA >2858		line editor code
+*	CLR @>3000		don't know why this was in there!!!!!
+	MOV @>8320,R0		points to start
+	MOV @>832A,R2		points to end
+ 
+INPU4B	LI R7,GPBUFF+1	read string into GPBUFF
+	MOV R7,R4
+	CLR R5			will total up the length
+	CLR R1			ready to read byte
+ 
+INPUT5 C R0,R2		at end?
+	JHE INPUT7		yep, string all read
+	BL @VSBR	
+	CI R1,>7F00		edge character.
+	JEQ INPUT6		don't read edge char.
+ 
+	CI R12,INPUT		\
+	JNE INPU5A		 not input so don't check for commas
+	CI R1,>8C00		 a comma?
+	JEQ INPUT7		/f340
+ 
+INPU5A	AI R1,->6000
+	MOVB R1,*R4+		to GPBUFF
+	INC R5			length of string
+INPUT6 INC R0			next screen position
+	JMP INPUT5		not done, keep looping
+ 
+INPUT7	INC R0			skip comma
+	MOV R0,R3		store screen pointer - CSN disrupts >8320
+	MOV R5,R5		deal with a length byte of zero
+	JEQ INPU10
+ 
+	CI R12,LINPUT		linput doesn't trim leading or trailing sp.
+	JEQ INPU10
+INPUT8 DEC R4			\
+	CB *R4,@QMARK+2	 a space
+	JNE INPUT9		 trim trailing spaces
+	DEC R5
+	JGT INPUT8
+	JMP INPU10		 /
+ 
+INPUT9 CB *R7+,@QMARK+2	 r7 points to a space?
+	JNE INPU11
+	CI R12,ACCEPT		 using ACCEPT?
+	JEQ INPU11		 yes, don't trim leading space
+	DEC R5
+	JGT INPUT9	/
+ 
+INPU10 INC R7			\
+INPU11 DECT R7		 move length byte. if leading spaces
+	SWPB R5		 trimmed then will not be at gpbuff
+	MOVB R5,*R7		/
+ 
+	MOV R7,R0
+*
+	MOV R10,R6
+	BL @ASTRNG
+	JEQ INPU12
+ 
+	BLWP @CSN		\
+	MOV R0,*R6		 a number
+	JMP INPU13		/
+ 
+INPU12 MOV R6,R1	
+	BLWP @STRSTR		a string
+ 
+INPU13 C *R13,R15		see if pointer is to an instruction	
+	JGT INP13A		was JHE
+	MOV R3,R0
+	BL @GET1
+	MOV R6,R10
+	JMP INPU4B
+	
+INP13A	MOV @ATPNTR,R3	see if using AT
+	JNE INPU14		don't scroll if using AT
+	BLWP @SCROLL
+	MOV R0,@SCRNPT
+ 
+INPU14	CLR @ATPNTR
+	CLR @SIZLTH
+	CLR @VLDSTR
+	MOV @OLDINT,@>83C4	restore normal interrupts
+	B @RTN
+ 
+ 
+ 
+ 

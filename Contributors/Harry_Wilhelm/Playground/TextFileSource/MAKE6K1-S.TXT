@@ -1,0 +1,135 @@
+*MAKE6K will take a playground program and make an EA5 loader
+*to move the code into the supercart
+	DEF SFIRST
+	DEF SLOAD
+WKSP	EQU >83A2
+****************************
+SLOAD	
+SFIRST	
+	JMP SFIRS1	(using default workspace at first)
+	DATA 0		>A002 will get address of last line
+
+SFIRS1 LI R0,HEADER	\
+	LI R1,>6000
+SFIRS2	MOV *R0+,*R1+	 this code moves code into >6000 cartridge space
+	C R0,@>A002	 SLAST was put here
+	JNE SFIRS2		/
+	MOV R0,@LSTMEX-HEADER+>6000
+	MOV R1,@LST6K-HEADER+>6000
+	
+	BLWP @>0000
+****************************************************	
+HEADER BYTE >AA                Indicates a standard header, will go to >6000
+       BYTE >01                Version number
+       BYTE >01                Number of programs (optional)
+       BYTE >00                Not used
+       DATA >0000              Pointer to power-up list (can't use in cartridge ROM)
+       DATA >600E              Pointer to program list
+       DATA >0000              Pointer to DSR list
+       DATA >0000              Pointer to subprogram list
+       DATA >0000              Pointer to ISR list
+*>600E below
+	DATA >0000              No next menu item
+       DATA SLOAD1-HEADER+>6000     Program start address for this menu item
+       BYTE 4                 Length of text for menu screen
+       TEXT 'LIFE'
+       EVEN
+
+LSTMEX	DATA 0		code above moves last address in Memory expansion here
+LST6K	DATA 0		code above moves last address in >6000 space here
+
+
+
+SLOAD1	LI R0,SLOAD3-HEADER+>6000	move pageloader into scratchpad RAM
+	LI R1,>831E	from >831E
+MAKEE1	MOV *R0+,*R1+
+	CI R1,>83C2	move till we reach >83c2
+	JNE MAKEE1
+	
+	LWPI WKSP	playground workspace, some registers are preloaded
+	B @>831E	execute code from scratchpad
+	
+************************************	
+*Code to be moved into scratchpad from >831E to >83C1
+SLOAD3	MOV @LSTMEX-HEADER+>6000,R0	SLAST was put into LSTADD then to >60xx
+	
+	S R0,R13	r13 has >3be3+1 (can be up to >4000 for more room)
+*			now R13 should have offset to add
+	S R1,R0	now R0 has length of program
+	S R0,R8	now R8 points to start VDP address to load program
+	AI R1,>C000-HEADER+SFIRST 	
+	
+	MOVB @WKSP+17,*R15
+	MOVB R8,*R15
+	NOP
+PGMOVL	MOVB *R1+,*R10	move program into VDP RAM
+	C R1,@LST6K-HEADER+>6000   LSTADD points to end of program
+	JNE PGMOVL		jump till done
+	
+GPLLNK	LWPI >83E0		change to GPL workspace
+	MOV @>0050,R4		put >0864 into GPLWS4
+	LI R6,>27E3		GPL routine is in R0. Move into GPLWS6
+	BL *R4			push grom address to substack (routine @ >0864)
+	LI R9,>8362
+	MOV R9,@>831C		XML >FE will branch to address here
+	LI R9,>1675		grom at >1675 contains >0FFE in reg TI and V2.2
+	MOV R9,@>8302(R4)	put >1675 onto stack
+	INCT @>8373					and INC stack pointer
+	B @>0060		to GPL interpreter
+
+*>8362 below
+	LWPI >83A2		workspace used by PLAYGROUND
+	MOV R12,@>8372	gpl substack pointer is >8368: kscan+GPLLNK need
+	MOV R6,@>837E
+	MOV R7,R15
+	JMP PAGE		go to pageloader
+	
+*>8372 to >837D below
+PGLDR	DATA >0010	>8372 >8373 is GPL substack pointer006C  0068 FOR MOST
+	DATA 0		>8374
+	DATA 0		>8376
+	DATA >3567	>8378	random number seed
+	DATA 0		>837A
+	DATA 0		>837C
+	
+*>837E - start of page loader
+*>837E - BL @PAGE comes here
+PAGE	MOV *R11,@>83D0   	puts >834C at >8380-at prog start becomes >83D0
+*>8382 - BL @SUB comes here
+	MOV R11,@>83D2    	INTWS registers 8&9 seem to be unused
+*>8386 - BL @SUBPAG comes here
+	A R13,*R11	    	now points to code in VDP	
+	MOVB @1(R11),*R15 	set address to read from
+	MOVB *R11,*R15	""
+	LI R12,>8300		load code starting at >8300	
+	MOV R12,R11		entry point of page into R11
+*>8394 - SUBRTN comes here
+	MOVB *R14,@>839D	puts length byte into LSB below
+PGLOOP	MOVB *R14,*R12+	copy page out of VDP
+	CI R12,>8300		length byte of page is in LSB
+	JNE PGLOOP
+	B *R11			enter page
+
+*WORKSPACE starts at >83A2(32 bytes)
+	DATA 0		R0 
+	DATA PGPGST	R1 pointer to 1st page to load (himem)
+	DATA PGPGST   -HEADER+SFIRST	R2 pointer to 1st page to load
+	DATA 0		R3 
+	DATA 0		R4 
+	DATA 0		R5 
+	DATA >C81B	R6 will get moved to >837E which gpl modifies 
+	DATA >8C02	R7 will get moved to R15
+	DATA >7BE3+HEADER-SFIRST	R8 BASIC has this number at >8330 with call files(1)
+	DATA 0		R9
+	DATA >8C00	R10 VDPWD
+	DATA >83A6	R11 points to R2, address of page to load
+	DATA >0068	R12 gpl substack pointer to >8372
+	DATA >3BE3+1+HEADER-SLOAD	R13 will have offset
+	DATA >8800	R14
+	DATA >8C02	R15
+*Playground program start below
+PGPGST
+
+
+
+	END

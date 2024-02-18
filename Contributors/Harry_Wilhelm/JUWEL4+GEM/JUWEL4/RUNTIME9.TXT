@@ -1,0 +1,72 @@
+***************************************************
+*CALL LINK - APRIL 23, 2021  RUNTIME9
+*****************************************
+
+LINK	BL @GET1		get the address of string into R6
+	MOV *R6,R6
+	MOVB *R6+,R5		now R6 points to string
+       SRL R5,8		length is in R5
+	LI R7,>834A		FAC
+LINK1	MOVB *R6+,*R7+
+	DEC R5
+	JNE LINK1
+
+LINK2	CI R7,>8350		if length<6 then pad with spaces
+	JHE LINK3
+	MOVB @ERRXB,*R7+		ERRXB contains >20
+	JMP LINK2
+*NAME OF SUBPROGRAM IS NOW AT >834A
+*GET ARGUMENT LIST
+
+LINK3	CLR R9
+	LI R10,>22E8	16 word table with pointers to variables and constants
+	
+LINK4	C *R13,R15	See if next word is a number or an instruction
+	JGT LINK7
+	BL @GET1	POINTER is in R6
+	MOV R6,*R10+
+
+*NC0=0, NV0=2, SC0=1, SV0=3, SA0=3 (5), NA0=2 (4) arrays reported same as variables
+	
+	LI R2,2		numeric arrays = 2
+	CI R6,NA0
+	JHE LINK5		
+
+	INC R2			string variable adn arrays = 3
+	CI R6,SV0
+	JHE LINK5
+	
+	DECT R2		string constant = 1
+	CI R6,SC0
+	JHE LINK5
+	
+	INC R2			numeric variable = 2
+	CI R6,NV0
+	JHE LINK5
+	
+	DECT R2		numeric constant = 0
+LINK5	SWPB R2
+	MOVB R2,@>2096(R9)	>2096 is the start of old numasg routine. can be safely used
+	
+	INC R9		>8312 IS MSB OF R9
+	JMP LINK4
+	
+*now move the identifier list to >8300
+
+LINK7	MOVB @>2096(R5),@>8300(R5)	start moving from >2096 to >8300
+	INC R5
+	C R5,R9
+	JLT LINK7
+	
+LINK8	SWPB R9		move # arguments from >8313 to >8312
+	
+	LI R10,LNKPTS		pointer to LNKPTS is at >8314
+*Can probably eliminate the LI R10 and BL @>205a         
+	LI R11,RTN		then to return from A/L will LWPI >8300 and B *R11
+	LWPI >83E0
+	B @>205A
+	
+LNKPTS	DATA STRSTR		pointer to STRSTR so STRASG knows where the BLWP subroutine is
+	DATA SCROLL		POINTER to SCROLL blwp subroutine
+	DATA ERRLN		For disk access error handling	
+

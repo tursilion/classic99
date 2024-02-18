@@ -1,0 +1,322 @@
+************************************************************************
+*MOVVDP a subroutine to move bytes from one location to                *
+*another in the VDP ram.                                               *
+*Put address to move from in R0                                        *
+*Put address to move to in R1                                          *
+*Put number of bytes in R2                                             *
+*uses r11 & r12  does not modify R2 calling; R0 & R1 inc'd by r2 count *
+************************************************************************
+MOVVDP	DATA MOVVDE-MOVVDS
+MOVVDS ORI R1,>4000		set bit in R1 so we can write
+	MOV R2,R12
+MOVVD1	MOVB @WKSP+1,*R15	start reading bytes of text
+	MOVB R0,*R15
+	INC R0
+	MOVB *R14,R11		read a byte from VDP
+	MOVB @WKSP+3,*R15	lsb R1
+	MOVB R1,*R15		msb R1
+	INC R1
+	MOVB R11,*R10		move byte into VDP
+	DEC R12
+	JNE MOVVD1
+	BL @SUBPAG
+	DATA RETURN	
+MOVVDE
+*******************************************************************
+*GPLLNK is adapted from millers graphics universal GPL & DSR link *	
+*Put GPL routine into R0 and call as a subroutine                 *
+*******************************************************************
+GPLLNK	DATA GPLLNE-GPLLNS	
+GPLLNS	LWPI >83E0		change to GPL workspace
+	MOV @>0050,R4		put >0864 into GPLWS4
+	MOV @>83A2,R6		GPL routine is in R0. Move into GPLWS6
+	BL *R4			push grom address to substack (routine @ >0864)
+	MOV @>8300+GXMLAD-GPLLNS,@>8302(R4)	put >00E8 onto stack
+	INCT @>8373					and INC stack pointer
+	B @>0060		to GPL interpreter
+*>831C below
+	DATA XMLRTN-GPLLNS+>8300	pointer to return from GPLLNK
+*					this MUST be at >831C !!!
+GXMLAD	DATA >1675		grom at >1675 contains >0FFE in reg TI and V2.2
+XMLRTN	MOV @>166C,R4		puts >0842 into R4
+	BL *R4
+	LWPI WKSP
+	LI R11,>C81B		some gpl routines trash >837E
+	MOV R11,@>837E
+	BL @SUBPAG
+	DATA RETURN
+
+GPLLNE
+
+*************************************************************************
+*RETURN - a SUBPAG to return from a subroutine.  Must have to use subs. *
+*************************************************************************
+RETURN	DATA RETURE-RETURS
+
+RETURS  MOV @>83D0,R11		Get page to return to
+	A R13,R11		Add VDP offset
+	MOVB @>83B9,*R15	lsb of R11
+	MOVB R11,*R15		msb of R11
+
+	MOV @>83D2,R11	position in page when sub was called
+	INCT R11		next instruction
+	LI R12,>8300		
+	JMP RETURS+>0094   	jump to >8394
+RETURE
+
+****************************************************************
+*PRTEXT is a subroutine to print text on the screen            *
+*Pointer to text is in R0 - uses r11 and r12                   *
+*set up with LI R0,TEXT-1 then A R13,R0   -  then call the sub *
+*TEXT	BYTE 10,13		row and column to start printing   *
+*	TEXT '3 COLORS'                                         *
+*	BYTE 11,13		row and column                     *
+*	TEXT '4 COLORS'                                         *
+*	BYTE 0			flag for end of text               *
+*	EVEN                                                    *
+****************************************************************
+PRTEXT	DATA PRTEXE-PRTEXS
+PRTEXS MOVB @WKSP+1,*R15	will read from VDP from address in R0
+	MOVB R0,*R15		
+	INC R0			point to next byte
+	CLR R11
+	MOVB *R14,R11		read the byte	
+	JEQ PRTEXX		if EQ then at end of text so return			
+		
+PRTEX2 CI R11,>2000		if LT >20 then a row, need to set up pointer
+	JL GTPNTR		
+PRTEX3	AI R11,>6000		screen offset
+	MOVB @WKSP+25,*R15	lsb R12
+	MOVB R12,*R15		msb R12
+	INC R12
+	MOVB R11,*R10		print character to screen
+	JMP PRTEXS
+	
+GTPNTR	MOV R11,R12	
+	SRL R12,3
+	AI R12,>3FDF		add >4000 and -33=SCREEN LOC
+	MOVB *R14,R11
+	SRL R11,8
+	A R11,R12
+	INC R0
+	JMP PRTEXS
+	
+PRTEXX BL @SUBPAG
+	DATA RETURN	
+PRTEXE
+
+*****************************************************
+*RANDOM is a subroutine to generate a random number *
+*if you want a RND from 0 to 5, R0 should be 6      *
+*the random number is returned in R1                *
+*****************************************************
+RANDOM	DATA RANDOE-RANDOS
+RANDOS	LI R11,>6FE5
+	MPY @>8378,R11
+	AI R12,>7AB9
+	MOV R12,@>8378
+	CLR R11
+	SWPB R12
+RANDO2	DIV R0,R11
+	MOV R12,R1
+	BL @SUBPAG
+	DATA RETURN
+RANDOE
+
+*************************************************
+*CLEAR is a sub to fill screen with spaces      *
+*************************************************
+CLEAR	DATA CLEARE-CLEARS
+CLEARS	LI R11,>4000		1st screen position with 2nd bit set
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	LI R11,>8000		a space with bias of >60
+	LI R12,768
+CLEAR1	MOVB R11,*R10
+	DEC R12
+	JNE CLEAR1
+	BL @SUBPAG
+	DATA RETURN
+CLEARE
+
+******************************************************
+*PRNUM is subroutine to print a number on the screen *
+*R0= address on screen(prints right to left)         *
+*R1=number to print                                  *
+******************************************************
+PRNUM	DATA PRNUME-PRNUMS
+PRNUMS	ORI R0,>4000		
+	MOV R1,R11
+	LI R1,10
+PRNUM1	MOV R11,R12
+	CLR R11
+	DIV R1,R11
+	JEQ PRNUMX
+	AI R12,>0090		to get ASCII plus offset
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	DEC R0
+	MOVB @WKSP+25,*R10
+	JMP PRNUM1
+PRNUMX	BL @SUBPAG
+	DATA RETURN
+PRNUME
+
+
+***********************************************************************
+*EDITOR is an adaptation of MG universal GPL & DSR link               *	
+*put start screen position into R0                                    *
+*put last screen position into R1-if off bottom will scroll as needed *
+*Returns with R1 set to highest position actually used                *
+*uses BASIC character offset of >60                                   *
+***********************************************************************
+EDITOR	DATA EDITOE-EDITOS	
+EDITOS	MOV R0,@>8320		put starting position into >8320
+	MOV R1,@>835E		ending position goes into >835E
+	LWPI >83E0		GPLWS
+	MOV @>0050,R4		put >0864 into GPLWS4 
+*>8310
+	LI R6,>2A46		address of line editor to GPLWS6
+	BL *R4			push grom address to substack (routine @ >0864)
+	INCT @>8373		INC stack pointer
+	JMP H8322
+
+*>831C below
+	DATA XMLRTN-EDITOS+>8300	pointer to return from GPLLNK MUST be at >831C 
+GXMLAD	DATA >1675		grom at >1675 contains >0FFE in reg TI and V2.2
+	DATA 0				starting position goes here (>8320)
+H8322	MOV @>8300+GXMLAD-EDITOS,@>8302(R4)	put >1675 onto stack
+	B @>0060		to GPL interpreter
+XMLRT1	DATA >C81B		>>>>>can remove if not scrolling<<<<<
+XMLRTN	MOV @>166C,R4		puts >0842 into R4
+	BL *R4
+	LWPI WKSP
+	MOV @>832A,R1
+	MOV @XMLRT1-EDITOS+>8300,@>837E >>>>>can remove if not scrolling<<<<<
+	
+	BL @SUBPAG
+	DATA RETURN
+EDITOE
+
+
+*******************************************************
+*HCHAR (similar to BASIC subprogram)                  *
+*R0=Screen address - ROW*32-1+COL-1                   *
+*R1=byte to print in MSB - can add offset if desired  *
+*R2=number of bytes to print                          *
+*******************************************************
+HCHAR	DATA HCHARE-HCHARS
+HCHARS	ORI R0,>4000		set bit so we can write
+*	AI R1,>6000		offset of >60 if desired
+HCHAR1	DEC R2			one less byte to write
+	JLT HCHAR2
+	MOVB @>83A3,*R15	tell VDP what address to write to
+	MOVB R0,*R15		"" ""
+	INC R0			one position to right
+	MOVB R1,*R10		write the byte
+	CI R0,>4300		past bottom of screen?
+	JLT HCHAR1
+	LI R0,>4000		reset to upper left of screen
+	JMP HCHAR1
+HCHAR2	BL @SUBPAG
+	DATA RETURN
+HCHARE
+
+
+*****************************************************
+*VCHAR (similar to BASIC subprogram)                *
+*R0=Screen address - ROW*32-1+COL-1                 *
+*R1=byte to print in MSB - can add offset if desired*
+*R2=number of bytes to print                        *
+*****************************************************
+VCHAR	DATA VCHARE-VCHARS
+VCHARS	ORI R0,>4000		set bit so we can write
+*	AI R1,>6000		offset of >60 if desired
+VCHAR1	DEC R2
+	JLT VCHAR2
+	MOVB @>83A3,*R15	tell VDP what address to write to
+	MOVB R0,*R15		"" ""
+	AI R0,>0020		down one row
+	MOVB R1,*R10		write the byte
+	CI R0,>4300
+	JLT VCHAR1
+	AI R0,>FD01		up to top row and over one
+	CI R0,>4020
+	JLT VCHAR1
+	LI R0,>4000
+	JMP VCHAR1
+VCHAR2	BL @SUBPAG
+	DATA RETURN
+VCHARE
+
+**********************************************************
+*BIT REVERSAL ROUTINE - SIMILAR TO ROUTINE AT GROM >003B *
+*PUT ADDRESS IN R0 AND # BYTES IN R1, THEN CALL THE SUB  *
+*USES R1,R2,R3                                           *
+**********************************************************
+BITREV	DATA BRRE-BRRS
+	
+BRRS	MOVB @WKSP+1,*R15	lsb of R0
+	MOVB R0,*R15		msb of R0
+	ORI R0,>4000		will write back to this address
+	MOVB *R14,R3		read the byte
+	LI R11,8
+BRR2	SRL R12,1		shift puts a zero in left hand bit
+	SLA R3,1		
+	JNC BRR3		if a bit was not shifted out skip, else
+	AI R12,>8000		set left hand bit
+BRR3	DEC R11	
+	JNE BRR2		loop till 8 bits are done
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	ANDI R0,>3FFF		next operation will be a read
+	MOVB R12,*R10		write the byte
+	INC R0			next byte in vdp
+	DEC R1
+	JNE BRRS
+	BL @SUBPAG
+	DATA RETURN
+BRRE
+	
+****************************************************************************
+*SCROLL will scroll the screen and fill the bottom row with spaces.        * 
+*Does not change user registers. This is faster than the GPLLNK scroll     *
+*Code is from >8300 to >8349; 32 byte buffer is at >8352                   *
+*Be careful to keep buffer and code separate when using a buffer like this *
+****************************************************************************
+
+SCROLL	DATA SCROLE-SCROLS
+
+SCROLS	LI R11,>0020		start with second line on screen
+	
+SCROL1	MOVB @WKSP+23,*R15
+	MOVB R11,*R15		now are set up to read from VDP
+	LI R12,>8352		will read to buffer starting at >8352
+SCROL2	MOVB *R14,*R12+	\
+	CI R12,>8372		 read 32 bytes to buffer
+	JNE SCROL2		/	
+	
+	AI R11,>3FE0		up a line and with 2nd bit set
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15		now are set up to write to VDP
+	LI R12,>8352		buffer is here
+SCROL3	MOVB *R12+,*R10	\
+	CI R12,>8372		 write 32 byte buffer to vdp
+	JNE SCROL3		/
+			
+	AI R11,>C040		reset 2nd bit and down 2 lines
+	CI R11,>0300		off bottom?
+	JLT SCROL1		no, so keep scrolling
+	
+	LI R11,>8000		space with offset of >60
+	LI R12,32		
+SCROL4	MOVB R11,*R10		\	
+	DEC R12		 write 32 spaces to screen
+	JNE SCROL4		/
+	
+	BL @SUBPAG
+	DATA RETURN		end of code is at >8349; buffer starts at >8352  
+SCROLE
+
+
+

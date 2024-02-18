@@ -1,0 +1,1168 @@
+**********************************************
+*SAMECOLORS for Playground assembly language loader*
+*By Harry Wilhelm, December 2013             *
+**********************************************
+PAGE	EQU >837E
+SUB	EQU >8382
+SUBPAG	EQU >8386
+WKSP	EQU >83A2
+*********************************************
+	DEF TITLSC
+	DEF LDCHR
+	DEF FLASH
+	DEF FRAME
+	DEF ATEND
+	
+	
+*BEGINNING OF SAMECOLORS
+INSTR	DATA INSTRE-INSTRS
+INSTRS	LI R11,>4800
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	CLR R0
+	LI R11,8
+INSTR1	MOVB R0,*R10
+	DEC R11
+	JNE INSTR1
+	
+	BL @SUB	R0 is already zero
+	DATA CLEAR
+	
+	LI R0,INSTRU-1
+	A R13,R0
+	BL @SUB
+	DATA PRTEXT
+	
+	
+	BL @SUB
+	DATA WAITKY
+	
+	BL @PAGE
+	DATA TITLSC
+	
+INSTRE
+******************************************
+INSTRU	BYTE 1,11 
+	TEXT 'SAMECOLORS'
+	BYTE 2,8 
+	TEXT 'by Harry Wilhelm'
+	BYTE 4,3 
+	TEXT 'The object of this game is'
+	BYTE 5,3 
+	TEXT 'to clear colored balls from'
+	BYTE 6,3 
+	TEXT 'the screen.' 
+	BYTE 8,3 
+	TEXT 'Use the E,S,D,X keys to' 
+	BYTE 9,3 
+	TEXT 'move the cursor, then press'
+	BYTE 10,3 
+	TEXT 'Enter to select a ball. All'
+	BYTE 11,3 
+	TEXT 'adjoining balls of the same'
+	BYTE 12,3 
+	TEXT 'color will be removed.'
+	BYTE 14,3 
+	TEXT 'The value of each ball goes' 
+	BYTE 15,3 
+	TEXT 'up as more are removed in a'
+	BYTE 16,3 
+	TEXT 'move. Complete clearing the'
+	BYTE 17,3 
+	TEXT 'screen will earn a 99 point'
+	BYTE 18,3 
+	TEXT 'bonus.'
+	BYTE 20,3 
+	TEXT 'Good luck!'
+	BYTE 0
+	EVEN
+
+*********************************************
+TITLSC	DATA TITLSE-TITLSS		
+	
+TITLSS	CLR R0		prints a space to all screen
+	BL @SUB		positions
+	DATA CLEAR
+	
+	LI R0,>8701		background color to black
+	MOVB @WKSP+1,*R15	register 7=>0E
+	MOVB R0,*R15
+	
+	LI R0,>0300
+	MOVB R0,@>8374	key mode #3 for all capitals
+	
+	LI R12,>4304
+	MOVB @WKSP+25,*R15
+	MOVB R12,*R15
+	LI R12,>D000
+	MOVB R12,*R10
+	
+	LI R11,>4804		\
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	CLR R11
+*				 ZEROS CURRENT SCORE
+	MOVB R11,*R10
+	MOVB R11,*R10
+	MOVB R11,*R10
+	MOVB R11,*R10		/
+	
+	BL @PAGE
+	DATA LDCHR
+TITLSE
+************************
+LDCHR	DATA LDCHRE-LDCHRS	loads in the customized definitions for game
+	
+LDCHRS	LI R1,>0600	address of pattern for ascii 96
+	
+LDBAL1	LI R0,PATRNS-1
+	A R13,R0
+	LI R2,16
+	BL @SUB
+	DATA MOVVDP
+	AI R1,>0030	comes back with 8 added to R1
+	CI R1,>47C0
+	JLT LDBAL1
+		
+*Now R0 has been INC'd to point to large capital characters
+	LI R1,>0600
+LDCHR1	AI R1,>0020
+	LI R2,32
+	BL @SUB
+	DATA MOVVDP
+	CI R1,>4780
+	JLT LDCHR1
+	
+	LI R2,128
+	BL @SUB
+	DATA MOVVDP
+	
+	LI R1,>0310	color tables for space and beyond
+	LI R2,16
+	BL @SUB
+	DATA MOVVDP
+	
+	LI R0,TITLE-1		SAMECOLORS
+	A R13,R0		r0 points to text in VDP
+	BL @SUB
+	DATA PRTEXT
+	
+	BL @PAGE
+	DATA CLMENU
+LDCHRE		
+*********************************************
+CLMENU	DATA CLMENE-CLMENS
+CLMENS	LI R0,CLMTXT-1
+	A R13,R0
+	BL @SUB
+	DATA PRTEXT
+	
+	LI R12,>4302
+	MOVB @WKSP+25,*R15
+	MOVB R12,*R15
+	LI R12,>FE00
+	MOVB R12,*R10
+	
+	
+	LI R7,10	row for cursor flash
+	LI R8,12	col for cursor flash
+		
+
+	BL @PAGE
+	DATA FLASH
+
+
+CLMENE
+***************************************
+CLMTXT	BYTE 10,13
+	TEXT '3 COLORS'
+	BYTE 11,13
+	TEXT '4 COLORS'
+	BYTE 12,13
+	TEXT '5 COLORS'
+	BYTE 13,13
+	TEXT '6 COLORS'
+	BYTE 0
+	EVEN
+*******************************
+*
+*********************************
+FLASH	DATA FLASHE-FLASHS
+FLASHS	BL @SUB
+	DATA KFLASH		keyscan plus make pointer blink
+	CI R2,>4500		an E?
+	JNE FLASH2
+	CI R7,10		at top?
+	JEQ FLASHS
+	DEC R7	one row higher
+	JMP FLASHS
+FLASH2	CI R2,>5800		an X?		
+	JNE FLASH4
+	CI R7,13	at bottom?
+	JEQ FLASHS
+	INC R7
+	JMP FLASHS
+
+	
+FLASH4 CI R2,>0D00		enter?
+	JNE FLASHS
+	
+	BL @PAGE
+	DATA FRAME
+	
+	
+	
+FLASHE
+**************************************
+*Next subroutine draws the frame
+*******************************
+FRAME	DATA FRAMEE-FRAMES
+FRAMES	LI R0,>0080	erases color menu
+	BL @SUB
+	DATA CLEAR
+	LI R0,TBFRAM-1
+	A R13,R0
+	BL @SUB
+	DATA PRTEXT
+	
+	LI R0,>40A9
+	BL @FRSUB2-FRAMES+>8300
+		
+	LI R0,>40B6
+	BL @FRSUB2-FRAMES+>8300
+	
+	CLR R1
+	BL @SUB
+	DATA UPDSC	prints the scores
+	
+	BL @PAGE
+	DATA FILLSC
+***
+FRSUB2	LI R1,>F900
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	AI R0,>0020
+	MOVB R1,*R10
+	CI R0,>42A6
+	JLT FRSUB2
+	B *R11
+FRAMEE
+*******************************
+TBFRAM	BYTE 5,10
+	DATA >9A98,>9898,>9898,>9898,>9898,>9898,>989B	top of frame
+	BYTE 22,10
+	DATA >9C98,>9898,>9898,>9898,>9898,>9898,>989D  bottom of frame
+	BYTE 7,2
+	TEXT 'CURRENT'
+	BYTE 8,4
+	TEXT 'GAME'
+	BYTE 7,25
+	TEXT 'HIGHEST'
+	BYTE 8,26
+	TEXT 'EVER'
+	BYTE 12,3
+	TEXT 'SCORE'
+	BYTE 12,26 
+	TEXT 'SCORE'
+	BYTE 17,4
+	TEXT 'BEST'
+	BYTE 17,27
+	TEXT 'BEST'
+	BYTE 18,4
+	TEXT 'MOVE'
+	BYTE 18,27
+	TEXT 'MOVE'
+
+	BYTE 0
+	EVEN
+	
+***************************************
+*Fills screen with random discs
+*******************************
+FILLSC	DATA FILLSE-FILLSS
+FILLSS	CLR R1
+	BL @SUB
+	DATA UPDSC	update scores and then print them
+	LI R4,>428A
+FILLPA	MOV R4,R3
+	LI R2,16 
+	
+FILLP1	MOV R7,R0
+	AI R0,-7
+	BL @SUB
+	DATA RANDOM
+	MOVB @WKSP+7,*R15
+	MOVB R3,*R15
+	
+	SLA R1,11
+	AI R1,>C000	to get to ascii 96 and up
+	MOVB R1,*R10
+	AI R3,-32
+	DEC R2
+	JNE FILLP1
+	
+	INC R4
+	CI R4,>4296
+	JLT FILLPA
+	
+	LI R7,12
+	LI R8,16
+	LI R11,>4302
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	LI R11,>FF00
+	MOVB R11,*R10
+	BL @PAGE
+	DATA FLCRSR
+FILLSE	
+***********************************
+FLCRSR	DATA FLCRSE-FLCRSS
+FLCRSS	BL @SUB
+	DATA KFLASH		keyscan plus make pointer blink
+	
+	CI R2,>4500		an E?
+	JNE FLCRS1
+	CI R7,6		at top?
+	JEQ FLCRSS
+	DEC R7	one row higher
+
+FLCRS1	CI R2,>5800		an X?		
+	JNE FLCRS2
+	CI R7,21	at bottom?
+	JEQ FLCRSS
+	INC R7
+
+FLCRS2	CI R2,>5300		an S?
+	JNE FLCRS3
+	CI R8,11
+	JEQ FLCRSS
+	DEC R8
+
+FLCRS3	CI R2,>4400		a D?
+	JNE FLCRS4
+	CI R8,22
+	JEQ FLCRSS
+	INC R8
+	
+FLCRS4 CI R2,>0D00		enter?
+	JNE FLCRSS	
+
+	BL @PAGE
+	DATA ERASE
+
+FLCRSE
+********************************************
+*ERASE - comes here after Enter is pressed. R7,R8 have row&col
+*This page prints a puffball instead of solid disc (ASC of disk+1
+*************************************
+ERASE 	DATA ERASEE-ERASES
+ERASES	MOV R7,R9
+	SLA R9,5
+	A R8,R9
+	AI R9,-33
+	MOVB @WKSP+19,*R15
+	MOVB R9,*R15
+	CLR R5
+	MOVB *R14,R5
+	CI R5,>8000
+	JNE ERASE1
+	BL @PAGE
+	DATA FLCRSR
+	
+	
+ERASE1	AI R5,>0100
+	SETO R1	R1 is count for number of puffballs, will be 0 after 1st
+	BL @SUB
+	DATA PUFFBL
+	
+	
+	BL @PAGE
+	DATA LULRD
+ERASEE
+*******************************************
+*THIS page goes through the entire board looking for disks that matches the one
+*chosen when enter was pressed LULRD=LOOK UP LEFT RIGHT DOWN
+*R5 msb is the ascii of puffball
+*********
+LULRD	DATA LULRDE-LULRDS
+
+LULRDS	LI R3,6		row to start with
+LULRD1	LI R4,11		col to start with
+LULRD2	MOV R3,R9
+	SLA R9,5
+	A R4,R9
+	AI R9,-33		R9 now points to screen address
+	BL @RDVDP-LULRDS+>8300 read character from screen
+	
+	C R5,R6		is it a puffball?
+	JNE LULRD5		not a puffball
+*found a puffball, look ULRD for matching discs	
+	LI R0,ULRD-LULRDS+>8300
+LULRD3	A *R0+,R9
+	BL @RDVDP-LULRDS+>8300
+	AI R6,>0100
+	C R5,R6
+	JNE LULRD4
+	BL @SUB
+	DATA PUFFBL
+	DEC R3 	up one row
+	JMP LULRD2   
+LULRD4	CI R0,ULRD-LULRDS+>8308
+	JNE LULRD3
+	
+LULRD5	INC R4		over one column	
+	CI R4,23	off playing area?
+	JLT LULRD2
+	INC R3		down one row
+	CI R3,22	off playing area?
+	JLT LULRD1
+	
+*	C R1,R2
+*	JNE LULRDS	loop till no more puffballs created
+	 
+	BL @PAGE
+	DATA LEGMOV
+	
+	
+
+RDVDP	MOVB @WKSP+19,*R15
+	MOVB R9,*R15
+	CLR R6
+	MOVB *R14,R6
+	B *R11
+	
+ULRD	DATA -32,+31,+2,+31
+	
+LULRDE
+******************************************
+PUFFBL	DATA PUFFBE-PUFFBS
+PUFFBS	AI R9,>4000
+	MOVB @WKSP+19,*R15
+	MOVB R9,*R15
+	AI R9,->4000
+	MOVB R5,*R10
+	INC R1		add 1 for every puffball made
+	CI R1,1
+	JNE PUFFB3	if two puffballs then a legal move, start up sound
+	
+	LI R12,CRASH-1
+	A R13,R12
+	MOV R12,@>83CC
+	LI R12,>0100
+	MOVB R12,@>83CE
+	SOCB R12,@>83FD
+	
+	
+	
+PUFFB3	LIMI 2
+	LIMI 0		for sounds
+	BL @SUBPAG
+	DATA RETURN
+PUFFBE
+**************************
+*LEGMOV is it a legal move. If R1=0 then no puffballs were made,
+*so move is not legal
+LEGMOV	DATA LEGMOE-LEGMOS
+LEGMOS	MOV R1,R1
+	JGT LEGMO3
+	
+	MOV R7,R9
+	SLA R9,5
+	A R8,R9
+	AI R9,>4000-33
+	MOVB @WKSP+19,*R15
+	MOVB R9,*R15
+	AI R5,->0100	get rid of puffball
+	MOVB R5,*R10
+	BL @PAGE
+	DATA FLCRSR
+
+LEGMO3	LI R0,>02E0	if here then was a legal move
+	BL @SUB
+	DATA CLEAR	erase bottom line
+	
+	CLR R0		\
+	LI R2,3
+	LI R3,2
+LEGMO4	C R2,R1
+	JHE LEGMO5
+	MOV R2,R11
+	MPY R3,R11	figures score
+	A R12,R0
+	S R2,R1
+	INCT R2
+	INC R3
+	JMP LEGMO4
+LEGMO5	MPY R3,R1
+	A R2,R0
+	MOV R0,R1	/  score is now in R1
+	
+	BL @SUB
+	DATA UPDSC	update scores and then print them
+	
+	
+
+	BL @PAGE
+	DATA DRPCOL
+LEGMOE
+
+**********************************
+*DRPCOL is a page to look for puffballs and drop the column if one is found
+*******************
+DRPCOL	DATA DRPCOE-DRPCOS
+DRPCOS	LI R11,21*32+11-33 row 21, col 11, lower left corner
+
+DRPCO1	MOV R11,R12
+DRPCO2	LIMI 2
+	LIMI 0 		to enable sounds
+	MOVB @WKSP+25,*R15
+	MOVB R12,*R15
+	CLR R3
+	MOVB *R14,R3
+	C R3,R5
+	JNE DRPCO6		no puffball
+*this part drops the column by 1
+	LI R0,4000
+DRPCOZ	DEC R0
+	JNE DRPCOZ
+DRPCO3	AI R12,-32
+	CI R12,>00A0
+	JGT DRPCO4
+	LI R3,>8000
+	JMP DRPCO5
+DRPCO4	MOVB @WKSP+25,*R15
+	MOVB R12,*R15
+	NOP
+	MOVB *R14,R3
+DRPCO5	AI R12,32+>4000
+	MOVB @WKSP+25,*R15
+	MOVB R12,*R15
+	AI R12,->4000-32
+	MOVB R3,*R10
+	CI R12,>00A0
+	JGT DRPCO3
+	JMP DRPCO1		start at bottom of this column
+	
+DRPCO6	AI R12,-32
+	CI R12,>00A0
+	JGT DRPCO2
+	INC R11
+	CI R11,21*32+23-33
+	JLT DRPCO1
+	
+	BL @PAGE
+	DATA MOVLFT       
+DRPCOE
+**************************
+*MOVLFT is a page to move columns to the left when a column is blank
+*in two pages..
+****
+MOVLFT	DATA MOVLFE-MOVLFS
+MOVLFS	LI R9,21*32+11-33
+MOVLF1	CI R9,21*32+22-33
+	JEQ MOVLF3
+	MOVB @WKSP+19,*R15
+	MOVB R9,*R15
+	INC R9
+	CLR R12
+	MOVB *R14,R12
+	CI R12,>8000  is it a space?
+	JNE MOVLF1
+*found a space, now look for non space character
+*if all spaces then F9 then we're done
+MOVLF2	MOVB *R14,R12	next character to the right
+	CI R12,>8000	a space?
+	JEQ MOVLF2	yep, keep looking
+	CI R12,>F900	frame character?
+	JEQ MOVLF3
+	
+	BL @PAGE
+	DATA MOVL2	found a space on lower row, move all to right over
+
+MOVLF3 BL @PAGE
+	DATA ATEND
+MOVLFE
+*************************
+*comes here with R9 pointed to 1 char right of space
+***********************
+MOVL2	DATA MOVL2E-MOVL2S
+MOVL2S	LI R0,5000
+MOVL2Z	LIMI 2
+	LIMI 0			for sounds
+	DEC R0
+	JNE MOVL2Z
+	LI R3,21*32+23-33	check this! number
+	S R9,R3		now R3 has length of line to move
+MOVL21	LI R5,>8364		buffer to hold line
+	MOVB @WKSP+19,*R15
+	MOVB R9,*R15
+	MOV R3,R12
+MOVL22	MOVB *R14,*R5+	move line to buffer
+	DEC R12
+	JNE MOVL22
+	AI R9,>4000-1
+	MOV R3,R12
+	MOVB @WKSP+19,*R15
+	MOVB R9,*R15
+	LI R5,>8364
+MOVL24	MOVB *R5+,*R10
+	DEC R12
+	JNE MOVL24
+	LI R12,>8000
+	MOVB R12,*R10
+	AI R9,->4000-31
+	CI R9,>00A0
+	JGT MOVL21
+
+	BL @PAGE
+	DATA MOVLFT
+MOVL2E
+***************************
+*ATEND	checks if there are any legal moves left. If none then print game over
+*if there are moves then just go back to cursor
+******************************************
+ATEND	DATA ATENDE-ATENDS
+ATENDS	LI R11,>0289	lower left-1
+ATEND1	INC R11
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	CLR R12
+	MOVB *R14,R12
+	CI R12,>F900	at RH edge?
+	JEQ ATEND2
+	CI R12,>8000
+	JEQ ATEND1
+*gets here if a ball found	
+	CLR R3
+	MOVB *R14,R3	look right
+	C R3,R12
+	JEQ ATEND5	if matches then a legal move exists
+	AI R11,-32
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	AI R11,32
+	MOVB *R14,R3
+	C R3,R12
+	JEQ ATEND5	if ball above matches then a legal move exists
+	JMP ATEND1	no move yet, keep looking
+	
+ATEND2	AI R11,-45
+	CI R11,>00A0
+	JGT ATEND1
+*if no matches then falls through to here 
+
+
+	BL @PAGE
+	DATA PAUSE
+	
+ATEND5	BL @PAGE
+	DATA FLCRSR	go to flashing cursor
+ATENDE
+***********************
+PAUSE	DATA PAUSEE-PAUSES
+PAUSES	LI R11,2
+PAUSE1	SETO R12
+PAUSE2	LIMI 2
+	LIMI 0
+	DEC R12
+	JNE PAUSE2
+	DEC R11
+	JNE PAUSE1
+	
+	LI R12,CHIME-1
+	A R13,R12
+	MOV R12,@>83CC
+	LI R12,>0100
+	MOVB R12,@>83CE
+	SOCB R12,@>83FD
+	
+	
+	BL @PAGE
+	DATA LSTSCR
+PAUSEE
+
+*******************************************
+*lastscore - done with this game, check if 99 bonus points and wait for key
+*wrap up this game and go to next
+*****************************************
+LSTSCR	DATA LSTSCE-LSTSCS
+LSTSCS	LI R11,>028A
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	CLR R12
+	MOVB *R14,R12
+	CI R12,>8000		if a space in lower left then screen was cleared
+	JNE LSTSC3
+	LI R0,BONUS-1		SAMECOLORS
+	A R13,R0		r0 points to text in VDP
+	BL @SUB
+	DATA PRTEXT
+	LI R1,99
+	BL @SUB
+	DATA UPDSC
+	JMP LSTSC5
+	
+LSTSC3	LI R0,GJOB-1
+	A R13,R0
+	BL @SUB
+	DATA PRTEXT
+	
+LSTSC5	BL @SUB
+	DATA WAITKY
+	BL @PAGE
+	DATA TITLSC
+LSTSCE
+********************************
+*WAITKY a sub to wait for a keypress, then return
+********************	
+WAITKY	DATA WAITKE-WAITKS
+WAITKS LWPI >83E0		\
+	MOV R11,@>8370
+	BL @>000E		 keyscan needs intws and gplws intact!!
+	MOV @>8370,R11
+	LWPI >83A2	
+		
+	LIMI 2
+	LIMI 0
+	
+	MOV @>837C,R12	check for new key pressed
+	ANDI R12,>2000
+	JEQ WAITKS		if not eq to 0 then key was pressed
+	
+	BL @SUBPAG
+	DATA RETURN
+WAITKE
+	
+
+
+
+***************************
+TITLE	BYTE 1,7
+	BYTE 100,101,140,141,116,117,132,133,144,145	\
+	BYTE 108,109,124,125,108,109,148,149,100,101
+	BYTE 2,7						SAMECOLORS
+	BYTE 102,103,142,143,118,119,134,135,146,147
+	BYTE 110,111,126,127,110,111,150,151,102,103	/
+	BYTE 3,9
+	TEXT 'BY HARRY WILHELM'
+	BYTE 0
+BONUS	BYTE 24,4
+	TEXT 'EXCELLENT! 99 BONUS POINTS'
+	BYTE 0
+GJOB	BYTE 24,12
+	TEXT 'GOOD JOB!!'
+	BYTE 0
+	EVEN
+	
+
+
+****************************************************************
+PATRNS	DATA >387C,>FEFE,>FE7C,>3800	ball 
+	DATA >1044,>0082,>0044,>1000	puffball
+		
+	DATA >070F,>1F1E,>1C1E,>1F0F	\
+	DATA >F0F8,>FC3C,>1C00,>F0F8	 S
+	DATA >0700,>1C1E,>1F0F,>0700
+	DATA >FC3C,>1C3C,>FCF8,>F000	/
+
+	DATA >070F,>1F1E,>1C1C,>1C1C	\
+	DATA >F0F8,>FC3C,>1C1C,>1C1C	 O
+	DATA >1C1C,>1C1E,>1F0F,>0700
+	DATA >1C1C,>1C3C,>FCF8,>F000	/
+	
+	DATA >7078,>7C7E,>7F77,>7371	\
+	DATA >070F,>1F3F,>7FF7,>E7C7	 M
+	DATA >7070,>7070,>7070,>7000
+	DATA >8707,>0707,>0707,>0700	/
+	
+	DATA >1C1C,>1C1C,>1C1C,>1C1C	\
+	DATA >0000,>0000,>0000,>0000	 L
+	DATA >1C1C,>1C1C,>1F1F,>1F00
+	DATA >0000,>0000,>FCFC,>FC00	/
+	
+	DATA >1F1F,>1F1C,>1C1C,>1F1F	\
+	DATA >FCFC,>FC00,>0000,>E0E0	 E
+	DATA >1F1C,>1C1C,>1F1F,>1F00
+	DATA >E000,>0000,>FCFC,>FC00	/
+	
+	DATA >0103,>070F,>1E1C,>1C1C	\
+	DATA >C0E0,>F078,>3C1C,>1C1C	 A
+	DATA >1F1F,>1F1C,>1C1C,>1C00
+	DATA >FCFC,>FC1C,>1C1C,>1C00	/
+			
+	DATA >070F,>1F1E,>1C1C,>1C1C	\
+	DATA >F0F8,>FC3C,>1C00,>0000	 C
+	DATA >1C1C,>1C1E,>1F0F,>0700
+	DATA >0000,>1C3C,>FCF8,>F000	/
+	
+	DATA >1F1F,>1F1C,>1C1C,>1F1F	\
+	DATA >F0F8,>FC3C,>1C3C,>F8F0	 R
+	DATA >1F1C,>1C1C,>1C1C,>1C00
+	DATA >F87C,>3C1C,>1C1C,>1C00	/
+	
+	DATA >FFFF,>0000,>0000,>FFFF	horizontal frame - ascii 152
+	DATA >C3C3,>C3C3,>C3C3,>C3C3	vertical frame
+	DATA >FFFF,>C0C0,>C0C0,>C3C3	upper left corner
+	DATA >FFFF,>0303,>0303,>C3C3	upper right corner
+	DATA >C3C3,>C0C0,>C0C0,>FFFF	lower left corner
+	DATA >C3C3,>0303,>0303,>FFFF	lower right corner
+	DATA >0000,>0402,>FF02,>0400	right arrow to ascii 158
+*	DATA >3844,>8282,>8244,>3800	cursor	(DISK)
+	DATA >1010,>00C6,>0010,>1000	cursor      to ascii 159
+	
+	DATA >F0F0,>F0F0,>F0F0,>F0F0	COLORS
+	DATA >51F1,>81A1,>2171,>D1E4
+
+*******************************	
+*CRASH AND CHIME SOUNDS FROM E/A MANUAL
+*******************************
+CRASH	BYTE >03,>9F,>E4,>F2,5
+	BYTE >02,>E4,>F0,6
+	BYTE >02,>E4,>F2,5
+	BYTE >02,>E4,>F4,4
+	BYTE >02,>E4,>F6,3
+	BYTE >02,>E4,>F8,2
+	BYTE >02,>E4,>FA,1
+	BYTE >01,>FF,0
+	
+CHIME	BYTE >05,>9F,>BF,>DF,>FF,>E3,1
+	BYTE >09,>8E,>01,>A4,>02,>C5,>01,>90,>B6,>D3,6
+	BYTE >03,>91,>B7,>D4,5
+	BYTE >03,>92,>B8,>D5,4
+	BYTE >05,>A7,>04,>93,>B0,>D6,5
+	BYTE >03,>94,>B1,>D7,6
+	BYTE >03,>95,>B2,>D8,7
+	BYTE >05,>CA,>02,>96,>B3,>D0,6
+	BYTE >03,>97,>B4,>D1,5
+	BYTE >03,>98,>B5,>D2,4
+	BYTE >05,>85,>03,>90,>B6,>D3,5
+	BYTE >03,>91,>B7,>D4,6
+	BYTE >03,>92,>B8,>D5,7
+	BYTE >05,>A4,>02,>93,>B0,>D6,6
+	BYTE >03,>95,>B1,>D7,5
+	BYTE >03,>95,>B2,>D8,4
+	BYTE >05,>C5,>01,>96,>B3,>D0,5
+	BYTE >03,>97,>B4,>D1,6
+	BYTE >03,>98,>B5,>D2,7
+	BYTE >03,>9F,>BF,>DF,0	
+
+	EVEN
+**************************************
+
+******************************
+*
+***********************
+KFLASH	DATA KFLASE-KFLASS
+KFLASS	LI R11,>4300		Next lines take row and col, 
+	MOVB @WKSP+23,*R15	convert to sprite row and col
+	MOVB R11,*R15		and write to VDP
+	
+	MOV R7,R12	get the row
+	DEC R12	row1=row0	
+	SLA R12,3	x8
+	DEC R12	because top pixel row=FF
+	MOVB @WKSP+25,*R10	row to >0300 VDP
+	MOV R8,R12
+	DEC R12
+	SLA R12,11
+	MOVB R12,*R10	col to >0301 VDP
+	
+	MOV R7,R12	These lines take row and col and read char on screen
+	SLA R12,5	X32
+	A R8,R12
+	AI R12,-33
+	MOVB @WKSP+25,*R15
+	MOVB R12,*R15
+	CLR R12
+	MOVB *R14,R12
+	CI R12,>8000	a space?
+	JEQ KFLAS1
+	LI R9,>0001		transparent/black
+	JMP KFLAS2
+KFLAS1	LI R9,>000F		transparent/white
+
+KFLAS2	BL @SUBPAG
+	DATA KFLSHB
+KFLASE
+
+***************************************
+KFLSHB	DATA KFLSHE-KFLSHS	
+KFLSHS	LI R11,>4303
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	SWPB R9
+	MOVB R9,*R10
+	
+	LI R11,400
+	
+KFLSH2	LWPI >83E0		\
+	MOV R11,@>8370
+	BL @>000E		 keyscan needs intws and gplws intact!!
+	MOV @>8370,R11
+	LWPI >83A2	
+	
+	CLR R2
+	MOVB @>8375,R2
+	LIMI 2
+	LIMI 0
+	
+	MOV @>837C,R12	check for new key pressed
+	ANDI R12,>2000
+	JNE KPRESD		if not eq to 0 then key was pressed
+	DEC R11
+	JNE KFLSH2
+	CI R2,>FF00
+	JEQ KFLSHS
+	
+KPRESD	BL @SUBPAG
+	DATA RETURN
+KFLSHE
+
+
+
+***********************************
+*RANDOM is a subroutine to generate a random number
+*if I wanted a RND from 0 to 5, R0 should be 6
+*the random number is returned in R1
+********************************************
+RANDOM	DATA RANDOE-RANDOS
+RANDOS	LI R11,>6FE5
+	MPY @>8378,R11
+	AI R12,>7AB9
+	MOV R12,@>8378
+	CLR R11
+	SWPB R12
+RANDO2	DIV R0,R11
+	MOV R12,R1
+	BL @SUBPAG
+	DATA RETURN
+RANDOE
+********************************************
+*SUBROUTINE TO UPDATE SCORES HERE. SCORE ARE STORED AT VDP >0800
+*>0800=HIGHEST SCORE,HIGHEST MOVE ever,CURRENT SCORE,CURRENT HIGH move
+*reads from vdp to 8 BYTE BUFFER AT >8368
+******************************
+UPDSC	DATA UPDSCE-UPDSCS
+UPDSCS	LI R11,>0800
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	LI R11,>8368	high score,high move,current score,current h. move
+UPDSC1	MOVB *R14,*R11+
+	CI R11,>8370
+	JNE UPDSC1
+	
+	A R1,@>836C	add score for move to current score
+	
+	C @>836C,@>8368
+	JLT UPDSC2
+	MOV @>836C,@>8368	move current score into highest score
+	
+UPDSC2	CI R1,99	if bonus 99 points not a move, don't count for high move
+	JEQ UPDSC4
+
+	C R1,@>836E
+	JLT UPDSC3
+	MOV R1,@>836E	new current high move
+	
+UPDSC3	C R1,@>836A	best high move ever?
+	JLT UPDSC4
+	MOV R1,@>836A
+	
+
+	
+UPDSC4	LI R11,>4800
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15	
+	LI R11,>8368
+UPDSC5	MOVB *R11+,*R10	write score back to VDP
+	CI R11,>8370
+	JNE UPDSC5
+	MOV @>83D0,R2		store old return addresses to R2 and R3
+	MOV @>83D2,R3
+	BL @PAGE
+	DATA PRSCOR
+UPDSCE
+**************************************
+*PRSCOR is a page to print the scores contained in buffer at >8368
+PRSCOR	DATA PRSCOE-PRSCOS
+PRSCOS	CI R1,99
+	JEQ PRSCO1
+	LI R0,>02F0
+	BL @SUB
+	DATA PRNUM
+PRSCO1	LI R0,13*32+30-33
+	MOV @>8368,R1
+	BL @SUB
+	DATA PRNUM
+	LI R0,19*32+30-33
+	MOV @>836A,R1
+	BL @SUB
+	DATA PRNUM
+	LI R0,13*32+7-33
+	MOV @>836C,R1
+	BL @SUB
+	DATA PRNUM
+	LI R0,19*32+7-33
+	MOV @>836E,R1
+	BL @SUB
+	DATA PRNUM
+	MOV R2,@>83D0
+	MOV R3,@>83D2
+	
+	BL @SUBPAG
+	DATA RETURN
+	
+PRSCOE
+
+*******************************************************
+*PRNUM is subroutine to print a number on the screen
+*R0= address on screen(prints right to left)
+*R1=number to print
+*****************************************************
+PRNUM	DATA PRNUME-PRNUMS
+PRNUMS	ORI R0,>4000
+	MOV R1,R11
+	JEQ AZERO
+	LI R1,10
+PRNUM1	MOV R11,R12
+	CLR R11
+	DIV R1,R11
+	JEQ PRNUMX
+	AI R12,>0090		to get ASCII plus offset
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	DEC R0
+	MOVB @WKSP+25,*R10
+	JMP PRNUM1
+	
+	
+AZERO	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R11,>9000
+	MOVB R11,*R10
+	
+PRNUMX	BL @SUBPAG
+	DATA RETURN
+PRNUME
+
+
+********************************************************
+*CLEAR IS SUB TO FILL SCREEN WITH SPACES STARTING AT
+*ADDRESS IN R0 ALL THE WAY TO BOTTOM
+********************************************
+CLEAR	DATA CLEARE-CLEARS
+CLEARS	AI R0,>4000
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R11,>8000
+CLEAR1	MOVB R11,*R10
+	INC R0
+	CI R0,>4300
+	JLT CLEAR1
+	BL @SUBPAG
+	DATA RETURN
+CLEARE
+
+
+******************************************************
+*PRTEXT is a subroutine to print text on the
+*screen.  Pointer to text is in R0
+*uses r11 and r12
+*********************************************************
+PRTEXT	DATA PRTEXE-PRTEXS
+PRTEXS MOVB @WKSP+1,*R15	start reading bytes of text
+	MOVB R0,*R15
+	INC R0
+	CLR R11
+	MOVB *R14,R11		
+	JEQ PRTEXX		if EQ then at end of text			
+		
+PRTEX2 CI R11,>2000		if LT >20 then a row, need to set up
+	JL GTPNTR		pointer in R2
+PRTEX3	AI R11,>6000		screen offset
+	MOVB @WKSP+25,*R15	lsb R12
+	MOVB R12,*R15		msb R12
+	INC R12
+	MOVB R11,*R10		print character to screen
+	JMP PRTEXS
+	
+GTPNTR	MOV R11,R12	
+	SRL R12,3
+	AI R12,>3FDF		add >4000 and -33=SCREEN LOC
+	MOVB *R14,R11
+	SRL R11,8
+	A R11,R12
+	INC R0
+	JMP PRTEXS
+	
+PRTEXX BL @SUBPAG
+	DATA RETURN	
+PRTEXE
+
+***************************************************
+*MOVVDP is a subroutine to move bytes from one location to
+*another in the VDP ram.  
+*Address to move from is in R0
+*Address to move to is in R1
+*Number of bytes is in R2
+*uses r11 & r12  does not modify R2 calling; R0 & R1 inc'd by r2 count
+*********************************************************
+MOVVDP	DATA MOVVDE-MOVVDS
+MOVVDS ORI R1,>4000		set bit in R1 so we can write
+	MOV R2,R12
+MOVVD1	MOVB @WKSP+1,*R15	start reading bytes of text
+	MOVB R0,*R15
+	INC R0
+	MOVB *R14,R11		read a byte from VDP
+	MOVB @WKSP+3,*R15	lsb R1
+	MOVB R1,*R15		msb R1
+	INC R1
+	MOVB R11,*R10		move byte into VDP
+	DEC R12
+	JNE MOVVD1
+	BL @SUBPAG
+	DATA RETURN	
+MOVVDE
+**************************************************************
+*GPLLNK is adapted from millers graphics universal GPL & DSR link	
+*Put GPL routine into R0 and call as a subroutine
+*******************************************
+GPLLNK	DATA GPLLNE-GPLLNS	
+GPLLNS	LWPI >83E0		change to GPL workspace
+	MOV @>0050,R4		put >0864 into GPLWS4
+	MOV @>83A2,R6		GPL routine is in R0. Move into GPLWS6
+	BL *R4			push grom address to substack (routine @ >0864)
+	MOV @>8300+GXMLAD-GPLLNS,@>8302(R4)	put >00E8 onto stack
+	INCT @>8373					and INC stack pointer
+	B @>0060		to GPL interpreter
+*>831C below
+	DATA XMLRTN-GPLLNS+>8300	pointer to return from GPLLNK
+*					this MUST be at >831C !!!
+GXMLAD	DATA >1675		grom at >1675 contains >0FFE in reg TI and V2.2
+XMLRTN	MOV @>166C,R4		puts >0842 into R4
+	BL *R4
+	LWPI WKSP
+	MOV @XMLRT1-GPLLNS+>8300,@>837E	some gpl routines trash >837E
+	BL @SUBPAG
+	DATA RETURN
+XMLRT1	DATA >C81B		the normal value in >837E
+GPLLNE
+
+
+*******************
+RETURN	DATA RETURE-RETURS
+
+RETURS  MOV @>83D0,R11		Get page to return to
+	A R13,R11		Add VDP offset
+	MOVB @>83B9,*R15	lsb of R11
+	MOVB R11,*R15		msb of R11
+
+	MOV @>83D2,R11		position in page when sub was called
+	INCT R11		next instruction
+	LI R12,>8300		
+	JMP RETURS+>0094   B @>8394
+	
+		
+RETURE
+	
+	END

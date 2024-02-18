@@ -1,0 +1,924 @@
+
+       IDT  'SUPPORTS'
+*      VERSION FOR GROM
+*
+*      THIS IS THE SUPPORT FOR 9900 ASSEMBLY LANGUAGE WITH
+*           EXTENDED BASIC ON THE TI 99/4.  THE CALL INIT
+*           SUBPROGRAM WILL LOAD THIS ROUTINE INTO THE
+*           EXPANSION RAM FROM GROM.  TO LOAD THE OBJECT
+*           INTO GROM THE OBJECT MUST BE TEXT EDITED.
+*           IN THE FIRST RECORD CHANGE THE DATA AFTER THE
+*           "9" TAG FROM "E000" OR "2000" TO THE ADDRESS
+*           DESIRED AND CHANGE THE "7" TAG TO A "8" TAG.
+*      NOTE:   BSS INSTRUCTIONS CANNOT BE USED IN THIS
+*              PROGRAM IN ORDER TO LOAD PROPERLY INTO GROM.
+*
+ON     EQU  1
+OFF    EQU  0
+DEBUG  EQU  OFF               FOR DEBUGGER ADDRESSING
+*
+*        ASMIF DEBUG=ON
+* ILFA   EQU  >FFF8
+* SET    EQU  >00EC
+*        ASMELS
+ILFA   EQU  >4000
+SET    EQU  >00CE
+*        ASMEND
+*
+*      SYSTEM EQUATES
+*
+SCNKEY EQU >000E
+EXBASX EQU >6010              EXTENDED BASIC XML TABLES (BASE)
+BYTE   EQU >830C
+OLDS   EQU >8310              OLD VALUE PTR BEFORE EVALUATE SUB
+*                             ARGUMENT
+COUNT  EQU >8312              NUMBER OF ARGUMENT
+SREF   EQU >831C
+ERRCOD EQU >8322              PLACE TO RETURN ERROR CODE
+BASE   EQU >8343
+FAC    EQU >834A
+SCTEMP EQU >8354
+SCLEN  EQU >8355
+SCNAME EQU >8356
+FAC6   EQU FAC+6
+VSPTR  EQU >836E              VALUE STACK PTR
+MAXVDP EQU >8370
+SNDADD EQU >83CC
+STFLGS EQU >83CE
+CRULST EQU >83D0
+GPLWS  EQU >83E0              GPL/EXTENDED BASIC WORKSPACE
+*
+WRVDP  EQU >4000              Write enable for VDP
+VDPRD  EQU >8800              VDP read data address
+VDPWD  EQU >8C00              VDP write data address
+VDPWA  EQU >8C02              VDP write address address
+*
+*      ERROR EQUATES
+*
+ERRNO  EQU >0200              2 Numeric Overflow
+ERRSYN EQU >0300              3 Syntax Error
+ERRIBS EQU >0400              4 Illegal after subprogram
+ERRNGS EQU >0500              5 Unmatched quotes
+ERRNTL EQU >0600              6 Name too long
+ERRSNM EQU >0700              7 String-number mismatch
+ERROBE EQU >0800              8 Option base error
+ERRMUV EQU >0900              9 Improperly used name
+ERRIM  EQU >0A00             10 Image error
+ERRMEM EQU >0B00             11 Memory full
+ERRSO  EQU >0C00             12 Stack overflow
+ERRNWF EQU >0D00             13 NEXT without FOR
+ERRFNN EQU >0E00             14 FOR NEXT nesting
+ERRSNS EQU >0F00             15 Must be in subprogram
+ERRRSC EQU >1000             16 Recursive subprogram call
+ERRMS  EQU >1100             17 Missing subend
+ERRRWG EQU >1200             18 RETURN without GOSUB
+ERRST  EQU >1300             19 String truncated
+ERRBS  EQU >1400             20 Bad subscript
+ERRSSL EQU >1500             21 Speech string too long
+ERRLNF EQU >1600             22 Line not found
+ERRBLN EQU >1700             23 Bad line number
+ERRLTL EQU >1800             24 Line too long
+ERRCC  EQU >1900             25 Can't continue
+ERRCIP EQU >1A00             26 Command illegal in program
+ERROLP EQU >1B00             27 Only leagal in a program
+ERRBA  EQU >1C00             28 Bad argument
+ERRNPP EQU >1D00             29 No program present
+ERRBV  EQU >1E00             30 Bad value
+ERRIAL EQU >1F00             31 Incorrect argument list
+ERRINP EQU >2000             32 Input error
+ERRDAT EQU >2100             33 Data error
+ERRFE  EQU >2200             34 File error
+ERRIO  EQU >2400             36 I/O error
+ERRSNF EQU >2500             37 Subprogram not found
+ERRPV  EQU >2700             39 Protection violation
+ERRIVN EQU >2800             40 Unrecongnized character
+WRNNO  EQU >2900             41 Numeric overflow
+WRNST  EQU >2A00             42 String truncated
+WRNNPP EQU >2B00             43 No program present
+WRNINP EQU >2C00             44 Input error
+WRNIO  EQU >2D00             45 I/O error
+WRNLNF EQU >2E00             46 Line not found
+*
+*        ASMIF DEBUG=ON
+*        AORG  >E000
+*        ASMELS
+       AORG >2000
+*        ASMEND
+*
+       DATA NAMLNK            XML LINK TO NAME LINK ROUTINE
+*
+FFA    DATA IFFA              FIRST FREE ADDRESS (FFA) POINTER
+LFA    DATA ILFA              LAST  FREE ADDRESS (LFA) POINTER
+*
+HAA    DATA >AA55             CONSTANT TO SIGNAL INITIALIZED MEM.
+*
+*      UTILITY BLWP VECTORS
+*
+       DATA   UTILWS,NUMASG   NUMERIC ASSIGNMENT
+       DATA   UTILWS,NUMREF   NUMERIC REFERENCE
+       DATA   UTILWS,STRASG   STRING ASSIGNMENT
+       DATA   UTILWS,STRREF   STRING REFERENCE
+       DATA   UTILWS,XMLLNK   LINK TO SYSTEM UTILITIES
+       DATA   UTILWS,KSCAN    KEYBOARD SCAN
+       DATA   UTILWS,VSBW     VDP single byte write
+       DATA   UTILWS,VMBW     VDP multiple byte write
+       DATA   UTILWS,VSBR     VDP single byte read
+       DATA   UTILWS,VMBR     VDP multiple byte read
+       DATA   UTILWS,VWTR     VDP write to register
+       DATA   UTILWS,ERR      Return error code to EXENDED BASIC
+*
+*      UTILITY WORKSPACE
+UTILWS DATA 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+R2LB   EQU  UTILWS+5
+R4LB   EQU  UTILWS+9
+*
+*      D A T A    C O N S T A N T S
+*
+CBH65  BYTE >65
+EQBIT  BYTE >20
+*
+*
+*      NAME LINK ROUTINE
+*                             ALC ROUTINE NAME IN FAC
+*
+NAMLNK MOV  @LFA,R1           ADDRESS POINTER
+NAML10 CI   R1,ILFA
+       JEQ  NAMERR            NAME NOT FOUND
+*                             TEST NEXT NAME
+       MOV  R1,R0                  R0=SOURCE
+       LI   R2,FAC                 R2=DESTINATION
+       C    *R0+,*R2+         TEST 2 BYTES
+       JNE  NAML20
+       C    *R0+,*R2+         TEST 2 BYTES
+       JNE  NAML20
+       C    *R0+,*R2+         TEST LAST 2 BYTES
+       JNE  NAML20
+       MOV  *R0+,R0           NAME MATCHES GET CODE ADDRESS
+       B    *R0               AND BRANCH TO IT
+*
+NAML20 AI   R1,8              NAME DOESN'T MATCH, GO TO NEXT ONE
+       JMP  NAML10
+*
+NAMERR LI   R0,ERRSNF         "NOT FOUND" ERROR
+*
+*           GENERAL ERROR RETURN
+*
+ERROR  MOV  R0,@ERRCOD
+ERR2   LWPI GPLWS
+       B    @SET
+*
+ERR    MOV  *R13,@ERRCOD
+       JMP  ERR2
+*
+*
+*      NUMERIC ASSIGNMENT UTILITY
+*
+*
+*
+*        UTILITY ROUTINE NUMASG
+*         A utility to allow a numeric value to be assigned
+*         to a numeric variable or a numeric array passed
+*         as an argument to sub.
+*         The floating point variable to be assigned is in
+*         FAC.
+*         The stack has information for each argument.
+*         For a simple numeric variable, the stack entry looks
+*         like this :
+*           -------------------------------------------------
+*           :Pointer to    : >00 :     :Pointer to    :     :
+*           :S. T. entry   :     :     :Value space   :     :
+*           -------------------------------------------------
+*         For a array argument, the stack entry looks
+*         like this:
+*           -------------------------------------------------
+*           :Pointer to    :     :     :Pointer to    :     :
+*           :S. T. entry   :     :     :Dim. info.    :     :
+*           -------------------------------------------------
+*         REGISTER USAGE
+*          R0 : Array element number or zero
+*          R1 : Argument number
+*          R0,R1,R2,R3,R4,R5,R6,R7,R8 are used in this
+*          routine
+*
+*          5 types of arguments :
+*                           Identifier 0 : Numeric Expression
+*                           Identifier 1 : String Expression
+*                           Identifier 2 : Numeric Expression
+*                           Identifier 3 : String Variable
+*                           Identifier 4 : Numeric Array
+*                           Identifier 5 : String Array
+*
+*
+NUMASG MOV  *R13,R0           For the change of the work space
+       MOV  @2(R13),R1        For the change of the work space
+       BL   @CKARG            Check valid argument number and
+********************   set up stack entry pointer in R5  *********
+**** CHECK THE ARGUMENT IDENTIFIER IN CPU RAM ********************
+**** A SIMPLE NUMERIC VAIABLE OR AN ARRAY REFERENCE **************
+       MOV  R1,R3             Get the argument number
+       DEC  R3                Offset 1
+       AI   R3,>8300          For CPU address
+       MOVB *R3,R3            Get the one byte identifier in
+*                             CPU
+       JEQ  NUERR2            Can't do the assignment to a
+*                             numeric expression argument
+       SRL  R3,8              Make it double
+       DECT R3                Flag 2 is for NUMERIC VARIABLE
+       JNE  NUM04
+********* FOR ASSIGMENT TO A SIMPLE NUMERIC VARIABLE *************
+       MOV  R0,R0             In this case, R0 must contain 0
+       JNE  NUERR2            ERROR : BAD ARGUMENT
+       MOV  R5,R3             Get the pointer to the stack entry
+       INCT R3                Point to the ID byte of the
+*                             stack entry
+       BL   @GETV1            Get 1 byte (ID) from VDP
+*
+       JNE  NUERR1            ERROR : STRUNG NUMBER MISMATCH
+       INCT R3                Point to the value space pointer
+       BL   @GET1             Get the value space pointer in R1
+NUM00  LI   R4,FAC            Source is in FAC
+NUM01  LI   R2,8              8 bytes to copy
+NUM02  MOVB *R4+,*R1+         Move ONE byte
+       DEC  R2                Decrement the counter - done?
+       JGT  NUM02             No - loop for more
+       RTWP                   Yes - return to the caller
+******** FOR ASSIGNMENT TO ONE ELEMENT OF AN ARRAY ***************
+**** R0 : ARRAY ELEMENT NUMBER R5 : POINTER TO STACK ENTRY *******
+NUM04  BL   @ARYBND           Check array element within boundries
+*                          and fine the pointer to element in ERAM
+       JMP  NUM00             Go to the general code to move
+*                             from FAC to ERAM
+******************************************************************
+**** CHECK VALID ARGUMENT NUMBER AND SET UP STACK ENTRY **********
+****** POINTER IN R5                                   ***********
+CKARG  MOV  R1,R1             Argument number can't be 0
+       JEQ  NUERR2            ERROR : BAD ARGUMENT
+       SLA  R1,8              Make one byte
+       CB   @COUNT,R1         Valid argument?
+       JLT  NUERR2            ERROR : BAD ARGUMENT
+       SRL  R1,8              Make it two byte again
+       MOV  R1,R5             Get the argument number
+       SLA  R5,3              8 bytes per stack entry
+       AI   R5,8              Skip the 8 bytes file name
+*                             on top of stack
+       A    @OLDS,R5          Add to the old stack pointer
+*                             R5 : Pointer to the stack entry
+       RT
+******************************************************************
+***** CHECK THE ARRAY ELEMENT NUMBER IS WITHIN BOUNDRIES   *******
+ARYBND MOV  R11,R9            Save return address
+       DECT R3                Flag 4 is for ARRAY
+       JNE  NUERR1            NO - Assume string argument
+*                             ERROR : STRING-NUMBER MISMATCH
+       MOV  R5,R3             Get the stack entry pointer
+       BL   @GET1             Get the S. T. entry pointer
+       MOV  R1,R3             R1 : Data register for GET1
+*                             R3 : Address register for GET1
+       BL   @GETV1            Get the 1st byte of S. T. entry
+       JLT  NUERR1            String bit is set - ERROR
+*                             STRING-NUMBER MISMATCH
+       BL   @ARY1             Go through this general routine
+       BL   @GET1             Get the pointer to ERAM in R1
+       S    R4,R0             Check the BASE : 0 : O.K.
+*                                       BASE : 1 : offset 1
+       SLA  R0,3              8 bytes per element
+       A    R0,R1             Add to the pointer in ERAM
+       B    *R9
+******************************************************************
+ARY1   MOV  R11,R10           Save RTN address
+       SLA  R1,5              R1 still contains 1st buyte from
+*                             func bits
+*
+       SRL  R1,13             Shift back to use as a double
+******* R1 : NUMBER OF DIMENSION, R5 : STACK ENTRY POINTER *******
+       MOV  R1,R8             Save number of dimension for later
+       MOVB @BASE,R4          Check the BASE
+       SRL  R4,8              Make it double
+       JEQ  NUM08             If BASE=0, INDEX=0 -- it's o.k.
+       DEC  R0                Decrement the INDEX
+       JLT  NUERR3            BASE=1, INDEX=0 --- ERROR
+*                             BAD SUBSCRIPT
+       INC  R0                Restore INDEX
+NUM08  LI   R6,1              Initial value for accumulator
+       MOV  R5,R3             Put the stack entry pointer in R3
+       AI   R3,4              Try to get the dim. info. pointer
+       BL   @GET1             Go to get the dim. info. pointer
+       MOV  R1,R3             Put it in R3
+       DECT R3                For the following INCT insturction:
+NUM10  INCT R3                Point to dimension information entry
+*                             2-byte maximum per dimension
+       BL   @GET1             Get the dimension maximum in R1
+       INC  R1                BASE=0, add 1 offset
+       S    R4,R1             BASE=1, O.K.
+       MPY  R1,R6             Get the maximum array index
+*                             R6 : accumulator
+       MOV  R6,R6             First 2 bytes must be 0 here
+       JNE  NUERR3            else BAD SUBSCRIPT
+       MOV  R7,R6             Get last two bytes result
+       DEC  R8                Decrement the counter
+*                             R8 : number of dimension
+       JGT  NUM10             Loop for more
+       DEC  R6                BASE=0 :element number must range
+*                             from 0 to (R6-1)
+       A    R4,R6             BASE=0 :element number range 1 -- R6
+       C    R0,R6             User's INDEX must <= maximum INDEX
+       JGT  NUERR3            NO - ERROR : BAD SUBSCRIPT
+       INCT R3                Points to value space which
+*                             contains pointer to the beginning
+*                             of array element value in ERAM
+       B    *R10              RTN
+******************************************************************
+NUERR1 LI   R0,ERRSNM         STRING-NUMBER MISMATCH
+       B    @ERROR            Error out
+NUERR2 LI   R0,ERRBA          BAD ARGUMENT
+       B    @ERROR            Error out
+NUERR3 LI   R0,ERRBS          BAD SUBSCRIPT
+       B    @ERROR            Error out
+*
+*
+*      NUMERIC REFERENCE UTILITY
+*
+*
+*
+*        UTILITY ROUTINE NUMREF
+*         A utility to allow reference to a numeric expression,
+*         numeric variable or a numeric array passed
+*         as an argument to sub.
+*         The floating point variable assigned will be
+*         in FAC after calling NUMREF.
+*         The stack has information for each argument.
+*         For a simple numeric variable, the stack entry looks
+*         like this :
+*           -------------------------------------------------
+*           :Pointer to    : >00 :     :Pointer to    :     :
+*           :S. T. entry   :     :     :Value space   :     :
+*           -------------------------------------------------
+*         For a array reference, the stack entry looks
+*         like this:
+*           -------------------------------------------------
+*           :Pointer to    :     :     :Pointer to    :     :
+*           :S. T. entry   :     :     :Dim. info.    :     :
+*           -------------------------------------------------
+*         For a numeric expression, the stack entry has the
+*         8 bytes floating points value come back from
+*         a parse.
+*         REGISTER USAGE
+*          R0 : Array element number or zero
+*          R1 : Argument number
+*          R0,R1,R2,R3,R4,R5,R6,R7,R8 are used in this
+*          routine
+*
+*
+NUMREF MOV  *R13,R0           For the change of the work space
+       MOV  @2(R13),R1        For the change of the work space
+       BL   @CKARG            Check valid argument number
+*                             and set up stack pointer
+******  R5 : Pointer to the stack entry, R1 : Argument number. ***
+******** CHECK THE ARGUMENT IDENTIFIER IN CPU RAM ****************
+**** A NUMERIC EXPRESSION, SIMPLE NUMERIC VARIABLE OR AN ARRAY ***
+       MOV  R1,R3             Get the argument number
+       DEC  R3                Offset 1
+       AI   R3,>8300          For CPU address
+       MOVB *R3,R3            Get the one byte identifier in
+*                             CPU
+       SRL  R3,8              Make it double
+       JNE  REF00             Not a numeric expression
+**** A NUMERIC EXPRESSION, MOVE THE 8 BYTES STACK ENTRY **********
+**** FROM VDP TO FAC.                                   **********
+       MOV  R0,R0             R0 in this case must contain 0
+       JNE  RFERR2            ERROR : BAD ARGUMENT
+       LI   R2,8              8 bytes to move
+       LI   R4,FAC            Destination address
+       MOV  R5,R3             Source address : stack entry pointer
+REF03  BL   @GET1             Get 2 bytes from VDP
+       MOV  R1,*R4+           Put 2 bytes in FAC
+       INCT R3                Update source address
+       DECT R2                Update the counter
+       JGT  REF03             More to move
+       RTWP                   Return to caller
+********** SIMPLE NUMERIC VARIABLE OR AN ARRAY *******************
+REF00  DECT R3                Flag 2 is for NUMERIC VARIABLE
+       JNE  REF04             NO - go to the code for array
+****** FOR REFERENCE TO A SIMPLE NUMERIC VARIABLE ****************
+       MOV  R0,R0             In this case, R0 must contain 0
+       JNE  RFERR2            ERROR : BAD ARGUMENT
+       MOV  R5,R3             Get the pointer to the stack entry
+       INCT R3                Point to the ID byte of the
+*                             stack entry
+       BL   @GETV1            Get 1 byte (ID) from VDP
+*                             Numeric ID byte must be 0
+       JNE  RFERR1            ERROR : STRING-NUMBER MISMATCH
+       INCT R3                Point to the value space pointer
+       BL   @GET1             Get the value space pointer in R1
+REF01  MOV  R1,R4             Put the source address in R4
+*                             for the "general move" code
+       LI   R1,FAC            Desination address is in FAC
+       B    @NUM01            Goto the "general move" code and
+*                             return to caller
+****** FOR ASSIGNMENT TO ONE ELEMENT OF AN ARRAY *****************
+****** R0 : ARRAY ELEMENT NUMBER, R5 : POINTER TO STACK ENTRY ****
+REF04  BL   @ARYBND           Check array element is within bounds
+*                and find the pointer to the array element in ERAM
+       JMP  REF01             Go to the general code to move
+*                             from ERAM to FAC
+******************************************************************
+RFERR1 B    @NUERR1           STRING-NUMBER MISMATCH
+RFERR2 B    @NUERR2           BAD ARGUMENT
+*
+*
+*
+*      STRING ASSIGNMENT UTILITY
+*
+*        UTILITY ROUTINE STRASG
+*         A utility to allow a string to be assigned to a
+*         sting variable or one element of an string variable
+*         array passed as an argument to subpro.
+*         The stack has information for each argument.
+*         For a string variable, the stack entry looks
+*         like this :
+*           --------------------------------------------------
+*           :Pointer to    : >65 :     :Pointer       :string:
+*           :Value space   :     :     :to sting      :length:
+*           --------------------------------------------------
+*         For a string array, the stack entry looks like this:
+*           -------------------------------------------------
+*           :Pointer to    :     :     :Pointer to    :     :
+*           :S. T. entry   :     :     :Dim. info.    :     :
+*           -------------------------------------------------
+*         USER'S REGISTER USAGE
+*          R0 : Array element number or zero
+*          R1 : Argument number
+*          R2 : String address in ERAM, (the first byte
+*          of the string is the length of the string.)
+******************************************************************
+*          THIS ROUTINE REGISTER USAGE
+*          R0 : Always is the string address in ERAM
+*               except when routine ARY1 is called,
+*               then has the array element number.
+*          R1 : Argument number
+*          R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10 are used in
+*          this routine
+*         UTILWS workd space usage
+*          UTILWS     : Array element provided by user
+*          UTILWS+2   : RTN address for VGASSN
+*          UTILWS+4   : Temporary place for R5 when VPUSH,
+*                       GETSTR, ASSGNV are called.
+*          UTILWS+6   : Temporary place for @BYTE when
+*                       GETSTR is called.
+*          UTILWS+8   : RTN address for GPL
+*          UTILWS+12  : String address in ERAM provided by user
+*
+*
+STRASG MOV  *R13,@UTILWS      Array element from user
+       MOV  @2(R13),@GPLWS+2  For change of work space
+*                             Argument number provided by user
+       MOV  @4(R13),@UTILWS+12 String address probided by user
+       LWPI GPLWS             Load GPL work space registers
+*                             which has string information
+*                             address in VDP
+       MOV  R11,@UTILWS+8     RTN address for back to GPL
+       MOV  @UTILWS+12,R0     ERAM string address is in R0 now
+       BL   @CKARG            Check valid argument number and set
+*                             up pointer to stack entry in R5
+       MOV  R1,R3             Get argument number
+       DEC  R3                Offset 1
+       AI   R3,>8300          For CPU address
+       MOVB *R3,R3            Get the one byte identifier in
+*                             CPU
+       SRL  R3,8              make it double
+       DEC  R3                Check if string expression
+       JEQ  STERR2            Can't do the assignment to a
+*                             string expression argument
+       DECT R3                Flag 3 is for string variable
+       JNE  STARY             NO : Is STRING ARRAY ?
+******* ASSIGMENT TO STRING VARIABLE *****************************
+       MOV  @UTILWS,R10       In this case : array element
+*                             has to be 0
+       JNE  STERR2            ERROR : BAD ARGUMENT
+       MOV  R5,R3             Address register for GETV1
+       INCT R3                Point to the ID byte of the
+*                             stack entry
+       BL   @GETV1            Get 1 byte (ID) from VDP
+       CB   R1,@CBH65         Is this a string variable ?
+       JNE  STERR1            No - STRING-NUMBER MISMATCH ERROR
+******************************************************************
+**** PUSH THIS STACK ENTRY ON TOP OF THE STACK FOR ***************
+**** ROUTINE "ASSGNV" TO USE                       ***************
+******************************************************************
+**** MOVE THIS STRING VARIABLE ENTRY TO CPU FAC AREA *************
+**** IN ORDER TO DO A VPUSH                          *************
+       LI   R6,8              Number of bytes to move
+       LI   R4,FAC            Destination address in CPU
+       MOV  R5,R3             Restore stack entry pointer
+*                             R3 : address register for GET1
+STR02  BL   @GET1             Get 2 bytes from VDP
+       MOV  R1,*R4+           Put to FAC area
+       INCT R3                Update source address
+       DECT R6                Update the counter
+       JGT  STR02             More to move
+***** DO THE VPUSH, GETSTR, COPY STRING TO STRING SPACE **********
+***** AND ASSIGNMENT                                    **********
+       BL   @VGASSN
+********* NOW UPDATES THE STACK ENTRY OF THIS ********************
+********* STRING VARIABLE                     ********************
+********* R5 STILL POINTS TO THE OLD STACK ENTRY *****************
+********* FOR THIS STRING VARIABLE               *****************
+       AI   R5,4              "POINTER TO STRING" entry
+       MOV  R5,R4             Address register for PUT1
+       MOV  R6,R1             Put the pointer to string
+*              (come back from ASSGNV) into data register for PUT1
+       BL   @PUT1             Put 2 bytes of data to VDP
+       INCT R4                "LENGTH OF STRING" entry
+       MOVB *R0,R1            Put the length into data register
+       SRL  R1,8              Make it two bytes
+       BL   @PUT1             Put 2 bytes of data to VDP
+STRTN  MOV  @UTILWS+8,R11     Restore RTN address
+*
+       MOV  @UTILWS+6,@BYTE   Restore @BYTE
+*
+       LWPI UTILWS            Go back to old workspace
+       RTWP                   Return
+******************************************************************
+STERR1 LI   R0,ERRSNM         STRING-NUMBER MISMATCH
+ERRTN  MOV  @UTILWS+8,R11     Restore RTN address
+       B    @ERROR
+STERR2 LI   R0,ERRBA          BAD ARGUMENT
+       B    @ERROR            Error return
+******************************************************************
+************* Common routine for STRASG & STRREF to check
+************* valid array element
+STARYC MOV  R11,R2            Save RTN address
+       DECT R3                Flag 5 is for string array
+       JNE  STERR1            ERROR : STRING-NUMBER MISMATCH
+       MOV  R5,R3             Get the stack entry pointer
+       BL   @GET1             Get the S.T. entry pointer
+       MOV  R1,R3             R1 : Data register for GET1
+*                             R3 : Address register for GET1
+       BL   @GETV1            Get the 1st byte of S.T. entry
+       JLT  STARY1            O.K.
+       B    @STERR1           ERROR : STRING-NUMBER MISMATCH
+STARY1 MOV  @UTILWS,R0        Put array element in R0 now
+*                             for the general routine ARY1
+       BL   @ARY1             Go through general routine to
+*                             check array element is out of bound
+* R4 : BASE, R0 : ARRAY ELEMENT, R3 : POINTER TO BEGINNING OF
+*                                     VALUE SPACE
+       S    R4,R0             Check the BASE : 0 : O.K.
+*                                       BASE : 1 : Offset 1
+       SLA  R0,1              2 bytes per element
+       A    R0,R3             Pointer to the exact element we want
+       BL   @GET1             Get the string pointer
+       B    *R2               RTN
+******************************************************************
+******************************************************************
+STARY  BL   @STARYC           Go through general routine
+*                             shared by STRREF
+*   NOW R1 : POINTER TO THE OLD STING
+*       R3 : POINTER TO THE VALUE SPACE
+*** SET UP FAC ENTRY AND PUSH IT ON STACK FOR ASSIGN ROUTINE *****
+       LI   R6,FAC            Desination address
+       MOV  R3,*R6+           Put pointer to value space in
+       MOVB @CBH65,*R6+       Put >65 ID in
+       MOVB R4,*R6+           Clear the unuse byte
+       MOV  R1,*R6+           Put the pointer to string in
+       MOV  R1,R3             Set up address register for GETV1
+       JNE  STARY4            Not null pointer : o.k.
+       CLR  *R6               Clear the length bytes
+       JMP  STARY6            Go on
+STARY4 DEC  R3                Point to string length
+       BL   @GETV1            Get the length from VDP
+       SRL  R1,8              Make it two bytes
+       MOV  R1,*R6            Put the length in FAC area
+***** FAC ENTRY HAS BEEN SET UP NOW ******************************
+STARY6 MOV  @UTILWS+12,R0     Restore the ERAM string address
+*                             to R0
+       BL   @VGASSN           Do the VPUSH, GETSTR and ASSIGN
+***** ASSIGNMENT WILL POP THE STACK, OLD STACK ENTRY *************
+***** DOES NOT NEED TO BE UPDATED IN THIS CASE       *************
+       B    @STRTN            RTN
+******************************************************************
+******************************************************************
+VGASSN MOV  R11,@UTILWS+2     Save return address
+***** VPUSH changed R0, R5    ************************************
+       MOV  R5,@UTILWS+4
+******************************************************************
+       MOV  @>601E,R11        XML table address for VPUSH
+       BL   *R11              Do the VPUSH
+********* RESTORE R0, R5 *****************************************
+       MOV  @UTILWS+12,R0
+       MOV  @UTILWS+4,R5
+******************************************************************
+**** GETS THE STRING SPACE, COPIES THE STRING FROM ERAM **********
+**** INTO VDP STRING SPACE, AND SETS UP THE FAC WITH A  **********
+**** STRING ENTRY OF THE FOLLOWING FORM:                **********
+**** --------------------------------------------       **********
+**** : >001C : >65 : XX : POINTER   : LENGTH    :       **********
+**** :       :     :    : TO STRING : OF STRING :       **********
+**** --------------------------------------------       **********
+**** FAC    +2    +3   +4          +6                   **********
+******************************************************************
+       MOVB *R0,R6            R0 : Address of string (length by
+*                             & string) supplies by ALC
+       SRL  R6,8              Set up the length byte
+*
+       MOV  @BYTE,@UTILWS+6   Save @BYTE
+*
+       MOV  R6,@BYTE          For GETSTR routine
+       MOV  R6,@FAC6          Set up length byte entry in FAC
+*********** GETSTR changes R0, R5 value *************************
+*****************************************************************
+       MOV  @>6012,R11        XML table address for GETSTR
+       BL   *R11              Call GETSTR routine
+       MOV  @UTILWS+12,R0     Restore R0
+*********** SET UP FAC ENTRY ************************************
+       LI   R6,FAC            Optimize to save bytes
+       LI   R4,>001C          Get address of SREF
+       MOV  R4,*R6+           Indicate a temporary string
+       MOVB @CBH65,*R6+       Indicate a string
+       MOVB R4,*R6+           Byte is not used
+       MOV  @SREF,*R6         Save pointer to the string
+*********** COPY THE STRING TO STRING SPACE *********************
+       MOV  @BYTE,R2          Get number of bytes to copy
+       JEQ  STR04             If none to copy
+       MOV  *R6,R4            Get pointer to destination
+*                         R4 : address register for PUTV1 below
+       MOV  R0,R3         RO : pointer to string (length byte)
+       INC  R3            Skip the length byte pointer to string
+STR06  MOVB *R3+,R1           Get one byte from ERAM
+       BL   @PUTV1            Put 1 byte in VDP
+       INC  R4                Update the destination address
+       DEC  R2                1 less to move
+       JGT  STR06             If not done-loop for more
+*                             ASSGNV destroys all the registers
+STR04  MOV  @>6028,R11        XML table address for ASSGNV
+       BL   *R11              Call ASSGNV
+******** RESTORE R0, R5 ******************************************
+       MOV  @UTILWS+12,R0
+       MOV  @UTILWS+4,R5
+       MOV  @UTILWS+2,R11     Restore RTN address
+       RT
+*
+*
+*
+*      STRING REFERENCE UTILITY
+*
+*
+*        UTILITY ROUTINE STRREF
+*         A utility to allow a reference to a string expression,
+*         sting variable or a string array passed as an
+*         argument to a subprogam.
+*
+*         The stack has information for each argument.
+*         For a string expression, the stack entry looks
+*         like this :
+*           --------------------------------------------------
+*           :  >001C       : >65 :     :              :      :
+*           :or Pointer to :     :     :Pointer       :String:
+*           :Value space   :     :     :to sting      :Length:
+*           --------------------------------------------------
+*           >001C : For a temporary string
+*           pointer to value space : for a perment string
+*         For a string variable, the stack entry looks like this:
+*           --------------------------------------------------
+*           :Pointer to    : >65 :     :Pointer to    :String:
+*           :S. T. entry   :     :     :String        :Length:
+*           --------------------------------------------------
+*         For a string array, the stack entry looks like this:
+*           --------------------------------------------------
+*           :Pointer to    :     :     :Pointer to    :      :
+*           :Value space   :     :     :Dimension info:      :
+*           --------------------------------------------------
+*
+*         USER'S REGISTER USAGE
+*          R0 : Array element number or zero
+*          R1 : Argument number
+*          R2 : String address in ERAM, (the first byte
+*          of the string is the length of the string.)
+*          Before calling STRREF : The string length has
+*          the maximum length which indicates how many
+*          spaces followed the length byte has been
+*          allocated for the string.
+*          After calling STRREF : The length byte has
+*          the actual length of the string which
+*          locates right after the length byte.
+*
+*
+*
+******************************************************************
+STRREF MOV  *R13,R0           For the change of the work space
+*                             Array element now is in R0
+       MOV  @2(R13),R1        For the change of the work space
+*                             Argument number is in R1
+       BL   @CKARG            Check valid argument number
+*                             set up pointer to stack entry in R5
+       MOV  R1,R3             Get the argument number
+       DEC  R3                Offset 1
+       AI   R3,>8300          For CPU address
+       MOVB *R3,R3            Get one byte identifier in CPU
+       SRL  R3,8              Make it double
+       DEC  R3                Flag 1 is for string expression
+       JEQ  SRF01             String expression is o.k.
+       DECT R3                Flag 3 is for string variable
+       JNE  STARYF            Not string expression or variable,
+*                             must be string array in this case.
+********** REFERENCE TO STRING EXPRESSION OR STRING VARIABLE *****
+SRF01  MOV  R0,R0             R0 must be 0 in this case
+       JNE  SRFER2            ERROR : BAD ARGUMENT
+       MOV  @4(R13),R0        Now move string pointer in ERAM
+*                             into R)
+       MOV  R5,R3             Address register for GETV1
+       INCT R3                Point to the ID byte of the
+*                             stack entry
+       BL   @GETV1            Get 1 byte (ID) from VDP
+       CB   R1,@CBH65         Is this a string varialbe ?
+       JNE  SRFER1            No - STRING-NUMBER MISMATCH ERROR
+       INCT R3                Points to "pointer to string"
+       BL   @GET1             Get the "pointer to string" from
+*                             stack entry in VDP
+SRF03  MOV  R1,R1             Is it null pointer ?
+       JEQ  SRF05             Yes - put 0 in length byte
+       MOV  R1,R6             R6 now contains "pointer to string"
+       DEC  R1                Points to the length byte of
+*                             this string in string space
+       MOV  R1,R3             Set up address register for GETV1
+       BL   @GETV1            Get the 1 byte actual length
+*                             of this string in R1
+       CB   *R0,R1            Compare the maximem length user
+*                             provided with the actual length
+       JL   SRFER3            Not enough space - ERROR
+*                             STRING-TRUNCATED ERROR
+SRF05  MOVB R1,*R0+           Enough space - o.k.
+*                             Put the actual length into the
+*                             length byte
+       JEQ  SRF08             0 byte length - don't move
+******** R0 : Points to the allocated string space in ERAM *******
+*                             Destination address register for the
+*                             following move
+       MOV  R6,R3             Set up address register for GETV1
+*                             R3 now cantains "pointer to string"
+*                             Source address for following move
+       SRL  R1,8              Make actual length byte a double
+       MOV  R1,R5             R5 : number of bytes to move
+SRF07  BL   @GETV1            Get 1 byte into VDP
+       MOVB R1,*R0+           Put 1 byte into ERAM
+       INC  R3                Update the source address
+       DEC  R5                Update the counter
+       JGT  SRF07             More to move - loop back
+SRF08  RTWP                   Return to caller
+******************************************************************
+************ REFERENCE TO STRING ARRAY ***************************
+STARYF BL   @STARYC           Check array element is within bound
+*               and find the string element pointer in value space
+       MOV  @4(R13),R0        Put string address in ERAM provided
+*          by the user into R0 now. (for the change of work space)
+       JMP  SRF03             Go to the general code to move
+*                             the string from VDP to ERAM
+******************************************************************
+SRFER1 B    @NUERR1           STRING-NUMBER MISMATCH
+SRFER2 B    @NUERR2           BAD ARGUMENT
+SRFER3 LI   R0,ERRST          STRING TRUNCATED
+       B    @ERROR            Error out
+******************************************************************
+***    UTILITY ROUTINES TO ACCESS VDP                         ****
+******************************************************************
+***** GET1 : Get two bytes of data from VDP
+*****        R3 : Address in VDP
+*****        R1 : Where the two bytes data stored
+GET1   SWPB R3
+       MOVB R3,@VDPWA
+       SWPB R3
+       MOVB R3,@VDPWA
+       NOP
+       MOVB @VDPRD,R1
+       SWPB R1
+       MOVB @VDPRD,R1
+       SWPB R1
+       RT
+***** PUT1 : Put tow bytes of data into VDP
+*****        R4 : Address on VDP
+*****        R1 : Data
+PUT1   SWPB R4
+       MOVB R4,@VDPWA
+       SWPB R4
+       ORI  R4,WRVDP
+       MOVB R4,@VDPWA
+       NOP
+       MOVB R1,@VDPWD
+       SWPB R1
+       MOVB R1,@VDPWD
+       SWPB R1
+       RT
+***** GETV1 : Get 1 byte of data from VDP
+*****         R3 : Address in VDP
+*****         R1 : Where the 1 byte data stored
+GETV1  SWPB R3
+       MOVB R3,@VDPWA
+       SWPB R3
+       MOVB R3,@VDPWA
+       NOP
+       MOVB @VDPRD,R1
+       RT
+***** PUTV1 : Put 1 byte of data into VDP
+*****         R4 : Address in VDP
+*****         R1 : Data
+PUTV1  SWPB R4
+       MOVB R4,@VDPWA
+       SWPB R4
+       ORI  R4,WRVDP
+       MOVB R4,@VDPWA
+       NOP
+       MOVB R1,@VDPWD
+       RT
+*
+*
+*      LINK TO SYSTEM XML UTILITIES
+*
+XMLLNK MOV  *R14+,@GPLWS+2    GET ARGUMENT
+       LWPI GPLWS
+       MOV  R11,@UTILWS+22    Save GPL return address
+       MOV  R1,R2
+       CI   R1,R2
+       JH   XMLL30            IF SYSTEM XML WE HAVE ADDRESS
+       MOV  @EXBASX(R1),R2    Get address from XML table
+       CI   R1,4              Is it MEMCHK?
+       JNE  XMLL30            No
+       MOV  @2(R2),R2
+       BL   *R2               Special case for MEMCHK
+       DATA MEMERR            Error return from MEMCHK
+       JMP  XMLL40
+XMLL30 BL   *R2               GO TO ROUTINE
+XMLL40 LWPI UTILWS            GET BACK TO RIGHT WORKSPACE
+       MOV  R11,@GPLWS+22     Restore GPL return address
+       RTWP
+MEMERR LI   R0,ERRMEM
+       B    @ERROR
+*
+*
+*      KEYBOARD SCAN
+*
+KSCAN  LWPI GPLWS
+       MOV  R11,@UTILWS+22    Save GPL return address
+       BL   @SCNKEY
+       LWPI UTILWS
+       MOV  R11,@GPLWS+22     Restore GPL return address
+       RTWP
+*
+**     VDP single byte write
+*
+VSBW   BL   @WVDPWA           Write out address
+       MOVB @2(R13),@VDPWD    Write data
+       RTWP                   Return to calling program
+*
+**     VDP multiple byte write
+*
+VMBW   BL   @WVDPWA           Write out address
+VWTMOR MOVB *R1+,@VDPWD       Write byte
+       DEC  R2                Decrement byte count
+       JNE  VWTMOR            More to write?
+       RTWP                   Return to calling program
+*
+**     VDP single byte read
+*
+VSBR   BL   @WVDPRA           Write out address
+       MOVB @VDPRD,@2(R13)    Read data
+       RTWP                   Return to calling program
+*
+**     VDP multiple byte read
+*
+VMBR   BL   @WVDPRA           Write out address
+VRDMOR MOVB @VDPRD,*R1+       Read byte
+       DEC  R2                Decrement byte count
+       JNE  VRDMOR            More to read?
+       RTWP                   Return to calling program
+*
+**     VDP write to register
+*
+VWTR   MOV  *R13,R1           Get register number and value
+       MOVB @1(R13),@VDPWA    Write out value
+       ORI  R1,>8000          Set for register write
+       MOVB R1,@VDPWA         Write out register number
+       RTWP                   Return to calling program
+*
+**     Set up to write to VDP
+*
+WVDPWA LI   R1,>4000
+       JMP  WVDPAD
+*
+**     Set up to read VDP
+*
+WVDPRA CLR  R1
+*
+**     Write VDP address
+*
+WVDPAD MOV  *R13,R2           Get VDP address
+       MOVB @R2LB,@VDPWA      Write low byte of address
+       SOC  R1,R2             Properly adjust VDP write bit
+       MOVB R2,@VDPWA         Write high byte of address
+       MOV  @2(R13),R1        Get CPU RAM address
+       MOV  @4(R13),R2        Get byte count
+       RT                     Return to calling routine
+************************************************************
+*      >24EA to >24F3 are not used (10 bytes unused)       *
+************************************************************
+IFFA   EQU  >24F4          INITIAL VALUE FOR FFA FOR INIT
+       END

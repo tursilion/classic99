@@ -1,0 +1,1120 @@
+ 
+****************************
+GCHAR	BL @GET3
+	MOV *R4,R0
+	MOV *R5,R2
+	DEC R0
+	DEC R2
+	SLA R0,5
+	A R2,R0
+	SWPB R0
+	MOVB R0,@>8C02
+	SWPB R0
+	MOVB R0,@>8C02
+	NOP			!need to kill time when reading
+	MOVB @>8800,R1
+	AI R1,>A000
+	SRL R1,8
+	MOV R1,*R6
+	B @RTN
+****************************
+VCHAR	BL @HCHGAD
+VCHAR1	BL @VSBW
+	DEC R6
+	JEQ HCHAR1
+	AI R0,>0020	down 1 row
+	CI R0,>0300	off bottom?
+	JL VCHAR1	no, keep looping
+	AI R0,>FD01	back up to top of screen, 1 col over to right
+	CI R0,>0020	if not in top row then row1,col1
+	JL VCHAR1
+	CLR R0
+	JMP VCHAR1
+***************************
+HCHAR	BL @HCHGAD
+HCHAR4 BL @VSBW	Note use of BL, not BLWP
+HCHAR3 DEC R6
+	JEQ HCHAR1
+	INC R0
+	CI R0,>0300
+	JL HCHAR2
+	CLR R0
+	JMP HCHAR4
+HCHAR2 MOVB R1,@>8C00
+	JMP HCHAR3
+HCHAR1 B @RTN
+ 
+HCHGAD MOV R11,R10
+	BL @GET3
+	MOV *R4,R0	ROW to R0
+	MOV *R5,R2	COL to R2
+	MOV *R6,R1	ASCII to R1
+	C *R13,R15	See if next word is a number or an instruction
+	JLT HCHARX	optional number included
+	LI R6,1
+	JMP HCHARY
+HCHARX BL @GET1
+	MOV *R6,R6
+	JEQ HCHAR1	3/22/13 fixes bug with zero repeats
+HCHARY DEC R0
+	DEC R2
+	SLA R0,5
+	A R2,R0
+	SWPB R1
+	AI R1,>6000
+	B *R10
+ 
+******************************
+PRINT
+DISPLA	MOV @SIZLTH,R3
+	MOV @ATPNTR,R0	Display AT pointer to R0
+	JNE DISPL1
+	MOV @SCRNPT,R0	
+DISPL1	MOV R0,R7	
+	BL @ACCEP2	returns with last pos in line in r3, R5 and >832a
+*			r5 will be FFFF if size not used-this forces a scroll
+DISPL2	MOV R7,R0
+ 
+PRINT2	CLR R10		flag, if <>0 then came here from input
+	MOV *R13,R8		see if next instruction is semi,colon or code
+	CI R8,SEMI
+	JLT PRINT9		(was JL)!!!in HM this jumps, in LM does not jump
+	CI R8,TAB
+	JGT PRINBK		(was jJHnext instruction is code, need to finish printing this line
+	MOV R0,R5		for semi, colon, etc.
+	ANDI R5,>FFE0		r5 points to beginning of current row
+	B *R8			branch to SEMI,COLON, etc.
+ 
+PRINT9	C R8,R15
+	JGT PRINBK		(was JH)
+	CLR R9			flag for prinbk
+	MOV R4,R4		is SIZE being used?
+	JNE PRIN9A
+	SETO R5		will force scroll
+PRIN9A	BL @GET1
+	BL @ASTRNG
+	JEQ PRINT3		it's a string, so skip the CNS conversion
+	SETO R8		flag - if seto then is a number
+	MOV *R6,R6		get the number
+	BLWP @CNS		convert to a string
+	LI R2,GPBUFF+2	pointer to string	
+	MOV R6,R6		
+	JLT PRINT4		jump if negative (i.e. a minus sign)
+	MOVB *R2,@-1(R2)	move length byte to gpbuff+1
+	INC @-2(R2)		inc length byte
+	LI R3,>2000
+	MOVB R3,*R2
+	DEC R2
+	JMP PRINT4
+PRINT3 MOV *R6,R2		length byte of string to R2
+	CLR R8			reset string flag (INPUT enters at PRINT3+2 string)
+ 
+PRINT4 MOVB *R2+,R6		length of string to R6
+	JEQ PRINT7		if length is zero then nothing to print, go on
+	SRL R6,8		to LSB
+	
+	MOV R4,R4		if size<>0 then a size was specified
+	JNE PRINT5		so skip "line too long" test
+	
+	MOV R0,R7		copy screen position to R7
+	ANDI R7,>001F		if at beginning of line then print line.
+	CI R7,2		check whether pointer is at the beginning of line then print the line
+	JEQ PRINT5		if EQ then at beginning, so print it	
+	A R6,R7		add length to 1st screen position		
+	CI R7,>001E	 	is it past the end of line?
+	JH PRINT6		if so then scroll/drop down as needed
+ 
+	
+PRINT5 MOVB *R2+,R1		get byte to display
+*	AI R1,>6000		add screen offset
+*added next line 4/3/2022 to deal with problems when display at with a size and semicolon
+	C R0,@>832A		are we trying to print past where size says we should?
+	JH PRNT5X
+	BL @VSBW96		print to screen
+PRNT5X	INC R0			one screen position to right
+	DEC R6			decrement length count
+	JEQ PRINT7		done printing string if zero
+	MOV R4,R4		ACCEP2 called earlier copies size to r4
+	JEQ PRN5A		no size specified if EQ
+	C R0,@>832A		at last screen position?
+	JGT PRINT7		PRINT7(was JGT PRINB3)done if at end of size	
+PRN5A	COC @HX001E,R0	at RH of screen?
+	JNE PRINT5		no, so keep printing
+	
+PRINT6	BL @COMMA5		will scroll screen or drop down one line as needed
+	JMP PRINT5		back to print some more of the string
+ 
+PRINT7 MOV R10,R10		was this an input prompt?
+	JEQ PRINT8		not a prompt if zero
+	CI R0,>02FE
+	JLT PRIN7B
+	BLWP @SCROLL
+PRIN7B	B @INPUT4		done with prompt, go back to input
+PRINT8	MOV R8,R8		was it a string?
+	JEQ PRINT2		if it was equal then it was a string
+	COC @HX001E,R0	at rightmost screen position?		\
+	JEQ PRINT2		if eq then it was at right
+	C R0,@>832A		*********added 4/17
+	JGT PRINT2		*********
+	LI R1,>8000		numbers get trailing space unless at end
+	BL @VSBW
+	INC R0
+	JMP PRINT2		/
+ 
+PRINBK	MOV R9,R9		see if last code was semi,colon,tab,etc.
+	JLT PRINB3
+	BL @COMMA5		fill end of line with spaces and scroll
+PRINB3	MOV @ATPNTR,R9
+	JNE PRINB4		if using AT then don't change SCRNPT
+	MOV R0,@SCRNPT
+PRINB4	CLR @ATPNTR
+	CLR @SIZLTH
+	B @RTN
+ 
+ 
+SEMI	SETO R9
+	INCT R13
+	JMP PRINT2
+ 
+COMMA	COC @HX0010,R0	is column less than halfway?
+	JNE COMMA1		yes, set pntr to halfway
+	
+ 
+COLON	INC R5			hopefully that will do it
+	JMP COMMA2
+COMMA1	AI R5,>0010		to center column
+COMMA2	BL @COMMA5
+	JMP SEMI
+ 
+TAB	INCT R13
+	BL @GET1
+ 
+	MOV *R6,R1
+TAB2	CI R1,29
+	JLT TAB1
+	AI R1,-28
+	JMP TAB2
+ 
+TAB1	INC R5
+	A R1,R5		in XB tab reduced by 28 repeatedly if over 28
+	BL @COMMA5
+	B @PRINT2
+ 
+COMMA5	MOV R11,R12
+	LI R1,>8000
+
+	
+COMMA6	C R0,R5 (bug WITH PRINT R5=R0 AND SCROLL IS SKIPPED)
+ 
+	JEQ COMMA8		jgt works with disp at
+	COC @HX001E,R0
+	JNE COMMA7		if eq then are in last pos. on line
+*	MOV R4,R4		want to suppress scroll if using SIZE
+*	JNE COMMA8
+	BLWP @SCROLL
+	JMP COMMA6
+COMMA7	C R0,@>832A		added to fix cirobug
+	JGT COMMA8
+	BL @VSBW
+	INC R0
+	JMP COMMA6
+COMMA8	B *R12
+ 
+ 
+***********************
+*BL @ASTRNG	returns EQ if R6 points to a string, NE if R6 points to number
+***********************
+ASTRNG CI R6,SC0
+	JL ASTRN1
+	CI R6,NA0
+	JH ASTRN1
+	C R6,R6
+	JMP ASTRN2
+ASTRN1	C R6,R13		guaranteed Not equal
+ASTRN2	B *R11
+ 
+**********************
+*BLWP @SCROLL scrolls screen, sets R0 calling = >02E2
+*SCROLL and VMBW/VMBR use the same workspace
+**********************
+ 
+SCROLL DATA BLWPWS,SCROB
+ 
+SCROB	MOV @ATPNTR,R9	see if r10 calling is zero
+	JNE SCRLAT		if NE then using AT;diff. scroll
+ 
+	MOV R13,R12		uses same wksp as vmbw, store old return addresses
+	MOV R14,R10		""
+*FAST SCROLL
+	LI R0,>0020
+	LI R1,GPBUFF+20
+	MOV R0,R2
+SCRLP	BLWP @VMBR
+	AI R0,-32
+	BLWP @VMBW
+	AI R0,>0040
+	CI R0,>0300
+	JLT SCRLP
+ 
+	LI R1,>7F80
+	MOVB R1,*R9		R9 has >8c00 from vmbw, puts edge char. to screen
+	MOVB R1,*R9		edge char.
+	SWPB R1
+	LI R4,28
+SCROB4 MOVB R1,*R9
+	DEC R4
+	JNE SCROB4		28 spaces on screen
+	SWPB R1
+	MOVB R1,*R9
+	MOVB R1,*R9
+	MOV R12,R13
+	MOV R10,R14
+	
+	LI R0,>02E2
+	MOV R0,*R13		to r0 calling	
+ 
+	MOV @16(R13),R8
+	CI R8,TAB
+	JEQ SCRLBK
+ 
+SCROB5	MOV R0,@10(R13)	`
+SCRLBK	RTWP
+ 
+*following is routine to scroll if using DISPLAY AT
+SCRLAT	MOV *R13,R0		screen pointer (R0 calling) to r0
+	ANDI R0,>BFE0		zero out last 5 bits
+	AI R0,>0022		down 1 row and in 2
+	CI R0,>0300
+	JL SCRLA2		if gt then off bottom
+	LI R0,2		top row and in 2
+ 
+SCRLA2	MOV R0,*R13		sets r0 calling to new scrn pos. 
+	MOV R0,R1
+	AI R1,28
+	MOV R1,@>832A
+	MOV @16(R13),R8
+	CI R8,TAB
+	JNE SCROB5
+	
+	MOV @10(R13),R0	get tab position
+	AI R0,32		down 1 row
+	CI R0,>0300		off bottom?
+	JLT SCROB5
+	ANDI R0,>001F		up to top row
+	JMP SCROB5
+ 	
+************************************************************
+*SPRITE ROUTINES FOR COMPILER 10/19/2012
+************************************************************
+ 
+*CALL DISTANCE
+DISTAN	BL @SPDIST		subroutine to get distance between 2
+*sprites or sprite & point: returns with delta col in r2 and delta row in r3
+	MOV R2,R4
+	MPY R2,R4		square col difference
+	MOV R5,R5		will be in r5 because less than >ffff
+	JLT SPDOVR		if negative then is bigger than 32767
+	MOV R3,R8
+	MPY R3,R8		square row difference
+	MOV R9,R9	
+	JLT SPDOVR		if negative then bigger than 32767
+	A R5,R9		add them
+	JLT SPDOVR		if negative then bigger than 32767
+DISTA1	BL @GET1		pointer to variable in r6
+	MOV R9,*R6		send back distance
+	JMP SPRIT3		back
+	
+SPDOVR	LI R9,>7FFF		Distance over 32767
+	JMP DISTA1
+	
+*CALL COINC
+COINC	C *R13,@HX8000+2	is it a #?
+	JNE COIALL		no, so must be coinc (all)
+	BL @SPDIST		get the distance into r9
+*SPDIST will jump back with delta col in r2 and delta row in r3
+	BL @GET2	
+	C R2,*R5		r5 has tolerance
+	JGT NOCOIN
+	C R3,*R5
+	JGT NOCOIN
+NOCOI1	SETO *R6
+	JMP SPRIT3
+NOCOIN	CLR *R6
+	JMP SPRIT3
+	
+COIALL	BL @GET1
+	MOV @>837A,R5		no arguments with coinc(all)
+	LI R4,>0020
+	COC R4,R5		see if bit 2 of >837B is set
+	JEQ NOCOI1		if it is 2 sprites touch, report coinc.
+	JMP NOCOIN
+	
+	
+*CALL POSITION
+POSITI	BL @GTSPNO
+	BL @GET2
+	MOV R9,R0		sprite attribute list to r0
+	BL @VSBR		read row
+*changes to POSITION AUGUST 6,2021 TO RETURN VALUE OF 0,0 IF SPRITE POS IS >C0,>00	
+	MOV R1,R2
+	AI R2,>0100
+	SRL R2,8
+	MOVB @>8800,R1		read column NOW r1 has column and row
+	JNE POSIT1
+	CI R2,>00C1
+	JNE POSIT1		must be C1 because of the AI
+* if we get here then the row=>c0 and the column=0
+	CLR *R5
+	CLR *R6
+	JMP POSIT2
+POSIT1	INC R2
+	MOV R2,*R5
+	SRL R1,8
+	INC R1
+	MOV R1,*R6
+POSIT2	C *R13,@HX8000+2
+	JEQ POSITI
+	JMP SPRIT3
+ 
+ 
+*CALL DELSPRITE
+DELSPR	C *R13,@HX8000+2
+	JEQ DELSP1
+	BL @SPINIT		cooo to attribute, clear motion, clr >837a
+	JMP SPRIT3
+DELSP1	BL @GTSPNO
+	MOV R9,R0
+	LI R1,>C000		write >C0 to row
+	BL @VSBW
+	AI R0,>0480		>0780 - >0300 gets us to motion table
+	SWPB R1		now is >00c0
+	BL @VSBW		write 0 to motion
+	MOVB R1,@>8C00	write 0 to motion
+	CB R8,@>837A
+	JNE DELSP2
+	
+	LI R1,>8306		R3
+	LI R2,2		will be reading 2 bytes from motion table to R3
+DELS1A	AB @HXFFF0,@>837A	one less sprite in auto motion
+	AI R0,-4
+	CI R0,>077C		if 77c then no sprites are in motion
+	JEQ DELSP2
+	BLWP @VMBR
+	MOV R3,R3		reading the motion of one sprite lower
+	JEQ DELS1A
+	
+DELSP2	C *R13,@HX8000+2
+	JEQ DELSP1
+	JMP SPRIT3
+	
+	
+	
+*CALL MAGNIFY
+MAGNIF	BL @GET1		sprite magnification to r6
+	MOV *R6,R0
+	AI R0,>01DF
+	BLWP @VWTR
+	SWPB R0
+	MOVB R0,@>83D4	
+	JMP SPRIT3
+ 
+*CALL SPRITE
+SPRITE	BL @GTSPNO		there's a #, so get sprite number
+	BL @SPPAT		set sprite pattern
+	BL @SPCOL		set sprite color
+	BL @SPLOC		set sprite location
+SPRIT2	JEQ SPRITE		if EQ then a new sprite, start again
+	C *R13,R15   See if next word is a number or an instruction		is it a number?
+	JLT SPRIT1		yep
+SPRIT3	B @RTN			R13 points to an instruction, go back
+SPRIT1	BL @SPRMO
+	JMP SPRIT2
+	
+*CALL PATTERN
+PATTER	BL @GTSPNO
+	BL @SPPAT
+	JEQ PATTER
+	JMP SPRIT3		back
+***************************
+HX0051	DATA >0051
+COLOR2	 LI R3,>1800
+	JMP COLORA
+COLOR	C *R13,@HX8000+2	is it a #
+	JEQ COLOR1		yes, so it's a sprite color
+	LI R3,>0800
+COLORA	BL @GET3		WORKS LIKE XB
+	MOV *R4,R0		
+	AI R0,>000F
+	ANDI R0,>001F		now is 0 to 1f
+	A R3,R0
+	MOV *R5,R1
+	DEC R1
+	SLA R1,4
+	A *R6,R1
+	DEC R1
+	SWPB R1
+COLORC	BL @VSBW
+	C *R4,@HX0051		was it characterset 81?
+	JNE COLORD
+	INC R0
+	CI R0,>1820
+	JLT COLORC
+	
+COLORD	C *R13,R15   See if next word is a number or an instruction
+	JGT SPRIT3
+	CI R0,>1000
+	JLT COLOR
+	JMP COLOR2
+ 
+*CALL COLOR FOR SPRITES
+COLOR1	BL @GTSPNO
+	BL @SPCOL
+	JEQ COLOR1
+	JMP SPRIT3		back
+ 
+*CALL LOCATE
+LOCATE	BL @GTSPNO
+	BL @SPLOC
+	JEQ LOCATE
+	JMP SPRIT3		back
+	
+*CALL MOTION
+MOTION	BL @GTSPNO
+	BL @SPRMO
+	JEQ MOTION
+	JMP SPRIT3		back
+	
+*SPRITE SUPPORT SUBROUTINES FOLLOW
+ 
+GTSPNO	INCT R13		R13 points to #, skip it
+	MOV R11,R10		store return
+	BL @GET1		Sprite number in R6
+	MOV *R6,R8		store sprite number for max in motion
+	MOV R8,R9
+	SWPB R8
+	DEC R9			Sprite 1 becomes 0
+	SLA R9,2		x4
+	AI R9,>0300
+	B *R10
+ 
+SPPAT	MOV R11,R10
+	MOV R9,R0
+	INCT R0		table @>0300; 3rd entry
+	BL @GET1		sprite pattern to R6
+	MOV *R6,R1
+	AI R1,>0060		xb offset
+SPPAT1	SWPB R1		to MSB
+	BL @VSBW		write sprite pattern
+SPPAT2	C *R13,@HX8000+2
+	B *R10			return
+	
+SPCOL	MOV R11,R10
+	MOV R9,R0
+	AI R0,3		color is 4th in list
+	BL @GET1
+	MOV *R6,R1
+	DEC R1
+	JMP SPPAT1
+ 
+SPLOC	MOV R11,R10
+	MOV R9,R0
+	BL @GET2
+	MOV *R5,R1
+	DECT R1
+	MOV *R6,R2
+	DEC R2
+SPLOC1	SWPB R1
+	BL @VSBW
+	SWPB R2
+	MOVB R2,@>8C00
+	JMP SPPAT2
+ 
+SPRMO	MOV R11,R10
+	CB R8,@>837A
+	JLT SPRMO1
+	MOVB R8,@>837A
+SPRMO1	BL @GET2		R5,r6 have row and col vels.
+	MOV R9,R0
+	AI R0,>0480		offset for motion table
+	MOV *R5,R1
+	MOV *R6,R2
+	JMP SPLOC1
+		
+SPDIST	MOV R11,R12		r12 should be safe
+	BL @GTSPNO		always starts with a sprite number
+	MOV R9,R0		
+	BL @VSBR		read row
+	MOV R1,R3		store row in r3
+	AI R3,>0100		row 0 to 255 in MSB
+	MOVB @>8800,R2	read column to r2, 0 to 255 in MSB
+	SRL R2,8		to LSB
+	SRL R3,8		to LSB
+	C *R13,@HX8000+2	a sprite?
+	JNE SPDIS1		not a sprite
+	BL @GTSPNO		get next sprite number
+	MOV R9,R0		sprite table to r0
+	BL @VSBR		read row
+	AI R1,>0100		now row is 0 to 255 in MSB
+	MOVB @>8800,R0	read column 0 to 255 in MSB
+	SRL R0,8		to LSB
+	SRL R1,8		to LSB
+	JMP SPDIS2		
+SPDIS1	BL @GET2		get row and column
+	MOV *R5,R1		row to r1 (1 to 256)
+	MOV *R6,R0		column to r0 (1 to 256)
+	DEC R0
+	DEC R1			0 to 255
+SPDIS2	S R0,R2	
+	ABS R2			column distance
+	S R1,R3
+	ABS R3			row distance
+	B *R12			return
+	
+	
+SPINIT	MOV R11,R10
+	LI R0,>0300
+	LI R1,>C0D0
+	LI R3,>8C00
+	LI R4,28		1st byte is 0
+	MOVB R4,@>837C
+	BL @VSBW
+	JMP SPINI2
+SPINI1	MOVB R1,*R3
+SPINI2	MOVB R4,*R3
+	MOVB R4,*R3
+	MOVB R4,*R3
+	DEC R4
+	JNE SPINI1
+	SWPB R1
+	MOVB R1,*R3
+		
+	LI R0,>0780		sprite motion table starts here
+	LI R1,111		112 bytes to write
+	MOVB R1,@>837A	1st byte is 0, 0 sprites in motion
+	BL @VSBW		write 1st 0
+SPINI3	MOVB R1,@>8C00	keep writing zeros
+	DEC R1
+	JNE SPINI3
+	B *R10
+	
+*END OF SPRITE ROUTINES
+*********************
+*BELLS AND WHISTLES FOR ACCEPT
+*********************
+BEEP	BLWP @GPLLNK
+	DATA >0034		gpl routine for accept tone
+BEEP1	B @RTN
+	
+AT	BL @GET2		r5 has row, r6 has col
+	MOV *R5,R2
+	JGT AT1
+	LI R2,1
+AT1	DEC R2			0 to 23
+AT1A	CI R2,24
+	JLT AT2
+	AI R2,-24
+	JMP AT1A
+AT2	SLA R2,5		x 32
+	MOV *R6,R3
+	JGT AT3
+	LI R3,1
+AT3	CI R3,29
+	JLT AT4
+	AI R3,-28
+	JMP AT3
+AT4	INC R3			because col1 is really col2 (012)
+	A R3,R2		add column to R2
+	MOV R2,@ATPNTR	store it
+	JMP BEEP1		back
+ 
+SIZE	BL @GET1
+	MOV *R6,@SIZLTH
+	JMP BEEP1		back
+ 
+VALID	BL @GET1		get address of validate string
+	MOV *R6,R5		now r5 points to string
+	MOVB *R5,R4		see if string has 0 length
+	JEQ BEEP1		back if it does
+	MOV R5,@VLDSTR	pointer to string
+	JMP BEEP1
+	
+*ERASE ALL is converted to CLEAR by compiler
+*ACCEPT ROUTINE FOLLOWS
+ 
+	
+ACCEPT	MOV @VLDSTR,R1
+	JEQ ACCEP1		if 0 then don't validate
+	LI R4,VLDROU
+	MOV R4,@>83C4		set up interrupt hook
+ 
+	
+	
+	
+ACCEP1	MOV @SIZLTH,R3
+	MOV @ATPNTR,R0	See if AT pointer is zero
+	JNE ACCSCP		if not zero then screen pointer
+	MOV R3,R3
+	JNE ACCSCP		if NE then a size was specified
+	LI R3,>0404		allows 255 byte string
+	BL @CLRLN
+ 
+ACCSCP	MOV R0,@>8320
+	MOV R0,@>832A		if no AT then this is right
+	MOV R0,@CRSPOS
+	BL @VSBR
+	MOVB R1,@OLDCHR	store character where cursor is
+	CI R3,>0404		
+	JEQ SETSI1		no AT and no SIZE
+	BL @ACCEP2
+ 
+SETSI1	MOV R3,@>835E
+	BL @GET1		address of number or string
+	MOV R6,R10		set up like input
+	B @INPU4A		to input
+*	TEXT 'ABCDEFGH'
+*BL TO SET UP POINTERS AND CLEAR LINE ON SCREEN****************
+*R0 has ATPNTR, R3 has SIZLTH, R0 is copied to R7
+*******************************
+	
+ACCEP2	MOV R11,R10		store return address
+ 
+	MOV R0,R2		screen pointer to r2
+	ANDI R2,>FFE0		sets r2 to point to beg. line
+	AI R2,>001D		now r2 points to column 28 (actually column 30)
+	MOV R3,R4		came here with sizlth in r3
+	JEQ SETSI7		no size specified if eq
+	
+SETSIZ	ABS R3			make r3 positive
+	A R0,R3
+	DEC R3			r3 points to end of line to input
+ 
+	C R3,R2		if R3<col 28 then go on
+	JLT SETSI6
+	
+SETSI7	MOV R2,R3		if no SIZE then R3 points to col. 28
+	
+SETSI6	MOV R4,R4		was SIZE used?
+**11/3/17 WAS JEQ SETSI8
+	JEQ SETSIX		JEQ SETSI4             	no, jump
+	
+	MOV R3,R5		display needs if using a SIZE
+	INC R5			to work with print/display
+	MOV R4,R4
+	JLT SETSI8		if neg. go back w/o clearing line
+**next line should clear to end of SIZE 3/3/22
+	JGT SETSI4
+	
+*seto R5 added april 16,2022 to fix bug with no scroll with PRINT	
+SETSIX	SETO R5
+	CI R10,DISPL2		skip clearing of line if returns to print (SETSIX was to here)
+	JEQ SETSI8
+	
+SETSI4	LI R1,>8000		print spaces
+	MOVB R1,@OLDCHR	changing the character so store it for input to u
+SETSI2	BL @VSBW		from start
+	INC R0			to end of input line
+	C R0,R3
+	JLE SETSI2
+	
+SETSI8	MOV R3,@>832A		update highest cursor position
+ 
+SETSI9	B *R10
+ 
+************************************************
+*INTERRUPT ROUTINE FOR VALIDATE OPTION IS BELOW*
+************************************************
+ 
+WKSP1	EQU GPBUFF+220		\
+CRSPOS	EQU GPBUFF+252		 using gpbuff for validate routine
+OLDCHR	EQU GPBUFF+254		/
+HX0300	DATA >0300
+ 
+VLDROU	LWPI WKSP1
+ 	
+	LI R4,CRSPOS		for use later
+*code below added for positive check that cursor is on the screen	
+	MOVB @>8362,@>8C02
+	MOVB @>8361,@>8C02
+	CLR R1
+	MOVB @>8800,R1	movb where cursor pointer points into R1 to see if cursor on screen
+	CI R1,>7E00
+	JNE BKINT		cursor not on the screen
+	MOVB @>8301,R1
+
+* cursor is on screen
+VLDRO2	MOV *R4,R0		old cursor pos. to R0
+	CB @>8362,@WKSP1+1	compare old and new cursor pos.
+	JLT AMATCH		if LT then using left arrow
+	JGT VLDRO4		cursor moved right, read char
+*cursor hasn't moved
+	CB @>8375,@HX0300	was "delete" pressed?
+	JEQ AMATCH		this permits a space if delete
+	CB R1,@OLDCHR		new and old characters changed?
+	JEQ AMATCH		character hasn't changed, go on
+	JMP VLDRO3		character changed, check if legal
+VLDRO4	BL @VSBR		read char from screen
+VLDRO3	AI R1,>A000		remove XB offset
+	MOV @VLDSTR,R6 	pointer to string to r6
+	MOVB *R6+,R5		string length to msb of r5
+	SRL R5,8		length to lsb
+VLDRO1	CB *R6+,R1		Look for matches
+	JEQ AMATCH		if a valid key then go on
+	DEC R5
+	JNE VLDRO1		loop till done
+**forbidden keypress, need to restore old line
+	BL @SETADR
+	BLWP @VMBW		write the line
+	MOVB *R4+,@>8361	restore old cursor position
+	MOVB *R4+,@>8362	restore old cursor position	
+	MOVB *R4,@>8301	restore old character
+	JMP BKINT
+**legal keypress, need to save new line etc.
+AMATCH	BL @SETADR
+	BLWP @VMBR		read the line
+	MOVB @>8361,*R4+	
+	MOVB @>8362,*R4+	save cursor position	
+	MOVB @>8301,*R4 	save character
+	
+BKINT	LWPI >83E0
+	B *R11
+	
+SETADR	MOV @>8320,R0		line start to R0
+	LI R1,GPBUFF		line to/from gpbuff
+	MOV @>835E,R2		end of line to R2
+	S R0,R2		# of bytes in line
+	INC R2			need to inc # bytes
+	B *R11			back
+	
+*****************************************
+*equivalent of call char in xb (CF7)
+*****************
+CHAR	LI R0,>0060		after SLA r0 will be >0300
+	JMP CHAR2A
+	
+CHAR2  LI R0,>0260		when SLA R0,3 will be >1300
+CHAR2A	BL @GET2
+	A *R5,R0		add ascii of character to R0
+*	ANDI R0,>00FF		0 to 255
+	SLA R0,3		x8 and R0 points to chardef in vdp
+	
+	MOV *R6,R6
+	MOVB *R6+,R5
+       SRL R5,8			length is in R5
+ 
+CHAR2B	LI R9,8		will write 8 bytes to VDP
+	ANDI R0,>F7FF		keep from going over >1800
+	CLR R1
+CHAR2C	BL @HEXDEC
+       MOVB R4,R1
+       SLA R1,4
+       BL @HEXDEC
+       AB R4,R1
+	BL @VSBW		write the byte
+       INC R0
+ 	DEC R9			have to write bytes in multiples of 8
+       JNE CHAR2C
+       MOV R5,R5		at end of string?
+       JGT CHAR2B		go back for 8 more bytes
+       C *R13,R15		get here if have written all of string
+	JGT MAX3       	if Gt no more defs to write, back to comp. B @RTN
+CHAR2E	CI R0,>1000		doing CHAR or CHAR2?
+	JLT CHAR
+	JMP CHAR2
+**********************
+HEXDEC	DEC R5
+	JLT HEXDE3
+	MOVB *R6+,R4
+	AI R4,->3000
+	CI R4,>1000
+	JLT HEXDE2
+	AI R4,->0700
+HEXDE2	B *R11
+HEXDE3	CLR R4
+	B *R11
+********************************************
+	
+*****************
+*CHARSET FOLLOWS*	XB ROUTINE
+*****************
+CHARSE	LI R0,>0400
+	MOV R0,@>834A
+	BLWP @GPLLNK
+	DATA >0018		small capital letters
+	LI R0,>080F
+	LI R1,>1000
+CHRSE1	BL @VSBW
+	INC R0
+	CI R0,>081E
+	JNE CHRSE1
+	JMP MAX3
+*****************
+*CHARPAT FOLLOWS*(cf7)
+*****************
+CHPAT2	LI R0,>0260	with sla3 is >1300
+	JMP CHARPB
+CHARPA	LI R0,>0060	with sla3 is >0300
+CHARPB	BL @GET2
+	A *R5,R0
+	SLA R0,3
+	ANDI R0,>F7FF
+	LI R1,GPBUFF
+	LI R2,8
+	BLWP @VMBR
+	MOV R0,R7
+	LI R0,GPBUFF+10
+	MOV R0,R3
+	MOVB @CHRSE1-2,*R3+	length byte (from charset)
+CHARP1	MOVB *R1+,R4
+	MOV R4,R5
+	SRL R4,12
+	MOVB @CHARTB(R4),*R3+
+	SWPB R5
+	ANDI R5,>000F
+	MOVB @CHARTB(R5),*R3+
+	DEC R2
+	JNE CHARP1
+	MOV R6,R1
+	BLWP @STRSTR
+	C *R13,R15   See if next word is a number or an instruction
+	JGT CHARP2
+	CI R7,>1000
+	JLT CHARPA
+	JMP CHPAT2
+CHARP2	B @RTN
+ 
+CHARTB TEXT '0123456789ABCDEF'
+
+
+
+
+*********************************
+MAX	BL @GET3
+	C *R4,*R5
+	JGT MAX2
+MAX0	MOV *R5,*R6
+	JMP MAX3   jumps  to B @RTN
+MAX2	MOV *R4,*R6
+MAX3	B @RTN
+*********************
+MIN	BL @GET3
+	C *R4,*R5
+	JGT MAX0
+	JMP MAX2
+********************	
+RPTS	BL @GET3
+	CLR R3			will be length byte of string
+	MOV *R5,R9		# times to repeat
+	JEQ RPTS5
+RPTS1	MOV *R4,R7		now r7 points to string
+	MOVB *R7+,R8		length byte to r8
+	SRL R8,8
+	
+RPTS2	MOVB *R7+,@GPBUFF+1(R3)
+	INC R3
+	CI R3,255
+	JEQ RPTS5
+	DEC R8
+	JGT RPTS2
+	
+	DEC R9
+	JGT RPTS1		get the string again
+ 
+RPTS5	LI R0,GPBUFF	
+	SWPB R3
+	MOVB R3,*R0
+	MOV R6,R1
+	BLWP @STRSTR
+	JMP MAX3   jumps  to B @RTN
+****************
+PEEK	BL @GET1
+	MOV *R6,R1
+PEEK1	C *R13,R15   See if next word is a number or an instruction
+	JGT MAX3   		(was JH) jumps  to B @RTN
+	BL @GET1
+	MOVB *R1+,R2
+	SRL R2,8
+	MOV R2,*R6
+	JMP PEEK1
+***************
+PEEKV	BL @GET1
+	MOV *R6,R0
+PEEKV1	C *R13,R15
+	JGT MAX3
+	BL @GET1
+	
+	BL @VSBR
+	SRL R1,8
+	MOV R1,*R6
+	INC R0
+	JMP PEEKV1
+************************************
+
+POKEV	BL @GET1
+	MOV *R6,R0
+POKEV1	C *R13,R15
+	JGT MAX3
+	BL @GET1
+	
+	MOV *R6,R1
+	SWPB R1
+	BL @VSBW
+	INC R0
+	JMP POKEV1
+************************************	
+
+LOAD	BL @GET1
+	MOV *R6,R1
+LOAD1	C *R13,R15   See if next word is a number or an instruction
+	JGT MAX3   		(was JH) jumps  to B @RTN
+	BL @GET1
+	BL @ASTRNG
+	JEQ LOAD
+	MOVB @1(R6),*R1+
+	JMP LOAD1
+**************************
+
+*The following is part of XB256 but needs to be here because it is needed by runtime1 
+*SWAP SCREEN BUFFER at >0C00 to >0FFF (was 2C00-2FFF)
+*XB PATTERN TABLE at >1000 to >17FF (was 3000-37FF) >02 TO VDP R4
+*COLOR TABLE AT   at >1800 TO >181F (was 3800-3820) >60 TO VDP R3 
+ 
+		
+
+*********************
+*SCRN2 expanded graphics screen (CF7)
+*********************
+SCRN2	MOV @SCRENE,R10
+	JNE SCRN2Z
+	BL @SCRN2A
+SCRN2Z	B @RTN
+ 
+SCRN2A	MOV R11,R10
+	SETO @SCRENE
+	BL @SWPSCR
+	BYTE >00
+	BYTE >0F
+	BYTE >0C
+	BYTE >00
+	BYTE >01
+	BYTE >0C
+	BYTE >0D	Sets the enhanced 256 color screen
+	BYTE >01
+	BYTE >02
+	BYTE >0D
+	BYTE >0E
+	BYTE >02
+	
+	DATA >0360
+	DATA >0402
+SC2CLR	DATA >07F4 	
+	DATA 0
+	
+SC2DC	DATA >07F4		screen2 default color
+*************************************
+*SCRN1 is the normal screen in XB (CF7)
+******************************	
+SCRN1	MOV @SCRENE,R10
+	JEQ SCRN2Z
+	BL @SCRN1A
+SCRNRT	JMP SCRN2Z
+	
+SCRN1A	CLR @SCRENE
+SCRN1B	MOV R11,R10
+	BL @SWPSCR
+	BYTE >02
+	BYTE >0E
+	BYTE >0D
+	BYTE >02
+	BYTE >01
+	BYTE >0D	Sets the normal XB screen
+	BYTE >0C
+	BYTE >01
+	BYTE >00
+	BYTE >0C
+	BYTE >0F
+	BYTE >00
+	
+	DATA >0320
+	DATA >0400
+SC1CLR	DATA >0717	screen color=cyan	
+	DATA 0
+	
+SC1DC	DATA >0717	screen1 default color
+
+
+
+ 
+SWPSCR	CLR R0
+	LI R1,GPBUFF
+	LI R2,>0100
+	LI R3,6
+SWPSC1	MOVB *R11+,R0
+	BLWP @VMBR
+	MOVB *R11+,R0
+	BLWP @VMBW
+	DEC R3
+	JNE SWPSC1
+	
+SWPSC3	MOV *R11+,R0
+	JEQ SWPSC4
+	BLWP @VWTR
+	JMP SWPSC3
+SWPSC4	B *R10
+	
+***********************************
+*subroutine to copy chardefs at startup to different location
+*and set to inverse video (CF7)
+*****
+INVID	LI R0,>0F00	\
+	LI R1,GPBUFF
+	LI R2,256
+INVID1	AI R0,>0500
+	BLWP @VMBR
+	MOV R1,R3
+CHRSE3	INV *R3+	  inverse video
+	CI R3,GPBUFF+256
+	JLT CHRSE3
+	AI R0,>FC00	->400
+	BLWP @VMBW
+	CI R0,>1200
+	JLT INVID1	/
+	SETO @VSFLAG
+	B *R11	
+ 
+DWIND	DATA >0018
+	DATA >0020
+	DATA >02E0	default values for window
+	DATA 1
+	DATA 32
+	DATA 0
+******************
+WHIGHT	DATA 0
+WWIDTH	DATA 0
+WLASTR	DATA 0
+WLCOL	DATA 0
+WRCOL	DATA 0
+WFRSTR	DATA 0
+
+******************************
+DFWNDW	LI R1,WHIGHT
+DFWND1	MOV @-12(R1),*R1+
+	JNE DFWND1
+	B *R11
+	
+	
+***************************************************
+*CALL LINK WAS MOVED TO RUNTIME9
+*****************************************
+*ERROR IS USED BY BOTH DISK ACCESS AND LINK, SO MUST BE HERE
+****************************************************
+*ERROR	   look for line number following error
+*ERRLN contains line number to go to if error
+
+ERROR	LI R3,LASTLN
+	C *R13,R15	see if line number follows error
+	JGT ERROR5
+	MOV *R13+,R3
+ERROR5	MOV R3,@ERRLN
+	JMP SCRN2Z		B @RTN
+
+*RETURN - must doctor RETURN to look for RETURN NEXT or RETURN 1234(done)

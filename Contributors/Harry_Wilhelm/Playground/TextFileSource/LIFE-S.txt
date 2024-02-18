@@ -1,0 +1,491 @@
+**********************************************
+*LIFE for Playground assembly language loader*
+*By Harry Wilhelm, November 2013             *
+**********************************************
+PAGE	EQU >837E
+SUB	EQU >8382
+SUBPAG	EQU >8386
+WKSP	EQU >83A2
+*********************************************
+*BEGINNING OF LIFE
+*********************************************
+TITLSC	DATA TITLSE-TITLSS		
+TITLSS	LI R11,>6C00
+	MOVB R11,@>8373
+	
+	LI R1,>2000		prints a space to all screen
+	BL @SUB		positions
+	DATA CLEAR
+	
+	LI R0,>870E		background color to grey
+	MOVB @WKSP+1,*R15	register 7=>0E
+	MOVB R0,*R15
+	
+	LI R0,>430F		\
+	LI R1,17
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15		 sets character definitions to 
+	LI R0,>4000		 dark blue on transparent
+PAG2L2	MOVB R0,*R10
+	DEC R1
+	JNE PAG2L2		/
+	
+	LI R0,TITLE-1
+	A R13,R0		r0 points to text in VDP
+*if byte is <20 then it is a row, if zero then end, if >1F then character
+
+	BL @SUB
+	DATA PRTEXT
+	
+*Next section waits for a new key to be pressed before moving on	
+WAITKY	LWPI >83E0		\
+	MOV R11,@>836E
+	BL @>000E		 keyscan needs intws and gplws intact!!
+	MOV @>836E,R11
+	LWPI >83A2	
+	
+	MOV @>837C,R11		check for new key pressed
+	ANDI R11,>2000
+	JEQ WAITKY		if eq to 0 then no keypress
+
+	BL @PAGE
+	DATA INITSC
+	
+TITLSE	
+********************************************
+TITLE	BYTE 8
+	TEXT 'Conway'
+	BYTE 39	apostrophe
+	TEXT 's LIFE Cellular Automaton'
+	BYTE 10
+	TEXT '  programmed by Harry Wilhelm'
+	BYTE 17
+	TEXT 'Use E,S,D,X to move cursor'
+	BYTE 18
+	TEXT 'Use space bar to toggle cell'
+	BYTE 19
+	TEXT 'Press ENTER to start LIFE'
+	BYTE 20
+	TEXT 'Hold any key to pause LIFE'
+	BYTE 21
+	TEXT 'FCTN 9 returns to edit screen' 
+	BYTE 22
+	TEXT 'FCTN 9 a 2nd time clears screen'
+	BYTE 24
+	TEXT '       (press any key)'
+	BYTE 0
+	EVEN
+	
+************************************************
+*characters have >60 offset from BASIC
+*characters >C0 to >C9 are blank cells - C=blank + #neighbors in lsn
+*characters >D0 to >D9 are live cells  - D=cell + #neighbors in lsn
+INITSC	DATA INITSE-INITSS
+	
+INITSS	LI R1,>2000	\
+	BL @SUB	 clear the screen with spaces
+	DATA CLEAR	/
+*characters are defined below
+	LI R0,>4600	write to >0600
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	CLR R0		write blank char def
+	LI R1,128	
+INITL1	MOVB R0,*R10	clear 16 definitions (only need 9)
+	DEC R1
+	JNE INITL1
+ 
+	LI R1,9	write 9 times
+INITL2	LI R2,8	8 bytes per chardef
+	LI R0,>8300+CELLPT-INITSS	points r0 to definition
+INITL3	MOVB *R0+,*R10	\
+	DEC R2			 write 8 bytes of definition
+	JNE INITL3		/
+	DEC R1		written 9 definitions?
+	JNE INITL2
+	
+	LI R1,>6000	\
+	BL @SUB	 clear screen with >60(blank with no neighbors)
+	DATA CLEAR	/
+	
+	BL @PAGE
+	DATA CURSOR
+
+
+CELLPT	DATA >0038,>7CFE,>FEFE,>7C38	pattern for a cell
+	
+INITSE
+****************************************************************
+CURSOR	DATA CURSOE-CURSOS	106 BYTES!!!
+CURSOS	LI R0,>016F
+CURSL1	LI R1,>007E
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	AI R0,>4000
+	MOVB *R14,R1
+CURSL2	SWPB R1
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R12,150		cursor delay
+	MOVB R1,*R10
+	
+KSCANS	LI R11,>0300		99/4 mode
+	MOVB R11,@>8374
+
+	LWPI >83E0		\
+	MOV R11,@>836E
+	BL @>000E		 keyscan needs intws and gplws intact!!
+	MOV @>836E,R11
+	LWPI >83A2		/
+*LIMI HERE?
+	
+	MOV @>837C,R11		check for new key pressed
+	ANDI R11,>2000
+	JEQ CURSL3		if eq to 0 then no keypress
+	CI R1,>7E00		is the cursor on the screen?
+	JLT CURSO3		no cursor so jump
+	
+	MOVB @WKSP+1,*R15	\
+	MOVB R0,*R15		 
+	SWPB R1
+	MOVB R1,*R10		/restore character to the screen
+CURSO3	BL @SUB
+	DATA NEWKEY
+	
+CURSO4	AI R0,>C000
+	JMP CURSL1
+	
+CURSL3	DEC R12
+	JNE KSCANS
+	JMP CURSL2
+CURSOE
+**************************************
+NEWKEY	DATA NEWKEE-NEWKES
+NEWKES	CLR R11
+	MOVB @>8375,R11
+	
+	CI R11,>0F00
+	JNE NOTF9
+	BL @PAGE
+	DATA INITSC
+	
+NOTF9	CI R11,>0D00 		\
+	JNE NOTENT		 If ENTER then start LIFE
+	BL @PAGE
+	DATA LDSUB		/
+	
+NOTENT	CI R11,>2000		a space?
+	JNE NOTASP
+	BL @SUBPAG
+	DATA FLIP
+	
+NOTASP	CI R11,>4500		an E?
+	JNE NOTANE
+	CI R0,>4040	on second row?
+	JLT NEWKBK
+	AI R0,-32	
+		
+NOTANE	CI R11,>5800		an X?
+	JNE NOTANX
+	CI R0,>42C0
+	JGT NEWKBK
+	AI R0,32
+	
+NOTANX	CI R11,>5300		an S?
+	JNE NOTANS
+	CZC @>8300+HX001E-NEWKES,R0
+	JEQ NEWKBK
+	DEC R0
+	
+NOTANS	CI R11,>4400		a D?
+	JNE NEWKBK
+	COC @>8300+HX001E-NEWKES,R0
+	JEQ NEWKBK
+	INC R0
+	
+NEWKBK BL @SUBPAG		
+	DATA RETURN
+HX001E	DATA >001E	
+NEWKEE	
+********************************************
+*CLEAR IS SUB TO FILL SCREEN WITH MSB OF R1*
+*ADDS OFFSET OF >60                        *
+********************************************
+CLEAR	DATA CLEARE-CLEARS
+CLEARS	LI R11,>4000
+	MOVB @WKSP+23,*R15
+	MOVB R11,*R15
+	LI R11,768
+	AI R1,>6000
+TITLS1	MOVB R1,*R10
+	DEC R11
+	JNE TITLS1
+	BL @SUBPAG
+	DATA RETURN
+CLEARE
+******************************************************
+*PRTEXT is a subroutine to print text on the
+*screen.  Pointer to text is in R0
+*uses r11 and r12
+*********************************************************
+PRTEXT	DATA PRTEXE-PRTEXS
+PRTEXS MOVB @WKSP+1,*R15	start reading bytes of text
+	MOVB R0,*R15
+	INC R0
+	CLR R11
+	MOVB *R14,R11		
+	JNE PRTEX2		if EQ then at end of text			
+	BL @SUBPAG
+	DATA RETURN		
+PRTEX2 CI R11,>2000		if LT >20 then a row, need to set up
+	JLT GTPNTR		pointer in R2
+	AI R11,>6000		screen offset
+	MOVB @WKSP+25,*R15	lsb R12
+	MOVB R12,*R15		msb R12
+	INC R12
+	MOVB R11,*R10		print character to screen
+	JMP PRTEXS
+	
+GTPNTR	MOV R11,R12	
+	SRL R12,3
+	AI R12,>3FE0		add >4000 and -32=SCREEN LOC
+	JMP PRTEXS
+PRTEXE
+
+
+**********************
+FLIP	DATA FLIPE-FLIPS
+FLIPS	CI R1,>D000		if char <D0 then no cell
+	JLT FLIP1
+	LI R11,>8300+SUBDAT-FLIPS  a cell, want to delete
+	JMP FLIP2
+FLIP1	LI R11,>8300+ADDDAT-FLIPS  no cell, want to add
+FLIP2	MOV R0,R3		screen address
+	AI R3,>BFDF	->4000-33 want to read and up 33
+	LI R4,3		counter
+FLIP3	MOVB @WKSP+7,*R15
+	MOVB R3,*R15
+	LI R5,>836A
+	MOVB *R14,*R5+
+	MOVB *R14,*R5+
+	MOVB *R14,*R5+
+	LI R5,>836A
+	AB *R11+,*R5+
+	AB *R11+,*R5+
+	AB *R11+,*R5+
+	AI R3,>4000		want to write
+	MOVB @WKSP+7,*R15
+	MOVB R3,*R15
+	LI R5,>836A
+	MOVB *R5+,*R10
+	MOVB *R5+,*R10
+	MOVB *R5+,*R10
+	AI R3,>C020		want to read and down 32
+	DEC R4
+	JNE FLIP3
+	BL @SUBPAG
+	DATA RETURN
+
+ADDDAT BYTE 1,1,1,1,16,1,1,1,1
+SUBDAT BYTE -1,-1,-1,-1,-16,-1,-1,-1,-1
+FLIPE
+*******************
+RETURN	DATA RETURE-RETURS
+
+RETURS  MOV @>83D0,R11		Get page to return to
+	A R13,R11		Add VDP offset
+	MOVB @>83B9,*R15	lsb of R11
+	MOVB R11,*R15		msb of R11
+
+	MOV @>83D2,R11		position in page when sub was called
+	INCT R11		next instruction
+	LI R12,>8300		
+	JMP RETURS+>0094   B @>8394
+RETURE
+********************************************
+************************************************
+*Page to load subroutine into memory at >83C2
+***********************
+LDSUB	DATA LDSUBE-LDSUBS
+*First we need to store INTWS and GPLWS to >0B00 of VDP
+LDSUBS	LI R0,>4B00		will copy >83C2 to 8fff to 0b00 vdp
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R0,>83C2
+	
+LDSUBA	MOVB *R0+,*R10
+	MOVB *R0+,*R10
+	CI R0,>8400
+	JNE LDSUBA
+*Now the two workspaces are stored at >0B00
+*Will load the subroutine into >83C2->83FF	
+	LI R0,SUBRTN-1
+	A R13,R0		now R0 points to subroutine in VDP
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R1,>83C2
+LDSUB1	MOVB *R14,*R1+
+	MOVB *R14,*R1+
+	CI R1,>8400
+	JNE LDSUB1
+		
+	BL @SUBPAG
+	DATA MOVSCR
+LDSUBE
+****************************
+	
+*********
+*This routine moves the screen into a buffer at >0800 of VDP
+*It uses a 32 byte buffer at >8350 and must not overwrite this!
+*NB. Cannot use BL @PAGE or BL @SUB - they write to >83D0 and >83D2
+*which would corrupt the subroutine!!!
+
+MOVSCR	DATA MOVSCE-MOVSCS
+MOVSCS	CLR R0
+MOVSC3	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R2,>8350
+MOVSC1	MOVB *R14,*R2+
+	MOVB *R14,*R2+
+	MOVB *R14,*R2+
+	MOVB *R14,*R2+
+	CI R2,>8370
+	JNE MOVSC1
+	
+	AI R0,>4800	add >800 plus want to write
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R2,>8350
+MOVSC2	MOVB *R2+,*R10
+	MOVB *R2+,*R10
+	MOVB *R2+,*R10
+	MOVB *R2+,*R10
+	CI R2,>8370
+	JNE MOVSC2
+	AI R0,>B820
+	CI R0,>0300
+	JLT MOVSC3
+	LI R0,>0800	upper left of screen buffer at >800->0AFF
+	LI R9,3
+	BL @SUBPAG	SUBPAG used to avoid writing to >83D0 and >83D2
+	DATA LMAIN
+ 
+MOVSCE
+***************************************
+*MAIN LOOP
+*R10=>8C00; R9=3; comes here with R0=>0800
+*screen has been copied to >0800 in VDP
+**********************************	
+LMAIN	DATA LMAINE-LMAINS
+LMAINS	CI R0,>0B00
+	JEQ LMAINX
+	
+LMAIN1	BL @>83C2	see if need to update cell, return next line if yes
+	MOV R9,R7		row count, was done in subroutine
+SUBLP1	MOV R9,R8		column count
+SUBLP2	ANDI R4,>03E0		leave row and remove column info
+	CI R4,>0300
+	JLT SUBLP5
+	AI R4,->0300
+	JEQ SUBLP5
+	AI R4,>0200
+	
+SUBLP5	ANDI R5,>001F		leave column and remove row info
+	A R5,R4		screen address to read from
+	MOVB @WKSP+9,*R15
+	MOVB R4,*R15
+	INC R5			one column to the right
+	MOVB *R14,R1		now have read the byte from the screen
+	C R7,R8
+	JNE SUBLP3
+	CI R8,2
+	JNE SUBLP3
+	AB @WKSP+5,R1		add lsb of R2 to R1
+	JMP SUBLP4
+SUBLP3	AB R2,R1	now have adjusted 
+SUBLP4	ORI R4,>4000
+	MOVB @WKSP+9,*R15	address to write to
+	MOVB R4,*R15		address to write to
+	NOP 
+	MOVB R1,*R10		write the byte
+	
+	DEC R8
+	JNE SUBLP2		do 3 columns
+	AI R4,>0020		down a row
+	S R9,R5		over 3 columns
+	DEC R7			one less row to do
+	JNE SUBLP1
+	
+	JMP LMAINS
+	
+LMAINX	BL @PAGE		
+	DATA CHKKEY
+
+LMAINE 
+
+******************
+*Restores the workspaces so a keyscan can be done
+*****************************
+CHKKEY	DATA CHKKEE-CHKKES
+CHKKES	LI R0,>0B00
+	MOVB @WKSP+1,*R15
+	MOVB R0,*R15
+	LI R0,>83C2
+	LI R1,62
+CHKKE1	MOVB *R14,*R0+
+	DEC R1
+	JNE CHKKE1
+
+CHKKE2	LIMI 2
+	LIMI 0
+	
+	LWPI >83E0		\
+	MOV R11,@>836E
+	BL @>000E		 keyscan needs intws and gplws intact!!
+	MOV @>836E,R11
+	LWPI >83A2		/
+	
+	LI R0,>0FFF
+	CB R0,@>8375		If Fctn 9 then go back to editor
+	JNE CHKKE3
+	BL @PAGE
+	DATA CURSOR
+	
+CHKKE3	SWPB R0		If any key stay in loop until no key  pressed
+	CB R0,@>8375
+	JNE CHKKE2
+	
+	BL @PAGE
+	DATA LDSUB
+CHKKEE
+
+******************
+*Subroutine used by main loop is loaded at >83C2
+*returns to >8300 if no update to cell, otherwise returns
+*via B *R11
+**********************************************
+SUBRTN	CLR R1		
+SUBRT1	MOVB @WKSP+1,*R15   address to read from
+	MOVB R0,*R15	address to read from
+	INC R0		ready for next read
+	MOVB *R14,R1	read the byte
+	CI R1,>C300	no cell with 3 neighbors?
+	JEQ ADDCEL	if 3 neighbors must add cell
+	CI R1,>D000	no cell and not 3 neighbors
+	JLT SUBRTN->00C2	SUBRTN is at >83C2, so this JMPs to >8300 (LMAINS)
+	CI R1,>D200		cell with <2 neighbors?
+	JEQ SUBRTN->00C2	if 2 neighbors cell will live - JMP to >8300
+	CI R1,>D300		cell with 3 neighbors?
+	JEQ SUBRTN->00C2	if 3 neighbors cell will live - JMP to >8300
+	
+DELCEL	LI R2,>FFF0	-1 and -16
+	JMP CHANG1
+ADDCEL	LI R2,>0110	+1 and +16
+CHANG1	MOV R0,R4
+	AI R4,>FFDF	 -33
+	MOV R4,R5
+	DEC R5
+	
+	B *R11
+
+	END

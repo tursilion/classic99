@@ -1,0 +1,210 @@
+
+*PLAYGROUND by Harry Wilhelm - November 2013
+*Loader takes assembly code at >A000 and embeds in a BASIC program
+	REF KSCAN
+	REF VMBW
+	REF VSBW
+	REF VSBR
+	
+
+	
+	AORG >F000	**START THIS UP WITH CALL LOAD(-31804,240)	
+MAKEBX	LWPI >EFE0	workspace 32 bytes in front of this program
+
+	MOV @>8330,R0	R0 points to 1st free address above disk buffers
+	INC R0
+	LI R1,>A000	pointer to beginning of A/L code
+	MOV @>2024,R2 first free address after a/l program to R2
+	
+	
+AB2RE2	S R1,R2	subtract >A000. Now R2 has length of code block
+	S R2,R0	
+	BLWP @VMBW	copy A/L code to VDP
+	DEC R0
+************************************	
+*Now to load the BASIC program above the A/L program
+*Need to fix the pointers to line R0 points to beginning of a/l code
+
+	A R0,@BXPRG+2
+	A R0,@BXPRG+6
+
+	
+**********************************	
+	INC R0
+	LI R1,BXPRG
+	LI R2,LST-BXPRG	length of program to R0
+	S R2,R0
+	BLWP @VMBW
+	MOV R0,@>8330	beginning of line number table
+	DEC R0
+	MOV R0,@>8340
+	DEC R0
+	MOV R0,@>8318
+	MOV R0,@>831A
+	AI R0,9
+	MOV R0,@>8332
+*here the BASIC program has been created with the A/L program embedded
+*Now to make a table to help with debugging
+	
+*******************************
+*SIZE reports size of all entries in DEF table
+******************
+	MOV @>202A,R5
+	CI R5,>3F38
+	JEQ BK2BX	go back if nothing in DEF table
+	
+SIZE0	CLR R0		clears the screen
+	LI R1,>8000	space with >60 offset
+SIZE1	BLWP @VSBW
+	INC R0
+	CI R0,768
+	JNE SIZE1
+	
+	LI R0,>0025	screen position to start at
+
+SIZE2	LI R4,6		\
+SIZE3	MOVB *R5+,R1
+	AI R1,>6000
+	BLWP @VSBW		prints name of REF entry
+	INC R0
+	DEC R4
+	JNE SIZE3
+	INCT R0		/
+	
+	LI R2,>60BB		\
+	A @>8330,R2
+	A *R5,R2		Breakpoints in VDP
+	MOV *R5,R3
+	A *R3,R2
+	BL @PRTHEX		/
+	
+	INCT R0
+	
+	MOV *R5+,R9
+	MOV *R9,R2	length of page into R2
+	AI R2,>82FF
+	BL @PRTHEX
+	CI R2,>8372
+	JL SIZE4
+	LI R2,>8A00
+	MOVB R2,@>8C00	print asterix if too long
+
+SIZE4	AI R0,14	DOWN A ROW
+SIZE4A	CI R5,>3F38 	at end of table
+	JEQ BK2BX
+	CI R0,768	off bottom of screen?
+	JLT SIZE2
+	
+
+
+BK2BX	CLR @>83C4	return from interrupt
+	LWPI >83E0
+	B *R11
+	
+********************
+*PRTHEX subroutine to print hexadecimal number
+*VDP address in R0, number in R2
+******************
+PRTHEX	LI R4,4
+PRTHE1	SRC R2,12
+	MOV R2,R3
+	ANDI R3,>000F
+	MOVB @HEXTBL(R3),R1
+	BLWP @VSBW
+	INC R0
+	DEC R4
+	JNE PRTHE1
+	B *R11
+	
+HEXTBL DATA >9091,>9293,>9495,>9697	hexadecimal numbers with >60 offset
+	DATA >9899,>A1A2,>A3A4,>A5A6
+
+
+	
+******************************************************************	
+*SIMPLIFIED BASIC PROGRAM FOR PLAYGROUND LOADER
+
+
+BXPRG	DATA 20,L20-LST+2,10,L10-LST+2  >>>>20,>374F,10,>3728
+L10	BYTE >26,>9A
+	TEXT ' Playground Loader by Harry Wilhelm '
+	BYTE 0
+L20	BYTE >89,>9F,>FD,>C8,>01,>31,>B5,>C7,>80
+	
+*Assembly code below is in the DATA statement in BASIC program	
+	DATA 0	  		>834A used when loading characters
+*>834C initialize playground (40 bytes)  pointed to by >83C4
+	LWPI >83A2		workspace used by PLAYGROUND
+	MOV R12,@>8372	gpl substack pointer is >8368: kscan+GPLLNK need
+	
+	A @>832C,R13		pointer last byte current line(20) R13 has >6002
+	CLR @>83C4
+	MOV R8,@>837E		restore value that gpl modifies
+	LI R15,>8C02		GPL modifies R15
+	B @>837E
+	
+	
+	DATA 0,0,0,0,0
+	
+		
+*>8372 to >837D below
+	DATA >00C8	>8372 >8373 is GPL substack pointer
+	DATA 0		>8374
+	DATA 0		>8376
+	DATA >3567	>8378	random number seed
+	DATA 0		>837A
+	DATA 0		>837C
+	
+*>837E start of page loader (36 bytes)
+PAGE	MOV *R11,@>83D0   	INTWS R8 not used by system???
+*>8382 
+SUB	MOV R11,@>83D2    	INTWS R8 not used by system???
+*>8386
+SUBPAG A R13,*R11	    	now points to code in VDP	
+	MOVB @1(R11),*R15 	set address to read from
+	MOVB *R11,*R15	
+	LI R12,>8300		load code starting at >8300	
+	MOV R12,R11		entry point of page into R11
+*>8394
+	MOVB *R14,@>839D	puts length byte into LSB below
+PGLOOP	MOVB *R14,*R12+	copy page out of VDP
+	CI R12,>8300		length byte of page is in LSB
+	JNE PGLOOP
+	B *R11			enter page
+
+*WORKSPACE starts at >83A2(32 bytes)
+	DATA >A000	R0 pointer to 1st page to load
+	
+*>83A4	interrupt comes here to see if colors and regs loaded
+*if in scroll routine then branch to >834A and start up
+	C @>8372,@>83B4 	R1,R2,R3
+	JNE WSR7		R4
+	B @>834C		R5,R6
+WSR7	B *R11			R7
+	
+	DATA >C81B	R8 goes to >837E which is disrupted by clear screen
+	DATA >00C4	R9 (>83B4) if stack pointer is this then in scroll	 
+	DATA >8C00	R10 VDPWD
+	DATA >83A2	R11 points to R0, address of page to load
+	DATA >0068	R12 GPL substack pointer - could be >006C
+	DATA >6002	R13 offset from BX to beg. of AL
+	DATA >8800	R14
+	DATA >8C02	R15 this is R0 of interrupt ws - random number seed
+	
+
+*>83C2 below - R1 to R4 of interrupt workspace
+	DATA 0		R1
+	DATA >83A4	R2 user interrupt
+	DATA >4D00	R3 scroll routine
+	DATA >27E3	R4 clear screen, set up regs, colors, chars
+
+*ends at >83C9
+
+	DATA 0		
+*end of BASIC program
+LST	
+**********************************************
+
+
+	END
+	

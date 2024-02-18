@@ -1,0 +1,778 @@
+********************************************************************************
+*GPLLNK AND DSRLINK FROM THE SMART PROGRAMMER (dsrlnk in runtime7)
+********************************************************************************
+ 
+GPLWS	EQU >83E0
+GR4	EQU GPLWS+8
+GR6	EQU GPLWS+12
+LDGADD EQU >60
+XTAB27 EQU >200E
+GETSTK EQU >166C
+ 
+GPLLNK DATA GLNKWS
+	DATA GLINK1
+ 
+RTNAD	DATA XMLRTN
+GXMLAD DATA >176C
+	DATA >50
+ 
+GLNKWS EQU $->18
+	BSS >08
+ 
+
+GLINK1	MOV *R11,@GR4
+	MOV *R14+,@GR6
+	MOV @XTAB27,R12
+	MOV R9,@XTAB27
+	LWPI GPLWS
+	BL *R4
+	MOV @GXMLAD,@>8302(R4)
+	INCT @>8373
+	B @LDGADD
+ 
+XMLRTN MOV @GETSTK,R4
+	BL *R4
+	LWPI GLNKWS
+	MOV R12,@XTAB27
+
+	RTWP
+ 
+PUTSTK EQU >50
+TYPE   EQU >836D
+NAMLEN EQU >8356
+VWA    EQU >8C02
+VRD    EQU >8800
+GR4LB  EQU >83E9
+GSTAT  EQU >837C
+ 
+DSRLNK DATA DSRWS,DLINK1
+ 
+DSRWS  EQU $
+DR3LB  EQU $+7
+DLINK1 MOV R12,R12
+       JNE DLINK3
+       LWPI GPLWS
+       MOV @PUTSTK,R4
+       BL *R4
+       LI R4,>11
+       MOVB R4,@>402(R13)
+       JMP DLINK2
+       DATA 0
+       DATA 0,0,0
+DLINK2 MOVB @GR4LB,@>402(R13)
+       MOV @GETSTK,R5
+       MOVB *R13,@DSRAD1
+       INCT @DSRADD
+       BL *R5
+       LWPI DSRWS
+       LI R12,>2000
+DLINK3 INC R14
+       MOVB *R14+,@TYPE
+       MOV @NAMLEN,R3
+       AI R3,-8
+ 
+       BLWP @GPLLNK
+DSRADD BYTE >03
+DSRAD1 BYTE >00
+*       MOV @OLDINT,@>83C2     RESTORE OLD INTERRUPTS
+*       MOV @OLDINT+2,@>83C4
+
+       MOVB @DR3LB,@VWA
+       MOVB R3,@VWA
+       SZCB R12,R15
+       MOVB @VRD,R3
+       SRL R3,5
+       MOVB R3,*R13
+       JNE SETEQ
+       COC @GSTAT,R12
+       JNE DSREND
+SETEQ  SOCB R12,R15
+DSREND RTWP
+
+ 
+
+********************************************************************************
+OLDINT BSS 2		A buffer to store the old interrupt
+********************************************************************************
+*OLD TI BASIC STYLE IF/THEN/ELSE IS BELOW
+*****************************
+*IF	BL @GET1
+*	MOV *R6,R6
+*	JNE IF2
+*	INCT R13
+*	C *R13,R15   See if next word is a number or an instruction
+*	JH IF3
+*IF2	MOV *R13,R13
+*IF3	B @RTN
+*****************************
+*XB STYLE IF/THEN/ELSE BELOW, BUT ONLY ONE IF AND ELSE PER LINE!!
+************************************
+IF	BL @GET1
+	MOV *R6,R6		
+	JNE ENDIF		statement true, do 1st part of IF, the next line of code
+*now need to skip first part - look for ELSE or ENDIF or IF
+	CLR R7			depth of IF
+IF2	MOV *R13+,R6		the inc will make it 1 past ELSE, ENDLIN, or IF
+	CI R6,IF		is it an IF
+	JNE IF3		no
+	INC R7			increment IF depth
+	JMP IF2		and keep looking
+IF3	CI R6,ELSS   		is it an ELSS
+	JNE IF4		nope
+	DEC R7			down one level of IF
+	JLT ENDIF		If <0 we're at the right ELSE
+	JMP IF2		not at the right level
+IF4	CI R6,ENDIF		at end of this statement line?
+	JNE IF2		no, keep looking
+	JMP ENDIF		otherwise go back with pointer to code to execute
+	
+****************************
+ELSS	LI R6,ENDIF
+ELSS1	C *R13+,R6		if come to ELSE then doing 1st part of ITE, need skip 2nd part
+	JNE ELSS1
+ENDIF	B @RTN
+******************************
+
+****************************** 
+MINUS	BL @GET2
+	MOV *R5,*R6
+	NEG *R6
+	B @RTN
+*****************************
+MLTPLY BL @GET3
+ 
+	CI R4,RND
+	JEQ RAND2
+	CI R5,RND
+	JEQ RAND1
+ 
+	MOV *R5,R7
+	MPY *R4,R7
+	MOV R8,*R6
+	B @RTN
+ 
+RAND1	MOV R4,R5		pointer to limit goes to R5
+RAND2	MOV *R5,R3
+	JEQ RAND4
+	MOV @>83C0,R1
+
+*	CI R1,>C800		\
+*	JL RAND5		 attempt to auto randomize
+*	MOVB @>8379,R1	/
+RAND5	LI R2,>6FE5
+	MPY R1,R2
+	AI R3,>7AB9
+	MOV R3,@>83C0
+	MOV *R5,R5
+ 
+*RAND3	C R2,R5
+*	JL RAND4
+*	SRL R2,1
+*	JNE RAND3		added Sept 12, 2018 to fix crash when limit is zero
+*	CLR R3			return a zero when limit is zero
+	CLR R2
+	SWPB R3
+	DIV R5,R2
+RAND4	MOV R3,*R6
+	
+IRND	C *R13,R15   See if next word is a number or an instruction
+	JGT RANDBK	go back if next word is instruction
+	BL @GET2
+	JMP RAND2
+	
+RANDBK	B @RTN
+*****************************
+DIVIDE BL @GET3
+	CLR R10		FLAG
+	CLR R7
+	MOV *R4,R8
+	JLT DIVID1
+	JMP DIVID2
+DIVID1 INV R10		if # being divided is <0 then flag=ffff
+	NEG R8
+DIVID2 MOV *R5,R3
+	JLT DIVID3
+	JMP DIVID4
+ 
+DIVID3 INV R10
+	NEG R3
+ 
+DIVID4 DIV R3,R7
+	MOV R10,R10
+	JEQ DIVID5
+	MOV R8,R8
+	JEQ DIVID6
+	INC R7
+DIVID6 NEG R7
+DIVID5 MOV R7,*R6
+	B @RTN
+*****************************
+ADD	BL @GET3
+	MOV *R4,*R6
+	A *R5,*R6
+	B @RTN
+*****************************
+SBTRCT BL @GET3
+	MOV *R4,*R6
+	S *R5,*R6
+	B @RTN
+*****************************
+NOT	BL @GET2
+	MOV *R5,*R6
+	INV *R6
+	B @RTN
+*****************************
+AND	BL @GET3
+	MOV *R5,*R6
+	MOV *R4,R8
+	INV R8
+	SZC R8,*R6
+	B @RTN
+*****************************
+XOR	BL @GET3
+	MOV *R5,R8
+	XOR *R4,R8
+	MOV R8,*R6
+	B @RTN
+*****************************
+OR	BL @GET3
+	MOV *R5,*R6
+	SOC *R4,*R6
+	B @RTN
+*****************************
+ 
+READ	C *R13,R15		is it an instruction
+	JGT READBK		(was JH)yes, all done with read
+	BL @GET1		 otherwise get address of pointer
+	MOV @DATPNT,R8	data pointer to R8
+	CI R8,LASTDT		out of data statements?
+	JEQ READER		yep, report error
+	MOVB *R8,R7
+	SRL R7,8		length to R7
+	INC R7			add 1 for length byte
+	MOV R7,R9
+	A R8,R9		R9 points to next data in data section
+	MOV R9,@DATPNT	update data pointer
+	BL @ASTRNG		a string?
+	JEQ READ2		if yes goto READ2
+	MOV R8,R0		R0 points to length byte of string
+	BLWP @CSN		string to number
+	MOV R0,*R6		update numeric variable
+	JMP READ		 keep going
+ 
+READ2	MOV R8,R0		string address into R0
+	MOV R6,R1		pointer to string
+	BLWP @STRSTR
+	JMP READ
+ 
+READBK B @RTN
+ 
+READER LI R0,>2100
+	BL @ERRRPT		DATA ERRRPT
+ 
+********************
+*BLWP @STRSTR - stores a string in the string buffer space
+*Calling R0 points to string
+*Calling R1 has address of pointer i.e. after GET1 put R6 into R1
+*******************************
+STRSTR DATA BLWPWS,STRST1
+ 
+STRST1 MOV *R13,R0
+	MOV @2(R13),R1
+ 
+	MOV *R1,R4
+	CLR @-2(R4)
+ 
+	MOVB *R0,R3
+	SRL R3,8
+	INC R3
+STRST2 MOV R3,R4
+	AI R4,3
+	ANDI R4,>FFFE
+	MOV @NXTSTR,R2
+	A R2,R4
+	C R4,@STKPNT
+	JLE STRST3
+	DECT R0		R0 gets doctored if GARBAG moves string
+	BL @GARBAG
+	INCT R0
+	JMP STRST2
+ 
+STRST3 MOV R4,@NXTSTR
+	MOV R1,*R2+
+	MOV R2,*R1
+STRST4 MOVB *R0+,*R2+
+	DEC R3
+	JGT STRST4
+	RTWP
+*************
+*BL @GARBAG	does a garbage collection & reports mem. error if necessary
+*************
+GARBAG LI R5,FRSTST
+	MOV R5,R6
+GARBA1 C R6,@NXTSTR
+	JEQ GARBA5
+	MOV @2(R6),R9
+	SRL R9,8
+	AI R9,4
+	ANDI R9,>FFFE
+	MOV *R6,R7
+	JEQ GARBA2
+	C R5,R6
+	JNE GARBA3
+	A R9,R5
+GARBA2 A R9,R6
+	JMP GARBA1
+GARBA3 MOV R5,*R7
+	INCT *R7
+ 
+	C R6,R0		\
+	JNE GARBA4		 move R0 pointer in STRSTR if GARBAG moves string
+	MOV R5,R0		/
+GARBA4 MOV *R6+,*R5+
+	DECT R9
+	JNE GARBA4
+	JMP GARBA1
+ 
+GARBA5 C R5,R6
+	JNE GARBA6
+	CLR @>83C4		turn off fctn 4 scan
+	LI R0,>0B00
+	BL @ERRRPT
+GARBA6 MOV R5,@NXTSTR
+	B *R11
+ 
+*****************************
+RESTOR C *R13,R15   See if next word is a number or an instruction
+	JGT RESTO1		was JH
+	MOV *R13+,R0
+	JMP RESTO2
+RESTO1 LI R0,FRSTDT
+RESTO2 MOV R0,@DATPNT
+	B @RTN
+*****************************
+LET	BL @GET2
+	BL @ASTRNG
+	JEQ LET1
+	MOV *R6,*R5
+	JMP LET2
+LET1	MOV R5,R1
+	MOV *R6,R0
+	BLWP @STRSTR
+LET2	B @RTN
+*****************************
+STOP	B @XBRTN
+
+***************************
+LEN	BL @GET2
+	MOV *R5,R5
+LEN1	MOVB *R5,R4
+	SRL R4,8
+	MOV R4,*R6
+	B @RTN
+***************************
+ABS	BL @GET2
+	MOV *R5,*R6
+	ABS *R6
+	B @RTN
+***************************
+SGN	BL @GET2
+	CLR *R6
+	MOV *R5,R4
+	JEQ SGN2
+	JGT SGN1
+	DECT *R6
+SGN1	INC *R6
+SGN2	B @RTN
+***************************
+ASC	BL @GET2
+	MOV *R5,R5
+	INC R5
+	JMP LEN1
+*************************
+CHRS	BL @GET2
+	MOV R6,R1
+	LI R0,WKSP+6
+	MOV *R5,R3
+	ANDI R3,>00FF
+	AI R3,>0100
+	BLWP @STRSTR
+	B @RTN
+***************************
+STRS	BL @GET2
+	MOV R6,R1
+	MOV *R5,R6
+	BLWP @CNS
+	LI R0,GPBUFF+2
+	BLWP @STRSTR
+	B @RTN
+***************************
+CONCAT BL @GET3
+	MOV *R4,R4
+	MOV *R5,R5
+	LI R0,GPBUFF
+	MOV R0,R1
+	MOVB *R4,*R1
+	AB *R5,*R1+
+	JNC CONCA3
+	SETO *R0
+CONCA3 MOVB *R4+,R3
+	JEQ CONCA4
+	SRL R3,8
+CONCA1 MOVB *R4+,*R1+
+	DEC R3
+	JNE CONCA1
+CONCA4 MOVB *R5+,R3
+	JEQ CONCA5
+	SRL R3,8
+CONCA2 CI R1,GPBUFF+256
+	JHE CONCA5
+	MOVB *R5+,*R1+
+	DEC R3
+	JNE CONCA2
+CONCA5 MOV R6,R1
+	BLWP @STRSTR
+	B @RTN
+***************************
+VAL	BL @GET2
+	MOV *R5,R0
+	BLWP @CSN
+	MOV R0,*R6
+	B @RTN
+***************************
+INT	BL @GET2
+	MOV *R5,*R6
+	B @RTN
+***************************
+ 
+SEGS	LI R0,GPBUFF
+	MOV R0,R7
+	CLR *R7		in case of null string
+	BL @GET4
+	MOV *R3,R3
+	MOVB *R3,R2
+	SRL R2,8
+	MOV *R4,R4
+	MOV *R5,R5
+	JEQ SEGS3
+	C R4,R2		pointer past end of string?
+	JGT SEGS3
+ 
+	S R4,R2
+	INC R2
+	C R2,R5
+	JHE SEGS1
+	MOV R2,R5
+SEGS1	MOVB @WKSP+11,*R7+
+	A R4,R3
+SEGS2	MOVB *R3+,*R7+
+	DEC R5
+	JNE SEGS2
+SEGS3	MOV R6,R1
+	BLWP @STRSTR
+	B @RTN
+ 
+*****************************
+CGT	LI R2,>4000		0100 R2
+	JMP CEQ1		0100 R3
+ 
+CLT	CLR R2			0000 R2
+CLT1	CLR R3		0000 R3
+	JMP CMPARE
+ 
+CEQ	LI R2,>2000		0010 R2
+CEQ1	MOV R2,R3		0010 R3
+	JMP CMPARE
+ 
+CNE	LI R2,>4000		0100 R2
+	JMP CLT1		0000 R3
+ 
+CLE	LI R2,>2000		0010 R2
+	JMP CLT1		0000 R3
+ 
+CGE	LI R2,>2000		0010 R2
+	LI R3,>4000		0100
+ 
+CMPARE BL @GET3
+	MOV R6,R7
+	MOV R5,R6
+	BL @ASTRNG
+	JNE CMPAR5
+ 
+	MOV *R4,R4		compare strings
+	MOV *R6,R6
+	MOVB *R4+,R10
+	SRL R10,8		r10 has length of string at R4
+	MOVB *R6+,R11
+	SRL R11,8		R11 has length of string at R6
+	C R10,R11
+	JL CMPAR1
+	MOV R11,R12
+	JMP CMPAR2
+CMPAR1 MOV R10,R12
+CMPAR2 JEQ CMPAR4		shortest length to R12; if zero don't compare strings
+CMPAR3 CB *R4+,*R6+
+	JNE CMPAR6
+	DEC R12
+	JNE CMPAR3
+CMPAR4 C R10,R11
+	JMP CMPAR6
+ 
+CMPAR5 C *R4,*R6
+CMPAR6 STST R9
+	ANDI R9,>6000
+	C R2,R9
+	JEQ CMPAR7
+	C R3,R9
+	JEQ CMPAR7
+	CLR *R7
+	JMP CMPAR8
+CMPAR7 SETO *R7
+CMPAR8 B @RTN
+ 
+ 
+*****************************
+ONGOTO BL @GET1
+	MOV *R6,R6
+	DEC R6
+	SLA R6,1
+	A R6,R13
+*****************************
+GOTO	 MOV *R13,R13
+	B @RTN
+*****************************
+ONGOSU BL @GET1
+	MOV *R6,R6
+	DEC R6
+	SLA R6,1
+	A R13,R6
+	MOV *R6,R8
+ONGOS1 C *R13,R15   See if next word is a number or an instruction		\
+	JGT GOSUB1		(was JH) read through line numbers till R13
+	INCT R13		 points to next instruction
+	JMP ONGOS1		/
+*****************************
+GOSUB	MOV *R13+,R8
+GOSUB1 DECT @STKPNT
+	C @NXTSTR,@STKPNT
+	JLE GOSUB2
+	BL @GARBAG
+GOSUB2 MOV @STKPNT,R12
+	MOV R13,*R12
+	MOV R8,R13
+	B @RTN
+*****************************
+RETURN C *R13,R15	for error when accessing disk
+	JLT GOTO	if next word not instruction then must be line number
+	
+RETUR1	MOV @STKPNT,R8
+*	CI R8,FRSTLN
+*	JL ONWARD, ELSE REPORT RETURN W/O GOSUB
+	MOV *R8,R13
+	INCT @STKPNT
+	B @RTN
+**************************************
+*CALL and SUBEND follow
+*syntax is CALL,SUBTST,NV1,NV2,NV3 call is followed by address of subprog and var list.
+*L1000
+*SUBTXT
+*	DATA NV4,NV5,NV6 then prog continues
+******************************
+*V.L. = variable list
+
+
+CALL	MOV *R13+,R8		R8 points to called V.L. 
+	MOV R13,R7		store in R7 program pntr + pntr to calling V.L.
+CALL1	C *R7,R15		(R13=R7 here) Is next word a variable or an instruction
+	JGT GOSUB1		instruction, done so put r13 on stack and go to R8
+********************************************************************
+***3/1/19 Now need to check if an array is being passed****************
+	C *R8,R14		does next word called VL point to an array?
+	JL CALL2		if low not an array else it is a passed array
+	MOV *R8,R4		what is the first dim of array in called program?
+*	MOV *R4,*R4		
+*	JGT CALL2		if >0 then a real array, if 0 or LT then passing array
+	MOV *R7+,*R4		put address of array in dummy array, INCT r7
+	C *R8+,*R13+		INCT r8 and r13
+	JMP CALL1
+****************************************
+*CALL2	MOV R8,R13		(in CALLSB) pointer to called variable list into R13
+CALL2	BL @CALLSB		copies 1st variable into sub variable list
+	JMP CALL1		keep looping
+	
+	
+*************************************************
+CLLADR	DATA CALL		address of CALL
+***********************************************
+
+
+SUBEXI	
+SUBEND	MOV @STKPNT,R8	R8 is stackpointer
+	MOV *R8,R8		pop address. R8 points to 1st inst. after CALL
+SUBEN1	DECT R8		look back a word
+	C @-2(R8),@CLLADR	loop back til R8 = address of subprog. (1 past CALL)
+	JNE SUBEN1
+	MOV *R8+,R7		address of called subprog. to R7, R8 is calling arg. list
+SUBEN2	C *R8,R15		R8 points to instruction?	
+	JGT RETUR1		done, pop R8 from stack
+*************************************************************
+*now check if array was passed. If so then just INCT both pointers
+*Changed 5/15/2019 - was C *R8,R14
+	C *R7,R14		called array will have array in subprg arg list.
+	JLT SUBEN3		not an array if LT
+*	MOV *R7,R3		first dim of called array
+*	MOV *R3,R3
+*	JGT SUBEN3		if GT then real array, otherwise passed array
+	C *R7+,*R8+		INCT both pointers
+	JMP SUBEN2
+***********************************************************	
+*SUBEN3	MOV R8,R13		(in CALLSB) pointer to call arg list, ready for GET1
+SUBEN3	BL @CALLSB
+	JMP SUBEN2
+	
+	
+***************************************	
+CALLSB	MOV R8,R13
+	MOV R11,R10		save return
+	MOV *R13,R5		if CALL is called V.L. if SUBEND is calling VL
+	BL @GET1		get address of calling argument to R6
+	MOV R6,R1		put in R1 for later
+	MOV R13,R8		after GET1 R13 points to next entry in list
+	MOV R7,R13		R7 points to subprog arg list.
+	BL @GET1		address of subprog arg list to r6
+	MOV R13,R7		all ready to transfer number or string
+	SRL R5,1		if calling variable ODD then don't transfer
+	JOC CALLS2
+	BL @ASTRNG		is it a string?
+	JEQ CALLS1
+	CI R1,NV0
+	JL CALLS2		don't update a numeric constant
+	MOV *R6,*R1		it was a number so move it
+	B *R10			go back
+CALLS1	CI R1,SV0
+	JL CALLS2		don't update a string constant
+	MOV *R6,R0		
+	BLWP @STRSTR		it was not a number so must assign string
+CALLS2	B *R10
+*84 BYTES
+*****************************************	
+	
+	
+	
+	
+	
+FOR	BL @GET4	 !!!NEXT MUST occur after FOR in BASIC program
+	MOV *R4,*R3
+	MOV *R6,R8	test whether step is pos or neg
+	JLT FORX1
+	C *R4,*R5
+	JGT FORX4	 pos step; if 1st # bigger than 2nd then bypass
+	JMP FORX2
+FORX1	C *R5,*R4	 neg step; if 2nd # bigger than 1st then bypass
+	JGT FORX4
+FORX2	MOV *R5,*R13+
+	MOV *R6,*R13+
+FORX3	B @RTN
+ 
+FORX4	MOV R13,R5	pointer to R5
+	AI R5,-8		to jibe with NEXT address
+	AI R13,4		bypass 2 temp variables
+	LI R4,NEXT
+FORX5	C *R13+,R4	look for NEXT
+	JNE FORX5
+	C *R13+,R5	found NEXT, check if right one
+	JNE FORX5
+	JMP FORX3	 return
+ 
+ 
+NEXT	MOV R13,R12	store R13 for now
+	MOV *R13,R13	get pointer to variable name
+	MOV *R13+,R7	get address of variable in R7
+ 
+	LI R0,3	3 variables to bypas
+NEXT10 MOV *R13+,R1
+	C R1,R14	is this variable an array?
+	JLT NEXT12	 no array, jump
+* March 29,2019 fixed problem with passed array	
+NEXT11 MOV *R1+,R2	bypass the right # elements in array
+	JEQ NEXT12	 when zero is found then done with elements
+	JGT NEXT13	if GT then it is a normal array
+	MOV R2,R1	if LT then it was a passed array, get addr of passed array
+	JMP NEXT11
+NEXT13	INCT R13
+	JMP NEXT11
+	
+NEXT12 DEC R0
+	JNE NEXT10
+ 
+	MOV *R13+,R5	actual limit to R5; step to R6 (not pointers!)
+	MOV *R13+,R6
+ 
+	MOV *R7,R1
+	A R6,*R7
+	MOV R6,R8
+	JLT NEXT1	if LT then step is negative
+	C *R7,R1
+	JLT DONE
+	C *R7,R5	positive step; if R7>R5 then done
+	JMP NEXT2
+NEXT1	C *R7,R1
+	JGT DONE
+	C R5,*R7	Negative step; compare limit with variable
+NEXT2	JGT DONE
+	B @RTN
+ 
+DONE	MOV R12,R13
+	INCT R13
+	B @RTN
+***************************
+
+JSTADR	DATA JOYST
+KEY	BL @GET3
+	C @-16(R13),@JSTADR	is KEY called immediately after JOYST
+	JEQ KEYBP		if yes then bypass keyscan
+	MOVB @1(R4),@>8374 	moves lsb *r4, saves one word
+*	MOV *R4,R4
+*	SWPB R4
+*	MOVB R4,@>8374
+	BLWP @KSCAN
+KEYBP	MOVB @>8375,R3
+	SRL R3,8		Key byte to lsb
+	CI R3,>00FF
+	JNE KEY1
+	SETO R3		Key=-1
+KEY1	MOV R3,*R5
+	CLR R2			status
+	INC R3		CI R3,>FFFF	if -1 then no key, status=0
+	JEQ KEY3
+	MOV @>837C,R1
+	COC @CEQ+2,R1		CEQ+2=>2000
+	JNE KEY2
+	INCT R2
+KEY2	DEC R2
+KEY3	MOV R2,*R6
+	B @RTN
+	
+*************************
+SCREEN BL @GET1
+	MOV *R6,R0
+	AI R0,>070F		REGISTER 7, foreground=black
+	BLWP @VWTR	
+	
+	MOV @SCRENE,R5
+	JEQ SCREE1		if EQ then are in screen1
+	MOV R0,@SC2CLR	move to screen2 color
+	JMP SCREE2
+SCREE1	MOV R0,@SC1CLR	move to screen1 color
+SCREE2	B @RTN
+
+*******************************
+CLEAR	CLR R0
+HX8000	LI R1,>8000
+	LI R2,768
+	BL @VSBW
+	JMP CLEAR2
+CLEAR1 MOVB R1,@>8C00
+CLEAR2 DEC R2
+	JNE CLEAR1
+	B @RTN

@@ -3236,6 +3236,7 @@ void readroms() {
     }
 }
 
+extern unsigned char UberEEPROM[4*1024];
 void saveroms()
 {
 	// if there is a cart plugged in, see if there is any NVRAM to save
@@ -3260,7 +3261,7 @@ void saveroms()
 			break;
 		}
 
-		if ((pBank)&&(xb==0)&&(nvRamUpdated)) {
+		if ((pBank)&&(nvRamUpdated)) {
 			for (int idx=0; idx<MAXROMSPERCART; idx++) {
 				if (pBank[nCart].Img[idx].nType == TYPE_NVRAM) {
 					// presumably all the data is correct, length and so on
@@ -3274,7 +3275,17 @@ void saveroms()
 						fwrite(buf, 1, pBank[nCart].Img[idx].nLength, fp);
 						fclose(fp);
 					}
-				}
+				} else if (pBank[nCart].Img[idx].nType == TYPE_UBER_EEPROM) {
+					// presumably all the data is correct, length and so on
+					FILE *fp = fopen(pBank[nCart].Img[idx].szFileName, "wb");
+					if (NULL == fp) {
+						debug_write("Failed to write UBER_EEPROM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
+					} else {
+						debug_write("Saving UBER EEPROM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
+						fwrite(UberEEPROM, 1, min(sizeof(UberEEPROM), pBank[nCart].Img[idx].nLength), fp);
+						fclose(fp);
+					}
+                }
 			}
 		}
 	}

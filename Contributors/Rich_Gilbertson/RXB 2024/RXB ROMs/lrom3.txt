@@ -1,0 +1,3741 @@
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0001
+  0001            ************************************************************
+  0002 6000              AORG >6000   
+  0004            ************************************************************
+  0005            * EQUATES   
+  0006      6000  BIAS   EQU  >6000   
+  0007      8300  PAD    EQU  >8300       * TEMP  
+  0008      8301  PAD1   EQU  >8301       * TEMP  
+  0009      8302  PAD2   EQU  >8302       * VDP ADDRESS   
+  0010      8303  PAD3   EQU  >8303       * TEMP  
+  0011      8304  PAD4   EQU  >8304       * TEMP  
+  0012      8305  PAD5   EQU  >8305       * TEMP  
+  0013      8306  PAD6   EQU  >8306       * TEMP BUFFER FOR COINSP  
+  0014      8308  PAD8   EQU  >8308       * SPRITE 1  
+  0015      830A  PADA   EQU  >830A       * SPRITE 2  
+  0016      830C  BYTES  EQU  >830C       * STRING LENGTH   
+  0017      8310  PAD10  EQU  >8310       * CHAR ROUTINE  
+  0018      8312  PAD12  EQU  >8312       * CHAR ROUTINE  
+  0019      8312  VAR7   EQU  >8312       * CHAR ROUTINE  
+  0020      8314  VAR9   EQU  >8314       * CHAR ROUTINE  
+  0021      8316  VARA   EQU  >8316       * CHAR ROUTINE  
+  0022      8316  PAD16  EQU  >8316       * CHAR ROUTINE  
+  0023      831C  SREF   EQU  >831C       * STRING POINTER  
+  0024      834A  FAC    EQU  >834A       * RAM line buffer   
+  0025      834B  FAC1   EQU  >834B       * GCHAR buffer  
+  0026      834E  FAC4   EQU  >834E       * String Address  
+  0027      8350  FAC6   EQU  >8350       * String Length   
+  0028      8352  FAC8   EQU  >8352       * Copy String pointer   
+  0029      835C  ARG    EQU  >835C       * ARGUMENT FOR ERRORS   
+  0030      835E  ARG2   EQU  >835E       * CHAR FLAG   
+  0031      837C  STATUS EQU  >837C       * GPL STATUS BYTE   
+  0032      83C4  ISR    EQU  >83C4       * ISR INTERUPT HOOK   
+  0033      83E1  GR0LB  EQU  >83E1       * GPLWS R0 LSB  
+  0034      83E9  GR4LB  EQU  >83E9       * GPLWS R4 LSB  
+  0035      8800  VDPRD  EQU  >8800       * VDP Read Data address   
+  0036      8C00  VDPWD  EQU  >8C00       * VDP Write Data address  
+  0037            ************************************************************
+  0038            * VDP EQUATES   
+  0039      03C0  VBUFF  EQU  >03C0       * line buffer in VRAM   
+  0040            ************************************************************
+  0041 6000 0000  UNUSED DATA >0000,>0000,>0000,>0000   
+       6002 0000  
+       6004 0000  
+       6006 0000  
+  0042 6008 0000         DATA >0000,>0000,>0000,>0000   
+       600A 0000  
+       600C 0000  
+       600E 0000  
+  0043            ************************************************************
+  0044            * XML table number 7 for RXB ROM3 - must have   
+  0045            *     it's origin at >6010  
+  0046            ************************************************************
+  0047            *             0     1     2     3     4     5     6      7  
+  0048 6010 6090         DATA RROLL,LROLL,UROLL,DROLL,HCHAR,VCHAR,ASCHEX,HPUT 
+       6012 60BA  
+       6014 60E4  
+       6016 613C  
+       6018 6194  
+       601A 61DE  
+       601C 7392  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0002
+       601E 6240  
+  0049            *             8    9      A    B    C      D     E     F  
+  0050 6020 628A         DATA VPUT,CLEARP,HGET,VGET,>0000,>0000,ALPHA,CHRLDR  
+       6022 643C  
+       6024 62E4  
+       6026 6328  
+       6028 0000  
+       602A 0000  
+       602C 73F4  
+       602E 7064  
+  0051            ************************************************************
+  0052            * XML table number 8 for RXB ROM3 - must have   
+  0053            *     it's origin at >6030  
+  0054            ************************************************************
+  0055            *             0      1     2      3      4     5     6     7
+  0056 6030 63E8         DATA COLLSP,DCHAR,CHRPAT,SPSPD5,SPDEL,>0000,>0000,>00
+       6032 7444  
+       6034 751C  
+       6036 75A0  
+       6038 75CA  
+       603A 0000  
+       603C 0000  
+       603E 0000  
+  0057            *             8     9     A      B     C      D      E     F
+  0058 6040 0000         DATA >0000,>0000,EAINIT,CINIT,XISRON,XISROF,>0000,>00
+       6042 0000  
+       6044 6980  
+       6046 646E  
+       6048 7416  
+       604A 7420  
+       604C 0000  
+       604E 0000  
+  0059            *   
+  0060            * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+  0061            * Write VRAM address  
+  0062            *     Expects address in R0   
+  0063            *   
+  0064            * BL here for writing data  
+  0065            *   
+  0066 6050 0260  VWADD  ORI  R0,>4000    * set to write VRAM data  
+       6052 4000  
+  0067            *   
+  0068            * BL here for reading data  
+  0069            *   
+  0070 6054 D7E0  VWADDA MOVB @GR0LB,*R15 * write LSB of R0 to VDPWA  
+       6056 83E1  
+  0071 6058 D7C0         MOVB R0,*R15     * write MSB of R0 to VDPWA  
+  0072 605A 0240         ANDI R0,>3FFF    * ensure R0 returned intact   
+       605C 3FFF  
+  0073 605E 045B         RT   
+  0074            * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+  0075            * The following utilities expect  
+  0076            *     R0 = VRAM address of row  
+  0077            *     R1 = RAM buffer address   
+  0078            *   
+  0079            * R2 and R10 will be destroyed  
+  0080            *   
+  0081            * Copy 1 row of 32 bytes from VDP (R0) to RAM (R1)  
+  0082            *   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0003
+  0083 6060 C28B  VRROW  MOV  R11,R10   * save return   
+  0084 6062 06A0         BL   @VWADDA   * write out VDP read address  
+       6064 6054  
+  0085 6066 0202         LI   R2,32     * read 1 row  
+       6068 0020  
+  0086 606A 0208         LI   R8,VDPRD  * Register faster then address  
+       606C 8800  
+  0087 606E DC58  VRROW1 MOVB *R8,*R1+  * read next VDP byte to RAM   
+  0088 6070 DC58         MOVB *R8,*R1+  * read next VDP byte to RAM   
+  0089 6072 0642         DECT R2        * dec count by 2  
+  0090 6074 16FC         JNE  VRROW1    * repeat if not done  
+  0091 6076 045A         B    *R10      * return to caller  
+  0092            *   
+  0093            * Copy 1 row of 32 bytes from RAM (R1) to VDP (R0)  
+  0094            *   
+  0095 6078 C28B  VWROW  MOV  R11,R10   * save return   
+  0096 607A 06A0         BL   @VWADD    * write out VDP write address   
+       607C 6050  
+  0097 607E 0202         LI   R2,32     * write one row   
+       6080 0020  
+  0098 6082 0208         LI   R8,VDPWD  * Register faster then address  
+       6084 8C00  
+  0099 6086 D631  VWROW1 MOVB *R1+,*R8  * write next VDP byte from RAM  
+  0100 6088 D631         MOVB *R1+,*R8  * write next VDP byte from RAM  
+  0101 608A 0642         DECT R2        * dec count by 2  
+  0102 608C 16FC         JNE  VWROW1    * repeat if not done  
+  0103 608E 045A         B    *R10      * return to caller  
+  0104            *********************************************************   
+  0105            * CALL ROLLRIGHT(repetion)                              *   
+  0106            *********************************************************   
+  0107 6090 C24B  RROLL  MOV  R11,R9    * save return address   
+  0108 6092 04C0         CLR  R0        * set to screen start   
+  0109 6094 0203         LI   R3,24     * rows to roll  
+       6096 0018  
+  0110            * Write row to RAM buffer   
+  0111 6098 0201  RROLLP LI   R1,FAC+1  * RAM buffer+1 for roll-right position
+       609A 834B  
+  0112 609C 06A0         BL   @VRROW    * copy row to RAM buffer 2 bytes at a 
+       609E 6060  
+  0113            * Copy last column before first in RAM buffer   
+  0114 60A0 D820         MOVB @FAC+32,@FAC * copy roll-out byte to roll-in pos
+       60A2 836A  
+       60A4 834A  
+  0115            * Copy rolled row back to screen (R0 still has correct locat
+  0116 60A6 0201         LI   R1,FAC    * reset RAM buffer pointer  
+       60A8 834A  
+  0117 60AA 06A0         BL   @VWROW    * copy rolled line  
+       60AC 6078  
+  0118            * Process next row  
+  0119 60AE 0220         AI   R0,32     * next row  
+       60B0 0020  
+  0120 60B2 0603         DEC  R3        * dec row count   
+  0121 60B4 16F1         JNE  RROLLP    * roll next row if not done   
+  0122 60B6 0460         B    @PAGER    * return to XB  
+       60B8 7FFA  
+  0123            *********************************************************   
+  0124            * CALL ROLLLEFT(repetion)                               *   
+  0125            *********************************************************   
+  0126 60BA C24B  LROLL  MOV  R11,R9    * save return address   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0004
+  0127 60BC 04C0         CLR  R0        * set to screen start   
+  0128 60BE 0203         LI   R3,24     * rows to roll  
+       60C0 0018  
+  0129            * Write row to RAM buffer   
+  0130 60C2 0201  LROLLP LI   R1,FAC    * RAM buffer+1 for roll-left positions
+       60C4 834A  
+  0131 60C6 06A0         BL   @VRROW    * copy row to RAM buffer 2 bytes at a 
+       60C8 6060  
+  0132            * Copy first column after last in RAM buffer  
+  0133 60CA D820         MOVB @FAC,@FAC+32 * copy roll-out byte to roll-in pos
+       60CC 834A  
+       60CE 836A  
+  0134            * Copy rolled row back to screen (R0 still has correct locat
+  0135 60D0 0201         LI   R1,FAC+1  * reset RAM buffer pointer  
+       60D2 834B  
+  0136 60D4 06A0         BL   @VWROW    * copy rolled line 2 bytes at a time  
+       60D6 6078  
+  0137            * Process next row  
+  0138 60D8 0220         AI   R0,32     * next row  
+       60DA 0020  
+  0139 60DC 0603         DEC  R3        * dec row count   
+  0140 60DE 16F1         JNE  LROLLP    * roll next row if not done   
+  0141 60E0 0460         B    @PAGER     * return to XB   
+       60E2 7FFA  
+  0142            *********************************************************   
+  0143            * CALL ROLLUP(repetion)                                 *   
+  0144            *********************************************************   
+  0145 60E4 C24B  UROLL  MOV  R11,R9    * save return address   
+  0146 60E6 04C0         CLR  R0        * set to screen start   
+  0147 60E8 0203         LI   R3,23     * rows to roll (all but 1st)  
+       60EA 0017  
+  0148            * Write first row to RAM buffer   
+  0149 60EC 0201         LI   R1,FAC    * set RAM buffer  
+       60EE 834A  
+  0150 60F0 06A0         BL   @VRROW    * copy row to RAM buffer 2 bytes at a 
+       60F2 6060  
+  0151            * Copy RAM buffer to VRAM buffer  
+  0152 60F4 0200         LI   R0,VBUFF  * set VRAM dest to VBUFF  
+       60F6 03C0  
+  0153 60F8 0201         LI   R1,FAC    * set RAM buffer  
+       60FA 834A  
+  0154 60FC 06A0         BL   @VWROW    * copy row to VBUFF 2 bytes at a time 
+       60FE 6078  
+  0155            * Start copy loop at 2nd row  
+  0156 6100 0200         LI   R0,32     * point to 2nd row  
+       6102 0020  
+  0157            * Write row to RAM buffer   
+  0158 6104 0201  UROLLP LI   R1,FAC    * set RAM buffer  
+       6106 834A  
+  0159 6108 06A0         BL   @VRROW    * copy row to RAM buffer 2 bytes at a 
+       610A 6060  
+  0160            * Copy to previous row  
+  0161 610C 0220         AI   R0,-32    * back up 1 row   
+       610E FFE0  
+  0162 6110 0201         LI   R1,FAC    * reset RAM buffer pointer  
+       6112 834A  
+  0163 6114 06A0         BL   @VWROW    * copy to previous row 2 bytes at a ti
+       6116 6078  
+  0164            * Process next row  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0005
+  0165 6118 0220         AI   R0,64     * next row  
+       611A 0040  
+  0166 611C 0603         DEC  R3        * dec row count   
+  0167 611E 16F2         JNE  UROLLP    * roll next row if not done   
+  0168            * Copy saved row to RAM   
+  0169 6120 0200         LI   R0,VBUFF  * set VRAM source   
+       6122 03C0  
+  0170 6124 0201         LI   R1,FAC    * set RAM buffer  
+       6126 834A  
+  0171 6128 06A0         BL   @VRROW    * copy row to RAM buffer 2 bytes at a 
+       612A 6060  
+  0172            * Copy saved row to last row  
+  0173 612C 0200         LI   R0,736    * point to last row   
+       612E 02E0  
+  0174 6130 0201         LI   R1,FAC    * reset RAM buffer pointer  
+       6132 834A  
+  0175 6134 06A0         BL   @VWROW    * copy to last row 2 bytes at a time  
+       6136 6078  
+  0176 6138 0460         B    @PAGER    * return to XB  
+       613A 7FFA  
+  0177            *********************************************************   
+  0178            * CALL ROLLDOWN(repetion)                               *   
+  0179            *********************************************************   
+  0180 613C C24B  DROLL  MOV  R11,R9    * save return address   
+  0181 613E 0200         LI   R0,736    * set to last row   
+       6140 02E0  
+  0182 6142 0203         LI   R3,23     * rows to roll (all but last)   
+       6144 0017  
+  0183            * Write last row to RAM buffer  
+  0184 6146 0201         LI   R1,FAC    * set RAM buffer  
+       6148 834A  
+  0185 614A 06A0         BL   @VRROW    * copy row to RAM buffer 2 bytes at a 
+       614C 6060  
+  0186            * Copy RAM buffer to VRAM buffer  
+  0187 614E 0200         LI   R0,VBUFF  * set VRAM dest to VBUFF  
+       6150 03C0  
+  0188 6152 0201         LI   R1,FAC    * set RAM buffer  
+       6154 834A  
+  0189 6156 06A0         BL   @VWROW    * copy row to VBUFF 2 bytes at a time 
+       6158 6078  
+  0190            * Start copy loop at 2nd-to-last row  
+  0191 615A 0200         LI   R0,704    *  point to row 22  
+       615C 02C0  
+  0192            * Write row to RAM buffer   
+  0193 615E 0201  DROLLP LI   R1,FAC    * set RAM buffer  
+       6160 834A  
+  0194 6162 06A0         BL   @VRROW    * copy row to RAM buffer 2 bytes at a 
+       6164 6060  
+  0195            * Copy to next row  
+  0196 6166 0220         AI   R0,32     * down 1 row  
+       6168 0020  
+  0197 616A 0201         LI   R1,FAC    * reset RAM buffer pointer  
+       616C 834A  
+  0198 616E 06A0         BL   @VWROW    * copy to next row 2 bytes at a time  
+       6170 6078  
+  0199            * Process next row  
+  0200 6172 0220         AI   R0,-64    * back up 2 rows  
+       6174 FFC0  
+  0201 6176 0603         DEC  R3        * dec row count   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0006
+  0202 6178 16F2         JNE  DROLLP    * roll next row if not done   
+  0203            * Copy saved row to RAM   
+  0204 617A 0200         LI   R0,VBUFF  * set VRAM source   
+       617C 03C0  
+  0205 617E 0201         LI   R1,FAC    * set RAM buffer  
+       6180 834A  
+  0206 6182 06A0         BL   @VRROW    * copy row to RAM buffer  
+       6184 6060  
+  0207            *                     *  2 bytes at a time  
+  0208            * Copy saved row to first row   
+  0209 6186 04C0         CLR  R0        * point to first row  
+  0210 6188 0201         LI   R1,FAC    * reset RAM buffer pointer  
+       618A 834A  
+  0211 618C 06A0         BL   @VWROW    * copy to first row 2 bytes at a time 
+       618E 6078  
+  0212 6190 0460         B    @PAGER    * return to caller  
+       6192 7FFA  
+  0213            *********************************************************** 
+  0214            * CALL HCHAR(row,column,character#,repetition[,...])      * 
+  0215            *********************************************************** 
+  0216            * R0 VDP ADDRESS = PAD2   
+  0217            * R1 CHARACTER   = PAD  
+  0218            * R3 COUNTER     - FAC  
+  0219            *   
+  0220 6194 C24B  HCHAR  MOV  R11,R9      * save return address   
+  0221 6196 0208         LI   R8,VDPWD    * put VDPWD in R8 for faster loop   
+       6198 8C00  
+  0222 619A C020         MOV  @PAD2,R0    * VRAM start address for HCHAR4   
+       619C 8302  
+  0223 619E C060         MOV  @PAD,R1     * ASCII char code is in MSB   
+       61A0 8300  
+  0224 61A2 C0E0         MOV  @FAC,R3     * repetition to R3..  
+       61A4 834A  
+  0225 61A6 C1C3         MOV  R3,R7       * .. and to R4 for manipulation   
+  0226 61A8 0205         LI   R5,768      * get screen end = 768 to a register
+       61AA 0300  
+  0227 61AC C185         MOV  R5,R6       * ..and to R6 for screen size   
+  0228 61AE 81C6         C    R6,R7       * scrn_size > cnt, i.e., cnt OK?  
+  0229 61B0 1501         JGT  HCHAR1      * yes; jump   
+  0230 61B2 C1C6         MOV  R6,R7       * no; cnt = scrn_size   
+  0231 61B4 8140  HCHAR1 C    R0,R5       * VRAM address outside screen?  
+  0232 61B6 1411         JHE  HCHARX      * error if so..just exit  
+  0233 61B8 6140         S    R0,R5       * bytes to end of screen  
+  0234 61BA C0C7  HCHAR2 MOV  R7,R3       * put cnt in R3 for HCHAR4  
+  0235 61BC 1501         JGT  HCHAR3      * are we done?  
+  0236 61BE 100D         JMP  HCHARX      * yup; we're outta here!  
+  0237 61C0 61C5  HCHAR3 S    R5,R7       * no; do we wrap to screen start?   
+  0238 61C2 1101         JLT  HCHAR4      * no  
+  0239 61C4 C0C5         MOV  R5,R3       * yes, just go to screen end  
+  0240 61C6 06A0  HCHAR4 BL   @VWADD      * write out VRAM write address  
+       61C8 6050  
+  0241 61CA 0208         LI   R8,VDPWD    * put VDPWD in R8 for faster loop   
+       61CC 8C00  
+  0242 61CE D601  HCHAR5 MOVB R1,*R8      * Write a byte to next VRAM location
+  0243 61D0 0603         DEC  R3          * decrement count   
+  0244 61D2 16FD         JNE  HCHAR5      * Not done, fill another  
+  0245 61D4 04C0         CLR  R0          * wrap for next round   
+  0246 61D6 C146         MOV  R6,R5       * scrn_size to bytes-to-end-of-scree
+  0247 61D8 10F0         JMP  HCHAR2      * see if more   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0007
+  0248 61DA 0460  HCHARX B    @PAGER      * return to caller  
+       61DC 7FFA  
+  0249            *********************************************************** 
+  0250            * CALL VCHAR(row,column,character#,repetition[,...])      * 
+  0251            *********************************************************** 
+  0252            * CALL VCHAR(row,column,character#,repetition)  
+  0253            * R0 VDP ADDRESS = PAD2   
+  0254            * R1 CHARACTER   = PAD  
+  0255            * R3 COUNTER     = FAC  
+  0256 61DE C24B  VCHAR   MOV  R11,R9     * save return address   
+  0257 61E0 C020          MOV  @PAD2,R0   * VDP ADDRESS   
+       61E2 8302  
+  0258 61E4 C1C0          MOV  R0,R7      * Copy VDP ADDRESS  
+  0259 61E6 0287  VCHART  CI   R7,31      * VDP ADDRESS>=31 top?  
+       61E8 001F  
+  0260 61EA 1203          JLE  VCHARD     * column<=31 top found  
+  0261 61EC 0227          AI   R7,-32     * VDP ADDRESS-32  
+       61EE FFE0  
+  0262 61F0 10FA          JMP  VCHART     * Loop  
+  0263 61F2 0287  VCHARD  CI   R7,31      * column=31?  
+       61F4 001F  
+  0264 61F6 1602          JNE  VCHARR     * 0 to 30   
+  0265 61F8 04C7          CLR  R7         * Reset column to 0   
+  0266 61FA 1001          JMP  VCHARZ   
+  0267 61FC 0587  VCHARR  INC  R7         * column+1  
+  0268 61FE C060  VCHARZ  MOV  @PAD,R1    * Character to display  
+       6200 8300  
+  0269 6202 C0E0          MOV  @FAC,R3    * Repetition  
+       6204 834A  
+  0270 6206 06A0  VCHAR1  BL   @VWADD     * write out VRAM write address  
+       6208 6050  
+  0271 620A 0208          LI   R8,VDPWD   * Register faster then @  
+       620C 8C00  
+  0272 620E D601          MOVB R1,*R8     * write next VRAM byte from R1  
+  0273 6210 0280          CI   R0,768     * End of screen?  
+       6212 0300  
+  0274 6214 1303          JEQ  VCHARE     * Yes   
+  0275 6216 0280          CI   R0,735     * next to last ROW?   
+       6218 02DF  
+  0276 621A 1209          JLE  VCHAR3     * Yes   
+  0277 621C C007  VCHARE  MOV  R7,R0      * VDP ADDRESS=COPY VDP ADDRESS  
+  0278 621E 0587          INC  R7         * column+1  
+  0279 6220 0287          CI   R7,31      * Next row past last column?  
+       6222 001F  
+  0280 6224 1201          JLE  VCHAR2     * No  
+  0281 6226 04C7          CLR  R7         * Wrap Column back  
+  0282 6228 0603  VCHAR2  DEC  R3         * repetition-1  
+  0283 622A 16ED          JNE  VCHAR1     * No done yet   
+  0284 622C 1007          JMP  VCHAR4     * Exit  
+  0285 622E 0220  VCHAR3  AI   R0,32      * ROW+1   
+       6230 0020  
+  0286 6232 0280          CI   R0,768     * Off screen?   
+       6234 0300  
+  0287 6236 14F2          JHE  VCHARE     * Yes reset   
+  0288 6238 0603          DEC  R3         * REPETITION-1  
+  0289 623A 16E5          JNE  VCHAR1     * No loop   
+  0290 623C 0460  VCHAR4  B    @PAGER     * RETURN TO XB  
+       623E 7FFA  
+  0291            **********************************************************  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0008
+  0292            * CALL HPUT(row,column,$variable,...)                    *  
+  0293            * CALL HPUT(row,column,number-variable,...)              *  
+  0294            **********************************************************  
+  0295            * CALL HPUT(row,column,string or number)  
+  0296            * R0 VDP SCREEN ADDRESS = PAD2 R5,R0  
+  0297            * R4 VDP STRING ADDRESS = FAC4 R4,R0  
+  0298            * R3 COUNTER            = FAC6 R3   
+  0299            *   
+  0300 6240 C24B  HPUT    MOV  R11,R9     * save return address   
+  0301 6242 C160          MOV  @PAD2,R5   * VDP SCREEN ADDRESS  
+       6244 8302  
+  0302 6246 C120          MOV  @FAC4,R4   * String address or number  
+       6248 834E  
+  0303 624A C0E0          MOV  @FAC6,R3   * Length  
+       624C 8350  
+  0304 624E 0207          LI   R7,BIAS    * Get Screen bias off set   
+       6250 6000  
+  0305 6252 0201          LI   R1,VDPWD   * Register faster then @  
+       6254 8C00  
+  0306 6256 0208          LI   R8,VDPRD   * Register faster then @  
+       6258 8800  
+  0307 625A 0283          CI   R3,0       * Length=0?   
+       625C 0000  
+  0308 625E 1313          JEQ  HPUT2      * Yes   
+  0309 6260 C004  HPUT0   MOV  R4,R0      * Get String/number address   
+  0310 6262 06A0          BL   @VWADDA    * read out VDP address R4   
+       6264 6054  
+  0311 6266 D198          MOVB *R8,R6     * Get $/# from R4 byte into R6  
+  0312 6268 B187          AB   R7,R6      * Add bias  
+  0313 626A C100          MOV  R0,R4      * Get new update into R4  
+  0314 626C 0584          INC  R4         * STRING ADDRESS+1  
+  0315 626E C005          MOV  R5,R0      * Get SCREEN ADDRESS  
+  0316 6270 06A0          BL   @VWADD     * write out VDP write address R5  
+       6272 6050  
+  0317 6274 D446          MOVB R6,*R1     * Put R6 onto screen address R0   
+  0318 6276 C140          MOV  R0,R5      * Get new update into R5  
+  0319 6278 0585          INC  R5         * SCREEN ADDRESS+1  
+  0320 627A 0285          CI   R5,768     * Last row:col?   
+       627C 0300  
+  0321 627E 1601          JNE  HPUT1      * No, so continue loop  
+  0322 6280 04C5          CLR  R5         * Reset back to top row:col   
+  0323 6282 0603  HPUT1   DEC  R3         * count by -1   
+  0324 6284 16ED          JNE  HPUT0      * count=0? Restart at top row:col   
+  0325 6286 0460  HPUT2   B    @PAGER     * return to caller  
+       6288 7FFA  
+  0326            **********************************************************  
+  0327            * CALL VPUT(row,column,$variable,...)                    *  
+  0328            * CALL VPUT(row,column,number-variable,...)              *  
+  0329            **********************************************************  
+  0330            * CALL VPUT(row,column,string or number)  
+  0331            * R0 VDP SCREEN ADDRESS = PAD2 R5,R0  
+  0332            * R4 VDP STRING ADDRESS = FAC4 R4,R0  
+  0333            * R3 COUNTER            = FAC6 R3   
+  0334            *   
+  0335 628A C24B  VPUT    MOV  R11,R9     * save return address   
+  0336 628C C160          MOV  @PAD2,R5   * VDP ADDRESS   
+       628E 8302  
+  0337 6290 C120          MOV  @FAC4,R4   * String address or number  
+       6292 834E  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0009
+  0338 6294 C0E0          MOV  @FAC6,R3   * Length  
+       6296 8350  
+  0339 6298 0207          LI   R7,BIAS    * Get Screen bias off set   
+       629A 6000  
+  0340 629C 0201          LI   R1,VDPWD   * Register faster then @  
+       629E 8C00  
+  0341 62A0 0208          LI   R8,VDPRD   * Register faster then @  
+       62A2 8800  
+  0342 62A4 0283          CI   R3,0       * Length=0?   
+       62A6 0000  
+  0343 62A8 1316          JEQ  VPUT2      * Yes   
+  0344 62AA C004  VPUT0   MOV  R4,R0      * Get String/number address   
+  0345 62AC 06A0          BL   @VWADDA    * read out VDP address R4   
+       62AE 6054  
+  0346 62B0 D198          MOVB *R8,R6     * Get $/# from R4 byte into R6  
+  0347 62B2 B187          AB   R7,R6      * Add bias  
+  0348 62B4 C100          MOV  R0,R4      * Get new update into R4  
+  0349 62B6 0584          INC  R4         * STRING ADDRESS+1  
+  0350 62B8 C005          MOV  R5,R0      * Get SCREEN ADDRESS  
+  0351 62BA 06A0          BL   @VWADD     * write out VDP write address R5  
+       62BC 6050  
+  0352 62BE D446          MOVB R6,*R1     * Put R6 onto screen address R0   
+  0353 62C0 C140          MOV  R0,R5      * Get new update into R5  
+  0354 62C2 0285          CI   R5,767     * OFF SCREEN?   
+       62C4 02FF  
+  0355 62C6 1309          JEQ  VPUT3      * Yes   
+  0356 62C8 0285          CI   R5,735     * Last ROW?   
+       62CA 02DF  
+  0357 62CC 1508          JGT  VPUT4      * Yes   
+  0358 62CE 0225          AI   R5,32      * ROW+1   
+       62D0 0020  
+  0359 62D2 0603  VPUT1   DEC  R3         * Length-1  
+  0360 62D4 16EA          JNE  VPUT0      * No loop   
+  0361 62D6 0460  VPUT2   B    @PAGER     * return to XB  
+       62D8 7FFA  
+  0362 62DA 04C5  VPUT3   CLR  R5         * RESET TO TOP LEFT CHARACTER   
+  0363 62DC 10FA          JMP  VPUT1      * Always loop   
+  0364 62DE 0225  VPUT4   AI   R5,-735    * Reset back to top ROW   
+       62E0 FD21  
+  0365 62E2 10F7          JMP  VPUT1      * Always loop   
+  0366            **********************************************************  
+  0367            * CALL HGET(row,column,length,$variable)                 *  
+  0368            **********************************************************  
+  0369            * R0 VDP SCREEN ADDRESS = PAD2  R5,R0   
+  0370            * R4 VDP STRING ADDRESS = PAD4  R4,R0   
+  0371            * R3 Length             = PAD6  R3  
+  0372            *   
+  0373 62E4 C24B  HGET    MOV  R11,R9     * save return address   
+  0374 62E6 C160          MOV  @PAD2,R5   * VDP SCREEN ADDRESS  
+       62E8 8302  
+  0375 62EA C120          MOV  @PAD4,R4   * String address  
+       62EC 8304  
+  0376 62EE C0E0          MOV  @PAD6,R3   * Length  
+       62F0 8306  
+  0377 62F2 0207          LI   R7,BIAS    * Get Screen bias off set   
+       62F4 6000  
+  0378 62F6 0201          LI   R1,VDPWD   * Register faster then @  
+       62F8 8C00  
+  0379 62FA 0208          LI   R8,VDPRD   * Register faster then @  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0010
+       62FC 8800  
+  0380 62FE C005  HGET0   MOV  R5,R0      * Get Screen Address  
+  0381 6300 06A0          BL   @VWADDA    * read out VDP address R5   
+       6302 6054  
+  0382 6304 D198          MOVB *R8,R6     * Get Screen byte into R6   
+  0383 6306 7187          SB   R7,R6      * Subtract bias   
+  0384 6308 C140          MOV  R0,R5      * Get new update into R5  
+  0385 630A 0585          INC  R5         * SCREEN ADDRESS+1  
+  0386 630C 0285          CI   R5,768     * Last row:col?   
+       630E 0300  
+  0387 6310 1601          JNE  HGET1      * No, so continue loop  
+  0388 6312 04C5          CLR  R5         * Reset back to top row:col   
+  0389 6314 C004  HGET1   MOV  R4,R0      * Get STRING ADDRESS  
+  0390 6316 06A0          BL   @VWADD     * write out VDP write address R4  
+       6318 6050  
+  0391 631A D446          MOVB R6,*R1     * Put R6 onto String address R0   
+  0392 631C C100          MOV  R0,R4      * Get new String update into R4   
+  0393 631E 0584          INC  R4         * STRING ADDRESS+1  
+  0394 6320 0603          DEC  R3         * Length-1  
+  0395 6322 16ED          JNE  HGET0      * count=0? Restart at top row:col   
+  0396 6324 0460  HGET2   B    @PAGER     * return to caller  
+       6326 7FFA  
+  0397            **********************************************************  
+  0398            * CALL VGET(row,column,length,$variable)                 *  
+  0399            **********************************************************  
+  0400            * R0 VDP SCREEN ADDRESS = PAD2  R5,R0   
+  0401            * R4 VDP STRING ADDRESS = PAD4  R4,R0   
+  0402            * R3 Length             = PAD6  R3  
+  0403            *   
+  0404 6328 C24B  VGET    MOV  R11,R9     * save return address   
+  0405 632A C160          MOV  @PAD2,R5   * VDP ADDRESS   
+       632C 8302  
+  0406 632E C120          MOV  @PAD4,R4   * String address or number  
+       6330 8304  
+  0407 6332 C0E0          MOV  @PAD6,R3   * Length  
+       6334 8306  
+  0408 6336 0207          LI   R7,BIAS    * Get Screen bias off set   
+       6338 6000  
+  0409 633A 0201          LI   R1,VDPWD   * Register faster then @  
+       633C 8C00  
+  0410 633E 0208          LI   R8,VDPRD   * Register faster then @  
+       6340 8800  
+  0411 6342 C005  VGET0   MOV  R5,R0      * Get Screen address  
+  0412 6344 06A0          BL   @VWADDA    * read out VDP address R5   
+       6346 6054  
+  0413 6348 D198          MOVB *R8,R6     * Get Screen from R5 into R6  
+  0414 634A 7187          SB   R7,R6      * Subtact bias  
+  0415 634C C140          MOV  R0,R5      * Get new Screen update into R5   
+  0416 634E 0285          CI   R5,735     * Last ROW?   
+       6350 02DF  
+  0417 6352 1209          JLE  VGET2      * Yes, ROW+1  
+  0418 6354 0285          CI   R5,767     * OFF SCREEN?   
+       6356 02FF  
+  0419 6358 1404          JHE  VGET1      * Yes, reset ROW:COL to Zero  
+  0420 635A 0585          INC  R5         * COL+1   
+  0421 635C 6160          S    @PAD2,R5   * Original address-screen address   
+       635E 8302  
+  0422 6360 1004          JMP  VGET3      * Save to String  
+  0423 6362 04C5  VGET1   CLR  R5         * Reset back to top row:col   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0011
+  0424 6364 1002          JMP  VGET3      * Save to String  
+  0425 6366 0225  VGET2   AI   R5,32      * ROW+1   
+       6368 0020  
+  0426 636A C004  VGET3   MOV  R4,R0      * Get STRING ADDRESS  
+  0427 636C 06A0          BL   @VWADD     * write out VDP write address R4  
+       636E 6050  
+  0428 6370 D446          MOVB R6,*R1     * Put R6 onto screen address R0   
+  0429 6372 C100          MOV  R0,R4      * Get new update into R4  
+  0430 6374 0584          INC  R4         * STRING ADDRESS+1  
+  0431 6376 0603          DEC  R3         * Length-1  
+  0432 6378 16E4          JNE  VGET0      * No loop   
+  0433 637A 0460          B    @PAGER     * return to XB  
+       637C 7FFA  
+  0434            **********************************************************  
+  0435            * CALL INVERSE(chr#,...)                                 *  
+  0436            * CALL INVERSE(ALL,...)                                  *  
+  0437            **********************************************************  
+  0438            * R0 TEMP VDP   
+  0439            * R1 CHARACTER ADDRESS  = FAC   
+  0440            * R2 NUMBER CHAR COUNT  = PAD   
+  0441            * R3 ADDRESS OF R4 TO R7  
+  0442 637E C24B  INVERS  MOV  R11,R9    * save return address  
+  0443 6380 C060          MOV  @FAC,R1   * CHARACTER ADDRESS  
+       6382 834A  
+  0444 6384 0281          CI   R1,0      * ALL flag?  
+       6386 0000  
+  0445 6388 1605          JNE  INV1      * No single character defintion  
+  0446 638A 0201          LI   R1,>03F0  * Cursor first character   
+       638C 03F0  
+  0447 638E 0202          LI   R2,129    * Load number of characters  
+       6390 0081  
+  0448 6392 1002          JMP  INV2      * Go do ALL  
+  0449 6394 0202  INV1    LI   R2,1      * Load 1 character   
+       6396 0001  
+  0450            * Get 4 bytes of character definition   
+  0451 6398 0203  INV2    LI   R3,>83E8 * BUFFER in R4 to R7  
+       639A 83E8  
+  0452 639C C001          MOV  R1,R0    * Copy VDP Char Address   
+  0453 639E 06A0          BL   @VWADDA  * read out VDP address  
+       63A0 6054  
+  0454 63A2 0208          LI   R8,VDPRD * Register faster then address  
+       63A4 8800  
+  0455 63A6 DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0456 63A8 DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0457 63AA DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0458 63AC DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0459 63AE DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0460 63B0 DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0461 63B2 DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0462 63B4 DCD8          MOVB *R8,*R3+ * read next VDP byte to RAM   
+  0463 63B6 0544          INV  R4       * INVERT BITS   
+  0464 63B8 0545          INV  R5       * INVERT BITS   
+  0465 63BA 0546          INV  R6       * INVERT BITS   
+  0466 63BC 0547          INV  R7       * INVERT BITS   
+  0467 63BE 0203          LI   R3,>83E8 * BUFFER in R4 to R7  
+       63C0 83E8  
+  0468 63C2 C001          MOV  R1,R0    * Copy VDP Char Address   
+  0469 63C4 06A0          BL   @VWADD   * write out VDP address   
+       63C6 6050  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0012
+  0470 63C8 0208          LI   R8,VDPWD * Register faster then address  
+       63CA 8C00  
+  0471 63CC D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0472 63CE D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0473 63D0 D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0474 63D2 D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0475 63D4 D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0476 63D6 D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0477 63D8 D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0478 63DA D633          MOVB *R3+,*R8 * write next VDP byte from RAM  
+  0479 63DC 0221          AI   R1,8     * Next Character Definition   
+       63DE 0008  
+  0480 63E0 0602          DEC  R2       * Character counter -1  
+  0481 63E2 16DA          JNE  INV2     * 0? No keep looping  
+  0482 63E4 0460          B    @PAGER     * return to XB  
+       63E6 7FFA  
+  0483            ************************************************************
+  0484            * CALL COLLIDE(#SPR,#SPR,TOLERANCE,DOTROW,DOTCOL)   
+  0485            ************************************************************
+  0486            * PAD  = SPRITE 1 RETURN=ROW  
+  0487            * PAD2 = SPRITE 2 RETURN=COLUMN   
+  0488            * FAC  = TOLERANCE  
+  0489 63E8 C24B  COLLSP MOV  R11,R9     * save return address  
+  0490            * LOOK FOR SPRITE COINCIDENCE   
+  0491 63EA 0208  COLL   LI   R8,PAD     * PAD  
+       63EC 8300  
+  0492 63EE 04C0         CLR  R0         * ZERO OUT   
+  0493 63F0 D038         MOVB *R8+,R0    * Sprite #1 ROW in high byte   
+  0494 63F2 04C4         CLR  R4         * ZERO OUT   
+  0495 63F4 D138         MOVB *R8+,R4    * Sprite #1 COL in high byte   
+  0496 63F6 04C1         CLR  R1         * ZERO OUT   
+  0497 63F8 D078         MOVB *R8+,R1    * Sprite #2 ROW in high byte   
+  0498 63FA 04C5         CLR  R5         * ZERO OUT   
+  0499 63FC D178         MOVB *R8+,R5    * Sprite #2 COL in high byte   
+  0500 63FE C1E0         MOV  @FAC,R7    * TOLERANCE  
+       6400 834A  
+  0501 6402 06C7         SWPB R7         * Put into high byte   
+  0502 6404 04E0         CLR  @PAD       * zero out   
+       6406 8300  
+  0503 6408 04E0         CLR  @PAD2      * zero out   
+       640A 8302  
+  0504            *** CHECK FOR OFF SCREEN  
+  0505 640C 0206         LI   R6,>C000   * Off screen value   
+       640E C000  
+  0506 6410 8180         C    R0,R6      * To Sprite #1 ROW to high?  
+  0507 6412 14EB         JHE  COLL       * Yes defualt zero   
+  0508 6414 8181         C    R1,R6      * To Sprite #2 ROW to high?  
+  0509 6416 14E9         JHE  COLL       * Yes defualt zero   
+  0510            *** Row comparison  
+  0511 6418 C201         MOV  R1,R8   
+  0512 641A 6200         S    R0,R8      * Sprite #2 ROW-Sprite #1 ROW  
+  0513 641C 0748         ABS  R8         * No negative value  
+  0514 641E 81C8         C    R8,R7      * Within tolerance?  
+  0515 6420 15E4         JGT  COLL       * No defualt zero  
+  0516            *** Column comparison   
+  0517 6422 C205         MOV  R5,R8   
+  0518 6424 6204         S    R4,R8      * Sprite #2 COL-Sprite #1 COL  
+  0519 6426 0748         ABS  R8         * No negative value  
+  0520 6428 81C8         C    R8,R7      * Within tolerance?  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0013
+  0521 642A 1506         JGT  COLLO      * No defualt zero  
+  0522 642C 06C0         SWPB R0         * Sprite #1 ROW in low byte  
+  0523 642E C800         MOV  R0,@PAD    * Save Sprite #1 ROW to XB   
+       6430 8300  
+  0524 6432 06C4         SWPB R4         * Sprite #1 COL in low byte  
+  0525 6434 C804         MOV  R4,@PAD2   * Save Sprite #1 COL to XB   
+       6436 8302  
+  0526 6438 0460  COLLO  B    @PAGER     * return to XB   
+       643A 7FFA  
+  0527            *********************************************************** 
+  0528            * CALL CLEARPRINT                                         * 
+  0529            *********************************************************** 
+  0530 643C C24B  CLEARP MOV  R11,R9     * save return address  
+  0531 643E 0200         LI   R0,2       * Screen address start COL 3   
+       6440 0002  
+  0532 6442 0201         LI   R1,>8000   * Space Character  
+       6444 8000  
+  0533 6446 0203         LI   R3,24      * ROW counter  
+       6448 0018  
+  0534 644A 0204         LI   R4,2       * COL copy   
+       644C 0002  
+  0535 644E 0208         LI   R8,VDPWD   * put VDPWD in R8 for faster loop  
+       6450 8C00  
+  0536 6452 06A0  CLEARL BL   @VWADD     * write out VRAM write address   
+       6454 6050  
+  0537 6456 0202         LI   R2,28      * Count COL 28   
+       6458 001C  
+  0538 645A D601  CLEARR MOVB R1,*R8     * Write a byte to next VRAM location 
+  0539 645C 0602         DEC  R2         * COUNT-1  
+  0540 645E 16FD         JNE  CLEARR     * No loop  
+  0541 6460 0224         AI   R4,32      * Start COL copy +32   
+       6462 0020  
+  0542 6464 C004         MOV  R4,R0      * Get new ROW:COL  
+  0543 6466 0603         DEC  R3         * ROW-1  
+  0544 6468 16F4         JNE  CLEARL     * Not zero continue  
+  0545 646A 0460         B    @PAGER     * return to XB   
+       646C 7FFA  
+  0546            *********************************************************** 
+  0547            * RXB CALL INIT XB ASSEMBLY ROUTINE   
+  0548            *   
+  0549 646E C24B  CINIT   MOV  R11,R9    * save return address  
+  0550 6470 0200          LI   R0,>2000  * RAM destination address  
+       6472 2000  
+  0551 6474 0201          LI   R1,ALCEND * ROM source address   
+       6476 6496  
+  0552 6478 0202          LI   R2,>0274  * COUNT  
+       647A 0274  
+  0553 647C CC31  INITLP  MOV  *R1+,*R0+ * Write next RAM word 1  
+  0554 647E CC31          MOV  *R1+,*R0+ * Write next RAM word 2  
+  0555 6480 CC31          MOV  *R1+,*R0+ * Write next RAM word 3  
+  0556 6482 CC31          MOV  *R1+,*R0+ * Write next RAM word 4  
+  0557 6484 CC31          MOV  *R1+,*R0+ * Write next RAM word 5  
+  0558 6486 CC31          MOV  *R1+,*R0+ * Write next RAM word 6  
+  0559 6488 CC31          MOV  *R1+,*R0+ * Write next RAM word 7  
+  0560 648A CC31          MOV  *R1+,*R0+ * Write next RAM word 8  
+  0561 648C 0602          DEC  R2        * COUNT-1  
+  0562 648E 16F6          JNE  INITLP    * Repeat if not done   
+  0563 6490 CC31          MOV  *R1+,*R0+ * Last word to load  
+  0564 6492 0460          B    @PAGER       * DONE RETURN TO XB   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0014
+       6494 7FFA  
+  0565            *********************************************************** 
+  0566 6496 205A  ALCEND  DATA >205A,>24F4,>4000,>AA55  
+       6498 24F4  
+       649A 4000  
+       649C AA55  
+  0567 649E 2038          DATA >2038,>2096,>2038,>217E  
+       64A0 2096  
+       64A2 2038  
+       64A4 217E  
+  0568 64A6 2038          DATA >2038,>21E2,>2038,>234C  
+       64A8 21E2  
+       64AA 2038  
+       64AC 234C  
+  0569 64AE 2038          DATA >2038,>2432,>2038,>246E  
+       64B0 2432  
+       64B2 2038  
+       64B4 246E  
+  0570 64B6 2038          DATA >2038,>2484,>2038,>2490  
+       64B8 2484  
+       64BA 2038  
+       64BC 2490  
+  0571 64BE 2038          DATA >2038,>249E,>2038,>24AA  
+       64C0 249E  
+       64C2 2038  
+       64C4 24AA  
+  0572 64C6 2038          DATA >2038,>24B8,>2038,>2090  
+       64C8 24B8  
+       64CA 2038  
+       64CC 2090  
+  0573 64CE 0000          DATA >0000,>0000,>0000,>0000  
+       64D0 0000  
+       64D2 0000  
+       64D4 0000  
+  0574 64D6 0000          DATA >0000,>0000,>0000,>0000  
+       64D8 0000  
+       64DA 0000  
+       64DC 0000  
+  0575 64DE 0000          DATA >0000,>0000,>0000,>0000  
+       64E0 0000  
+       64E2 0000  
+       64E4 0000  
+  0576 64E6 0000          DATA >0000,>0000,>0000,>0000  
+       64E8 0000  
+       64EA 0000  
+       64EC 0000  
+  0577 64EE 6520          DATA >6520,>C060,>2004,>0281  
+       64F0 C060  
+       64F2 2004  
+       64F4 0281  
+  0578 64F6 4000          DATA >4000,>130E,>C001,>0202  
+       64F8 130E  
+       64FA C001  
+       64FC 0202  
+  0579 64FE 834A          DATA >834A,>8CB0,>1606,>8CB0  
+       6500 8CB0  
+       6502 1606  
+       6504 8CB0  
+  0580 6506 1604          DATA >1604,>8CB0,>1602,>C030  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0015
+       6508 8CB0  
+       650A 1602  
+       650C C030  
+  0581 650E 0450          DATA >0450,>0221,>0008,>10EF  
+       6510 0221  
+       6512 0008  
+       6514 10EF  
+  0582 6516 0200          DATA >0200,>2500,>C800,>8322  
+       6518 2500  
+       651A C800  
+       651C 8322  
+  0583 651E 02E0          DATA >02E0,>83E0,>0460,>00CE  
+       6520 83E0  
+       6522 0460  
+       6524 00CE  
+  0584 6526 C81D          DATA >C81D,>8322,>10F9,>C01D  
+       6528 8322  
+       652A 10F9  
+       652C C01D  
+  0585 652E C06D          DATA >C06D,>0002,>06A0,>20DC  
+       6530 0002  
+       6532 06A0  
+       6534 20DC  
+  0586 6536 C0C1          DATA >C0C1,>0603,>0223,>8300  
+       6538 0603  
+       653A 0223  
+       653C 8300  
+  0587 653E D0D3          DATA >D0D3,>1361,>0983,>0643  
+       6540 1361  
+       6542 0983  
+       6544 0643  
+  0588 6546 1612          DATA >1612,>C000,>165C,>C0C5  
+       6548 C000  
+       654A 165C  
+       654C C0C5  
+  0589 654E 05C3          DATA >05C3,>06A0,>2406,>1653  
+       6550 06A0  
+       6552 2406  
+       6554 1653  
+  0590 6556 05C3          DATA >05C3,>06A0,>23CA,>0204  
+       6558 06A0  
+       655A 23CA  
+       655C 0204  
+  0591 655E 834A          DATA >834A,>0202,>0008,>DC74  
+       6560 0202  
+       6562 0008  
+       6564 DC74  
+  0592 6566 0602          DATA >0602,>15FD,>0380,>06A0  
+       6568 15FD  
+       656A 0380  
+       656C 06A0  
+  0593 656E 20F8          DATA >20F8,>10F5,>C041,>1347  
+       6570 10F5  
+       6572 C041  
+       6574 1347  
+  0594 6576 0A81          DATA >0A81,>9060,>8312,>1143  
+       6578 9060  
+       657A 8312  
+       657C 1143  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0016
+  0595 657E 0981          DATA >0981,>C141,>0A35,>0225  
+       6580 C141  
+       6582 0A35  
+       6584 0225  
+  0596 6586 0008          DATA >0008,>A160,>8310,>045B  
+       6588 A160  
+       658A 8310  
+       658C 045B  
+  0597 658E C24B          DATA >C24B,>0643,>1634,>C0C5  
+       6590 0643  
+       6592 1634  
+       6594 C0C5  
+  0598 6596 06A0          DATA >06A0,>23CA,>C0C1,>06A0  
+       6598 23CA  
+       659A C0C1  
+       659C 06A0  
+  0599 659E 2406          DATA >2406,>112D,>06A0,>211C  
+       65A0 112D  
+       65A2 06A0  
+       65A4 211C  
+  0600 65A6 06A0          DATA >06A0,>23CA,>6004,>0A30  
+       65A8 23CA  
+       65AA 6004  
+       65AC 0A30  
+  0601 65AE A040          DATA >A040,>0459,>C28B,>0A51  
+       65B0 0459  
+       65B2 C28B  
+       65B4 0A51  
+  0602 65B6 09D1          DATA >09D1,>C201,>D120,>8343  
+       65B8 C201  
+       65BA D120  
+       65BC 8343  
+  0603 65BE 0984          DATA >0984,>1303,>0600,>1123  
+       65C0 1303  
+       65C2 0600  
+       65C4 1123  
+  0604 65C6 0580          DATA >0580,>0206,>0001,>C0C5  
+       65C8 0206  
+       65CA 0001  
+       65CC C0C5  
+  0605 65CE 0223          DATA >0223,>0004,>06A0,>23CA  
+       65D0 0004  
+       65D2 06A0  
+       65D4 23CA  
+  0606 65D6 C0C1          DATA >C0C1,>0643,>05C3,>06A0  
+       65D8 0643  
+       65DA 05C3  
+       65DC 06A0  
+  0607 65DE 23CA          DATA >23CA,>0581,>6044,>3981  
+       65E0 0581  
+       65E2 6044  
+       65E4 3981  
+  0608 65E6 C186          DATA >C186,>1611,>C187,>0608  
+       65E8 1611  
+       65EA C187  
+       65EC 0608  
+  0609 65EE 15F5          DATA >15F5,>0606,>A184,>8180  
+       65F0 0606  
+       65F2 A184  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0017
+       65F4 8180  
+  0610 65F6 150A          DATA >150A,>05C3,>045A,>0200  
+       65F8 05C3  
+       65FA 045A  
+       65FC 0200  
+  0611 65FE 0700          DATA >0700,>0460,>2084,>0200  
+       6600 0460  
+       6602 2084  
+       6604 0200  
+  0612 6606 1C00          DATA >1C00,>0460,>2084,>0200  
+       6608 0460  
+       660A 2084  
+       660C 0200  
+  0613 660E 1400          DATA >1400,>0460,>2084,>C01D  
+       6610 0460  
+       6612 2084  
+       6614 C01D  
+  0614 6616 C06D          DATA >C06D,>0002,>06A0,>20DC  
+       6618 0002  
+       661A 06A0  
+       661C 20DC  
+  0615 661E C0C1          DATA >C0C1,>0603,>0223,>8300  
+       6620 0603  
+       6622 0223  
+       6624 8300  
+  0616 6626 D0D3          DATA >D0D3,>0983,>160E,>C000  
+       6628 0983  
+       662A 160E  
+       662C C000  
+  0617 662E 1622          DATA >1622,>0202,>0008,>0204  
+       6630 0202  
+       6632 0008  
+       6634 0204  
+  0618 6636 834A          DATA >834A,>C0C5,>06A0,>23CA  
+       6638 C0C5  
+       663A 06A0  
+       663C 23CA  
+  0619 663E CD01          DATA >CD01,>05C3,>0642,>15FA  
+       6640 05C3  
+       6642 0642  
+       6644 15FA  
+  0620 6646 0380          DATA >0380,>0643,>160F,>C000  
+       6648 0643  
+       664A 160F  
+       664C C000  
+  0621 664E 1612          DATA >1612,>C0C5,>05C3,>06A0  
+       6650 C0C5  
+       6652 05C3  
+       6654 06A0  
+  0622 6656 2406          DATA >2406,>160B,>05C3,>06A0  
+       6658 160B  
+       665A 05C3  
+       665C 06A0  
+  0623 665E 23CA          DATA >23CA,>C101,>0201,>834A  
+       6660 C101  
+       6662 0201  
+       6664 834A  
+  0624 6666 0460          DATA >0460,>20CA,>06A0,>20F8  
+       6668 20CA  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0018
+       666A 06A0  
+       666C 20F8  
+  0625 666E 10F8          DATA >10F8,>0460,>2166,>0460  
+       6670 0460  
+       6672 2166  
+       6674 0460  
+  0626 6676 216E          DATA >216E,>C81D,>2038,>C82D  
+       6678 C81D  
+       667A 2038  
+       667C C82D  
+  0627 667E 0002          DATA >0002,>83E2,>C82D,>0004  
+       6680 83E2  
+       6682 C82D  
+       6684 0004  
+  0628 6686 2044          DATA >2044,>02E0,>83E0,>C80B  
+       6688 02E0  
+       668A 83E0  
+       668C C80B  
+  0629 668E 2040          DATA >2040,>C020,>2044,>06A0  
+       6690 C020  
+       6692 2044  
+       6694 06A0  
+  0630 6696 20DC          DATA >20DC,>C0C1,>0603,>0223  
+       6698 C0C1  
+       669A 0603  
+       669C 0223  
+  0631 669E 8300          DATA >8300,>D0D3,>0983,>0603  
+       66A0 D0D3  
+       66A2 0983  
+       66A4 0603  
+  0632 66A6 1332          DATA >1332,>0643,>164A,>C2A0  
+       66A8 0643  
+       66AA 164A  
+       66AC C2A0  
+  0633 66AE 2038          DATA >2038,>162D,>C0C5,>05C3  
+       66B0 162D  
+       66B2 C0C5  
+       66B4 05C3  
+  0634 66B6 06A0          DATA >06A0,>2406,>9801,>2058  
+       66B8 2406  
+       66BA 9801  
+       66BC 2058  
+  0635 66BE 1620          DATA >1620,>0206,>0008,>0204  
+       66C0 0206  
+       66C2 0008  
+       66C4 0204  
+  0636 66C6 834A          DATA >834A,>C0C5,>06A0,>23CA  
+       66C8 C0C5  
+       66CA 06A0  
+       66CC 23CA  
+  0637 66CE CD01          DATA >CD01,>05C3,>0646,>15FA  
+       66D0 05C3  
+       66D2 0646  
+       66D4 15FA  
+  0638 66D6 06A0          DATA >06A0,>22DA,>0225,>0004  
+       66D8 22DA  
+       66DA 0225  
+       66DC 0004  
+  0639 66DE C105          DATA >C105,>C046,>06A0,>23E6  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0019
+       66E0 C046  
+       66E2 06A0  
+       66E4 23E6  
+  0640 66E6 05C4          DATA >05C4,>D050,>0981,>06A0  
+       66E8 D050  
+       66EA 0981  
+       66EC 06A0  
+  0641 66EE 23E6          DATA >23E6,>C2E0,>2040,>C820  
+       66F0 C2E0  
+       66F2 2040  
+       66F4 C820  
+  0642 66F6 203E          DATA >203E,>830C,>02E0,>2038  
+       66F8 830C  
+       66FA 02E0  
+       66FC 2038  
+  0643 66FE 0380          DATA >0380,>0200,>0700,>C2E0  
+       6700 0200  
+       6702 0700  
+       6704 C2E0  
+  0644 6706 2040          DATA >2040,>0460,>2084,>0200  
+       6708 0460  
+       670A 2084  
+       670C 0200  
+  0645 670E 1C00          DATA >1C00,>0460,>226E,>C08B  
+       6710 0460  
+       6712 226E  
+       6714 C08B  
+  0646 6716 0643          DATA >0643,>16F3,>C0C5,>06A0  
+       6718 16F3  
+       671A C0C5  
+       671C 06A0  
+  0647 671E 23CA          DATA >23CA,>C0C1,>06A0,>2406  
+       6720 C0C1  
+       6722 06A0  
+       6724 2406  
+  0648 6726 1102          DATA >1102,>0460,>226A,>C020  
+       6728 0460  
+       672A 226A  
+       672C C020  
+  0649 672E 2038          DATA >2038,>06A0,>211C,>6004  
+       6730 06A0  
+       6732 211C  
+       6734 6004  
+  0650 6736 0A10          DATA >0A10,>A0C0,>06A0,>23CA  
+       6738 A0C0  
+       673A 06A0  
+       673C 23CA  
+  0651 673E 0452          DATA >0452,>06A0,>227E,>0206  
+       6740 06A0  
+       6742 227E  
+       6744 0206  
+  0652 6746 834A          DATA >834A,>CD83,>DDA0,>2058  
+       6748 CD83  
+       674A DDA0  
+       674C 2058  
+  0653 674E DD84          DATA >DD84,>CD81,>C0C1,>1602  
+       6750 CD81  
+       6752 C0C1  
+       6754 1602  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0020
+  0654 6756 04D6          DATA >04D6,>1005,>0603,>06A0  
+       6758 1005  
+       675A 0603  
+       675C 06A0  
+  0655 675E 2406          DATA >2406,>0981,>C581,>C020  
+       6760 0981  
+       6762 C581  
+       6764 C020  
+  0656 6766 2044          DATA >2044,>06A0,>22DA,>0460  
+       6768 06A0  
+       676A 22DA  
+       676C 0460  
+  0657 676E 225A          DATA >225A,>C80B,>203A,>C805  
+       6770 C80B  
+       6772 203A  
+       6774 C805  
+  0658 6776 203C          DATA >203C,>C2E0,>601E,>069B  
+       6778 C2E0  
+       677A 601E  
+       677C 069B  
+  0659 677E C020          DATA >C020,>2044,>C160,>203C  
+       6780 2044  
+       6782 C160  
+       6784 203C  
+  0660 6786 D190          DATA >D190,>0986,>C820,>830C  
+       6788 0986  
+       678A C820  
+       678C 830C  
+  0661 678E 203E          DATA >203E,>C806,>830C,>C806  
+       6790 C806  
+       6792 830C  
+       6794 C806  
+  0662 6796 8350          DATA >8350,>C2E0,>6012,>069B  
+       6798 C2E0  
+       679A 6012  
+       679C 069B  
+  0663 679E C020          DATA >C020,>2044,>0206,>834A  
+       67A0 2044  
+       67A2 0206  
+       67A4 834A  
+  0664 67A6 0204          DATA >0204,>001C,>CD84,>DDA0  
+       67A8 001C  
+       67AA CD84  
+       67AC DDA0  
+  0665 67AE 2058          DATA >2058,>DD84,>C5A0,>831C  
+       67B0 DD84  
+       67B2 C5A0  
+       67B4 831C  
+  0666 67B6 C0A0          DATA >C0A0,>830C,>1309,>C116  
+       67B8 830C  
+       67BA 1309  
+       67BC C116  
+  0667 67BE C0C0          DATA >C0C0,>0583,>D073,>06A0  
+       67C0 0583  
+       67C2 D073  
+       67C4 06A0  
+  0668 67C6 241A          DATA >241A,>0584,>0602,>15FA  
+       67C8 0584  
+       67CA 0602  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0021
+       67CC 15FA  
+  0669 67CE C2E0          DATA >C2E0,>6028,>069B,>C020  
+       67D0 6028  
+       67D2 069B  
+       67D4 C020  
+  0670 67D6 2044          DATA >2044,>C160,>203C,>C2E0  
+       67D8 C160  
+       67DA 203C  
+       67DC C2E0  
+  0671 67DE 203A          DATA >203A,>045B,>C01D,>C06D  
+       67E0 045B  
+       67E2 C01D  
+       67E4 C06D  
+  0672 67E6 0002          DATA >0002,>06A0,>20DC,>C0C1  
+       67E8 06A0  
+       67EA 20DC  
+       67EC C0C1  
+  0673 67EE 0603          DATA >0603,>0223,>8300,>D0D3  
+       67F0 0223  
+       67F2 8300  
+       67F4 D0D3  
+  0674 67F6 0983          DATA >0983,>0603,>1302,>0643  
+       67F8 0603  
+       67FA 1302  
+       67FC 0643  
+  0675 67FE 1623          DATA >1623,>C000,>1628,>C02D  
+       6800 C000  
+       6802 1628  
+       6804 C02D  
+  0676 6806 0004          DATA >0004,>C0C5,>05C3,>06A0  
+       6808 C0C5  
+       680A 05C3  
+       680C 06A0  
+  0677 680E 2406          DATA >2406,>9801,>2058,>161D  
+       6810 9801  
+       6812 2058  
+       6814 161D  
+  0678 6816 05C3          DATA >05C3,>06A0,>23CA,>C041  
+       6818 06A0  
+       681A 23CA  
+       681C C041  
+  0679 681E 1307          DATA >1307,>C181,>0601,>C0C1  
+       6820 C181  
+       6822 0601  
+       6824 C0C1  
+  0680 6826 06A0          DATA >06A0,>2406,>9050,>1A15  
+       6828 2406  
+       682A 9050  
+       682C 1A15  
+  0681 682E DC01          DATA >DC01,>1309,>C0C6,>0981  
+       6830 1309  
+       6832 C0C6  
+       6834 0981  
+  0682 6836 C141          DATA >C141,>06A0,>2406,>DC01  
+       6838 06A0  
+       683A 2406  
+       683C DC01  
+  0683 683E 0583          DATA >0583,>0605,>15FA,>0380  
+       6840 0605  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0022
+       6842 15FA  
+       6844 0380  
+  0684 6846 06A0          DATA >06A0,>227E,>C02D,>0004  
+       6848 227E  
+       684A C02D  
+       684C 0004  
+  0685 684E 10E6          DATA >10E6,>0460,>2166,>0460  
+       6850 0460  
+       6852 2166  
+       6854 0460  
+  0686 6856 216E          DATA >216E,>0200,>1300,>0460  
+       6858 0200  
+       685A 1300  
+       685C 0460  
+  0687 685E 2084          DATA >2084,>06C3,>D803,>8C02  
+       6860 06C3  
+       6862 D803  
+       6864 8C02  
+  0688 6866 06C3          DATA >06C3,>D803,>8C02,>1000  
+       6868 D803  
+       686A 8C02  
+       686C 1000  
+  0689 686E D060          DATA >D060,>8800,>06C1,>D060  
+       6870 8800  
+       6872 06C1  
+       6874 D060  
+  0690 6876 8800          DATA >8800,>06C1,>045B,>06C4  
+       6878 06C1  
+       687A 045B  
+       687C 06C4  
+  0691 687E D804          DATA >D804,>8C02,>06C4,>0264  
+       6880 8C02  
+       6882 06C4  
+       6884 0264  
+  0692 6886 4000          DATA >4000,>D804,>8C02,>1000  
+       6888 D804  
+       688A 8C02  
+       688C 1000  
+  0693 688E D801          DATA >D801,>8C00,>06C1,>D801  
+       6890 8C00  
+       6892 06C1  
+       6894 D801  
+  0694 6896 8C00          DATA >8C00,>06C1,>045B,>06C3  
+       6898 06C1  
+       689A 045B  
+       689C 06C3  
+  0695 689E D803          DATA >D803,>8C02,>06C3,>D803  
+       68A0 8C02  
+       68A2 06C3  
+       68A4 D803  
+  0696 68A6 8C02          DATA >8C02,>1000,>D060,>8800  
+       68A8 1000  
+       68AA D060  
+       68AC 8800  
+  0697 68AE 045B          DATA >045B,>06C4,>D804,>8C02  
+       68B0 06C4  
+       68B2 D804  
+       68B4 8C02  
+  0698 68B6 06C4          DATA >06C4,>0264,>4000,>D804  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0023
+       68B8 0264  
+       68BA 4000  
+       68BC D804  
+  0699 68BE 8C02          DATA >8C02,>1000,>D801,>8C00  
+       68C0 1000  
+       68C2 D801  
+       68C4 8C00  
+  0700 68C6 045B          DATA >045B,>C83E,>83E2,>02E0  
+       68C8 C83E  
+       68CA 83E2  
+       68CC 02E0  
+  0701 68CE 83E0          DATA >83E0,>C80B,>204E,>C081  
+       68D0 C80B  
+       68D2 204E  
+       68D4 C081  
+  0702 68D6 0281          DATA >0281,>0040,>1B0A,>C0A1  
+       68D8 0040  
+       68DA 1B0A  
+       68DC C0A1  
+  0703 68DE 6010          DATA >6010,>0281,>0004,>1605  
+       68E0 0281  
+       68E2 0004  
+       68E4 1605  
+  0704 68E6 C0A2          DATA >C0A2,>0002,>0692,>2466  
+       68E8 0002  
+       68EA 0692  
+       68EC 2466  
+  0705 68EE 1001          DATA >1001,>0692,>02E0,>2038  
+       68F0 0692  
+       68F2 02E0  
+       68F4 2038  
+  0706 68F6 C80B          DATA >C80B,>83F6,>0380,>0200  
+       68F8 83F6  
+       68FA 0380  
+       68FC 0200  
+  0707 68FE 0B00          DATA >0B00,>0460,>2084,>02E0  
+       6900 0460  
+       6902 2084  
+       6904 02E0  
+  0708 6906 83E0          DATA >83E0,>C80B,>204E,>06A0  
+       6908 C80B  
+       690A 204E  
+       690C 06A0  
+  0709 690E 000E          DATA >000E,>02E0,>2038,>C80B  
+       6910 02E0  
+       6912 2038  
+       6914 C80B  
+  0710 6916 83F6          DATA >83F6,>0380,>06A0,>24CA  
+       6918 0380  
+       691A 06A0  
+       691C 24CA  
+  0711 691E D82D          DATA >D82D,>0002,>8C00,>0380  
+       6920 0002  
+       6922 8C00  
+       6924 0380  
+  0712 6926 06A0          DATA >06A0,>24CA,>D831,>8C00  
+       6928 24CA  
+       692A D831  
+       692C 8C00  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0024
+  0713 692E 0602          DATA >0602,>16FC,>0380,>06A0  
+       6930 16FC  
+       6932 0380  
+       6934 06A0  
+  0714 6936 24D0          DATA >24D0,>DB60,>8800,>0002  
+       6938 DB60  
+       693A 8800  
+       693C 0002  
+  0715 693E 0380          DATA >0380,>06A0,>24D0,>DC60  
+       6940 06A0  
+       6942 24D0  
+       6944 DC60  
+  0716 6946 8800          DATA >8800,>0602,>16FC,>0380  
+       6948 0602  
+       694A 16FC  
+       694C 0380  
+  0717 694E C05D          DATA >C05D,>D82D,>0001,>8C02  
+       6950 D82D  
+       6952 0001  
+       6954 8C02  
+  0718 6956 0261          DATA >0261,>8000,>D801,>8C02  
+       6958 8000  
+       695A D801  
+       695C 8C02  
+  0719 695E 0380          DATA >0380,>0201,>4000,>1001  
+       6960 0201  
+       6962 4000  
+       6964 1001  
+  0720 6966 04C1          DATA >04C1,>C09D,>D820,>203D  
+       6968 C09D  
+       696A D820  
+       696C 203D  
+  0721 696E 8C02          DATA >8C02,>E081,>D802,>8C02  
+       6970 E081  
+       6972 D802  
+       6974 8C02  
+  0722 6976 C06D          DATA >C06D,>0002,>C0AD,>0004  
+       6978 0002  
+       697A C0AD  
+       697C 0004  
+  0723 697E 045B          DATA >045B  
+  0724            **********************************************************  
+  0725 6980 C24B  EAINIT  MOV  R11,R9    * save return address  
+  0726 6982 04C0          CLR  R0        * ZERO OUT R0  
+  0727 6984 0201          LI   R1,>2000  * Start address  
+       6986 2000  
+  0728 6988 0202          LI   R2,8192   * Counter  
+       698A 2000  
+  0729 698C CC40  CLRINT  MOV  R0,*R1+   * CLEAR WORD   
+  0730 698E 0642          DECT R2        * Counter-2  
+  0731 6990 16FD          JNE  CLRINT    * ZERO?  
+  0732 6992 0200          LI   R0,LOW1   * FOUR WORDS   
+       6994 69DE  
+  0733 6996 0201          LI   R1,>2000  * Set up init  
+       6998 2000  
+  0734 699A 06A0          BL   @FOURWS   * LOAD IT  
+       699C 69D2  
+  0735 699E 0200          LI   R0,LOW2   * FOUR WORDS   
+       69A0 69E6  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0025
+  0736 69A2 0201          LI   R1,>2024  * Set up list  
+       69A4 2024  
+  0737 69A6 06A0          BL   @FOURWS   * LOAD IT  
+       69A8 69D2  
+  0738 69AA 0200          LI   R0,LOW3   * Routines   
+       69AC 69EE  
+  0739 69AE 0201          LI   R1,>20FA  * Set up routines  
+       69B0 20FA  
+  0740 69B2 0202          LI   R2,1404   * Counter  
+       69B4 057C  
+  0741 69B6 CC70  SLOW3   MOV  *R0+,*R1+ * LOAD IT  
+  0742 69B8 0642          DECT R2        * Counter-2  
+  0743 69BA 16FD          JNE  SLOW3     * ZERO?  
+  0744 69BC 0200          LI   R0,LOW4   * Name List  
+       69BE 6F6E  
+  0745 69C0 0201          LI   R1,>3F38  * NAMES & Address  
+       69C2 3F38  
+  0746 69C4 0202          LI   R2,200    * Counter  
+       69C6 00C8  
+  0747 69C8 CC70  SLOW4   MOV  *R0+,*R1+ * LOAD IT  
+  0748 69CA 0642          DECT R2        * Counter-2  
+  0749 69CC 16FD          JNE  SLOW4     * ZERO?  
+  0750 69CE 0460          B    @PAGER     * return to XB  
+       69D0 7FFA  
+  0751            ************************  
+  0752 69D2 C28B  FOURWS  MOV  R11,R10  
+  0753 69D4 CC70          MOV  *R0+,*R1+  
+  0754 69D6 CC70          MOV  *R0+,*R1+  
+  0755 69D8 CC70          MOV  *R0+,*R1+  
+  0756 69DA CC70          MOV  *R0+,*R1+  
+  0757 69DC 045A          B    *R10   
+  0758            **********************************************************  
+  0759            * EDITOR ASSEMBLER LOWER 8K SUPPORT   
+  0760            * Data for Initialization of  
+  0761            * Memory Expansion  
+  0762            ***********************************   
+  0763 69DE A55A  LOW1  DATA  >A55A,>2128,>2398,>225A   
+       69E0 2128  
+       69E2 2398  
+       69E4 225A  
+  0764 69E6 A000  LOW2  DATA  >A000,>FFD7,>2676,>3F38   
+       69E8 FFD7  
+       69EA 2676  
+       69EC 3F38  
+  0765 69EE 0064  LOW3  DATA  >0064,>2000,>2EAA,>2094   
+       69F0 2000  
+       69F2 2EAA  
+       69F4 2094  
+  0766 69F6 21C4        DATA  >21C4,>2094,>2196,>2094,>21DE,>2094,>21F4   
+       69F8 2094  
+       69FA 2196  
+       69FC 2094  
+       69FE 21DE  
+       6A00 2094  
+       6A02 21F4  
+  0767 6A04 2094        DATA  >2094,>2200,>2094,>220E,>2094,>221A,>2094,>2228 
+       6A06 2200  
+       6A08 2094  
+       6A0A 220E  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0026
+       6A0C 2094  
+       6A0E 221A  
+       6A10 2094  
+       6A12 2228  
+  0768 6A14 209A        DATA  >209A,>22B2,>20DA,>23BA,>C80B,>2030,>D060   
+       6A16 22B2  
+       6A18 20DA  
+       6A1A 23BA  
+       6A1C C80B  
+       6A1E 2030  
+       6A20 D060  
+  0769 6A22 8349        DATA  >8349,>2060,>20FC,>132A,>C020,>8350,>1311,>06A0 
+       6A24 2060  
+       6A26 20FC  
+       6A28 132A  
+       6A2A C020  
+       6A2C 8350  
+       6A2E 1311  
+       6A30 06A0  
+  0770 6A32 2646        DATA  >2646,>101E,>0281,>3F38,>1319,>C001,>0202   
+       6A34 101E  
+       6A36 0281  
+       6A38 3F38  
+       6A3A 1319  
+       6A3C C001  
+       6A3E 0202  
+  0771 6A40 834A        DATA  >834A,>8CB0,>1611,>8CB0,>160F,>8CB0,>160D,>C810 
+       6A42 8CB0  
+       6A44 1611  
+       6A46 8CB0  
+       6A48 160F  
+       6A4A 8CB0  
+       6A4C 160D  
+       6A4E C810  
+  0772 6A50 2022        DATA  >2022,>02E0,>20BA,>C020,>2022,>1309,>0690   
+       6A52 02E0  
+       6A54 20BA  
+       6A56 C020  
+       6A58 2022  
+       6A5A 1309  
+       6A5C 0690  
+  0773 6A5E 02E0        DATA  >02E0,>83E0,>C2E0,>2030,>045B,>0221,>0008,>10E4 
+       6A60 83E0  
+       6A62 C2E0  
+       6A64 2030  
+       6A66 045B  
+       6A68 0221  
+       6A6A 0008  
+       6A6C 10E4  
+  0774 6A6E 0200        DATA  >0200,>0F00,>D800,>8322,>02E0,>83E0,>0460   
+       6A70 0F00  
+       6A72 D800  
+       6A74 8322  
+       6A76 02E0  
+       6A78 83E0  
+       6A7A 0460  
+  0775 6A7C 00CE        DATA  >00CE,>5820,>20FC,>8349,>02E0,>2094,>0380,>C83E 
+       6A7E 5820  
+       6A80 20FC  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0027
+       6A82 8349  
+       6A84 02E0  
+       6A86 2094  
+       6A88 0380  
+       6A8A C83E  
+  0776 6A8C 83E2        DATA  >83E2,>02E0,>83E0,>C80B,>20AA,>C081,>0281   
+       6A8E 02E0  
+       6A90 83E0  
+       6A92 C80B  
+       6A94 20AA  
+       6A96 C081  
+       6A98 0281  
+  0777 6A9A 8000        DATA  >8000,>1B07,>09C1,>0A11,>0A42,>09B2,>A0A1,>0CFA 
+       6A9C 1B07  
+       6A9E 09C1  
+       6AA0 0A11  
+       6AA2 0A42  
+       6AA4 09B2  
+       6AA6 A0A1  
+       6AA8 0CFA  
+  0778 6AAA C092        DATA  >C092,>0692,>02E0,>2094,>C80B,>83F6,>0380   
+       6AAC 0692  
+       6AAE 02E0  
+       6AB0 2094  
+       6AB2 C80B  
+       6AB4 83F6  
+       6AB6 0380  
+  0779 6AB8 D060        DATA  >D060,>8373,>0981,>C87E,>8304,>F820,>20FC,>8349 
+       6ABA 8373  
+       6ABC 0981  
+       6ABE C87E  
+       6AC0 8304  
+       6AC2 F820  
+       6AC4 20FC  
+       6AC6 8349  
+  0780 6AC8 02E0        DATA  >02E0,>83E0,>C2E0,>2030,>045B,>02E0,>83E0   
+       6ACA 83E0  
+       6ACC C2E0  
+       6ACE 2030  
+       6AD0 045B  
+       6AD2 02E0  
+       6AD4 83E0  
+  0781 6AD6 C80B        DATA  >C80B,>20AA,>06A0,>000E,>02E0,>2094,>C80B,>83F6 
+       6AD8 20AA  
+       6ADA 06A0  
+       6ADC 000E  
+       6ADE 02E0  
+       6AE0 2094  
+       6AE2 C80B  
+       6AE4 83F6  
+  0782 6AE6 0380        DATA  >0380,>06A0,>223A,>D82D,>0002,>8C00,>0380   
+       6AE8 06A0  
+       6AEA 223A  
+       6AEC D82D  
+       6AEE 0002  
+       6AF0 8C00  
+       6AF2 0380  
+  0783 6AF4 06A0        DATA  >06A0,>223A,>D831,>8C00,>0602,>16FC,>0380,>06A0 
+       6AF6 223A  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0028
+       6AF8 D831  
+       6AFA 8C00  
+       6AFC 0602  
+       6AFE 16FC  
+       6B00 0380  
+       6B02 06A0  
+  0784 6B04 2240        DATA  >2240,>DB60,>8800,>0002,>0380,>06A0,>2240   
+       6B06 DB60  
+       6B08 8800  
+       6B0A 0002  
+       6B0C 0380  
+       6B0E 06A0  
+       6B10 2240  
+  0785 6B12 DC60        DATA  >DC60,>8800,>0602,>16FC,>0380,>C05D,>D82D,>0001 
+       6B14 8800  
+       6B16 0602  
+       6B18 16FC  
+       6B1A 0380  
+       6B1C C05D  
+       6B1E D82D  
+       6B20 0001  
+  0786 6B22 8C02        DATA  >8C02,>0261,>8000,>D801,>8C02,>0380,>0201   
+       6B24 0261  
+       6B26 8000  
+       6B28 D801  
+       6B2A 8C02  
+       6B2C 0380  
+       6B2E 0201  
+  0787 6B30 4000        DATA  >4000,>1001,>04C1,>C09D,>D820,>2099,>8C02,>E081 
+       6B32 1001  
+       6B34 04C1  
+       6B36 C09D  
+       6B38 D820  
+       6B3A 2099  
+       6B3C 8C02  
+       6B3E E081  
+  0788 6B40 D802        DATA  >D802,>8C02,>C06D,>0002,>C0AD,>0004,>045B   
+       6B42 8C02  
+       6B44 C06D  
+       6B46 0002  
+       6B48 C0AD  
+       6B4A 0004  
+       6B4C 045B  
+  0789 6B4E 0204        DATA  >0204,>834A,>C014,>C184,>04F6,>04F6,>C140,>1323 
+       6B50 834A  
+       6B52 C014  
+       6B54 C184  
+       6B56 04F6  
+       6B58 04F6  
+       6B5A C140  
+       6B5C 1323  
+  0790 6B5E 0740        DATA  >0740,>0203,>0040,>04F6,>04D6,>0280,>0064   
+       6B60 0203  
+       6B62 0040  
+       6B64 04F6  
+       6B66 04D6  
+       6B68 0280  
+       6B6A 0064  
+  0791 6B6C 1A13        DATA  >1A13,>0280,>2710,>1A08,>0583,>C040,>04C0,>3C20 
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0029
+       6B6E 0280  
+       6B70 2710  
+       6B72 1A08  
+       6B74 0583  
+       6B76 C040  
+       6B78 04C0  
+       6B7A 3C20  
+  0792 6B7C 20FA        DATA  >20FA,>D920,>83E3,>0003,>0583,>C040,>04C0   
+       6B7E D920  
+       6B80 83E3  
+       6B82 0003  
+       6B84 0583  
+       6B86 C040  
+       6B88 04C0  
+  0793 6B8A 3C20        DATA  >3C20,>20FA,>D920,>83E3,>0002,>D920,>83E1,>0001 
+       6B8C 20FA  
+       6B8E D920  
+       6B90 83E3  
+       6B92 0002  
+       6B94 D920  
+       6B96 83E1  
+       6B98 0001  
+  0794 6B9A D520        DATA  >D520,>83E7,>0545,>1101,>0514,>045B,>C17E   
+       6B9C 83E7  
+       6B9E 0545  
+       6BA0 1101  
+       6BA2 0514  
+       6BA4 045B  
+       6BA6 C17E  
+  0795 6BA8 53E0        DATA  >53E0,>20FC,>C020,>8356,>C240,>0229,>FFF8,>0420 
+       6BAA 20FC  
+       6BAC C020  
+       6BAE 8356  
+       6BB0 C240  
+       6BB2 0229  
+       6BB4 FFF8  
+       6BB6 0420  
+  0796 6BB8 2114        DATA  >2114,>D0C1,>0983,>0704,>0202,>208C,>0580   
+       6BBA D0C1  
+       6BBC 0983  
+       6BBE 0704  
+       6BC0 0202  
+       6BC2 208C  
+       6BC4 0580  
+  0797 6BC6 0584        DATA  >0584,>80C4,>1306,>0420,>2114,>DC81,>9801,>20FE 
+       6BC8 80C4  
+       6BCA 1306  
+       6BCC 0420  
+       6BCE 2114  
+       6BD0 DC81  
+       6BD2 9801  
+       6BD4 20FE  
+  0798 6BD6 16F6        DATA  >16F6,>C104,>1352,>0284,>0007,>154F,>04E0   
+       6BD8 C104  
+       6BDA 1352  
+       6BDC 0284  
+       6BDE 0007  
+       6BE0 154F  
+       6BE2 04E0  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0030
+  0799 6BE4 83D0        DATA  >83D0,>C804,>8354,>C804,>2036,>0584,>A804,>8356 
+       6BE6 C804  
+       6BE8 8354  
+       6BEA C804  
+       6BEC 2036  
+       6BEE 0584  
+       6BF0 A804  
+       6BF2 8356  
+  0800 6BF4 C820        DATA  >C820,>8356,>2038,>02E0,>83E0,>04C1,>020C   
+       6BF6 8356  
+       6BF8 2038  
+       6BFA 02E0  
+       6BFC 83E0  
+       6BFE 04C1  
+       6C00 020C  
+  0801 6C02 0F00        DATA  >0F00,>C30C,>1301,>1E00,>022C,>0100,>04E0,>83D0 
+       6C04 C30C  
+       6C06 1301  
+       6C08 1E00  
+       6C0A 022C  
+       6C0C 0100  
+       6C0E 04E0  
+       6C10 83D0  
+  0802 6C12 028C        DATA  >028C,>2000,>1332,>C80C,>83D0,>1D00,>0202   
+       6C14 2000  
+       6C16 1332  
+       6C18 C80C  
+       6C1A 83D0  
+       6C1C 1D00  
+       6C1E 0202  
+  0803 6C20 4000        DATA  >4000,>9812,>20FF,>16EE,>A0A0,>20A4,>1003,>C0A0 
+       6C22 9812  
+       6C24 20FF  
+       6C26 16EE  
+       6C28 A0A0  
+       6C2A 20A4  
+       6C2C 1003  
+       6C2E C0A0  
+  0804 6C30 83D2        DATA  >83D2,>1D00,>C092,>13E6,>C802,>83D2,>05C2   
+       6C32 1D00  
+       6C34 C092  
+       6C36 13E6  
+       6C38 C802  
+       6C3A 83D2  
+       6C3C 05C2  
+  0805 6C3E C272        DATA  >C272,>D160,>8355,>1309,>9C85,>16F2,>0985,>0206 
+       6C40 D160  
+       6C42 8355  
+       6C44 1309  
+       6C46 9C85  
+       6C48 16F2  
+       6C4A 0985  
+       6C4C 0206  
+  0806 6C4E 208C        DATA  >208C,>9CB6,>16ED,>0605,>16FC,>0581,>C801   
+       6C50 9CB6  
+       6C52 16ED  
+       6C54 0605  
+       6C56 16FC  
+       6C58 0581  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0031
+       6C5A C801  
+  0807 6C5C 203A        DATA  >203A,>C809,>2034,>C80C,>2032,>0699,>10E2,>1E00 
+       6C5E C809  
+       6C60 2034  
+       6C62 C80C  
+       6C64 2032  
+       6C66 0699  
+       6C68 10E2  
+       6C6A 1E00  
+  0808 6C6C 02E0        DATA  >02E0,>209A,>C009,>0420,>2114,>09D1,>1604   
+       6C6E 209A  
+       6C70 C009  
+       6C72 0420  
+       6C74 2114  
+       6C76 09D1  
+       6C78 1604  
+  0809 6C7A 0380        DATA  >0380,>02E0,>209A,>04C1,>06C1,>D741,>F3E0,>20FC 
+       6C7C 02E0  
+       6C7E 209A  
+       6C80 04C1  
+       6C82 06C1  
+       6C84 D741  
+       6C86 F3E0  
+       6C88 20FC  
+  0810 6C8A 0380        DATA  >0380,>C80B,>2030,>02E0,>20BA,>0420,>2124   
+       6C8C C80B  
+       6C8E 2030  
+       6C90 02E0  
+       6C92 20BA  
+       6C94 0420  
+       6C96 2124  
+  0811 6C98 02E0        DATA  >02E0,>83E0,>1303,>C2E0,>2030,>045B,>D820,>20BA 
+       6C9A 83E0  
+       6C9C 1303  
+       6C9E C2E0  
+       6CA0 2030  
+       6CA2 045B  
+       6CA4 D820  
+       6CA6 20BA  
+  0812 6CA8 8322        DATA  >8322,>0460,>00CE,>04E0,>2022,>53E0,>20FC   
+       6CAA 0460  
+       6CAC 00CE  
+       6CAE 04E0  
+       6CB0 2022  
+       6CB2 53E0  
+       6CB4 20FC  
+  0813 6CB6 C020        DATA  >C020,>8356,>0420,>2120,>0008,>1332,>0220,>FFF7 
+       6CB8 8356  
+       6CBA 0420  
+       6CBC 2120  
+       6CBE 0008  
+       6CC0 1332  
+       6CC2 0220  
+       6CC4 FFF7  
+  0814 6CC6 0201        DATA  >0201,>0200,>0420,>210C,>0580,>C800,>202E   
+       6CC8 0200  
+       6CCA 0420  
+       6CCC 210C  
+       6CCE 0580  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0032
+       6CD0 C800  
+       6CD2 202E  
+  0815 6CD4 C1E0        DATA  >C1E0,>2024,>C147,>04CC,>06A0,>25E0,>0283,>0001 
+       6CD6 2024  
+       6CD8 C147  
+       6CDA 04CC  
+       6CDC 06A0  
+       6CDE 25E0  
+       6CE0 0283  
+       6CE2 0001  
+  0816 6CE4 1624        DATA  >1624,>058C,>04C3,>1023,>0283,>0046,>161E   
+       6CE6 058C  
+       6CE8 04C3  
+       6CEA 1023  
+       6CEC 0283  
+       6CEE 0046  
+       6CF0 161E  
+  0817 6CF2 04C2        DATA  >04C2,>06A0,>262E,>0283,>003A,>16F7,>C020,>202E 
+       6CF4 06A0  
+       6CF6 262E  
+       6CF8 0283  
+       6CFA 003A  
+       6CFC 16F7  
+       6CFE C020  
+       6D00 202E  
+  0818 6D02 0600        DATA  >0600,>0201,>0100,>0420,>210C,>06A0,>25E0   
+       6D04 0201  
+       6D06 0100  
+       6D08 0420  
+       6D0A 210C  
+       6D0C 06A0  
+       6D0E 25E0  
+  0819 6D10 C020        DATA  >C020,>2022,>1307,>06A0,>2646,>1005,>CB4E,>0016 
+       6D12 2022  
+       6D14 1307  
+       6D16 06A0  
+       6D18 2646  
+       6D1A 1005  
+       6D1C CB4E  
+       6D1E 0016  
+  0820 6D20 C3A0        DATA  >C3A0,>2022,>0380,>D740,>F3E0,>20FC,>0380   
+       6D22 2022  
+       6D24 0380  
+       6D26 D740  
+       6D28 F3E0  
+       6D2A 20FC  
+       6D2C 0380  
+  0821 6D2E 06A0        DATA  >06A0,>25C2,>04C4,>D123,>2662,>0974,>C808,>202C 
+       6D30 25C2  
+       6D32 04C4  
+       6D34 D123  
+       6D36 2662  
+       6D38 0974  
+       6D3A C808  
+       6D3C 202C  
+  0822 6D3E 06A0        DATA  >06A0,>2594,>0464,>23F8,>0580,>0240,>FFFE   
+       6D40 2594  
+       6D42 0464  
+       6D44 23F8  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0033
+       6D46 0580  
+       6D48 0240  
+       6D4A FFFE  
+  0823 6D4C C120        DATA  >C120,>2024,>A100,>1808,>8804,>2026,>1B05,>C160 
+       6D4E 2024  
+       6D50 A100  
+       6D52 1808  
+       6D54 8804  
+       6D56 2026  
+       6D58 1B05  
+       6D5A C160  
+  0824 6D5C 2024        DATA  >2024,>C804,>2024,>100A,>C120,>2028,>A100   
+       6D5E C804  
+       6D60 2024  
+       6D62 100A  
+       6D64 C120  
+       6D66 2028  
+       6D68 A100  
+  0825 6D6A 8804        DATA  >8804,>202A,>140C,>C160,>2028,>C804,>2028,>C1C5 
+       6D6C 202A  
+       6D6E 140C  
+       6D70 C160  
+       6D72 2028  
+       6D74 C804  
+       6D76 2028  
+       6D78 C1C5  
+  0826 6D7A 0209        DATA  >0209,>0008,>06A0,>262E,>0609,>16FC,>10B6   
+       6D7C 0008  
+       6D7E 06A0  
+       6D80 262E  
+       6D82 0609  
+       6D84 16FC  
+       6D86 10B6  
+  0827 6D88 0200        DATA  >0200,>0800,>10CC,>A005,>C800,>2022,>10AF,>A800 
+       6D8A 0800  
+       6D8C 10CC  
+       6D8E A005  
+       6D90 C800  
+       6D92 2022  
+       6D94 10AF  
+       6D96 A800  
+  0828 6D98 202C        DATA  >202C,>13AC,>0200,>0B00,>10C2,>A005,>C1C0   
+       6D9A 13AC  
+       6D9C 0200  
+       6D9E 0B00  
+       6DA0 10C2  
+       6DA2 A005  
+       6DA4 C1C0  
+  0829 6DA6 10A6        DATA  >10A6,>A005,>DDC0,>DDE0,>20DB,>10A1,>A005,>06A0 
+       6DA8 A005  
+       6DAA DDC0  
+       6DAC DDE0  
+       6DAE 20DB  
+       6DB0 10A1  
+       6DB2 A005  
+       6DB4 06A0  
+  0830 6DB6 2566        DATA  >2566,>C000,>1316,>0226,>FFF8,>8106,>1B02   
+       6DB8 C000  
+       6DBA 1316  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0034
+       6DBC 0226  
+       6DBE FFF8  
+       6DC0 8106  
+       6DC2 1B02  
+  0831 6DC4 0514        DATA  >0514,>1096,>8594,>16F8,>89A4,>0002,>0002,>16F4 
+       6DC6 1096  
+       6DC8 8594  
+       6DCA 16F8  
+       6DCC 89A4  
+       6DCE 0002  
+       6DD0 0002  
+       6DD2 16F4  
+  0832 6DD4 89A4        DATA  >89A4,>0004,>0004,>16F0,>C0E6,>0006,>C250   
+       6DD6 0004  
+       6DD8 0004  
+       6DDA 16F0  
+       6DDC C0E6  
+       6DDE 0006  
+       6DE0 C250  
+  0833 6DE2 C403        DATA  >C403,>C009,>16FC,>0224,>0008,>C804,>202A,>10EA 
+       6DE4 C009  
+       6DE6 16FC  
+       6DE8 0224  
+       6DEA 0008  
+       6DEC C804  
+       6DEE 202A  
+       6DF0 10EA  
+  0834 6DF2 A005        DATA  >A005,>06A0,>2566,>0226,>FFF8,>8106,>13E3   
+       6DF4 06A0  
+       6DF6 2566  
+       6DF8 0226  
+       6DFA FFF8  
+       6DFC 8106  
+       6DFE 13E3  
+  0835 6E00 C296        DATA  >C296,>1501,>050A,>8294,>16F7,>89A4,>0002,>0002 
+       6E02 1501  
+       6E04 050A  
+       6E06 8294  
+       6E08 16F7  
+       6E0A 89A4  
+       6E0C 0002  
+       6E0E 0002  
+  0836 6E10 16F3        DATA  >16F3,>89A4,>0004,>0004,>16EF,>C296,>1516   
+       6E12 89A4  
+       6E14 0004  
+       6E16 0004  
+       6E18 16EF  
+       6E1A C296  
+       6E1C 1516  
+  0837 6E1E C0E6        DATA  >C0E6,>0006,>C253,>C4C0,>C0C9,>16FC,>C246,>6244 
+       6E20 0006  
+       6E22 C253  
+       6E24 C4C0  
+       6E26 C0C9  
+       6E28 16FC  
+       6E2A C246  
+       6E2C 6244  
+  0838 6E2E C286        DATA  >C286,>022A,>0008,>C0C6,>0643,>064A,>C693   
+       6E30 022A  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0035
+       6E32 0008  
+       6E34 C0C6  
+       6E36 0643  
+       6E38 064A  
+       6E3A C693  
+  0839 6E3C 0649        DATA  >0649,>16FB,>0224,>0008,>C804,>202A,>10D9,>CB44 
+       6E3E 16FB  
+       6E40 0224  
+       6E42 0008  
+       6E44 C804  
+       6E46 202A  
+       6E48 10D9  
+       6E4A CB44  
+  0840 6E4C 0002        DATA  >0002,>0200,>0C00,>0460,>2432,>0460,>2494   
+       6E4E 0200  
+       6E50 0C00  
+       6E52 0460  
+       6E54 2432  
+       6E56 0460  
+       6E58 2494  
+  0841 6E5A C28B        DATA  >C28B,>0209,>0006,>C1A0,>202A,>0226,>FFF8,>C106 
+       6E5C 0209  
+       6E5E 0006  
+       6E60 C1A0  
+       6E62 202A  
+       6E64 0226  
+       6E66 FFF8  
+       6E68 C106  
+  0842 6E6A 8806        DATA  >8806,>2028,>1AF3,>C806,>202A,>06A0,>262E   
+       6E6C 2028  
+       6E6E 1AF3  
+       6E70 C806  
+       6E72 202A  
+       6E74 06A0  
+       6E76 262E  
+  0843 6E78 DDA0        DATA  >DDA0,>20E1,>0609,>16FA,>C580,>0206,>4000,>045A 
+       6E7A 20E1  
+       6E7C 0609  
+       6E7E 16FA  
+       6E80 C580  
+       6E82 0206  
+       6E84 4000  
+       6E86 045A  
+  0844 6E88 C28B        DATA  >C28B,>04C0,>C30C,>1308,>06A0,>262E,>D020   
+       6E8A 04C0  
+       6E8C C30C  
+       6E8E 1308  
+       6E90 06A0  
+       6E92 262E  
+       6E94 D020  
+  0845 6E96 20E1        DATA  >20E1,>06A0,>262E,>A003,>045A,>0209,>0004,>06A0 
+       6E98 06A0  
+       6E9A 262E  
+       6E9C A003  
+       6E9E 045A  
+       6EA0 0209  
+       6EA2 0004  
+       6EA4 06A0  
+  0846 6EA6 262E        DATA  >262E,>06A0,>25C2,>0A40,>A003,>0609,>16F8   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0036
+       6EA8 06A0  
+       6EAA 25C2  
+       6EAC 0A40  
+       6EAE A003  
+       6EB0 0609  
+       6EB2 16F8  
+  0847 6EB4 045A        DATA  >045A,>0223,>FFD0,>0283,>000A,>1A05,>0223,>FFF9 
+       6EB6 0223  
+       6EB8 FFD0  
+       6EBA 0283  
+       6EBC 000A  
+       6EBE 1A05  
+       6EC0 0223  
+       6EC2 FFF9  
+  0848 6EC4 0283        DATA  >0283,>0019,>1B01,>045B,>0200,>0A00,>0460   
+       6EC6 0019  
+       6EC8 1B01  
+       6ECA 045B  
+       6ECC 0200  
+       6ECE 0A00  
+       6ED0 0460  
+  0849 6ED2 2432        DATA  >2432,>02E0,>83E0,>0200,>2032,>C330,>C270,>C830 
+       6ED4 02E0  
+       6ED6 83E0  
+       6ED8 0200  
+       6EDA 2032  
+       6EDC C330  
+       6EDE C270  
+       6EE0 C830  
+  0850 6EE2 8354        DATA  >8354,>C830,>8356,>C050,>1D00,>9820,>4000   
+       6EE4 C830  
+       6EE6 8356  
+       6EE8 C050  
+       6EEA 1D00  
+       6EEC 9820  
+       6EEE 4000  
+  0851 6EF0 20FF        DATA  >20FF,>161D,>0699,>101B,>1E00,>02E0,>20DA,>C020 
+       6EF2 161D  
+       6EF4 0699  
+       6EF6 101B  
+       6EF8 1E00  
+       6EFA 02E0  
+       6EFC 20DA  
+       6EFE C020  
+  0852 6F00 202E        DATA  >202E,>0201,>20DB,>0202,>0004,>0420,>2118   
+       6F02 0201  
+       6F04 20DB  
+       6F06 0202  
+       6F08 0004  
+       6F0A 0420  
+       6F0C 2118  
+  0853 6F0E 7000        DATA  >7000,>0950,>1610,>0982,>C001,>0201,>203C,>0420 
+       6F10 0950  
+       6F12 1610  
+       6F14 0982  
+       6F16 C001  
+       6F18 0201  
+       6F1A 203C  
+       6F1C 0420  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0037
+  0854 6F1E 2118        DATA  >2118,>04C8,>0602,>11D7,>D0F1,>0983,>A203   
+       6F20 04C8  
+       6F22 0602  
+       6F24 11D7  
+       6F26 D0F1  
+       6F28 0983  
+       6F2A A203  
+  0855 6F2C 045B        DATA  >045B,>02E0,>20DA,>04C0,>06C0,>0460,>2432,>0201 
+       6F2E 02E0  
+       6F30 20DA  
+       6F32 04C0  
+       6F34 06C0  
+       6F36 0460  
+       6F38 2432  
+       6F3A 0201  
+  0856 6F3C 3F40        DATA  >3F40,>0221,>FFF8,>C011,>1105,>8060,>202A   
+       6F3E 0221  
+       6F40 FFF8  
+       6F42 C011  
+       6F44 1105  
+       6F46 8060  
+       6F48 202A  
+  0857 6F4A 16F9        DATA  >16F9,>05CB,>045B,>0200,>0D00,>045B,>2D52,>5163 
+       6F4C 05CB  
+       6F4E 045B  
+       6F50 0200  
+       6F52 0D00  
+       6F54 045B  
+       6F56 2D52  
+       6F58 5163  
+  0858 6F5A 6483        DATA  >6483,>8455,>045C,>5B5F,>5EF0,>F003,>F0F0   
+       6F5C 8455  
+       6F5E 045C  
+       6F60 5B5F  
+       6F62 5EF0  
+       6F64 F003  
+       6F66 F0F0  
+  0859 6F68 4700        DATA  >4700,>00C8,>3F38   
+       6F6A 00C8  
+       6F6C 3F38  
+  0860 6F6E 5554  LOW4  DATA  >5554,>4C54,>4142,>2022,>5041,>4420,>2020,>8300 
+       6F70 4C54  
+       6F72 4142  
+       6F74 2022  
+       6F76 5041  
+       6F78 4420  
+       6F7A 2020  
+       6F7C 8300  
+  0861 6F7E 4750        DATA  >4750,>4C57,>5320,>83E0,>534F,>554E,>4420   
+       6F80 4C57  
+       6F82 5320  
+       6F84 83E0  
+       6F86 534F  
+       6F88 554E  
+       6F8A 4420  
+  0862 6F8C 8400        DATA  >8400,>5644,>5052,>4420,>8800,>5644,>5053,>5441 
+       6F8E 5644  
+       6F90 5052  
+       6F92 4420  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0038
+       6F94 8800  
+       6F96 5644  
+       6F98 5053  
+       6F9A 5441  
+  0863 6F9C 8802        DATA  >8802,>5644,>5057,>4420,>8C00,>5644,>5057   
+       6F9E 5644  
+       6FA0 5057  
+       6FA2 4420  
+       6FA4 8C00  
+       6FA6 5644  
+       6FA8 5057  
+  0864 6FAA 4120        DATA  >4120,>8C02,>5350,>4348,>5244,>9000,>5350,>4348 
+       6FAC 8C02  
+       6FAE 5350  
+       6FB0 4348  
+       6FB2 5244  
+       6FB4 9000  
+       6FB6 5350  
+       6FB8 4348  
+  0865 6FBA 5754        DATA  >5754,>9400,>4752,>4D52,>4420,>9800,>4752   
+       6FBC 9400  
+       6FBE 4752  
+       6FC0 4D52  
+       6FC2 4420  
+       6FC4 9800  
+       6FC6 4752  
+  0866 6FC8 4D52        DATA  >4D52,>4120,>9802,>4752,>4D57,>4420,>9C00,>4752 
+       6FCA 4120  
+       6FCC 9802  
+       6FCE 4752  
+       6FD0 4D57  
+       6FD2 4420  
+       6FD4 9C00  
+       6FD6 4752  
+  0867 6FD8 4D57        DATA  >4D57,>4120,>9C02,>5343,>414E,>2020,>000E   
+       6FDA 4120  
+       6FDC 9C02  
+       6FDE 5343  
+       6FE0 414E  
+       6FE2 2020  
+       6FE4 000E  
+  0868 6FE6 584D        DATA  >584D,>4C4C,>4E4B,>2104,>4B53,>4341,>4E20,>2108 
+       6FE8 4C4C  
+       6FEA 4E4B  
+       6FEC 2104  
+       6FEE 4B53  
+       6FF0 4341  
+       6FF2 4E20  
+       6FF4 2108  
+  0869 6FF6 5653        DATA  >5653,>4257,>2020,>210C,>564D,>4257,>2020   
+       6FF8 4257  
+       6FFA 2020  
+       6FFC 210C  
+       6FFE 564D  
+       7000 4257  
+       7002 2020  
+  0870 7004 2110        DATA  >2110,>5653,>4252,>2020,>2114,>564D,>4252,>2020 
+       7006 5653  
+       7008 4252  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0039
+       700A 2020  
+       700C 2114  
+       700E 564D  
+       7010 4252  
+       7012 2020  
+  0871 7014 2118        DATA  >2118,>5657,>5452,>2020,>211C,>4453,>524C   
+       7016 5657  
+       7018 5452  
+       701A 2020  
+       701C 211C  
+       701E 4453  
+       7020 524C  
+  0872 7022 4E4B        DATA  >4E4B,>2120,>4C4F,>4144,>4552,>2124,>4750,>4C4C 
+       7024 2120  
+       7026 4C4F  
+       7028 4144  
+       702A 4552  
+       702C 2124  
+       702E 4750  
+       7030 4C4C  
+  0873 7032 4E4B        DATA  >4E4B,>2100   
+       7034 2100  
+  0874            *********************************************************** 
+  0875            * RXB ALL CHAR loader   
+  0876            *********************************************************** 
+  0877 7036 C24B  CHRALL MOV  R11,R9    * save return address   
+  0878 7038 0200         LI   R0,>03F8  * VDP destination address   
+       703A 03F8  
+  0879 703C 06A0         BL   @VWADD    * write out VDP write address   
+       703E 6050  
+  0880 7040 0202         LI   R2,96     * COUNT   
+       7042 0060  
+  0881 7044 0208         LI   R8,VDPWD  * Register faster then address  
+       7046 8C00  
+  0882 7048 0201  CHRALP LI   R1,FAC    * CHAR  
+       704A 834A  
+  0883 704C D631         MOVB *R1+,*R8  * write next VDP byte from ROM 1  
+  0884 704E D631         MOVB *R1+,*R8  * write next VDP byte from ROM 2  
+  0885 7050 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 3  
+  0886 7052 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 4  
+  0887 7054 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 5  
+  0888 7056 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 6  
+  0889 7058 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 7  
+  0890 705A D631         MOVB *R1+,*R8  * write next VDP byte from ROM 8  
+  0891 705C 0602         DEC  R2        * COUNT-1   
+  0892 705E 16F4         JNE  CHRALP    * Repeat if not done  
+  0893 7060 0460         B    @PAGER    * DONE  
+       7062 7FFA  
+  0894            *********************************************************** 
+  0895            * RXB Character set   
+  0896            *********************************************************** 
+  0897 7064 C24B  CHRLDR MOV  R11,R9    * save return address   
+  0898 7066 0200         LI   R0,>03F8  * VDP destination address   
+       7068 03F8  
+  0899 706A 06A0         BL   @VWADD    * write out VDP write address   
+       706C 6050  
+  0900 706E 0201         LI   R1,CHARS  * CHARACTER LIST  
+       7070 7092  
+  0901 7072 0202         LI   R2,96     * COUNT   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0040
+       7074 0060  
+  0902 7076 0208         LI   R8,VDPWD  * Register faster then address  
+       7078 8C00  
+  0903 707A D631  CHRLP  MOVB *R1+,*R8  * write next VDP byte from ROM 1  
+  0904 707C D631         MOVB *R1+,*R8  * write next VDP byte from ROM 2  
+  0905 707E D631         MOVB *R1+,*R8  * write next VDP byte from ROM 3  
+  0906 7080 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 4  
+  0907 7082 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 5  
+  0908 7084 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 6  
+  0909 7086 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 7  
+  0910 7088 D631         MOVB *R1+,*R8  * write next VDP byte from ROM 8  
+  0911 708A 0602         DEC  R2        * COUNT-1   
+  0912 708C 16F6         JNE  CHRLP     * Repeat if not done  
+  0913 708E 0460         B    @PAGER    * DONE  
+       7090 7FFA  
+  0914            **************************************************  
+  0915 7092   00  CHARS  BYTE >00,>00,>00,>00,>00,>00,>00,>00 *   31  
+       7093   00  
+       7094   00  
+       7095   00  
+       7096   00  
+       7097   00  
+       7098   00  
+       7099   00  
+  0916 709A   00         BYTE >00,>00,>00,>00,>00,>00,>00,>00 *   32  
+       709B   00  
+       709C   00  
+       709D   00  
+       709E   00  
+       709F   00  
+       70A0   00  
+       70A1   00  
+  0917 70A2   00         BYTE >00,>10,>10,>10,>10,>00,>10,>00 * ! 33  
+       70A3   10  
+       70A4   10  
+       70A5   10  
+       70A6   10  
+       70A7   00  
+       70A8   10  
+       70A9   00  
+  0918 70AA   00         BYTE >00,>28,>28,>28,>00,>00,>00,>00 * " 34  
+       70AB   28  
+       70AC   28  
+       70AD   28  
+       70AE   00  
+       70AF   00  
+       70B0   00  
+       70B1   00  
+  0919 70B2   00         BYTE >00,>28,>7C,>28,>28,>7C,>28,>00 * # 35  
+       70B3   28  
+       70B4   7C  
+       70B5   28  
+       70B6   28  
+       70B7   7C  
+       70B8   28  
+       70B9   00  
+  0920 70BA   00         BYTE >00,>38,>54,>30,>18,>54,>38,>00 * $ 36  
+       70BB   38  
+       70BC   54  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0041
+       70BD   30  
+       70BE   18  
+       70BF   54  
+       70C0   38  
+       70C1   00  
+  0921 70C2   00         BYTE >00,>44,>4C,>18,>30,>64,>44,>00 * % 37  
+       70C3   44  
+       70C4   4C  
+       70C5   18  
+       70C6   30  
+       70C7   64  
+       70C8   44  
+       70C9   00  
+  0922 70CA   00         BYTE >00,>20,>50,>20,>54,>48,>34,>00 * & 38  
+       70CB   20  
+       70CC   50  
+       70CD   20  
+       70CE   54  
+       70CF   48  
+       70D0   34  
+       70D1   00  
+  0923 70D2   00         BYTE >00,>08,>10,>20,>00,>00,>00,>00 * ' 39  
+       70D3   08  
+       70D4   10  
+       70D5   20  
+       70D6   00  
+       70D7   00  
+       70D8   00  
+       70D9   00  
+  0924 70DA   00         BYTE >00,>08,>10,>10,>10,>10,>08,>00 * ( 40  
+       70DB   08  
+       70DC   10  
+       70DD   10  
+       70DE   10  
+       70DF   10  
+       70E0   08  
+       70E1   00  
+  0925 70E2   00         BYTE >00,>20,>10,>10,>10,>10,>20,>00 * ) 41  
+       70E3   20  
+       70E4   10  
+       70E5   10  
+       70E6   10  
+       70E7   10  
+       70E8   20  
+       70E9   00  
+  0926 70EA   00         BYTE >00,>00,>28,>10,>7C,>10,>28,>00 * * 42  
+       70EB   00  
+       70EC   28  
+       70ED   10  
+       70EE   7C  
+       70EF   10  
+       70F0   28  
+       70F1   00  
+  0927 70F2   00         BYTE >00,>10,>10,>7C,>10,>10,>00,>00 * + 43  
+       70F3   10  
+       70F4   10  
+       70F5   7C  
+       70F6   10  
+       70F7   10  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0042
+       70F8   00  
+       70F9   00  
+  0928 70FA   00         BYTE >00,>00,>00,>00,>00,>30,>10,>20 * , 44  
+       70FB   00  
+       70FC   00  
+       70FD   00  
+       70FE   00  
+       70FF   30  
+       7100   10  
+       7101   20  
+  0929 7102   00         BYTE >00,>00,>00,>7C,>00,>00,>00,>00 * - 45  
+       7103   00  
+       7104   00  
+       7105   7C  
+       7106   00  
+       7107   00  
+       7108   00  
+       7109   00  
+  0930 710A   00         BYTE >00,>00,>00,>00,>00,>30,>30,>00 * . 46  
+       710B   00  
+       710C   00  
+       710D   00  
+       710E   00  
+       710F   30  
+       7110   30  
+       7111   00  
+  0931 7112   00         BYTE >00,>04,>08,>10,>20,>40,>00,>00 * / 47  
+       7113   04  
+       7114   08  
+       7115   10  
+       7116   20  
+       7117   40  
+       7118   00  
+       7119   00  
+  0932 711A   00         BYTE >00,>3C,>4C,>54,>64,>44,>38,>00 * 0 48  
+       711B   3C  
+       711C   4C  
+       711D   54  
+       711E   64  
+       711F   44  
+       7120   38  
+       7121   00  
+  0933 7122   00         BYTE >00,>10,>30,>10,>10,>10,>38,>00 * 1 49  
+       7123   10  
+       7124   30  
+       7125   10  
+       7126   10  
+       7127   10  
+       7128   38  
+       7129   00  
+  0934 712A   00         BYTE >00,>38,>44,>08,>10,>20,>7C,>00 * 2 50  
+       712B   38  
+       712C   44  
+       712D   08  
+       712E   10  
+       712F   20  
+       7130   7C  
+       7131   00  
+  0935 7132   00         BYTE >00,>38,>44,>18,>04,>44,>38,>00 * 3 51  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0043
+       7133   38  
+       7134   44  
+       7135   18  
+       7136   04  
+       7137   44  
+       7138   38  
+       7139   00  
+  0936 713A   00         BYTE >00,>08,>18,>28,>48,>7C,>08,>00 * 4 52  
+       713B   08  
+       713C   18  
+       713D   28  
+       713E   48  
+       713F   7C  
+       7140   08  
+       7141   00  
+  0937 7142   00         BYTE >00,>78,>40,>78,>04,>44,>38,>00 * 5 53  
+       7143   78  
+       7144   40  
+       7145   78  
+       7146   04  
+       7147   44  
+       7148   38  
+       7149   00  
+  0938 714A   00         BYTE >00,>38,>40,>78,>44,>44,>38,>00 * 6 54  
+       714B   38  
+       714C   40  
+       714D   78  
+       714E   44  
+       714F   44  
+       7150   38  
+       7151   00  
+  0939 7152   00         BYTE >00,>7C,>04,>08,>10,>20,>20,>00 * 7 55  
+       7153   7C  
+       7154   04  
+       7155   08  
+       7156   10  
+       7157   20  
+       7158   20  
+       7159   00  
+  0940 715A   00         BYTE >00,>38,>44,>38,>44,>44,>38,>00 * 8 56  
+       715B   38  
+       715C   44  
+       715D   38  
+       715E   44  
+       715F   44  
+       7160   38  
+       7161   00  
+  0941 7162   00         BYTE >00,>38,>44,>44,>3C,>04,>78,>00 * 9 57  
+       7163   38  
+       7164   44  
+       7165   44  
+       7166   3C  
+       7167   04  
+       7168   78  
+       7169   00  
+  0942 716A   00         BYTE >00,>00,>30,>30,>00,>30,>30,>00 * : 58  
+       716B   00  
+       716C   30  
+       716D   30  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0044
+       716E   00  
+       716F   30  
+       7170   30  
+       7171   00  
+  0943 7172   00         BYTE >00,>00,>30,>30,>00,>30,>10,>20 * ; 59  
+       7173   00  
+       7174   30  
+       7175   30  
+       7176   00  
+       7177   30  
+       7178   10  
+       7179   20  
+  0944 717A   00         BYTE >00,>00,>10,>20,>40,>20,>10,>00 * < 60  
+       717B   00  
+       717C   10  
+       717D   20  
+       717E   40  
+       717F   20  
+       7180   10  
+       7181   00  
+  0945 7182   00         BYTE >00,>00,>00,>7C,>00,>7C,>00,>00 * = 61  
+       7183   00  
+       7184   00  
+       7185   7C  
+       7186   00  
+       7187   7C  
+       7188   00  
+       7189   00  
+  0946 718A   00         BYTE >00,>00,>10,>08,>04,>08,>10,>00 * > 62  
+       718B   00  
+       718C   10  
+       718D   08  
+       718E   04  
+       718F   08  
+       7190   10  
+       7191   00  
+  0947 7192   00         BYTE >00,>38,>44,>08,>10,>00,>10,>00 * ? 63  
+       7193   38  
+       7194   44  
+       7195   08  
+       7196   10  
+       7197   00  
+       7198   10  
+       7199   00  
+  0948 719A   00         BYTE >00,>38,>44,>54,>58,>40,>3C,>00 * @ 64  
+       719B   38  
+       719C   44  
+       719D   54  
+       719E   58  
+       719F   40  
+       71A0   3C  
+       71A1   00  
+  0949 71A2   00         BYTE >00,>38,>44,>44,>7C,>44,>44,>00 * A 65  
+       71A3   38  
+       71A4   44  
+       71A5   44  
+       71A6   7C  
+       71A7   44  
+       71A8   44  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0045
+       71A9   00  
+  0950 71AA   00         BYTE >00,>78,>24,>38,>24,>24,>78,>00 * B 66  
+       71AB   78  
+       71AC   24  
+       71AD   38  
+       71AE   24  
+       71AF   24  
+       71B0   78  
+       71B1   00  
+  0951 71B2   00         BYTE >00,>38,>44,>40,>40,>44,>38,>00 * C 67  
+       71B3   38  
+       71B4   44  
+       71B5   40  
+       71B6   40  
+       71B7   44  
+       71B8   38  
+       71B9   00  
+  0952 71BA   00         BYTE >00,>78,>24,>24,>24,>24,>78,>00 * D 68  
+       71BB   78  
+       71BC   24  
+       71BD   24  
+       71BE   24  
+       71BF   24  
+       71C0   78  
+       71C1   00  
+  0953 71C2   00         BYTE >00,>7C,>40,>78,>40,>40,>7C,>00 * E 69  
+       71C3   7C  
+       71C4   40  
+       71C5   78  
+       71C6   40  
+       71C7   40  
+       71C8   7C  
+       71C9   00  
+  0954 71CA   00         BYTE >00,>7C,>40,>78,>40,>40,>40,>00 * F 70  
+       71CB   7C  
+       71CC   40  
+       71CD   78  
+       71CE   40  
+       71CF   40  
+       71D0   40  
+       71D1   00  
+  0955 71D2   00         BYTE >00,>38,>44,>40,>4C,>44,>38,>00 * G 71  
+       71D3   38  
+       71D4   44  
+       71D5   40  
+       71D6   4C  
+       71D7   44  
+       71D8   38  
+       71D9   00  
+  0956 71DA   00         BYTE >00,>44,>44,>7C,>44,>44,>44,>00 * H 72  
+       71DB   44  
+       71DC   44  
+       71DD   7C  
+       71DE   44  
+       71DF   44  
+       71E0   44  
+       71E1   00  
+  0957 71E2   00         BYTE >00,>38,>10,>10,>10,>10,>38,>00 * I 73  
+       71E3   38  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0046
+       71E4   10  
+       71E5   10  
+       71E6   10  
+       71E7   10  
+       71E8   38  
+       71E9   00  
+  0958 71EA   00         BYTE >00,>04,>04,>04,>04,>44,>38,>00 * J 74  
+       71EB   04  
+       71EC   04  
+       71ED   04  
+       71EE   04  
+       71EF   44  
+       71F0   38  
+       71F1   00  
+  0959 71F2   00         BYTE >00,>44,>48,>50,>70,>48,>44,>00 * K 75  
+       71F3   44  
+       71F4   48  
+       71F5   50  
+       71F6   70  
+       71F7   48  
+       71F8   44  
+       71F9   00  
+  0960 71FA   00         BYTE >00,>40,>40,>40,>40,>40,>7C,>00 * L 76  
+       71FB   40  
+       71FC   40  
+       71FD   40  
+       71FE   40  
+       71FF   40  
+       7200   7C  
+       7201   00  
+  0961 7202   00         BYTE >00,>44,>6C,>54,>44,>44,>44,>00 * M 77  
+       7203   44  
+       7204   6C  
+       7205   54  
+       7206   44  
+       7207   44  
+       7208   44  
+       7209   00  
+  0962 720A   00         BYTE >00,>44,>64,>54,>54,>4C,>44,>00 * N 78  
+       720B   44  
+       720C   64  
+       720D   54  
+       720E   54  
+       720F   4C  
+       7210   44  
+       7211   00  
+  0963 7212   00         BYTE >00,>38,>44,>44,>44,>44,>38,>00 * O 79  
+       7213   38  
+       7214   44  
+       7215   44  
+       7216   44  
+       7217   44  
+       7218   38  
+       7219   00  
+  0964 721A   00         BYTE >00,>78,>44,>44,>78,>40,>40,>00 * P 80  
+       721B   78  
+       721C   44  
+       721D   44  
+       721E   78  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0047
+       721F   40  
+       7220   40  
+       7221   00  
+  0965 7222   00         BYTE >00,>38,>44,>44,>54,>4C,>3C,>00 * Q 81  
+       7223   38  
+       7224   44  
+       7225   44  
+       7226   54  
+       7227   4C  
+       7228   3C  
+       7229   00  
+  0966 722A   00         BYTE >00,>78,>44,>44,>78,>48,>44,>00 * R 82  
+       722B   78  
+       722C   44  
+       722D   44  
+       722E   78  
+       722F   48  
+       7230   44  
+       7231   00  
+  0967 7232   00         BYTE >00,>38,>44,>30,>08,>44,>38,>00 * S 83  
+       7233   38  
+       7234   44  
+       7235   30  
+       7236   08  
+       7237   44  
+       7238   38  
+       7239   00  
+  0968 723A   00         BYTE >00,>7C,>10,>10,>10,>10,>10,>00 * T 84  
+       723B   7C  
+       723C   10  
+       723D   10  
+       723E   10  
+       723F   10  
+       7240   10  
+       7241   00  
+  0969 7242   00         BYTE >00,>44,>44,>44,>44,>44,>38,>00 * U 85  
+       7243   44  
+       7244   44  
+       7245   44  
+       7246   44  
+       7247   44  
+       7248   38  
+       7249   00  
+  0970 724A   00         BYTE >00,>44,>44,>44,>44,>28,>10,>00 * V 86  
+       724B   44  
+       724C   44  
+       724D   44  
+       724E   44  
+       724F   28  
+       7250   10  
+       7251   00  
+  0971 7252   00         BYTE >00,>44,>44,>44,>54,>54,>28,>00 * W 87  
+       7253   44  
+       7254   44  
+       7255   44  
+       7256   54  
+       7257   54  
+       7258   28  
+       7259   00  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0048
+  0972 725A   00         BYTE >00,>44,>28,>10,>10,>28,>44,>00 * X 88  
+       725B   44  
+       725C   28  
+       725D   10  
+       725E   10  
+       725F   28  
+       7260   44  
+       7261   00  
+  0973 7262   00         BYTE >00,>44,>44,>28,>10,>10,>10,>00 * Y 89  
+       7263   44  
+       7264   44  
+       7265   28  
+       7266   10  
+       7267   10  
+       7268   10  
+       7269   00  
+  0974 726A   00         BYTE >00,>7C,>08,>10,>20,>40,>7C,>00 * Z 90  
+       726B   7C  
+       726C   08  
+       726D   10  
+       726E   20  
+       726F   40  
+       7270   7C  
+       7271   00  
+  0975 7272   00         BYTE >00,>38,>20,>20,>20,>20,>38,>00 * [ 91  
+       7273   38  
+       7274   20  
+       7275   20  
+       7276   20  
+       7277   20  
+       7278   38  
+       7279   00  
+  0976 727A   00         BYTE >00,>00,>40,>20,>10,>08,>04,>00 * \ 92  
+       727B   00  
+       727C   40  
+       727D   20  
+       727E   10  
+       727F   08  
+       7280   04  
+       7281   00  
+  0977 7282   00         BYTE >00,>38,>08,>08,>08,>08,>38,>00 * ] 93  
+       7283   38  
+       7284   08  
+       7285   08  
+       7286   08  
+       7287   08  
+       7288   38  
+       7289   00  
+  0978 728A   00         BYTE >00,>10,>38,>54,>10,>10,>10,>00 * ^ 94  
+       728B   10  
+       728C   38  
+       728D   54  
+       728E   10  
+       728F   10  
+       7290   10  
+       7291   00  
+  0979 7292   00         BYTE >00,>00,>00,>00,>00,>00,>7C,>00 * _ 95  
+       7293   00  
+       7294   00  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0049
+       7295   00  
+       7296   00  
+       7297   00  
+       7298   7C  
+       7299   00  
+  0980 729A   00         BYTE >00,>20,>10,>08,>00,>00,>00,>00 * ` 96  
+       729B   20  
+       729C   10  
+       729D   08  
+       729E   00  
+       729F   00  
+       72A0   00  
+       72A1   00  
+  0981 72A2   00         BYTE >00,>00,>00,>38,>48,>48,>3C,>00 * a 97  
+       72A3   00  
+       72A4   00  
+       72A5   38  
+       72A6   48  
+       72A7   48  
+       72A8   3C  
+       72A9   00  
+  0982 72AA   00         BYTE >00,>20,>20,>38,>24,>24,>38,>00 * b 98  
+       72AB   20  
+       72AC   20  
+       72AD   38  
+       72AE   24  
+       72AF   24  
+       72B0   38  
+       72B1   00  
+  0983 72B2   00         BYTE >00,>00,>00,>1C,>20,>20,>1C,>00 * c 99  
+       72B3   00  
+       72B4   00  
+       72B5   1C  
+       72B6   20  
+       72B7   20  
+       72B8   1C  
+       72B9   00  
+  0984 72BA   00         BYTE >00,>04,>04,>1C,>24,>24,>1C,>00 * d 100   
+       72BB   04  
+       72BC   04  
+       72BD   1C  
+       72BE   24  
+       72BF   24  
+       72C0   1C  
+       72C1   00  
+  0985 72C2   00         BYTE >00,>00,>00,>1C,>28,>30,>1C,>00 * e 101   
+       72C3   00  
+       72C4   00  
+       72C5   1C  
+       72C6   28  
+       72C7   30  
+       72C8   1C  
+       72C9   00  
+  0986 72CA   00         BYTE >00,>0C,>10,>38,>10,>10,>10,>00 * f 102   
+       72CB   0C  
+       72CC   10  
+       72CD   38  
+       72CE   10  
+       72CF   10  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0050
+       72D0   10  
+       72D1   00  
+  0987 72D2   00         BYTE >00,>00,>00,>1C,>24,>1C,>04,>38 * g 103   
+       72D3   00  
+       72D4   00  
+       72D5   1C  
+       72D6   24  
+       72D7   1C  
+       72D8   04  
+       72D9   38  
+  0988 72DA   00         BYTE >00,>20,>20,>38,>24,>24,>24,>00 * h 104   
+       72DB   20  
+       72DC   20  
+       72DD   38  
+       72DE   24  
+       72DF   24  
+       72E0   24  
+       72E1   00  
+  0989 72E2   00         BYTE >00,>10,>00,>30,>10,>10,>38,>00 * i 105   
+       72E3   10  
+       72E4   00  
+       72E5   30  
+       72E6   10  
+       72E7   10  
+       72E8   38  
+       72E9   00  
+  0990 72EA   00         BYTE >00,>08,>00,>08,>08,>08,>48,>30 * j 106   
+       72EB   08  
+       72EC   00  
+       72ED   08  
+       72EE   08  
+       72EF   08  
+       72F0   48  
+       72F1   30  
+  0991 72F2   00         BYTE >00,>20,>20,>24,>38,>28,>24,>00 * k 107   
+       72F3   20  
+       72F4   20  
+       72F5   24  
+       72F6   38  
+       72F7   28  
+       72F8   24  
+       72F9   00  
+  0992 72FA   00         BYTE >00,>30,>10,>10,>10,>10,>38,>00 * l 108   
+       72FB   30  
+       72FC   10  
+       72FD   10  
+       72FE   10  
+       72FF   10  
+       7300   38  
+       7301   00  
+  0993 7302   00         BYTE >00,>00,>00,>78,>54,>54,>54,>00 * m 109   
+       7303   00  
+       7304   00  
+       7305   78  
+       7306   54  
+       7307   54  
+       7308   54  
+       7309   00  
+  0994 730A   00         BYTE >00,>00,>00,>38,>24,>24,>24,>00 * n 110   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0051
+       730B   00  
+       730C   00  
+       730D   38  
+       730E   24  
+       730F   24  
+       7310   24  
+       7311   00  
+  0995 7312   00         BYTE >00,>00,>00,>18,>24,>24,>18,>00 * o 111   
+       7313   00  
+       7314   00  
+       7315   18  
+       7316   24  
+       7317   24  
+       7318   18  
+       7319   00  
+  0996 731A   00         BYTE >00,>00,>00,>38,>24,>38,>20,>20 * p 112   
+       731B   00  
+       731C   00  
+       731D   38  
+       731E   24  
+       731F   38  
+       7320   20  
+       7321   20  
+  0997 7322   00         BYTE >00,>00,>00,>1C,>24,>1C,>04,>04 * q 113   
+       7323   00  
+       7324   00  
+       7325   1C  
+       7326   24  
+       7327   1C  
+       7328   04  
+       7329   04  
+  0998 732A   00         BYTE >00,>00,>00,>28,>34,>20,>20,>00 * r 114   
+       732B   00  
+       732C   00  
+       732D   28  
+       732E   34  
+       732F   20  
+       7330   20  
+       7331   00  
+  0999 7332   00         BYTE >00,>00,>00,>1C,>30,>0C,>38,>00 * s 115   
+       7333   00  
+       7334   00  
+       7335   1C  
+       7336   30  
+       7337   0C  
+       7338   38  
+       7339   00  
+  1000 733A   00         BYTE >00,>10,>10,>38,>10,>10,>0C,>00 * t 116   
+       733B   10  
+       733C   10  
+       733D   38  
+       733E   10  
+       733F   10  
+       7340   0C  
+       7341   00  
+  1001 7342   00         BYTE >00,>00,>00,>24,>24,>24,>1C,>00 * u 117   
+       7343   00  
+       7344   00  
+       7345   24  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0052
+       7346   24  
+       7347   24  
+       7348   1C  
+       7349   00  
+  1002 734A   00         BYTE >00,>00,>00,>44,>28,>28,>10,>00 * v 118   
+       734B   00  
+       734C   00  
+       734D   44  
+       734E   28  
+       734F   28  
+       7350   10  
+       7351   00  
+  1003 7352   00         BYTE >00,>00,>00,>44,>54,>54,>28,>00 * w 119   
+       7353   00  
+       7354   00  
+       7355   44  
+       7356   54  
+       7357   54  
+       7358   28  
+       7359   00  
+  1004 735A   00         BYTE >00,>00,>00,>24,>18,>18,>24,>00 * x 120   
+       735B   00  
+       735C   00  
+       735D   24  
+       735E   18  
+       735F   18  
+       7360   24  
+       7361   00  
+  1005 7362   00         BYTE >00,>00,>00,>24,>24,>1C,>04,>38 * y 121   
+       7363   00  
+       7364   00  
+       7365   24  
+       7366   24  
+       7367   1C  
+       7368   04  
+       7369   38  
+  1006 736A   00         BYTE >00,>00,>00,>3C,>08,>10,>3C,>00 * z 122   
+       736B   00  
+       736C   00  
+       736D   3C  
+       736E   08  
+       736F   10  
+       7370   3C  
+       7371   00  
+  1007 7372   00         BYTE >00,>0C,>10,>10,>20,>10,>10,>0C * { 123   
+       7373   0C  
+       7374   10  
+       7375   10  
+       7376   20  
+       7377   10  
+       7378   10  
+       7379   0C  
+  1008 737A   00         BYTE >00,>10,>10,>10,>00,>10,>10,>10 * | 124   
+       737B   10  
+       737C   10  
+       737D   10  
+       737E   00  
+       737F   10  
+       7380   10  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0053
+       7381   10  
+  1009 7382   00         BYTE >00,>60,>10,>10,>08,>10,>10,>60 * } 125   
+       7383   60  
+       7384   10  
+       7385   10  
+       7386   08  
+       7387   10  
+       7388   10  
+       7389   60  
+  1010 738A   00         BYTE >00,>00,>20,>54,>08,>00,>00,>00 * ~ 126   
+       738B   00  
+       738C   20  
+       738D   54  
+       738E   08  
+       738F   00  
+       7390   00  
+       7391   00  
+  1011            **********************************************************  
+  1012            * CALL HEX($variable,variable,...)                       *  
+  1013            * CALL HEX(variable,$variable,...)                       *  
+  1014            * CALL HEX(">####",variable,...)                         *  
+  1015            **********************************************************  
+  1016            * HEX VDP to RAM (String to Address) LES version  
+  1017            * R0 TEMP ASC TO HEX  
+  1018            * R1 HEX ADDRESS        = FAC   
+  1019            * R2 STRING             = PAD   
+  1020            * R3 COUNTER            = R3  
+  1021 7392 C24B  ASCHEX MOV  R11,R9      * save return address   
+  1022 7394 04C1         CLR  R1          * clear result reg  
+  1023 7396 0202         LI   R2,PAD      * assume 4-bytes in PAD-PAD3  
+       7398 8300  
+  1024 739A 0203         LI   R3,4        * load counter  
+       739C 0004  
+  1025 739E 04C0  HEX01  CLR  R0          * zero out work reg   
+  1026 73A0 D032         MOVB *R2+,R0     * Get ASC byte  
+  1027 73A2 06C0         SWPB R0          * get byte to LSB   
+  1028            * ASC CHECK VALUE   
+  1029 73A4 0280         CI   R0,103      * g ?   
+       73A6 0067  
+  1030 73A8 141F         JHE  ERROR       * ERROR BAD ARGUMENT  
+  1031 73AA 0280         CI   R0,97       * a ?   
+       73AC 0061  
+  1032 73AE 140C         JHE  HEX02       * Valid   
+  1033 73B0 0280         CI   R0,71       * G ?   
+       73B2 0047  
+  1034 73B4 1419         JHE  ERROR       * ERROR BAD ARGUMENT  
+  1035 73B6 0280         CI   R0,65       * A ?   
+       73B8 0041  
+  1036 73BA 1406         JHE  HEX02       * Valid   
+  1037 73BC 0280         CI   R0,58       * : ?   
+       73BE 003A  
+  1038 73C0 1413         JHE  ERROR       * ERROR BAD ARGUMENT  
+  1039 73C2 0280         CI   R0,47       * / ?   
+       73C4 002F  
+  1040 73C6 1210         JLE  ERROR       * ERROR BAD ARGUMENT  
+  1041            * Convert ASC to value  
+  1042 73C8 0220  HEX02  AI   R0,>FFD0    * correct for 0-9 in LSB  
+       73CA FFD0  
+  1043 73CC 0280         CI   R0,>000A    * LSB < 10?   
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0054
+       73CE 000A  
+  1044 73D0 1102         JLT  HEX03       * we're good  
+  1045 73D2 0220         AI   R0,>FFF9    * correct LSB for A-F   
+       73D4 FFF9  
+  1046            * Add digit and shift if not done   
+  1047 73D6 A040  HEX03  A    R0,R1       * add hex digit to result reg LSB   
+  1048 73D8 0603         DEC  R3          * decrement counter   
+  1049 73DA 1302         JEQ  HEX04       * return if done  
+  1050 73DC 0A41         SLA  R1,4        * shift hex digit left 1 nybble   
+  1051 73DE 10DF         JMP  HEX01       * get another hex digit   
+  1052 73E0 C801  HEX04  MOV  R1,@FAC     * get result to FAC for CIF   
+       73E2 834A  
+  1053 73E4 0460         B    @PAGER      * return to XB  
+       73E6 7FFA  
+  1054 73E8 0201  ERROR  LI   R1,>994A    * ERROR CODE FLAG   
+       73EA 994A  
+  1055 73EC C801         MOV  R1,@ARG     * LOAD ERROR CODE FLAG  
+       73EE 835C  
+  1056 73F0 0460         B    @PAGER     * return to XB   
+       73F2 7FFA  
+  1057            *********************************************************** 
+  1058            * CALL ALPHALOCK(numeric-variable)                        * 
+  1059            *********************************************************** 
+  1060 73F4 C24B  ALPHA  MOV  R11,R9     * save return address  
+  1061 73F6 C20C         MOV  R12,R8     * save R12 value for later   
+  1062 73F8 04CC         CLR  R12        * ZERO OUT R12   
+  1063 73FA 1E15         SBZ  21         * PUT ALPHA LOCK STROBE  
+  1064 73FC 0BEC         SRC  R12,14     * WAIT   
+  1065 73FE 1F07         TB   7          * ALPHA LOCK DOWN?   
+  1066 7400 1D15         SBO  21         * RESET ALPHA LOCK STROBE  
+  1067 7402 1307         JEQ  ALPHAF     * RETURN ALPHA LOCK OFF  
+  1068 7404 0201         LI   R1,>994A   * ALPHA LOCK ON  
+       7406 994A  
+  1069 7408 C308  ALPHAO MOV  R8,R12     * Restore R12  
+  1070 740A C801         MOV  R1,@FAC    * Save value to FAC  
+       740C 834A  
+  1071 740E 0460         B    @PAGER     * return to XB   
+       7410 7FFA  
+  1072 7412 04C1  ALPHAF CLR  R1         * ZERO OUT FLAG  
+  1073 7414 10F9         JMP  ALPHAO     * ALPHA LOCK OFF   
+  1074            *********************************************************** 
+  1075            * CALL ISRON(variable)                                    * 
+  1076            *********************************************************** 
+  1077 7416 C24B  XISRON MOV  R11,R9       * save return address  
+  1078 7418 C820         MOV  @FAC,@ISR    * Put FAC into ISR Interupt hook   
+       741A 834A  
+       741C 83C4  
+  1079 741E 100A         JMP  NEXIT        * exit   
+  1080            *********************************************************** 
+  1081            * CALL ISROFF(variable)                                   * 
+  1082            *********************************************************** 
+  1083 7420 C24B  XISROF MOV  R11,R9       * save return address  
+  1084 7422 C820         MOV  @ISR,@ISR    * Compare if new ISR HOOK  
+       7424 83C4  
+       7426 83C4  
+  1085 7428 1303         JEQ  NHOOK        * No   
+  1086 742A C820         MOV  @ISR,@FAC    * Put ISR Hook into FAC  
+       742C 83C4  
+       742E 834A  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0055
+  1087 7430 04E0  NHOOK  CLR  @ISR         * Clear ISR Hook   
+       7432 83C4  
+  1088 7434 04E0  NEXIT  CLR  @STATUS      * Clear GPL stuse byte   
+       7436 837C  
+  1089 7438 0460         B    @PAGER       * return to XB   
+       743A 7FFA  
+  1090            ************************  
+  1091 743C D601  SPRLP  MOVB R1,*R8     * Write a byte to next VRAM location 
+  1092 743E 0602         DEC  R2         * COUNT-1  
+  1093 7440 16FD         JNE  SPRLP      * LOOP   
+  1094 7442 045B         RT   
+  1095            *********************************************************** 
+  1096            * CALL CHAR(char-code,definition[,...])                   * 
+  1097            * CALL CHAR(ALL,definition[,...])                         * 
+  1098            *********************************************************** 
+  1099            *  VAR9 <--ASCII code of char.....CDT address of char--> R4 
+  1100            *     VAR9 = PAD+20 = >8314   
+  1101            *  FAC4 <--XB chr str ptr..ptr to str left to process--> R5 
+  1102            *  FAC6    Length of char string                         R3 
+  1103            *          Temporary counter                             R6 
+  1104            *          Temporary counter                             R7 
+  1105            *          VDPWD write data register                     R8 
+  1106            *          Save return address for PAGER                 R9 
+  1107            *          VDPRD read data register                     R10 
+  1108            *          VDP address                                   R0 
+  1109            *          VDP character                                 R1 
+  1110            *          Temporary counter                             R2 
+  1111            *  PAD (>8300..>830F) 16-byte buffer for a single character 
+  1112            *     string and its resultant 8-byte hexadecimal string  
+  1113            *  ARG2    address after end of XB string   
+  1114            *********************************************************** 
+  1115            *   
+  1116      83EB  GR5LB  EQU  >83EB   
+  1117            *   
+  1118            * Get Character Code & adjust for Character Definition  
+  1119            *  Table (CDT) address.   
+  1120 7444 C24B  DCHAR  MOV  R11,R9     * Save return address  
+  1121            *   
+  1122            * Set up VDP write data register (saves 4 bytes)  
+  1123 7446 0208         LI   R8,VDPWD   * VDP Write Data register  
+       7448 8C00  
+  1124            *   
+  1125            * Set to CDT address of first character if string length>0  
+  1126 744A C160         MOV  @FAC4,R5   * get pointer to XB string address   
+       744C 834E  
+  1127 744E C0E0         MOV  @FAC6,R3   * get length of XB string..=0?   
+       7450 8350  
+  1128 7452 134C         JEQ  JERR       * yes..so ERROR BAD ARGUMENT   
+  1129 7454 C805         MOV  R5,@ARG2   * no..XB string address to ARG2  
+       7456 835E  
+  1130 7458 A803         A    R3,@ARG2   * address after end of XB string   
+       745A 835E  
+  1131 745C C120         MOV  @VAR9,R4   * Get char-code  
+       745E 8314  
+  1132 7460 0A34         SLA  R4,3       * Convert char-code to CDT address   
+  1133 7462 0224         AI   R4,>0300   * Correct for XB offse   
+       7464 0300  
+  1134 7466 8805  SCCHR  C    R5,@ARG2   * Done?  
+       7468 835E  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0056
+  1135 746A 140C         JHE  CHAREX     * yes..back to XB  
+  1136 746C 06A0         BL   @SETPAD    * Set up PAD for use   
+       746E 748C  
+  1137 7470 06A0         BL   @ASC2HX    * do ASCII-to-hex conversion   
+       7472 74A2  
+  1138 7474 0283         CI   R3,0       * 0? ZERO LENGTH?  
+       7476 0000  
+  1139 7478 1305         JEQ  CHAREX     * LOOP   
+  1140 747A 0224         AI   R4,8       * CDT address to next char pattern   
+       747C 0008  
+  1141 747E 0284         CI   R4,>0780   * address within CDT?  
+       7480 0780  
+  1142 7482 11F1         JLT  SCCHR      * yes..keep using XB string  
+  1143 7484 04E0  CHAREX CLR  @ARG       * clear error flag   
+       7486 835C  
+  1144 7488 0460         B    @PAGER     * exit to XB   
+       748A 7FFA  
+  1145            *   
+  1146            *========================================================== 
+  1147            * ASCII-to-Hexadecimal Conversion/Copy Subroutine ********* 
+  1148            *========================================================== 
+  1149            *   
+  1150            * Zero out PAB 16 bytes '0' (>30)   
+  1151 748C 070C  SETPAD SETO R12        * Set nybble toggle  
+  1152 748E 0202         LI   R2,8       * Max # of words   
+       7490 0008  
+  1153 7492 0207         LI   R7,PAD     * PAD RAM buffer   
+       7494 8300  
+  1154 7496 0201         LI   R1,>3030   * 2 ASCII zeros  
+       7498 3030  
+  1155 749A CDC1  ZPAD   MOV  R1,*R7+    * clear 2 bytes with ASCII zeros   
+  1156 749C 0602         DEC  R2         * count -1   
+  1157 749E 16FD         JNE  ZPAD       * LOOP   
+  1158 74A0 045B         RT              * return to caller   
+  1159            *   
+  1160            * Get String Into PAD   
+  1161 74A2 0202  ASC2HX LI   R2,16      * Set max count chars to process   
+       74A4 0010  
+  1162 74A6 8083         C    R3,R2      * remaining XB string length < 16?   
+  1163 74A8 1501         JGT  OKPAD      * no..process 16 characters  
+  1164 74AA C083         MOV  R3,R2      * yes..set to actual characters left 
+  1165 74AC 60C2  OKPAD  S    R2,R3      * update running XB string length  
+  1166 74AE 0201         LI   R1,PAD     * Get string into PAD  
+       74B0 8300  
+  1167 74B2 C1C1         MOV  R1,R7      * saves 4 bytes at CONVRT  
+  1168 74B4 D7E0         MOVB @GR5LB,*R15    * write LSB of R5 to VDPWA   
+       74B6 83EB  
+  1169 74B8 D7C5         MOVB R5,*R15        * write MSB of R5 to VDPWA   
+  1170 74BA 020A         LI   R10,VDPRD  * VDP Read Data register   
+       74BC 8800  
+  1171 74BE A142         A    R2,R5      * update running XB string adress  
+  1172 74C0 DC5A  LDPAD  MOVB *R10,*R1+  * Put next char into PAD buffer  
+  1173 74C2 0602         DEC  R2         * more chars?  
+  1174 74C4 16FD         JNE  LDPAD      * yes..get next char   
+  1175            *   
+  1176            * Convert From Char String To Hex   
+  1177 74C6 C187  CONVRT MOV  R7,R6      * hex and nybble strings both at PAD 
+  1178 74C8 0202         LI   R2,16      * Counter  
+       74CA 0010  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0057
+  1179 74CC 04C1         CLR  R1         * insure LSB is >00  
+  1180 74CE D076  CONPAD MOVB *R6+,R1    * get byte   
+  1181 74D0 0221         AI   R1,->3000  * ASCII to binary..  
+       74D2 D000  
+  1182            *                      * assume is a good digit   
+  1183 74D4 0281         CI   R1,>0A00   * MSB logical < 10?, i.e., 0 to 9?   
+       74D6 0A00  
+  1184 74D8 1A0B         JL   NIBB       * yes..process it  
+  1185 74DA 0221         AI   R1,->0700  * no, subtract hole between 9 and A  
+       74DC F900  
+  1186 74DE 0281         CI   R1,>0A00   * logical >= 10? includes neg digit  
+       74E0 0A00  
+  1187 74E2 1401         JHE  CONVT1     * if yes, test if a good hex digit   
+  1188 74E4 1003         JMP  JERR       * error..invalid digit   
+  1189            *   
+  1190 74E6 0281  CONVT1 CI   R1,>0F00   * logical <= F?  
+       74E8 0F00  
+  1191 74EA 1202         JLE  NIBB       * if yes, good digit..   
+  1192            *                      * catches neg digit  
+  1193            *   
+  1194 74EC 0460  JERR   B    @ERROR     * ERROR BAD VALUE  
+       74EE 73E8  
+  1195            *   
+  1196            * Get Hex Character to Correct Nybble   
+  1197 74F0 054C  NIBB   INV  R12        * toggle nybble toggle..=0?  
+  1198 74F2 1603         JNE  NIBB1      * no..skip left shift  
+  1199 74F4 0A41         SLA  R1,4       * shift left 1 nybble (MSN)  
+  1200 74F6 D5C1         MOVB R1,*R7     * Save left nybble to  
+  1201            *                      * current byte of PAD buffer   
+  1202 74F8 1001         JMP  NIBB2      *  
+  1203            *   
+  1204 74FA BDC1  NIBB1  AB   R1,*R7+    * Save result to PAD buffer  
+  1205 74FC 0602  NIBB2  DEC  R2         * more chars?  
+  1206 74FE 16E7         JNE  CONPAD     * yes..get next char   
+  1207            *   
+  1208            * Copy Hex String from PAD to VDP   
+  1209 7500 0202  HEXCPY LI   R2,8       * count  
+       7502 0008  
+  1210 7504 0206  HEXCHR LI   R6,PAD     * PAD has combined values  
+       7506 8300  
+  1211 7508 C004         MOV  R4,R0      * XB char definition address   
+  1212 750A 0260         ORI  R0,>4000       * set to write VRAM data   
+       750C 4000  
+  1213 750E D7E0         MOVB @GR0LB,*R15    * write LSB of R0 to VDPWA   
+       7510 83E1  
+  1214 7512 D7C0         MOVB R0,*R15        * write MSB of R0 to VDPWA   
+  1215 7514 D636  LDCHR  MOVB *R6+,*R8   * put next byte into CDT   
+  1216 7516 0602         DEC  R2         * more bytes?  
+  1217 7518 16FD         JNE  LDCHR      * yes..get next byte   
+  1218 751A 045B         RT              * no..return to caller   
+  1219            *********************************************************** 
+  1220            * CALL CHARPAT(char-code,string-variable,...)             * 
+  1221            *********************************************************** 
+  1222            * VAR9 CHARACTER CODE                 R5  
+  1223            * FAC4 VDP ADDRESS OF STRING VARIABLE R4  
+  1224            *   
+  1225 751C C24B  CHRPAT MOV  R11,R9     * Save return address  
+  1226 751E C120         MOV  @FAC4,R4   * get pointer to XB string address   
+       7520 834E  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0058
+  1227 7522 C160         MOV  @VAR9,R5   * Get char-code  
+       7524 8314  
+  1228 7526 0A35         SLA  R5,3       * Convert char-code to CDT address   
+  1229 7528 0225         AI   R5,>0300   * Correct for XB offset  
+       752A 0300  
+  1230            * MOVE AT CHAR TABLE TO ARG (8 BYTES)   
+  1231 752C 0202         LI   R2,8       * COUNTER  
+       752E 0008  
+  1232 7530 0203         LI   R3,ARG     * BUFFER in PAD  
+       7532 835C  
+  1233 7534 C005         MOV  R5,R0      * Copy VDP Char Address  
+  1234 7536 06A0         BL   @VWADDA    * write out VDP read address   
+       7538 6054  
+  1235 753A 0208         LI   R8,VDPRD   * Register faster then address   
+       753C 8800  
+  1236 753E DCD8  CHRMOV MOVB *R8,*R3+   * read next VDP byte to RAM  
+  1237 7540 0602         DEC  R2         * COUNTER-1  
+  1238 7542 16FD         JNE  CHRMOV     * Put char table into ARG  
+  1239            * CONVERT EACH NIBBLE TO HEX IN PAD (16 BYTES)  
+  1240 7544 0202         LI   R2,8       * COUNTER  
+       7546 0008  
+  1241 7548 0203         LI   R3,ARG     * Char Table Buffer  
+       754A 835C  
+  1242 754C 0207         LI   R7,PAD     * ASCII VALUE BUFFER   
+       754E 8300  
+  1243 7550 04C1  ARGPAD CLR  R1         * CLEAR BOTH BYTES   
+  1244 7552 04C6         CLR  R6         * CLEAR BOTH BYTES   
+  1245 7554 D033         MOVB *R3+,R0    * GET BYTE   
+  1246 7556 D040         MOVB R0,R1      * COPY BYTE  
+  1247 7558 0840         SRA  R0,4       * STRIP OFF LOW NIBBLE   
+  1248 755A D180         MOVB R0,R6      * SAVE ADJUSTED VALUE  
+  1249 755C 0226         AI   R6,>3000   * ADD 48 TO VALUE  
+       755E 3000  
+  1250 7560 0286         CI   R6,>3A00   * Above 9?   
+       7562 3A00  
+  1251 7564 1A02         JL   SAVPD1     * No   
+  1252 7566 0226         AI   R6,>0700   * ADD 65 TO VALUE  
+       7568 0700  
+  1253 756A DDC6  SAVPD1 MOVB R6,*R7+    * SAVE IT IN PAD   
+  1254 756C 0A41         SLA  R1,4       * STRIP OFF HIGH NIBBLE  
+  1255 756E 0841         SRA  R1,4       * RESET THIS NIBBLE  
+  1256 7570 0221         AI   R1,>3000   * ADD 48 TO VALUE  
+       7572 3000  
+  1257 7574 0281         CI   R1,>3A00   * Above 9?   
+       7576 3A00  
+  1258 7578 1A02         JL   SAVPD2     * No   
+  1259 757A 0221         AI   R1,>0700   * ADD 65 TO VALUE  
+       757C 0700  
+  1260 757E DDC1  SAVPD2 MOVB R1,*R7+    * SAVE IT IN PAD   
+  1261 7580 0602         DEC  R2         * COUNTER-1  
+  1262 7582 16E6         JNE  ARGPAD     * LOOP   
+  1263            * MOVE PAD BUFFER TO VDP XB STRING ADDRESS R4   
+  1264 7584 C004         MOV  R4,R0      * GET XB STRING ADDRESS  
+  1265 7586 0201         LI   R1,PAD     * PAD ADDRESS  
+       7588 8300  
+  1266 758A 0202         LI   R2,16      * COUNTER  
+       758C 0010  
+  1267 758E 06A0         BL   @VWADD     * write out VDP write address  
+       7590 6050  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0059
+  1268 7592 0208         LI   R8,VDPWD   * Register faster then address   
+       7594 8C00  
+  1269 7596 D631  XBSTR  MOVB *R1+,*R8   * MOVE IT FROM PAD TO VDP  
+  1270 7598 0602         DEC  R2         * COUNTER=1  
+  1271 759A 16FD         JNE  XBSTR      * LOOP   
+  1272            * GO BACK TO XB   
+  1273 759C 0460         B    @PAGER     * RETURN TO XB   
+       759E 7FFA  
+  1274            *********************************************************** 
+  1275            * SPNUM  EQU  >03AA    * VDP SPRITE NUMBER  
+  1276            * PAD8   EQU  >8308    * COPY OF RESULT   
+  1277            *   
+  1278 75A0 C24B  SPSPD5 MOV  R11,R9     * Save return address  
+  1279 75A2 0200         LI   R0,>03AA   * Save Sprite# into VDP  
+       75A4 03AA  
+  1280 75A6 06A0         BL   @VWADD     * write out VDP write address  
+       75A8 6050  
+  1281 75AA 0208         LI   R8,VDPWD   * Register faster then address   
+       75AC 8C00  
+  1282 75AE D620         MOVB @FAC1,*R8  * MOVE IT FROM FAC1 TO VDP   
+       75B0 834B  
+  1283 75B2 C1E0         MOV  @FAC,R7    * Get Sprite#  
+       75B4 834A  
+  1284 75B6 0607         DEC  R7         * Adjust for internal use  
+  1285 75B8 0A27         SLA  R7,2       * Get location of SAL  
+  1286 75BA 0227         AI   R7,>0300   * Sprite # * 4 + >0300   
+       75BC 0300  
+  1287 75BE C807         MOV  R7,@FAC    * Save to FAC  
+       75C0 834A  
+  1288 75C2 C807         MOV  R7,@>8308  * Save a copy to PAD8  
+       75C4 8308  
+  1289            * GO BACK TO XB   
+  1290 75C6 0460         B    @PAGER     * RETURN TO XB   
+       75C8 7FFA  
+  1291            *********************************************************** 
+  1292            * CALL DELSPRITE(#SPR,...)                                * 
+  1293            * CALL DELSPRITE(ALL)                                     * 
+  1294            *********************************************************** 
+  1295            * NOMSPR EQU  >837A      * NUMBER OF MOVING SPRITES   
+  1296            * SPNUM  EQU  >03AA      * Sprite number temporary  
+  1297            *   
+  1298 75CA C24B  SPDEL  MOV  R11,R9     * Save return address  
+  1299 75CC C020         MOV  @PAD8,R0   * GET PAD8 INTO R0   
+       75CE 8308  
+  1300 75D0 0220         AI   R0,>0480   * ADD >0480  
+       75D2 0480  
+  1301 75D4 06A0         BL   @VWADD     * write out VDP write address  
+       75D6 6050  
+  1302 75D8 0208         LI   R8,VDPWD   * Register faster then address   
+       75DA 8C00  
+  1303 75DC 0207         LI   R7,>C000   * Set up off screen sprites  
+       75DE C000  
+  1304 75E0 D607         MOVB R7,*R8     * >C0 INTO VDP   
+  1305 75E2 04C6         CLR  R6         * ZERO OUT R6  
+  1306 75E4 D606         MOVB R6,*R8     * >00 INTO VDP   
+  1307 75E6 0200         LI   R0,>03AA   * VDP ADDRESS  
+       75E8 03AA  
+  1308 75EA 06A0         BL   @VWADDA    * write out VDP read address   
+       75EC 6054  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0060
+  1309 75EE 0208         LI   R8,VDPRD   * Register faster then address   
+       75F0 8800  
+  1310 75F2 D198         MOVB *R8,R6     * GET VALUE  
+  1311 75F4 91A0         CB   @>837A,R6  * SAME?  
+       75F6 837A  
+  1312 75F8 1611         JNE  SPDEL2     * No, exit   
+  1313 75FA 0620  SPDEL1 DEC  @>837A     * SPRITE#-1  
+       75FC 837A  
+  1314 75FE 130E         JEQ  SPDEL2     * 0? Yes, exit   
+  1315 7600 C020         MOV  @PAD8,R0   * GET VDP ADDRESS  
+       7602 8308  
+  1316 7604 0640         DECT R0         * -2   
+  1317 7606 0640         DECT R0         * -2   
+  1318 7608 06A0         BL   @VWADDA    * write out VDP read address   
+       760A 6054  
+  1319 760C 0208         LI   R8,VDPRD   * Register faster then address   
+       760E 8800  
+  1320 7610 D0D8         MOVB *R8,R3     * GET VALUE  
+  1321 7612 06C3         SWPB R3         * SWAP BYTE  
+  1322 7614 D0D8         MOVB *R8,R3     * GET VALUE  
+  1323 7616 0283         CI   R3,>0000   * 0000?  
+       7618 0000  
+  1324 761A 13EF         JEQ  SPDEL1     * LOOP   
+  1325 761C 0460  SPDEL2 B    @PAGER     * Return to XB   
+       761E 7FFA  
+  1326            *********************************************************** 
+  1327                
+  1328 7FFA              AORG >7FFA   
+  1329 7FFA 04E0  PAGER  CLR  @>6000     * RESTORE PAGE ONE   
+       7FFC 6000  
+  1330 7FFE 0459         B    *R9        * return to caller   
+  1331            *********************************************************** 
+  1332                   END  
+
+ 99/4 ASSEMBLER
+RXB ROM3                                                     PAGE 0061
+    ALCEND  6496      ALPHA   73F4      ALPHAF  7412      ALPHAO  7408    
+    ARG     835C      ARG2    835E      ARGPAD  7550      ASC2HX  74A2    
+    ASCHEX  7392      BIAS    6000      BYTES   830C      CHAREX  7484    
+    CHARS   7092      CHRALL  7036      CHRALP  7048      CHRLDR  7064    
+    CHRLP   707A      CHRMOV  753E      CHRPAT  751C      CINIT   646E    
+    CLEARL  6452      CLEARP  643C      CLEARR  645A      CLRINT  698C    
+    COLL    63EA      COLLO   6438      COLLSP  63E8      CONPAD  74CE    
+    CONVRT  74C6      CONVT1  74E6      DCHAR   7444      DROLL   613C    
+    DROLLP  615E      EAINIT  6980      ERROR   73E8      FAC     834A    
+    FAC1    834B      FAC4    834E      FAC6    8350      FAC8    8352    
+    FOURWS  69D2      GR0LB   83E1      GR4LB   83E9      GR5LB   83EB    
+    HCHAR   6194      HCHAR1  61B4      HCHAR2  61BA      HCHAR3  61C0    
+    HCHAR4  61C6      HCHAR5  61CE      HCHARX  61DA      HEX01   739E    
+    HEX02   73C8      HEX03   73D6      HEX04   73E0      HEXCHR  7504    
+    HEXCPY  7500      HGET    62E4      HGET0   62FE      HGET1   6314    
+    HGET2   6324      HPUT    6240      HPUT0   6260      HPUT1   6282    
+    HPUT2   6286      INITLP  647C      INV1    6394      INV2    6398    
+    INVERS  637E      ISR     83C4      JERR    74EC      LDCHR   7514    
+    LDPAD   74C0      LOW1    69DE      LOW2    69E6      LOW3    69EE    
+    LOW4    6F6E      LROLL   60BA      LROLLP  60C2      NEXIT   7434    
+    NHOOK   7430      NIBB    74F0      NIBB1   74FA      NIBB2   74FC    
+    OKPAD   74AC      PAD     8300      PAD1    8301      PAD10   8310    
+    PAD12   8312      PAD16   8316      PAD2    8302      PAD3    8303    
+    PAD4    8304      PAD5    8305      PAD6    8306      PAD8    8308    
+    PADA    830A      PAGER   7FFA      R0      0000      R1      0001    
+    R10     000A      R11     000B      R12     000C      R13     000D    
+    R14     000E      R15     000F      R2      0002      R3      0003    
+    R4      0004      R5      0005      R6      0006      R7      0007    
+    R8      0008      R9      0009      RROLL   6090      RROLLP  6098    
+    SAVPD1  756A      SAVPD2  757E      SCCHR   7466      SETPAD  748C    
+    SLOW3   69B6      SLOW4   69C8      SPDEL   75CA      SPDEL1  75FA    
+    SPDEL2  761C      SPRLP   743C      SPSPD5  75A0      SREF    831C    
+    STATUS  837C      UNUSED  6000      UROLL   60E4      UROLLP  6104    
+    VAR7    8312      VAR9    8314      VARA    8316      VBUFF   03C0    
+    VCHAR   61DE      VCHAR1  6206      VCHAR2  6228      VCHAR3  622E    
+    VCHAR4  623C      VCHARD  61F2      VCHARE  621C      VCHARR  61FC    
+    VCHART  61E6      VCHARZ  61FE      VDPRD   8800      VDPWD   8C00    
+    VGET    6328      VGET0   6342      VGET1   6362      VGET2   6366    
+    VGET3   636A      VPUT    628A      VPUT0   62AA      VPUT1   62D2    
+    VPUT2   62D6      VPUT3   62DA      VPUT4   62DE      VRROW   6060    
+    VRROW1  606E      VWADD   6050      VWADDA  6054      VWROW   6078    
+    VWROW1  6086      XBSTR   7596      XISROF  7420      XISRON  7416    
+    ZPAD    749A    
+  0000 ERRORS

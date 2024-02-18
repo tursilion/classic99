@@ -1,0 +1,122 @@
+	
+	
+*******************************************
+*STARWARS SCROLL
+*CALL LINK("CRAWL",A$) string every 16 loops
+********************************************
+CRAWL	MOV @VSFLAG,R10		VSFLAG is seto when chars loaded
+	JLT VSCR1Z		if FFFF then initialize
+	JMP VSCR2A
+VSCR1Z	LI R0,>1000	\
+	CLR R1
+VSCR1A	BL @VSBW	 clears out the inverse character definitions
+	INC R0
+	CI R0,>1300	IF >1200 THEN CAPS ONLY
+	JNE VSCR1A	/
+	
+	CLR @VSFLAG
+	CLR R10
+VSCR2A	MOV R10,R10
+	JNE VSCR3A
+	BL @VSCRMU
+	DATA >0060
+	DATA >0040
+	
+	BL @GET1
+	MOV *R6,R0		R0 points to string
+	LI R11,GPBUFF
+	MOVB @HXFFF0,*R11+	1st byte in buffer is FF
+	MOVB *R0,R1		length byte to R1
+	SRL R1,8		to lsb
+	INC R1			length +1 for length byte
+VSCR2X	MOVB *R0+,*R11+
+	DEC R1
+	JNE VSCR2X
+	
+	MOV @WLASTR,R0
+	LI R1,GPBUFF+1
+	MOV @WWIDTH,R2
+	MOVB *R1+,R3	
+	SRL R3,8	
+	A R1,R3		now R3 points to 1st char after end of string
+	MOV R1,R4
+	A R2,R4		R4 points 1 past edge of window
+	
+	MOV R1,R5	pointer for moving bytes and screen offset
+SCPXU3	C R5,R3	
+	JHE SCPXU4
+	AB @HX6080,*R5+		add screen offset till at end of string
+	JMP SCPXU3
+SCPXU4	C R5,R4			
+	JHE SCPXU5
+	MOVB @HX6080+1,*R5+	fill with spaces till string is long enough
+	JMP SCPXU4
+ 
+SCPXU5	BL @INVTXS
+	JMP VSCROL
+	
+VSCR3A	CI R10,8
+	JNE VSCROL
+	BL @VSCRMU
+	DATA >0040
+	DATA >0060
+	MOV @WLASTR,R0		bottom line in window
+	LI R1,GPBUFF
+	MOV @WWIDTH,R2
+	BLWP @VMBR
+	AI R0,-32
+	BL @INVTXS		invert ascii's
+*************
+VSCROL	LI R0,>1380		with >80 points to start of ch defs
+	LI R2,128		128 bytes to read
+	LI R7,6     ****IF 4 THEN CAPS ONLY loop 6 times (128*6=768)
+VSCRL1	LI R1,GPBUFF+130
+	AI R0,>0080		
+	BLWP @VMBR		read ch. defs
+	AI R0,->0400		
+	LI R1,GPBUFF
+	BLWP @VMBR		read inv ch defs
+*	LIMI 2
+*	LIMI 0
+	MOV R1,R5		r5 points to GPBUFF
+	LI R3,16		16 chars to doctor
+	
+VSCRL2	MOVB @120(R5),@258(R5)
+	MOVB @250(R5),@128(R5)
+	AI R5,-8
+	DEC R3
+	JNE VSCRL2
+	
+	INC R1
+	BLWP @VMBW		
+	AI R0,>0400
+	LI R1,GPBUFF+131
+	BLWP @VMBW
+*	LIMI 2
+*	LIMI 0
+	DEC R7			
+	JNE VSCRL1
+	INC @VSFLAG
+	SZC @HXFFF0,@VSFLAG	16 becomes 0
+VSCRLB	B @RTN
+**************************
+VSCRMU	MOV *R11+,R0
+	MOV @WHIGHT,R1
+	SRL R1,1
+	JNC VSCRM2	NC means window height is even
+	MOV *R11,R0
+VSCRM2	INCT R11		bug fix-was INC
+	A @WFRSTR,R0
+	LI R1,GPBUFF
+	MOV @WWIDTH,R2
+	
+VSCRM1	C R0,@WLASTR
+	JGT VSCRM4
+	BLWP @VMBR
+	AI R0,->40
+	BLWP @VMBW
+	AI R0,>80
+	JMP VSCRM1
+VSCRM4	B *R11
+ 
+	

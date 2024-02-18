@@ -1,0 +1,471 @@
+PAGE	EQU >837E
+SUB		EQU >8382
+SUBPAG EQU >8386	
+
+
+
+*NEXT ROUTINE MOVES ALL CHARS UP ONE PIXEL USES A BUFFER AT >8360->836F 
+MOVEUP	DATA MOVEUE-MOVEUS
+MOVEUS	BL @SUB
+	DATA CLEAR
+	
+	
+	LI R0,>03F1
+MOVEU1	SWPB R0
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	LI R1,16
+	LI R2,>8360
+MOVEU2	MOVB *R14,*R2+
+	DEC R1
+	JNE MOVEU2
+	AI R0,>3FFF
+	SWPB R0
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	LI R1,16
+	LI R2,>8360
+MOVEU3 MOVB *R2+,*R10
+	DEC R1
+	JNE MOVEU3
+	AI R0,>C011
+	CI R0,>0700
+	JLT MOVEU1
+	
+	BL @PAGE
+	DATA LOWERC
+MOVEUE
+
+LOWERC	DATA LOWERE-LOWERS
+LOWERS	LI R0,LOWDEF-1
+	A R13,R0 		now R0 points to beg lc defs
+	LI R3,>4608		address in VDP of "a" plus >4000 for write
+	LI R4,16
+LOWER1	SWPB R0
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	MOV R4,R1		R1=16 now
+	LI R2,>8360		address of buffer
+LOWER2	MOVB *R14,*R2+	\
+	DEC R1			 read chardefs into buffer
+	JNE LOWER2		/
+
+	SWPB R3
+	MOVB R3,*R15
+	SWPB R3
+	MOVB R3,*R15
+	MOV R4,R1		R1=16 now
+	LI R2,>8360		address of buffer
+LOWER3 MOVB *R2+,*R10	\
+	DEC R1			 write chardefs to VDP
+	JNE LOWER3		/
+	A R4,R3
+	A R4,R0
+	CI R3,>4700	past {?
+	JLT LOWER1
+	BL @PAGE
+	DATA BORDER
+LOWERE
+	
+
+	
+BORDER	DATA BORDEE-BORDES	length of page
+BORDES	LI R0,>4000		first screen pos
+	LI R2,>DB00		left brace with offset
+	BL @>8300+BORDLP-BORDES
+
+	LI R0,>42E0
+	BL @>8300+BORDLP-BORDES
+	
+	LI R0,>401F
+	LI R1,23
+BORDE3	SWPB R0		\
+	MOVB R0,*R15		 set so can write byte top screen
+	SWPB R0
+	MOVB R0,*R15		/
+	AI R0,32
+	MOVB R2,*R10	write byte
+	NOP
+	MOVB R2,*R10
+	
+	DEC R1
+	JNE BORDE3
+	
+FRST3	BL @PAGE
+	DATA HONEY
+	
+BORDLP LI R1,32
+	SWPB R0		\
+	MOVB R0,*R15		 set so can write byte top screen
+	SWPB R0
+	MOVB R0,*R15		/
+BORDL1	MOVB R2,*R10	write byte
+	DEC R1
+	JNE BORDL1
+	B *R11
+BORDEE
+************************************
+HONEY	DATA HONEYE-HONEYS
+HONEYS	LI R0,HONEYC-1
+	A R13,R0
+	MOV R0,@>83CC
+	LI R0,>0100
+	MOVB R0,@>83CE
+	MOV @>83FD,R0
+	ORI R0,>0001
+	MOV R0,@>83FD
+	BL @PAGE
+	DATA UFO
+HONEYE
+************************************
+UFO	DATA UFOE-UFOS
+	
+UFOS	LI R0,>E281		16x16 sprites
+	MOVB R0,@>83D4	store value for magnified sprites
+	
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	
+	LI R0,>0043	will write to VDP at >0300
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	
+	LI R2,>8300+UFODAT-UFOS
+	LI R1,17
+UFOL1	MOVB *R2+,*R10
+	DEC R1
+	JNE UFOL1
+	JMP UFOON
+		
+	LI R1,28
+UFOLP	LI R0,>C000
+	MOVB R0,*R10
+	SWPB R0
+	MOVB R0,*R10
+	MOVB R0,*R10
+	MOVB R0,*R10
+	DEC R1
+	JNE UFOLP
+	
+UFOON	BL @PAGE
+	DATA UFOMOT
+	
+UFODAT	DATA >2040,>DC08,>4060,>DC0B,>6080,>DC0F,>80A0,>DC04
+	DATA >D000
+UFOE	
+***********************************************
+UFOMOT	DATA UFOMOE-UFOMOS
+UFOMOS	LI R0,>8047		>4780
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	LI R1,>8300+UFOMDT-UFOMOS
+	LI R0,16
+UFOMLP	MOVB *R1+,*R10
+	DEC R0
+	JNE UFOMLP
+	LI R0,>0400
+	MOVB R0,@>837A
+	BL @PAGE
+	DATA RSLOOP
+
+UFOMDT DATA >FDF2,>0000,>FFE0,>0000,>FE08,>0000,>0118,>0000
+UFOMOE	
+	
+*****************************************
+RSLOOP	DATA RSLOOE-RSLOOS
+RSLOOS	LI R9,37
+	LI R4,TEXTA-1 offset from beginning
+	A R13,R4
+	BL @PAGE
+	DATA SCROLL
+RSLOOE
+
+*******************************************
+*this just fits in the available space.  The program is from >8300
+*to >8351 and the 30 byte long buffer is from >8352 to >836E
+*The buffer could be from >8354 to >8371 if 2 more bytes were needed.
+
+SCROLL	DATA SCROLE-SCROLS
+
+SCROLS	BL @SUB
+	DATA KSCAN
+
+	LI R5,>0041	second line down
+	LI R6,>8352
+SCROL1	SWPB R5
+	MOVB R5,*R15
+	SWPB R5
+	MOVB R5,*R15
+	MOV R6,R7
+SCROL2	MOVB *R14,*R7+
+	CI R7,>8370
+	JNE SCROL2
+	
+	AI R5,>3FE0
+	SWPB R5
+	MOVB R5,*R15
+	SWPB R5
+	MOVB R5,*R15
+	MOV R6,R7
+SCROL3	MOVB *R7+,*R10
+	CI R7,>8370
+	JNE SCROL3
+	LIMI 2
+	LIMI 0
+		
+	AI R5,>C040
+	CI R5,>02E1
+	JLT SCROL1
+	
+	BL @PAGE
+	DATA PRINT
+SCROLE
+****************************************
+
+PRINT	DATA PRINTE-PRINTS
+PRINTS	SWPB R4
+	MOVB R4,*R15
+	SWPB R4
+	MOVB R4,*R15
+	MOV R6,R7
+PRINT2	MOVB *R14,R8
+	AI R8,>6000
+	MOVB R8,*R7+
+	CI R7,>8370
+	JNE PRINT2
+	
+	LI R0,>42C1		start printing here
+	SWPB R0
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	MOV R6,R7
+PRINT3	MOVB *R7+,*R10
+	CI R7,>8370
+	JNE PRINT3
+	
+	LIMI 2
+	LIMI 0
+	
+	AI R4,30
+	DEC R9
+
+	JEQ RS
+
+	BL @PAGE
+	DATA SCROLL
+	
+RS	BL @PAGE
+	DATA RSLOOP
+PRINTE
+*********************************	
+CLEAR	DATA CLEARE-CLEARS
+CLEARS	LWPI >8300+CLRWS-CLEARS
+	MOVB R0,*R1
+	SWPB R0
+	MOVB R0,*R1
+	SWPB R0
+CLRLP	MOVB R2,@>8C00
+	DEC R3
+	JNE CLRLP
+	LWPI >83A2
+	BL @SUBPAG
+	DATA RETURN
+CLRWS	DATA >0040	R0 = >4000 reversed
+	DATA >8C02	R1 = vdpwa
+	DATA >8000	R2 = space with offset
+	DATA 768	R3 = counter
+CLEARE
+********************************
+	
+	
+*BELOW IS A SUBROUTINE TO SCAN THE KEYBOARD
+*IF IT FINDS A KEY IT LOOPS TILL NO KEY IS PRESSED
+*THEN RETURNS VIA "RETURN"	
+	
+KSCAN	DATA KSCANE-KSCANS
+KSCANS	LI R11,>0500
+	MOVB R11,@>8374
+	LI R12,>FF00
+	LIMI 2
+	LIMI 0
+KSLP	LWPI >83E0		\
+	MOV R11,@>836E
+	BL @>000E		 keyscan
+	MOV @>836E,R11
+	LWPI >83A2		/
+	
+*	MOV @>837C,R4		check for new key pressed
+*	ANDI R4,>2000
+*	JEQ KSLP
+	
+	CB R12,@>8375
+	JNE KSCANS		keep looping as long as pressing key
+	
+	BL @SUBPAG		want to preserve pointers telling where to return
+	DATA RETURN
+KSCANE
+****************************************
+***************************	
+*BL @SUBCON		returns from a SUB. Gets the page, adds the VDP offset
+*DATA RETURN   	writes to >8C02 (*r15)
+*			gets position in page from >83d2 and puts into R11
+*			INCT R11 so points to next instruction, then enter pager
+*****************
+RETURN	DATA RETURE-RETURS
+
+RETURS  MOV @>83D0,R11		Get page to return to
+	A R13,R11		Add VDP offset
+	MOVB @>83B9,*R15	lsb of R11
+	MOVB R11,*R15		msb of R11
+
+	MOV @>83D2,R11		position in page when sub was called
+	INCT R11		next instruction
+	LI R12,>8300		
+	JMP RETURS+>0094   B @>8394
+RETURE
+	
+LOWDEF	DATA >0000,>3804,>3C44,>3C00 a
+	DATA >4040,>7844,>4444,>7800 b
+	DATA >0000,>3C40,>4040,>3C00 c
+	DATA >0404,>3C44,>4444,>3C00 d
+	DATA >0000,>3844,>7C40,>3C00 e
+	DATA >1824,>2078,>2020,>2000 f
+	DATA >0000,>3C44,>443C,>0438 g
+	DATA >4040,>7844,>4444,>4400 h
+	DATA >1000,>3010,>1010,>3800 i
+	DATA >0800,>0808,>0808,>4830 j
+	DATA >4040,>4448,>7048,>4400 k
+	DATA >3010,>1010,>1010,>3800 l
+	DATA >0000,>6854,>5454,>5400 m
+	DATA >0000,>5864,>4444,>4400 n 
+	DATA >0000,>3844,>4444,>3800 o
+	DATA >0000,>7844,>4478,>4040 p
+	DATA >0000,>3C44,>443C,>0404 q
+	DATA >0000,>5864,>4040,>4000 r
+	DATA >0000,>3C40,>3804,>7800 s
+	DATA >2020,>7820,>2024,>1800 t
+	DATA >0000,>4444,>4444,>3C00 u
+	DATA >0000,>4444,>2828,>1000 v
+	DATA >0000,>4454,>5454,>2800 w
+	DATA >0000,>4428,>1028,>4400 x
+	DATA >0000,>4444,>443C,>0438 y
+	DATA >0000,>7C08,>1020,>7C00 z
+	DATA >1038,>7CFE,>7C38,>1000 {
+	
+	DATA >0001,>0103,>073F,>7FD6 UFO defs char 124
+	DATA >7F3F,>0911,>0000,>0000
+	DATA >0000,>0080,>C0F8,>FCD6
+	DATA >FCF8,>2010,>0000,>0000
+	
+TEXTA	TEXT '  ATARIAGE recently published '
+	TEXT 'a short program written by    '
+	TEXT 'James Abbatiello called ESCAPE'
+	TEXT 'THE BASIC SANDBOX. The program' 
+	TEXT 'does not do much - it scrolls '
+	TEXT 'HELLO, WORLD down the screen. '
+	TEXT 'The point of the program is   '
+	TEXT 'that it uses assembly language'
+	TEXT 'to display the text. It does  '
+	TEXT 'the impossible, running       '
+	TEXT 'assembly language on an un-   '
+	TEXT 'expanded TI-99/4A which every '
+	TEXT 'one knows cannot be done.     '
+	TEXT 'James closed his article by   '
+	TEXT 'asking if anybody cared to try'
+	TEXT 'their hand at making a more   '
+	TEXT 'interesting payload for this? '
+	TEXT '  After some thought I decided'
+	TEXT 'to to develop Abbatiellos     '
+	TEXT 'idea as far as I could.  This '
+	TEXT 'demonstration program shows   '
+	TEXT 'the results of my efforts.    '
+	TEXT '  Despite the tight memory    '
+	TEXT 'constraints, there is an im-  '
+	TEXT 'pressive amount of potential. '
+	TEXT 'Super fast assembly language  '
+	TEXT 'programs with sound lists and '
+	TEXT 'sprites with auto motion are  '
+	TEXT 'now possible on an unexpanded '
+	TEXT 'TI-99.                        '
+	TEXT '  Now I will offer a challenge'
+	TEXT 'of my own. Would anyone care  '
+	TEXT 'to use this tool to develop a '
+	TEXT 'finished program - perhaps an '
+	TEXT 'arcade quality game?          '
+	TEXT '       Harry Wilhelm          '	
+	TEXT '                              '
+	
+HONEYC
+       BYTE 9,133,42,144,166,8,176,204,31,223,18
+       BYTE 3,167,9,176,9
+       BYTE 3,166,8,176,18
+       BYTE 3,167,9,176,9
+       BYTE 3,166,8,176,18
+       BYTE 3,167,9,176,9
+       BYTE 6,164,28,176,201,10,208,18
+       BYTE 6,172,31,191,204,31,223,9
+       BYTE 6,140,31,144,175,7,176,18
+       BYTE 3,166,8,176,9
+       BYTE 3,175,7,176,18
+       BYTE 3,166,8,176,9
+       BYTE 3,175,7,176,18
+       BYTE 3,166,8,176,9
+       BYTE 6,162,21,176,199,9,208,18
+       BYTE 6,172,31,191,204,31,223,9
+       BYTE 6,133,42,144,166,8,176,18
+       BYTE 3,167,9,176,9
+       BYTE 3,166,8,176,18
+       BYTE 3,167,9,176,9
+       BYTE 3,166,8,176,18
+       BYTE 3,167,9,176,9
+       BYTE 6,164,28,176,201,10,208,18
+       BYTE 9,140,31,159,172,31,191,204,31,223,9
+       BYTE 9,141,56,144,164,28,176,199,9,208,28
+       BYTE 6,164,28,176,201,10,208,28
+       BYTE 6,164,28,176,195,11,208,28
+       BYTE 6,164,28,176,201,10,208,28
+       BYTE 9,133,42,144,166,8,176,204,31,223,18
+       BYTE 3,167,9,176,9
+       BYTE 3,166,8,176,18
+       BYTE 3,167,9,176,9
+       BYTE 3,166,8,176,18
+       BYTE 3,167,9,176,9
+       BYTE 6,164,28,176,201,10,208,18
+       BYTE 6,172,31,191,204,31,223,9
+       BYTE 6,140,31,144,175,7,176,18
+       BYTE 3,166,8,176,9
+       BYTE 3,175,7,176,18
+       BYTE 3,166,8,176,9
+       BYTE 3,175,7,176,18
+       BYTE 3,166,8,176,9
+       BYTE 6,162,21,176,199,9,208,18
+       BYTE 9,140,31,159,172,31,191,204,31,223,9
+       BYTE 9,141,56,144,174,18,176,193,7,208,18
+       BYTE 3,199,9,208,9
+       BYTE 3,193,7,208,18
+       BYTE 3,199,9,208,9
+       BYTE 3,193,7,208,18
+       BYTE 3,199,9,208,9
+       BYTE 6,172,37,176,193,7,208,9
+       BYTE 3,196,6,208,9
+       BYTE 3,201,5,208,9
+       BYTE 9,133,42,144,164,28,176,196,5,208,18
+       BYTE 9,140,31,159,172,31,191,204,31,223,9
+       BYTE 3,141,56,144,9
+       BYTE 3,172,37,176,9
+       BYTE 6,172,37,176,196,28,208,9
+       BYTE 9,133,42,144,173,56,176,204,31,223,18
+       BYTE 6,140,31,159,172,31,191,43
+*	BYTE 0
+*	DATA HONEYC
+       BYTE >04,>9F,>BF,>DF,>FF,>00
+
+
+	END

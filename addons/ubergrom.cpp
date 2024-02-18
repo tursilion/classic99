@@ -73,6 +73,7 @@ unsigned char UberTimer[2];
 
 extern unsigned char GROM6000[];
 extern unsigned char GROM70A0[];
+extern bool nvRamUpdated;
 
 // startup code managed at >E000 on first boot only
 const unsigned char UberHack[] = {
@@ -314,8 +315,10 @@ void UberGromWrite(Word GromAddress, int nBase, Byte x) {
 				eeLocked = 0;		// re-lock
 			}
 		} else {
+            // write to special configuration block
 			if (eeLocked == 0x5a) {
 				UberEEPROM[GromAddress-0xf800]=x;
+                nvRamUpdated=true;
 			}
 		}
 		return;
@@ -355,7 +358,9 @@ void UberGromWrite(Word GromAddress, int nBase, Byte x) {
 		nOffset=nPage*8192+nGrom;
 		if (nOffset >= 4*1024) {
 		} else if (eeLocked == 0x5a) {
+            // write to regularly mapped EEPROM
 			UberEEPROM[nOffset]=x;
+            nvRamUpdated = true;
 		}
 		break;
 

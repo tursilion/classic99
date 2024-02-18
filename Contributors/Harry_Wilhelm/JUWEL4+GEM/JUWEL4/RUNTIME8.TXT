@@ -1,0 +1,260 @@
+*RUNTIME8 - this is the code to handle the speech synth
+*so far only direct access with english words  - CALL SAY("HELLO") etc.
+*format of XB CALL SAY - cannot start with space. All words separated by 1 space.
+*do not append period or comma as they are not recognized. 
+*to say A,B,C CALL SAY("A B C")
+
+
+SPCHWT	EQU >9400
+SPCHRD	EQU >9000
+
+
+
+H2320	DATA >2320
+H2C00	DATA >2C00		comma=2C
+H0360	DATA >0360
+SPGFLG DATA 0
+	
+CODE	MOVB @SPCHRD,R12		read from speech synth >9000 to R12
+	NOP				WKSP is >8300, BLWPWS is >8320
+	NOP
+	NOP
+	B *R11
+CODEND	
+SPGET	SETO @SPGFLG
+	JMP SAY1A
+	
+SAY	CLR @SPGFLG	
+SAY1A	LI R1,>8330		
+	LI R2,CODE
+	CLR R12
+SAY1	MOV *R2+,*R1+		put read routine on 16-bit bus starting at >8330
+	CI R2,CODEND
+	JNE SAY1
+*now to see if speech synth is attached	
+	CLR R9   PHROM
+	BL @LOADSP
+
+	DATA >1000
+	BL @>8330		routine at >8330 (movb @>9000 to R12, delay,return)
+	CI R12,>AA00		is the byte >AA
+	JEQ SYNTH		yes, synth is there
+* no synth detected, must skip all strings included with SAY
+SAY2	C *R13,R15		is it an instruction?
+	JGT OUT		if GT it is an instruction, so go back
+	INCT R13		not an instruction, must be a string so bypass it
+	JMP SAY2
+OUT	B @RTN			
+	
+SYNTH	C *R13,R15
+	JGT OUT
+	BL @GET1		get first string to send to speech synth
+	MOV *R6,R0		now R0 points to string
+*must doctor string so that 7are you becomes 3are3you	
+	LI R1,GPBUFF		copy string to GPBUFF and add a zero after string
+	MOV R1,R6
+	MOVB *R0,R2
+	SRL R2,8		length byte to R2
+	MOVB *R0+,*R1+	move length byte to GPBUFF
+	CB *R0,@VSBW96+2	If first byte is >60 then direct string
+	JEQ DIRECT
+SAY1T	MOVB *R0+,*R1+
+	DEC R2
+	JNE SAY1T
+	MOVB R2,*R1		add a zero after the string
+
+	CB @1(R6),@H2320	is the first character a #
+	JNE SAY3T		no, normal string
+	MOVB *R6+,*R6		mov the length byte to GPBUFF+1 
+	DEC @GPBUFF		and decrement length byte	
+	JMP SAY6T
+*here we look from end to beginning of string. spaces replaced with length of
+*the string that follows. at first R1 points to end of string
+SAY3T	SETO R0		count of characters
+SAY4T	DEC R1
+	INC R0
+	C R1,R6		at beginning of string?
+	JEQ SAY5T
+	CB *R1,@H2320+1	a space?
+	JNE SAY4T		no space, keep looking
+	SWPB R0
+	MOVB R0,*R1		replace space with length byte
+	JMP SAY3T		and keep looking
+SAY5T	SWPB R0
+	MOVB R0,*R1		write the first length byte to GPBUFF
+	
+*NOW THE STRING IS DOCTORED AND IS IN GPBUFF AND POINTED TO BY R6
+SAY6T	CLR R9   PHROM
+	INC R9   PHROM
+SEARCH	MOV R6,R3 
+	MOVB *R3+,R7
+*Look for comma and delay if it is found.	
+	LI R4,>2C00
+	CB *R3,R4
+	JNE SEARC1
+COMDLY	DECT R4
+	JNE COMDLY		INC till r4 goes negative (about 1/4 second)
+	
+	
+SEARC1	SRL R7,8
+	JEQ SYNTH		see if there are more strings to print
+	
+	BL @LOADSP
+	DATA >1000
+	BL @>8330			bl @>8330
+	MOV R12,R4
+	SRL R4,8
+	INC R9   PHROM
+NEXTSP	BL @LOADSP
+H10	DATA >1000
+	BL @>8330
+	CB *R3+,R12
+	JEQ MATCH
+	JH HIGH
+	JMP LOW
+MATCH	INC R9   PHROM
+	DEC R4
+	JNE STRN
+	DEC R7
+	JEQ SPEAK
+HIGH	LI R8,2
+	JMP NXTPHR
+STRN	DEC R7
+	JNE NEXTSP
+LOW	CLR R8
+NXTPHR A R4,R9   		Add R4 to PHROM
+	A R8,R9   		Add R8 to PHROM
+	BL @READSP
+	MOV R5,R9
+	JEQ WAIT1
+	JMP SEARCH
+	
+SPEAK	AI R9,5	now R9 points to pointer to speech data
+SPEAK1	BL @READSP	now R5 has address of speech data
+	MOV R5,R9  		MOV DATAAD to PHROM (ADDRESS OF SPEECH IS IN R5)
+	MOV @SPGFLG,R10
+	JNE SPGET1
+	
+	BL @LOADSP
+	DATA >5000
+	
+WAIT	BL @>8330
+	LIMI 2
+	LIMI 0
+	SLA R12,1      	1st bit status register set when talking		
+	JOC WAIT
+
+*done with this string, keep going
+WAIT1	MOV @SPGFLG,R10	if spget doesn't find match then use UHOH
+	JEQ WAIT2
+	LI R9,>116F		address of pointer to UHOH
+	JMP SPEAK1
+WAIT2	MOVB *R6+,R10		get the length byte
+	SRL R10,8		to lsb
+	A R10,R6		now R6 pin
+	JMP SAY6T
+
+	
+*********************************
+*Comes to DIRECT if a byte greater than 127 was found in string
+*feeds a string directly to synth per page 358 EA manual
+*R2 has length
+DIRECT	LI R1,17		the >60 and then 16 bytes to buffer
+DRCTL2	MOVB *R0+,@SPCHWT	first byte in string from SPGETis always >60
+	DEC R2			done feeding string to synth?
+	JNE DRCTL4		no, not done
+DRCTL5 BL @>8330
+	SLA R12,1   1st bit status register set when talking		
+	JOC DRCTL5
+	JMP SYNTH		done talking
+DRCTL4	DEC R1
+	JNE DRCTL2
+DRCTL3	BL @>8330
+	LIMI 2
+	LIMI 0
+	SLA R12,2	2nd bit of status register is high when buffer<half full 
+	JNC DRCTL3		if NC then is more than half full
+	LI R1,8  
+	JMP DRCTL2	
+
+*********SPGET
+SPGET1	MOVB @H10,@SPCHWT
+	BL @DLY12
+	BL @>8330		now the length of speech data is in R12
+	
+*	MAKE STRING IN GPBUFF
+	LI R6,GPBUFF
+	MOV @H0360,*R6	length of XB string is 3>speech string
+	AB R12,*R6		Add length of string to 3 in msb (60 00 LGTH then string)
+	INCT R6
+	MOVB R2,*R6+		R2 should be 0
+	MOVB R12,*R6+		length of string
+	MOV R12,R8
+	SRL R8,8
+	
+SPGET2	BL @LOADSP
+	DATA >1000
+	BL @>8330
+	CLR R4
+	LI R7,8
+SPGET3	SLA R12,1
+	JNC SPGET5
+	INC R4
+SPGET5	SRC R4,1
+	DEC R7
+	JNE SPGET3
+	MOVB R4,*R6+
+	INC R9
+	DEC R8
+	JNE SPGET2
+	
+*GET DATA, FLIP BITS, SEND TO GPBUFF	
+	LI R0,GPBUFF
+	BL @GET1
+	MOV R6,R1
+	BLWP @STRSTR
+	B @RTN
+
+	
+***********SUBROUTINES FOR SPEECH BELOW	
+READSP	MOV R11,R10
+	BL @LOADSP
+	DATA >1000
+	BL @>8330
+	MOVB R12,R5        	MOVB R12 into DATAAD
+	MOVB @H10,@SPCHWT
+	BL @DLY12
+	BL @>8330
+	MOVB R12,@WKSP+11     MOVB R12 INTO LSB DATAAD  (R5)
+	B *R10
+
+*Load address
+*called as BL @LOADSP with the address in PHROM
+*uses r0,r1,r2	
+LOADSP	MOV R9,R0      	MOV PHROM into R0
+	LI R2,4
+LOADLP	SRC R0,4
+	MOV R0,R1
+	SRC R1,4
+	ANDI R1,>0F00
+	ORI R1,>4000
+	MOVB R1,@SPCHWT
+	DEC R2
+	JNE LOADLP
+	LI R1,>4000
+	MOVB R1,@SPCHWT
+
+	LI R1,6
+DLY42	DEC R1
+	JNE DLY42
+	
+	MOVB *R11,@SPCHWT		to >9400
+	INCT R11
+	
+DLY12	NOP
+	NOP
+	B *R11
+	
+
+	
+

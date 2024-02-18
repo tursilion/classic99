@@ -1,0 +1,37 @@
+To use the XB v2.7 Suite upgrade disk image:
+ 
+Make a real 40 track DSSD floppy disk from the 060715XB27.dsk image provided and put it
+in the DSK1 drive. Do not put this disk in an 80 track drive when used with the TI disk controller,
+I've taken steps to insure it will fail if you do so. (and that's just a dumb thing to do, anyway)
+If you have an 80 track drive as DSK1, contact me and I will provide you with an appropriate disk
+image.
+ 
+Load the GROMLOAD program with the XB v2.7 Suite cart in the cartridge port. You can do
+this 3 ways:
+1. Select the TI Writer/Assembler cart (B), press 6, type 'DSK1.GROMLOAD', and
+press enter. The program will load.
+2. Select Extended Basic v2.7 (A), and the program will load automatically.
+3. Select TI Basic (Z), type 'OLD DSK1.BASICLOAD', type 'RUN', and the program will load
+automatically. The 3rd option is the most cool, as you can recover from a bricked cart
+with this, thanks to Tursi and Senior Falcon with their assistance on this.
+ 
+Now that you've got the program loaded, follow these steps to upgrade/restore your XB v2.7
+Suite cartridge.
+ 
+You'll be asked a question, press 'Y'. Type 'DSK1.060715XB27', and press enter.
+Let the process complete! It will take some time. One the process has completed successfully,
+press the spacebar to quit, and you'll be presented with the XB v2.7 menu. 
+
+At this point you can check the upgrade with the cartridge verification program. Press fctn-6
+from the main menu to run it. When it has completed successfully, you will see a green screen
+with a success message. If you get a red screen, something is amiss, do the upgrade again
+being sure to follow the directions carefully.
+
+If the process didn't work correctly, do not despair. Use the TI Basic load option for
+GROMLOAD and repeat the process until you are successful.
+
+Press fctn-7 and you'll see the green credits screen with the dark blue edges for the updated
+cartridge.
+ 
+Tony Knerr
+06-07-2015

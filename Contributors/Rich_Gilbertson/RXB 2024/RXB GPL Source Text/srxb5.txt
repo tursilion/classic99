@@ -1,0 +1,4219 @@
+***********************************************************
+       TITL 'RXB 2024'
+***********************************************************
+       GROM >A000
+***********************************************************
+*           GROM ADDRESSES
+***********************************************************
+*    EQUATES FOR ROUTINES FROM OTHER GROM SECTIONS
+* GROM >0000
+* LINK    EQU  >0010          GPLDSRLNK
+* RETURN  EQU  >0012          Return to GPL inderpeter
+* STCASE  EQU  >0016          Standard Case
+GRINT  EQU  >0022             Greatest integer
+* ACCTON  EQU  >0034          ACCEPT TONE
+* BADTON  EQU  >0036          HONK TONE
+* UPCASE  EQU  >004A          Upper Case  
+* GROM >6000 EQUATES
+SPRINT EQU  >6016             Initialize sprites
+CHRTBL EQU  >6018             RXB CALL CHRTBL load char set
+CHRTAB EQU  >601C             Load default character set
+SZRUN  EQU  >601E
+GRSUB1 EQU  >6034             Read data (2 bytes) from ERAM
+GWSUB  EQU  >6036             Write a few bytes of data to
+TOPLEV EQU  >6372             RXB CALL USER branch
+CHKEND EQU  >6A78             Check end of statement
+DISO   EQU  >6A7C
+ENTER  EQU  >6A7E
+ENT09  EQU  >6A80
+WARNZZ EQU  >6A82             WARNING MESSAGE ROUTINE
+ERRZZ  EQU  >6A84             ERROR MESSAGE ROUTINE
+SZNEW  EQU  >63A5             RXB CALL NEW branch
+TOPL15 EQU  >63DD             RXB CALL USER branch
+* GROM >8000
+DISPL1 EQU  >8000
+DELET  EQU  >8002
+PRINT  EQU  >8004
+INPUT  EQU  >8006
+OPEN   EQU  >8008
+CLOSE  EQU  >800A
+RESTOR EQU  >800C
+NREAD  EQU  >800E
+CLSALL EQU  >8012             RXB branch
+EOF    EQU  >801C
+ACCEPT EQU  >801E
+SRDATA EQU  >8020
+REC    EQU  >8022
+GRSUB2 EQU  >802C
+GRSUB3 EQU  >802E
+LINPUT EQU  >8030
+* CHARS  EQU  >9CEA             RXB Character Definitions
+* GROM >E000
+GE025  EQU  >E025             RXB branch EA module
+***********************************************************
+*    Equates for XMLs
+SYNCHK EQU  >00               SYNCHK XML selector
+PARCOM EQU  >01               PARse to a COMma selector
+RANGE  EQU  >02               RANGE selector
+* FADD   EQU  >06               Floating ADD *RXB RND*
+FMUL   EQU  >08               Floating MULtiply
+FDIV   EQU  >09               Floating DIVide
+FCOMP  EQU  >0A               Floating COMPare
+* SADD   EQU  >0B               Stack ADD *RXB RND*
+SSUB   EQU  >0C               Stack SUBtract
+CSNUM  EQU  >10               Convert String to Number
+CFI    EQU  >12               Convert to two byte integer
+FLTINT EQU  >12               Convert floating to integer
+GETSTR EQU  >71               SYSTEM GET STRING
+XBCNS  EQU  >73               Convert number to string
+PARSE  EQU  >74               Parse a value
+CONT   EQU  >75               Continue parsing
+EXECG  EQU  >76               Execute a XB stmt or program
+VPUSH  EQU  >77               Push on value stack
+VPOP   EQU  >78               Pop off value stack
+PGMCHR EQU  >79               GET PROGRAM CHARACTER
+SYM    EQU  >7A               Find SYMBOL entry
+SMB    EQU  >7B               Find symbol table entry
+ASSGNV EQU  >7C               Assign VARIABLE
+SPEED  EQU  >7E               SPEED UP XML
+CIF    EQU  >80               Convert INTEGER to FLOATING P
+RTNB   EQU  >82               Return
+SCROLL EQU  >83               SCROLL THE SCREEN
+GVWITE EQU  >8B               WRITE DATA FROM GRAM TO VRAM
+GREAD1 EQU  >8C               READ DATA FROM ERAM
+***********************************************************
+* RXB XML'S ROM 3
+HCHAR  EQU  >74               HCHAR ASSEMBLY
+VCHAR  EQU  >75               VCHAR ASSEMBLY
+ASCHEX EQU  >76               ASC TO HEX ASSEMBLY
+HPUT   EQU  >77               HPUT ASSEMBLY
+VPUT   EQU  >78               VPUT ASSEMBLY 
+CLEARP EQU  >79               CLEAR PRINT ASSEMBLY
+HGET   EQU  >7A               HGET ASSEMBLY
+VGET   EQU  >7B               VGET ASSEMBLY
+CHAR   EQU  >7D               CHAR ASSEMBLY RESET
+CHRLDR EQU  >7F               LOAD CHARACTER DEFINITIONS
+COLLSP EQU  >80               COLLIDE SPRITES
+DCHAR  EQU  >81               CHARACTER & ALL DEFINITIONS
+SPSPD5 EQU  >83               SPRITE SPEED UP OF SPNUM5
+SPDEL  EQU  >84               SPRITE SPEED UP DELSPRITE
+***********************************************************
+*    Temporary workspaces in EDIT
+* PAD   EQU  >8300            TEMPORARY
+PTFBSL EQU  >8300            Ptr to 1st byte in SPEAK list
+PHLEN  EQU  >8300            PHrom data LENgth
+PAD1   EQU  >8301            TEMPORARY
+PHRADD EQU  >8301            PHRom ADDress
+PAD2   EQU  >8302            TEMPORARY
+ACCUM  EQU  >8302            # OF BYTES ACCUMULATOR (4 BYTE
+MNUM   EQU  >8302            Ussually a counter
+PTLBSL EQU  >8302            Ptr to last byte in SPEAK list
+PAD3   EQU  >8303            TEMPORARY
+PAD4   EQU  >8304            TEMPORARY
+VARY   EQU  >8304
+PTEBSL EQU  >8304            Ptr to end byte in SPEAK list
+* NOTE: PTEBSL points to the end of the temporary speak lis
+*       whereas PTLBSL points to the last byte actually use
+*       i.e.    PTFBSL <= PTLBSL <= PTEBSL
+VARY2  EQU  >8306            Use in MVDN only
+CCPPTR EQU  >8306            OFFSET WITHIN RECORED (1)
+*                             or Pointer to current column
+PAD6   EQU  >8306            TEMPORARY
+PTFCIS EQU  >8306            Ptr to 1st character in string
+PAD7   EQU  >8307
+PAD8   EQU  >8308
+PTCCIS EQU  >8308            Ptr to current character in st
+STADDR EQU  >830A            Start address - usually for co
+PADA   EQU  >830A            Temporary variable
+PTLCIS EQU  >830A            Ptr to last character in strin
+PADB   EQU  >830B
+BYTES  EQU  >830C            BYTE COUNTER
+*                             or String length for GETSTR
+PTFCIP EQU  >830C            Ptr to 1st character in phrase
+VAR4   EQU  >830E
+PTCCIP EQU  >830E            Ptr to current character in ph
+TOPSTK EQU  >8310            Top of data stack pointer
+PAD10  EQU  >8310
+VAR5   EQU  >8310            VAR5 through VAR5+3 used in RA
+PTLCIP EQU  >8310            Ptr to last character in phras
+VAR6   EQU  >8311
+PAD12  EQU  >8312
+PTFBPH EQU  >8312            Ptr to 1st byte in PHrom
+VAR7   EQU  >8312            Used in CHARLY
+STRPTR EQU  >8312            RXB PATCH CODE
+PTCCPH EQU  >8314            Ptr to current byte in PHrom
+VAR9   EQU  >8314             Used in CHARLY
+PAD16  EQU  >8316             Used in CHARLY
+XFLAG  EQU  >8316            SCAN FLAG-BITS USED AS BELOW
+PTLCPH EQU  >8316            Ptr to last byte in PHrom
+FNUM   EQU  >8317            Current file number for search
+***********************************************************
+*    Permanent workspace variables
+SREF   EQU  >831C            Temporary string pointer
+VARW   EQU  >8320            Screen address (CURSOR)
+ERRCOD EQU  >8322            Return error code from ALC
+STVSPT EQU  >8324            Value-stack base
+RTNG   EQU  >8326            Return vector from 9900 code
+NUDTAB EQU  >8328            Start of NUD table
+PGMPTR EQU  >832C            Program text pointer (TOKEN)
+EXTRAM EQU  >832E            Line number table pointer
+STLN   EQU  >8330            Start of line number table
+ENLN   EQU  >8332            End of line number table
+DATA   EQU  >8334            Data pointer for READ
+LNBUF  EQU  >8336            Line table pointer for READ
+SYMTAB EQU  >833E            Symbol table pointer
+FREPTR EQU  >8340            Free space pointer
+CHAT   EQU  >8342            Current charater/token
+PRGFLG EQU  >8344            Program/imperative flag
+FLAG   EQU  >8345            General 8-bit flag
+BUFLEV EQU  >8346            Crunch-buffer destruction leve
+LSUBP  EQU  >8348            Last subprogram block on stack
+* FAC  EQU  >834A            Floating-point ACcurmulator
+CCHAR  EQU  >834A            Current character
+FAC1   EQU  >834B
+SPLFLG EQU  >834B            SPelL out phrase FLaG
+FAC2   EQU  >834C
+TOTTIM EQU  >834C            TOTal wait TIMe
+* NOTE: DATAD must follow immediately after TOTTIM. The
+*       routine STDATA is counting on this fact!
+FAC3   EQU  >834D
+DATAAD EQU  >834D            Speech DATA ADdress
+FAC4   EQU  >834E
+CCC    EQU  >834E
+FFF    EQU  >834E
+PTLCIL EQU  >834F            Pointer To Last Character In L
+FAC6   EQU  >8350
+EEE    EQU  >8350
+FAC7   EQU  >8351
+TIMLEN EQU  >8351             TIMe LENgth of timing charact
+FAC8   EQU  >8352
+FAC9   EQU  >8353
+FAC10  EQU  >8354
+DDD1   EQU  >8354
+TEMP1  EQU  >8354            TEMPorary CPU location 1
+FAC11  EQU  >8355
+FAC12  EQU  >8356
+FFF1   EQU  >8356
+TEMP2  EQU  >8356            TEMPorary CPU location 2
+FAC14  EQU  >8358
+EEE1   EQU  >8358
+READ   EQU  >8358            Address of speech peripheral
+*                             READ byte interface
+FAC15  EQU  >8359
+WRITE  EQU  >835A            Address of speech peripheral
+*                             WRITE byte interface
+* ARG  EQU  >835C            Floating-point ARGument
+ARG1   EQU  >835D
+PHDATA EQU  >835D            PHrom DATA
+ARG2   EQU  >835E
+PTCBED EQU  >835E            Ptr To Current Byte Ext Data
+ARG4   EQU  >8360
+LENCST EQU  >8360            LEN of Current ext data STring
+ARG6   EQU  >8362
+LENWST EQU  >8362            LEN of Whole ext data STring
+ARG7   EQU  >8363
+ARG8   EQU  >8364
+STRLEN EQU  >8364            STRing LENgth
+TEMP4  EQU  >8364
+TEMP5  EQU  >8366
+* NOTE: BYTE1, BYTE2, and BYTE3 must be in consecutive memo
+*       locations, and in the following order for SPGET to
+*       work!
+BYTE1  EQU  >8366            BYTE 1
+BYTE2  EQU  >8367            BYTE 2
+BYTE3  EQU  >8368            BYTE 3
+TEMP6  EQU  >8368
+SPKSTS EQU  >8369            SPeaK StaTus
+* FPERAD EQU  >836C          Value stack pointer
+* VSPTR  EQU  >836E          Value stack pointer
+***********************************************************
+* MEMSIZ EQU  >8370           MEMORY SIZE
+* DATSTK EQU  >8372           DATA STACK
+* SUBSTK EQU  >8373           SUBROUTINE STACK
+KEYBD  EQU  >8374             KEYBOARD SELCTION
+RKEY   EQU  >8375             KEY CODE
+JOYY   EQU  >8376             JOYSTICK Y POSITION
+JOYX   EQU  >8377             JOYSTICK X POSITION
+RANDOM EQU  >8378             RANDOM NUMBER GENERATOR
+TIMER  EQU  >8379             TIMING REGISTER
+NOMSPR EQU  >837A             NUMBER OF MOVING SPRITES
+VDPSTT EQU  >837B             VDP STATUS REGISTER
+* STATUS EQU  >837C            GPL STATUS BYTE
+ERCODE EQU  >837C             STATUS REGISTER
+CB     EQU  >837D             Character Buffer
+* YPT    EQU  >837E            Screen Location ROW 
+* XPT    EQU  >837F            Screen Location COL 
+***********************************************************
+RAMTOP EQU  >8384            Highest address in ERAM
+RAMFRE EQU  >8386            Free pointer in the ERAM
+RAMFLG EQU  >8389            ERAM flag
+GKFLG  EQU  >83C2  * GKXB flag PEEK/LOAD VDP/GROM/QUIT KEY
+PRTNFN EQU  >83CE            Sound - previous tone finished
+***********************************************************
+*    VDP addresses
+NLNADD EQU  >02E2             New LiNe ADDress
+SPRSAL EQU  >0300             Sprite attribute list
+LODFLG EQU  >0371             Auto-boot flag
+START  EQU  >0372             Line to start execution at
+* Temporary
+SYMBOL EQU  >0376             Saved symbol table pointer
+ONECHR EQU  >0378             Used for CHRZ
+VRMSND EQU  >0379             Sound blocks
+SPGMPT EQU  >0382             Saved PGMPTR for continue
+SBUFLV EQU  >0384             Saved BUFLEV for contiue
+SEXTRM EQU  >0386             Saved EXTRAM for continue
+SAVEVP EQU  >0388             Saved VSPRT for continue
+ERRLN  EQU  >038A             On-error line pointer
+CSNTMP EQU  >0390             Use as temporary stored place
+*                          or CSN TEMPORARY FOR FAC12
+SLSUBP EQU  >0396             Saved LSUBP for continue
+SFLAG  EQU  >0398             Saved on-warning/break bits
+SPNUM  EQU  >03AA             Sprite number temporary
+CSNTP1 EQU  >03BA             CSN TEMPORARY FOR FAC10
+VROAZ  EQU  >03C0             Temporary roll-out area
+SPRVB  EQU  >07FF             Sprite velocity block.
+CRNBUF EQU  >0820             CRuNch BUFfer address
+***********************************************************
+*    IMMEDITATE VALUES
+NUMBR  EQU  >00               NUMERIC validate
+LISTZ  EQU  >02
+X2     EQU  >03
+OLDZ   EQU  >05
+RESEQZ EQU  >06
+SAVEZ  EQU  >07
+MERGEZ EQU  >08
+DWNARR EQU  >0A
+UPARR  EQU  >0B
+CHRTN  EQU  >0D
+BKGD   EQU  >20               BACKGROUND CHARACTER
+OFFSET EQU  >60               OFFSET FOR VIDEO TABLES
+STRVAL EQU  >65               Value in accum. is string val
+***********************************************************
+* Editting command equates & keys or symbols
+BREAK  EQU  >02               Break key
+DLETE  EQU  >03               Delete key
+INSRT  EQU  >04               Insert key
+RECALL EQU  >06               Edit-buffer recall
+CLRLN  EQU  >07               Clear-line key
+BACK   EQU  >08               Back-space key
+FORW   EQU  >09               Forward-space key
+DOWN   EQU  >0A               Down-arrow key
+UPMV   EQU  >0B               Up-arrow key
+VWIDTH EQU  >1C               Screen width (PRINT)
+SPACE  EQU  >20               Space key
+QUOTE  EQU  >22               "
+NUMBER EQU  >23               #
+DOLLAR EQU  >24               $
+CURSOR EQU  >1E+OFFSET        CURSOR
+EDGECH EQU  >1F+OFFSET        EDGE character
+PLUS   EQU  >2B               +
+COMMAT EQU  >2C               ,
+MINUS  EQU  >2D               -
+HYPEN  EQU  >2D               +
+PERIOD EQU  >2E               .
+ZERO   EQU  >30               0
+NINE   EQU  >39               9
+COLON  EQU  >3A               :
+SEMICO EQU  >3B               ;
+LESS   EQU  >3C               <
+GREAT  EQU  >3E               >
+A      EQU  >41               A
+F      EQU  >46               F
+***********************************************************
+*    BASIC TOKEN TABLE
+*      EQU  >80               spare token
+ELSEZ  EQU  >81               ELSE
+SSEPZ  EQU  >82               ::
+TREMZ  EQU  >83               $
+IFZ    EQU  >84               IF
+GOZ    EQU  >85               GO
+GOTOZ  EQU  >86               GOTO
+GOSUBZ EQU  >87               GOSUB
+RETURZ EQU  >88               RETURN
+DEFZ   EQU  >89               DEF
+DIMZ   EQU  >8A               DIM
+ENDZ   EQU  >8B               END
+FORZ   EQU  >8C               FOR
+LETZ   EQU  >8D               LET   
+BREAKZ EQU  >8E               BREAK
+UNBREZ EQU  >8F               UNBREAK
+TRACEZ EQU  >90               TRACE
+UNTRAZ EQU  >91               UNTRACE
+INPUTZ EQU  >92               INPUT
+DATAZ  EQU  >93               DATA
+RESTOZ EQU  >94               RESTORE
+RANDOZ EQU  >95               RANDOMIZE
+NEXTZ  EQU  >96               NEXT
+READZ  EQU  >97               READ
+STOPZ  EQU  >98               STOP
+DELETZ EQU  >99               DELETE
+REMZ   EQU  >9A               REM
+ONZ    EQU  >9B               ON
+PRINTZ EQU  >9C               PRINT
+CALLZ  EQU  >9D               CALL
+OPTIOZ EQU  >9E               OPTION
+OPENZ  EQU  >9F               OPEN
+CLOSEZ EQU  >A0               CLOSE
+SUBZ   EQU  >A1               SUB
+DISPLZ EQU  >A2               DISPLAY
+IMAGEZ EQU  >A3               IMAGE
+ACCEPZ EQU  >A4               ACCEPT
+ERRORZ EQU  >A5               ERROR
+WARNZ  EQU  >A6               WARNING
+SUBXTZ EQU  >A7               SUBEXIT
+SUBNDZ EQU  >A8               SUBEND
+RUNZ   EQU  >A9               RUN
+LINPUZ EQU  >AA               LINPUT
+*      EQU  >AB               spare token (LIBRARY)
+*      EQU  >AC               spare token (REAL)
+*      EQU  >AD               spare token (INTEGER)
+*      EQU  >AE               spare token (SCRATCH)
+*      EQU  >AF               spare token
+THENZ  EQU  >B0               THEN
+TOZ    EQU  >B1               TO
+STEPZ  EQU  >B2               STEP
+COMMAZ EQU  >B3               ,
+SEMICZ EQU  >B4               ;
+COLONZ EQU  >B5               :
+RPARZ  EQU  >B6               )
+LPARZ  EQU  >B7               (
+CONCZ  EQU  >B8               &          (CONCATENATE)
+*      EQU  >B9               spare token
+ORZ    EQU  >BA               OR
+ANDZ   EQU  >BB               AND
+XORZ   EQU  >BC               XOR
+NOTZ   EQU  >BD               NOT
+EQUALZ EQU  >BE               =
+LESSZ  EQU  >BF               <
+GREATZ EQU  >C0               >
+PLUSZ  EQU  >C1               +
+MINUSZ EQU  >C2               -
+MULTZ  EQU  >C3               *
+DIVIZ  EQU  >C4               /
+CIRCUZ EQU  >C5               ^
+*      EQU  >C6               spare token
+STRINZ EQU  >C7               QUOTED STRING
+UNQSTZ EQU  >C8               UNQUOTED STRING
+NUMZ   EQU  >C8               ALSO NUMERICAL STRING
+NUMCOZ EQU  >C8               ALSO UNQUOTED STRING
+LNZ    EQU  >C9               LINE NUMBER CONSTANT
+*      EQU  >CA               spare token
+ABSZ   EQU  >CB               ABS
+ATNZ   EQU  >CC               ATN
+COSZ   EQU  >CD               COS
+EXPZZ  EQU  >CE               EXP
+INTZ   EQU  >CF               INT
+LOGZ   EQU  >D0               LOG
+SGNZZ  EQU  >D1               SGN
+SINZ   EQU  >D2               SIN
+SQRZ   EQU  >D3               SQR
+TANZ   EQU  >D4               TAN
+LENZ   EQU  >D5               LEN
+CHRZZ  EQU  >D6               CHR$
+RNDZ   EQU  >D7               RND
+SEGZZ  EQU  >D8               SEG$
+POSZ   EQU  >D9               POS
+VAL    EQU  >DA               VAL
+STRZZ  EQU  >DB               STR$
+ASCZ   EQU  >DC               ASC
+PIZ    EQU  >DD               PI
+RECZ   EQU  >DE               REC
+MAXZ   EQU  >DF               MAX
+MINZ   EQU  >E0               MIN
+RPTZZ  EQU  >E1               RPT$
+*      EQU  >E2               unused
+*      EQU  >E2               unused
+*      EQU  >E3               unused
+*      EQU  >E4               unused
+*      EQU  >E5               unused
+*      EQU  >E6               unused
+*      EQU  >E7               unused
+NUMERZ EQU  >E8               NUMERIC
+DIGITZ EQU  >E9               DIGIT
+UALPHZ EQU  >EA               UALPHA
+SIZEZ  EQU  >EB               SIZE
+ALLZ   EQU  >EC               ALL
+USINGZ EQU  >ED               USING
+BEEPZ  EQU  >EE               BEEP
+ERASEZ EQU  >EF               ERASE
+ATZ    EQU  >F0               AT
+BASEZ  EQU  >F1               BASE
+*      EQU  >F2               spare token (TEMPORARY)
+VARIAZ EQU  >F3               VARIABLE
+RELATZ EQU  >F4               RELATIVE
+INTERZ EQU  >F5               INTERNAL
+SEQUEZ EQU  >F6               SEQUENTIAL
+OUTPUZ EQU  >F7               OUTPUT
+UPDATZ EQU  >F8               UPDATE
+APPENZ EQU  >F9               APPEND
+FIXEDZ EQU  >FA               FIXED
+PERMAZ EQU  >FB               PERMANENT
+TABZ   EQU  >FC               TAB
+NUMBEZ EQU  >FD               #
+VALIDZ EQU  >FE               VALIDATE
+*      EQU  >FF               ILLEGAL VALUE
+***********************************************************
+* NOTE: FILES EXECSD, SUBS AND PART OF PSCANS ARE IN GROM 5
+*       AS BELOW:
+*-------NAME------------------ADDRESS---------BYTES LEFT---
+*      EXECS                  >A000 - >AD92        5
+*      SUBS                   >AD98 - >B4DC        2
+*      PSCANS                 >B4E0 - >B7FA        5
+*
+* Some of the error calls at the end of EXECS file are
+* shared and directly addressed by SUBS file. Any change in
+* EXECS file which affects the address of error calls will
+* affect error reference in SUBS file. Make sure to edit
+* SUBS file in that situation.
+***********************************************************
+       XML  CONT              XML CONT used by subprogram
+       BR   LITS05            Build FAC entry and GETSTR
+       BR   EXEC              Execute a program
+       BR   LINE
+       BR   DATAST
+       BR   ASC
+       BR   EXEC1
+       BR   EXEC6D            Save information on a break
+       BR   DELINK            Delink symbol table entry
+       BR   CONV1
+       BR   SQUISH            Called in error routine in PS
+       BR   VALCD
+       BR   INTRND
+       BR   $
+       BR   LNKRTN            Routine to go back to XB prog
+       BR   SPCOL             Clear breakpoint in line # ro
+       BR   UBSUB             Spare
+       BR   $
+GA024  BR   CASCII            RXB SIZE ADDRESS DISPLAY
+*                  *** Please let me know it you address to 
+*                  *** branches here since it will advance
+*                  *** the address of link list. Sum
+LINK1  DATA LINK2
+       STRI 'SOUND'           SOUND
+       DATA XSOUND
+LINK2  DATA LINK3
+       STRI 'CLEAR'           CLEAR
+       DATA CLEARZ
+LINK3  DATA LINK4
+       STRI 'COLOR'           COLOR
+       DATA COLORZ
+LINK4  DATA LINK5
+       STRI 'GCHAR'           GCHAR   (ASSEMBLY)
+       DATA GCHARZ
+LINK5  DATA LINK6
+       STRI 'HCHAR'           HCHAR   (ASSEMBLY) 
+       DATA HCHARZ
+LINK6  DATA LINK7
+       STRI 'VCHAR'           VCHAR   (ASSEMBLY)
+       DATA VCHARZ
+LINK7  DATA LINK8
+       STRI 'CHAR'            CHAR    (ASSEMBLY)
+       DATA CHARLY
+LINK8  DATA LINK9
+       STRI 'KEY'             KEY
+       DATA ZKEY
+LINK9  DATA LINKA
+       STRI 'JOYST'           JOYST
+       DATA ZJOYST
+LINKA  DATA LINKB
+       STRI 'SCREEN'          SCREEN
+       DATA BORDER
+LINKB  DATA LINKS1
+       STRI 'ERR'             ERR
+       DATA ERRWXY
+***********************************************************
+*        START EXECUTION OF A PROGRAM OR STATEMENT
+* DATA:
+*      RAM(START) points into line number table at the
+*      first line to execute
+*      @PGMFLG contains >FF if executing a program or zero
+*      if imperative statement
+***********************************************************
+EXEC   CZ   @PRGFLG           If program
+       BS   GA0AE
+       DST  V@START,@EXTRAM   Line to start execution at
+       DINCT @EXTRAM          Pointer to text pointer
+       CALL INTRND            Initialize random number
+EXEC1  ST   X2,@XPT           Initialize screen display
+       BR   GA0B2
+GA0AE  DST  CRNBUF,@PGMPTR    Executing out of crunch buffe
+GA0B2  DST  EXEC20,@RTNG      Address of return from ALC
+       DST  NUDTB,@NUDTAB     NUD table address for ALC
+       XML  EXECG             Execute XB
+EXEC20 CASE @ERRCOD+1         Check type of return
+       BR   EXECND            0 - NORMAL END
+       BR   EXECBK            1 - BREAKPOINT
+       BR   EXECTR            2 - TRACE
+       BR   ERORZ             3 - ERROR
+       BR   WARNGZ            4 - WARNING
+       BR   ONERR             5 - ON ERROR
+       BR   UDF               6 - FUNCTION
+       BR   ONBRK             7 - ON BREAK
+       BR   CONCAT            8 - CONCATENATE STRINGS "&"
+       BR   ONWARN            9 - ON WARNING
+       BR   GPLCAL            A - CALL STATEMENT
+WARNGZ CH   >B0,@SUBSTK
+       BS   ERRSO
+* Stack overflow
+*                    ALLOW ROOM ON STACK FOR WARNING CALLS
+WRNN01 CALL WARNZZ        ONLY WARNING MSG FROM XB SUPPORT
+       BYTE 2       *         NUMERIC OVERFLOW
+       BR   CLRRTN            Clear ERRCOD and return
+*                    NORMAL END OF EXECUTION
+EXECND CZ   @PRGFLG           If imperative mode
+       BR   ERRRDY
+       CALL CHRTAB            Load the default character se
+       B    TOPL15            Return to top-level
+ERRRDY CALL ERRZZ             Display * READY *
+       BYTE 0
+* TRACE-MODE turned on - display line number
+EXECTR CLR  @VARW             Clear upper address byte
+       ST   @XPT,@VARW+1      Get current x-pointer
+       DADD NLNADD-3,@VARW    Make a valid screen address
+       DCH  NLNADD+22,@VARW   If might go off screen
+       BR   GA102
+       XML  SCROLL            SCROLL to next line
+       DST  NLNADD,@VARW      Re-initialize screen address
+GA102  ST   LESS+OFFSET,V*VARW Display open bracket "("
+       DINC @VARW             Increment screen address
+       CALL ASC               Convert line # into ASCII
+       ST   GREAT+OFFSET,V*VARW Display close bracket ")"
+       DSUB NLNADD-4,@VARW    Update the x-pointer
+       ST   @VARW+1,@XPT
+CLRRTN DCLR @ERRCOD           Clear the return vector
+       XML  RTNB              Return to ALC
+* BREAKPOINT OR BREAK-KEY RECIEVED
+EXECBK CZ   @PRGFLG           If break or program
+       BS   ERRBRK
+       DST  @EXTRAM,@FAC8     @FAC8 : Source addr in ERAM
+       DDECT @FAC8            Point to the line #
+       CALL UBSUB1            Reset the breakpoint
+       SCAN                   Get break key out of queue
+EXEC6C DST  @PGMPTR,V@SPGMPT  Save text pointer
+EXEC6D DST  @EXTRAM,V@SEXTRM  Save line number table pointe
+       DST  @VSPTR,V@SAVEVP   Save value stack pointer
+       DST  @BUFLEV,V@SBUFLV  Save crunch buffer level
+       DST  @LSUBP,V@SLSUBP   Save last subprogram on stack
+       ST   @FLAG,V@SFLAG     Save FLAG for continue
+       AND  >63,V@SFLAG       Only warning and break bits
+ERRBRK CALL ERRZZ             * BREAKPOINT
+       BYTE 1
+***********************************************************
+*               NUD / STATEMENT BRANCH TABLE
+***********************************************************
+NUDTB  BR   RECX              'RECORD'              0
+       BR   NBREAK            'BREAK'               0
+       BR   NUNBRK            'UNBREAK'             0
+       BR   NTRACE            'TRACE'               0
+       BR   NUNTRC            'UNTRACE'             0
+       BR   NREADX            'READ'                0
+       BR   PRINTX            'PRINT'               0
+       BR   SZRUNX            'RUN'                 0
+       BR   LINPUX            Reserved for LINPUT   1
+       BR   RESTOX            'RESTORE'             1
+       BR   NRNDMZ            'RANDOMIZE'           1
+       BR   INPUTX            'INPUT'               1
+       BR   OPENX             'OPEN'                1
+       BR   CLOSEX            'CLOSE'               1
+       BR   NPI               'PI'                  1
+       BR   NMAX              'MAX'                 1
+       BR   NMIN              'MIN'                 2
+       BR   RPTZ01            'RPT$'                2
+       BR   ACCEPX            'ACCEPT'              2
+       BR   EOFX              'EOF'                 2
+       BR   ASC01             'ASC'                 2
+       BR   POS01             'POS'                 2
+       BR   VAL01             'VAL'                 2
+       BR   STRZ01            'STR$'                2
+       BR   SEGZ01            'SEG$'                3
+       BR   DELETX            'DELETE'              3
+       BR   DISPLX            'DISPLAY'             3
+       BR   LEN01             'LEN'                 3
+       BR   CHRZ01            'CHR$'                3
+*RXB PATCH CODE FOR BASIC RND REPLACEMENT ***********
+       BR   NRND              'RND'                 3        
+* The following are long branches to another GROM
+EOFX   B    EOF
+SZRUNX B    SZRUN
+RECX   B    REC
+NREADX B    NREAD
+PRINTX B    PRINT
+RESTOX B    RESTOR
+INPUTX B    INPUT
+OPENX  B    OPEN
+CLOSEX B    CLOSE
+ACCEPX B    ACCEPT
+DISPLX B    DISPL1
+DELETX B    DELET
+LINPUX B    LINPUT
+***********************************************************
+* FLAGS USED IN EXECUTION MODE:    this needs to be checked
+*  @FLAG   BIT   RESET               SET
+*           0
+*           1    Warning PRINT       PRINT off
+*           2    Warning NEXT        STOP
+*           3    Not in UDF          Executing a UDF
+*           4    TRACE mode          Normal mode
+*           5
+*           6    BREAK allowed       BREAK not allowed
+*           7    No LST/EDT protect  LIST/EDIT protected
+***********************************************************
+* ON WARNING {NEXT | STOP | PRINT}
+* ON WARNING NEXT  - Causes warning messages to be ignored
+*                    and execution to continue as if a
+*                    warning never occurred
+* ON WARNING STOP  - Causes a warning to be treated as an
+*                    error - i.e. the message is displayed
+*                    and execution is halted
+* ON WARNING PRINT - Causes the default warning handling to
+*                    be in effect, i.e. any warning
+*                    messages are printed and execution
+*                    continues
+***********************************************************
+ONWARN XML  PGMCHR            GET OPTION
+       CEQ  PRINTZ,@CHAT      If print
+       BR   GA1B7
+       AND  >F9,@FLAG         Turn on print and contiue
+       B    ONWRN5
+GA1B7  CEQ  STOPZ,@CHAT
+       BR   GA1C4
+       AND  NUMBEZ,@FLAG         Turn on print
+       OR   >04,@FLAG         Turn on stop
+       BR   ONWRN5
+GA1C4  CEQ  NEXTZ,@CHAT       * SYNTAX ERROR
+       BR   ERRSYN
+       OR   >02,@FLAG         Turn off print
+       AND  >FB,@FLAG         Turn off stop
+ONWRN5 XML  PGMCHR            Check for EOS
+ONWRN7 CALL CHKEND            Error if not EOS
+       BR   ERRSYN            If not EOS
+       DCLR @ERRCOD
+       XML  CONT              Continue
+***********************************************************
+* ON ERROR {line number | STOP}
+* ON ERROR line number - causes the error routine to build
+*                        an error stack entry and pass
+*                        control to the line specified in
+*                        the most-recently executed
+*                        on-error-statement
+* ON ERROR STOP - causes the default error handling
+*                 conditions to be in effect. i.e. any
+*                 errors that occur cause execution to halt
+*                 an a message to be displayed
+***********************************************************
+ONERR  XML  PGMCHR            Get option
+       CEQ  LNZ,@CHAT         If line # then find the line
+       BR   GA20E
+       XML  PGMCHR            Get upper byte
+       ST   @CHAT,@FAC
+       XML  PGMCHR            Get lower byte
+       ST   @CHAT,@FAC1
+       DST  @ENLN,@FAC2
+       DSUB 3,@FAC2           Pointing to 1st line #
+* Consider both ERAM and RAM cases to get line # from the
+* line number table. Also reset the break bit.
+ONERR2 CALL GRSUB3            Get 2 bytes from either RAM/E
+       BYTE FAC2            * FAC2 has the address
+       DCEQ @EEE1,@FAC        If found
+       BS   ONERR4
+       DCH  @STLN,@FAC2       Not found
+       BR   ERRLNF
+       DSUB 4,@FAC2           Goto next line
+       BR   ONERR2
+ONERR4 DINCT @FAC2
+       DST  @FAC2,V@ERRLN
+       BR   GA216
+GA20E  CEQ  STOPZ,@CHAT       * SYNTAX ERROR
+       BR   ERRSYN
+       DCLR V@ERRLN           Back to default error handlin
+GA216  BR   ONWRN5            Finish up same as ON WARNING
+***********************************************************
+* ON BREAK {NEXT | STOP}
+* ON BREAK NEXT - Causes any breakpoints which have been
+*                 set on statements to be ignored when the
+*                 statement is encountered and also masks
+*                 the shift-C key so that it is ignored
+* ON BREAK STOP - Causes the default break handling to be
+*                 in force., i.e. execution is halted and
+*                 the BREAKPOINT message is displayed on
+*                 the screen
+***********************************************************
+ONBRK  XML  PGMCHR            Get next char to find option
+       CEQ  STOPZ,@CHAT       If stop option specified
+       BR   GA225
+       AND  >BF,@FLAG         break allowed
+       B    GA22D             Don't change this to BR GA22D
+GA225  CEQ  NEXTZ,@CHAT       If next option number
+       BR   ERRSYN            specified then syntax error
+       OR   >40,@FLAG         If next option specified then
+*                              break NOT allowed
+GA22D  BR   ONWRN5            Finish up same as ON WARNING
+***********************************************************
+* GPLCAL - If a call is made to a subprogram that does not
+*  not exist either in the BASIC program itself or in the
+*  internal GPL subprogram list then one final attempt is
+*  made to find the subprogram at execution time by
+*  searching for the subprogram in the console or a
+*  peripheral. If not found there, then a
+*  *SUBPROGRAM NOT FOUND error occurs
+*
+*  Input: the subprogram name is in the FAC and the length
+*         of the name is in FAC15
+***********************************************************
+GPLCAL CZ   @RAMFLG           Can't try if CPU program
+       BR   ERRSNF
+       DSRL 8,@FAC15          Make name length a double
+       DSUB @FAC15,@PGMPTR    Point back at name
+       DDEC @PGMPTR           Point at name length
+       DST  @PGMPTR,@FAC12    Set pointer to name
+       CALL LINK              Issue 'Call Program Link'
+       BYTE 10              * Search subprogram lists
+       BR   ONWRN7            If all ok, check-end and rtn
+       BR   ERRSNF            If not found, error
+***********************************************************
+*                     NUD FOR PI
+***********************************************************
+NPI    MOVE 8,G@CONPI,@FAC    Load constant PI
+       XML  CONT
+CONPI  BYTE >40,3,14,15,92,65,35,90
+* 3.1415992653590E+00
+***********************************************************
+*                     NUD FOR MAX
+***********************************************************
+NMAX   CALL MAXMIN            Combine MAX and MIN
+       GT
+       BR   GA263
+NMAXZ1 MOVE 8,@ARG,@FAC
+GA263  XML  CONT
+***********************************************************
+*                     NUD FOR MIN
+***********************************************************
+NMIN   CALL MAXMIN            Combine MAX and MIN again
+       GT
+       BR   NMAXZ1
+       XML  CONT
+***********************************************************
+*                COMMON MAX / MIN ROUTINE
+***********************************************************
+MAXMIN CALL LPARR             Skip "(" parse, and insure ,
+       CH   >63,@FAC2         Must be numeric
+       BS   ERRSNM
+       XML  VPUSH             Push l.h. arg on stack
+       XML  PARSE             PARSE up to ")"
+       BYTE RPARZ
+       CH   >63,@FAC2         Must be numeric
+       BS   ERRSNM
+       XML  SPEED             Must be
+       BYTE SYNCHK        *    at a
+       BYTE RPARZ         *      right parenthesis
+       MOVE 8,@FAC,@ARG       Save in ARG for compare
+       XML  VPOP              Get l.h. arg back
+       XML  FCOMP             Compare operands
+       RTN
+* RXB PATCH CODE FOR INTRND
+INTRND DST  >3567,@>83C0      Random number seed
+       RTN
+***********************************************************
+* RXB BASIC RND REPLACEMENT FROM TI BASIC
+NRND   ST   >3F,@FAC       * Exponent    
+       ST   >4B,@VAR5      * Loop counter
+NRND1  RAND >63            * 0?
+       CZ   @RANDOM        * No, go on
+       BR   NRND3     
+       DEC  @FAC           * 0?
+       CZ   @FAC           * End with 0
+       BS   NRND4          * Go on
+       BR   NRND1
+NRND2  RAND >63            * Till 100
+NRND3  ST   @RANDOM,*VAR5  * All digits
+       CEQ  >51,@VAR5      * Till >8351
+       BS   NRND5 
+       INC  @VAR5          * Increase loop counter
+       BR   NRND2 
+NRND4  CLR  @FAC1          * Set 0
+NRND5  XML  CONT
+************************************************************
+STRFCH XML  PGMCHR     * SKIP whatever
+STRPAR XML  PARSE
+       BYTE RPARZ
+       RTN
+STRGET CALL STRFCH
+       CEQ  >65,@FAC2
+       BR   ERRSNM      * STRING NUM MISMATCH
+       RTN
+NUMFCH CALL STRFCH
+NUMSNM CEQ  >65,@FAC2
+       BS   ERRSNM      * STRING NUM MISMATCH
+       RTN
+CFIFCH XML  CFI
+       CEQ  >03,@FAC+10
+       BS   ERRBV       * NUMERIC OVERFLOW
+       RTN
+GETNUM CALL SUBLP3
+GNRTN  CEQ  >B3,@CHAT
+       BR   ERRSYN
+       RTN
+SUBLP3 CALL NUMFCH
+       CALL CFIFCH
+       RTN
+SUBLP4 CALL STRPAR
+       CALL CFIFCH
+       BR   GNRTN
+NGOOD  XML  PGMCHR
+NGOOD1 CHE  >80,@CHAT
+       BS   ERRSYN         * ?
+       CALL SNDER
+       CEQ  >65,@FAC2
+       BR   ERRSNM         * STRING NUMBER MISMATCH
+       DST  >001C,@FAC
+       DST  @SREF,@FAC4
+       DST  @BYTES,@FAC6
+       BR   SNDASS
+SNDER  XML  SYM
+       XML  SMB
+       XML  VPUSH
+       RTN
+CIFSND XML  CIF
+SNDASS XML  ASSGNV
+       RTN
+CLRFAC CLR  @FAC
+       MOVE 7,@FAC,@FAC1
+       RTN
+***********************************************************
+*                   RANDOMIZE STATEMENT
+***********************************************************
+* RXB PATCH RAMDOMIZE and RANDOMIZE SEED replaced         *
+***********************************************************
+NRNDMZ CALL CHKEND            Seed provider?
+       BS   RNDM1             No
+* RANDOMIZE given a see value
+* (99,000,000,000,001 possible starting positions)
+* (Place-value is ignored in the input number)
+       XML  PARSE             Parse the seed
+       BYTE TREMZ           * Up to end of statement
+       CALL CKSTNM
+* TI BASIC RAMDOMIZE SEED ***
+       DST @FAC,@>83C0 Quotation on random number seed
+NRNDCT XML  CONT
+
+* TI BASIC RANDOMIZE no seed ***
+RNDM1  ST   @>8379,@>83C1
+       XML  CONT
+CKSTNM CEQ  >65,@FAC2
+       BS   ERRSNM
+       RTN
+***********************************************************
+FLT1   BYTE >40,>01,>00,>00,>00,>00,>00,>00
+***********************************************************
+*                 EXTENDED STRING PACKAGE
+* THE ROUTINES ARE:
+*  LITS05 - Move a string literal from the program to the
+*            string space
+*  INTARG - Checks that an argument is a numeric and
+*            converts it from floating point to an integer
+*  PUSSTR - Checks that an argument is a string and pushes
+*            it on the stack
+*  CONCAT - Concatenates 2 strings together
+*  SEG$   - Segments a string
+*  LEN    - Puts the length of a string in the FAC
+*  CHR$   - Converts an integer into its ASCII character
+*  STR$   - Converts a number into its string equivalent
+*  VAL    - Converts a string into its numeric equivalent
+*  POS    - Gives the position of one string within another
+*  RPT$   - Generates a single string with multiple copies
+*            of the original string
+*
+*      AN ENTRY IN THE FAC LOOKS LIKE:
+* +------------+-----+----+-------------+-----------------+
+* |addr of ptr | >65 | xx | addr of str | length of str   |
+* +------------+-----+----+-------------+-----------------+
+*     FAC       FAC2  FAC3   FAC4           FAC6
+***********************************************************
+* Support routine for functions to build FAC entry
+LITS05 CLR  @FAC6             Need as a double-byte value
+       DST  @FAC6,@BYTES      LENGTH FOR GETSTR
+       ST   @RAMTOP,@FAC8     Copy ERAM flag for later
+LITS07 XML  GETSTR            ALLOCATE STRING SPACE
+LITS08 DST  >001C,@FAC        SAVE ADDR OF STRING  (SREF)
+       DST  @SREF,@FAC4       SAVE ADDR OF STRING
+       DST  >6500,@FAC2       INDICATES A STRING CONSTANT
+*********** COPY STRING INTO STRING SPACE *****************
+LITS09 DCZ  @BYTES            If non-null string
+       BS   GA42B
+       CZ   @FAC8
+       BR   GA420
+       MOVE @BYTES,V*TEMP5,V*SREF
+       RTN
+*                             Else source string in ERAM
+GA420  DST  @BYTES,@FFF1      FFF1 : BYTE COUNT
+       DST  @SREF,@EEE1       EEE1 : DESTINATION ADDR ON VD
+       DST  @TEMP5,@DDD1      DDD1 : Source addr in ERAM
+       XML  GVWITE            Move data from ERAM to VDP
+GA42B  RTN
+LITS06 CLR  @FAC8             SET FLAG TO VDP
+       BR   LITS07            JUMP INTO CODE
+***********************************************************
+* PUSSTR - Insures that the entry in the FAC is a string
+*           and pushes it onto the stack.
+***********************************************************
+PUSSTR CEQ  >65,@FAC2
+       BR   ERRSNM
+       XML  VPUSH             PUSH THE ARGUMENT
+       RTN
+***********************************************************
+* CONCAT - CONCATENATES TWO STRINGS TOGETHER
+*         INPUT  : FLOATING POINT ACCUMULATOR ENTRIES
+*         OUTPUT : CONCATENATED STRING AND (POSSIBLE)
+*                  ZEROED BACK-POINTERS FOR THE OLD STRINGS
+*         USES   : TEMP2, TEMP4 AND TEMP5 AS TEMPORARIES
+***********************************************************
+CONCAT CLR  @ERRCOD+1         CLEAR THE ERROR CODE
+       CALL PUSSTR            Push the string & get next to
+       XML  PARSE             GET THE R.H. ARGUMENT
+       BYTE CONCZ
+       CEQ  >65,@FAC2         If not string - error
+       BR   ERRSNM
+       DST  @FAC6,@BYTES      GET R.H. LENGTH
+       DADD V@6(@VSPTR),@BYTES    ADD IN L.H. LENGTH
+       DCH  255,@BYTES
+       BR   GA45B
+       DST  255,@BYTES        TRUNCATE IF TOO LONG
+WRNST1 CALL WARNZZ            Display warning
+       BYTE 19                * STRING TRUNCATED message
+GA45B  DST  @BYTES,@TEMP6     Keep length for later
+       XML  VPUSH
+       XML  GETSTR            Alloccate the result string
+       XML  VPOP              Retrieve R.H.
+       MOVE 8,@FAC,@ARG
+       XML  VPOP              Retrieve L.H.
+       DST  @FAC4,@TEMP5      Set ptr to L.H. ARG(for FREST
+       DST  @FAC6,@BYTES      Length of L.H. ARG
+       CLR  @FAC8             Force VDP mode
+       CALL LITS08            Set up FAC & copy L.H. ARG in
+       DCZ  @ARG6             If R.H. =0 don't copy
+       BS   CONC06
+       DST  @SREF,@TEMP4      Get ptr to new string
+       DADD @FAC6,@TEMP4      Ptr to where 2nd string begin
+       DSUB @FAC6,@TEMP6      Length of 2nd string
+*                                      (possibly truncated)
+       BS   CONC06
+       MOVE @TEMP6,V*ARG4,V*TEMP4     Copy in 2nd string
+ 
+       DADD @TEMP6,@FAC6      Add in length of 2nd ARG
+* NOTE: FAC6 already contained length of 1st ARG from the
+*       parse that was done on it
+CONC06 XML  CONT              Done.
+***********************************************************
+* SEG$(A$,X,Y) - Extracts the desiginated string from A$.
+*     X specifies the character position within A$ at
+*     which the extraction begins. Y specifies the number
+*     of characters to extract.
+*     If X or Y is negative an error occurs. If X=0 an
+*     error occurs. If Y=0 or X > Y then a null string is
+*     is returned. If the ramaining length in A$ starting
+*     at the postion specified by X is less than the length
+*     specified by Y, then the remainder of A$ starting at
+*     position X is returned.
+*   INPUT - Control is turned over to SEG$ from PARSE. The
+*     only requirement is that a SEG$ was encountered.
+*   OUTPUT - The Floating Point Accumulator is set up with
+*     the header for the segmented string.
+*   USES - TEMP2 (Others in calls to GETSTR and LITS08)
+***********************************************************
+SEGZ01 CALL LPARR             Insure "(" parse and check ",
+       CALL PUSSTR            Push string and get next toke
+       XML  SPEED             Get the position
+       BYTE PARCOM       *     within the source string
+       CALL INTARG            CHECK & CONVERT ARG TO INTEGE
+       DCZ  @FAC               CAN'T HAVE VALUE OF 0
+       BS   ERRBV
+       XML  VPUSH             PUSH THE ARG
+       XML  PARSE             Get extraction length
+       BYTE RPARZ
+       XML  SPEED             Must have
+       BYTE SYNCHK       *     ended on
+       BYTE RPARZ        *      a right parenthesis
+       CALL INTARG            CHECK & CONVERT ARG TO INTEGE
+       DST  @FAC,@ARG         Move extraction length
+       XML  VPOP              Get position back
+       DST  @FAC,@ARG2        Move position
+       XML  VPOP              Retrieve source string
+       DST  @ARG2,@TEMP2      Get position within string
+       DCH  @FAC6,@TEMP2      If position > length =>null
+       BS   SEGZ08
+       DADD @ARG,@TEMP2       Compute end of substring
+       DSUB @FAC6,@TEMP2      Compute length beyond end
+       DDEC @TEMP2             string
+       DCGE 0,@TEMP2
+       BR   SEGZ06            Fine if substring is shorter
+       DST  @FAC6,@ARG        Else, truncate length of
+*                              substring
+       DSUB @ARG2,@ARG        Subtract position from source
+*                              length
+       DINC @ARG              Increment to include last cha
+SEGZ06 DST  @ARG,@BYTES       # of bytes needed for substri
+       XML  VPUSH             Save source string entry
+       XML  GETSTR            ALLOCATE RESULT STRING
+       XML  VPOP              Restore source string entry
+       DST  @FAC4,@TEMP5      Pointer to source for FRESTR
+*                              LITS08
+       DADD @ARG2,@TEMP5      Pointer to start of substring
+       DDEC @TEMP5            Decrement since zero-based
+       DST  @BYTES,@FAC6      Set length of string
+       CLR  @FAC8             FORCE VDP MODE
+       CALL LITS08            Copy in & set up FAC
+       XML  CONT
+SEGZ08 DCLR @ARG              Extract a null string
+       BR   SEGZ06            >>>JUMP ALWAYS<<<
+***********************************************************
+* LEN(A$) - Calculate the length of a string and leave the
+*           result in the FAC.
+*  CONTROL - Turned over to NLEN from the parser.
+*  USES    - No temporaries.
+***********************************************************
+LEN01  CALL PARFF             Insure left parenthesis & par
+       BR   ERRSNM             If not string value
+       DST  @FAC6,@FAC        Length
+LEN02  XML  CIF               Convert integer to floating p
+       XML  CONT
+***********************************************************
+* CHR$(X) - Takes integer value X and converts the number
+*           into the ASCII representation for that number.
+*  CONTROL - Turned over to NCHR by the parser.
+*  OUTPUT  - FAC is set up with the string entry
+*  USES    - Uses temproraries when invoking LITS06(LITSTR)
+***********************************************************
+CHRZ01 CALL PARFF             Insure left parenthesis & par
+       CALL INTARG            Convert into integer
+       DST  1,@BYTES          Create a length 1 string
+       ST   @FAC1,V@ONECHR    Move the value to VDP(for LIT
+       DST  ONECHR,@TEMP5     Address of character
+       CALL LITS06            Create string and set up FAC
+       DST  1,@FAC6           Length of string
+       XML  CONT
+***********************************************************
+* ASC(A$) - Takes the numeric value of the first character
+*           in A$.
+***********************************************************
+ASC01  CALL PARFF             Insure left parenthesis & par
+       BR   ERRSNM             If not string
+       CZ   @FAC7             Bad Argument?
+       BS   ERRBA
+       ST   V*FAC4,@FAC1      Get the first character
+       CLR  @FAC
+       BR   LEN02             USE COMMON CODE >>>JUMP ALWAY
+***********************************************************
+* STR$(X) - Takes as its imput an integer X and converts it
+*           to its string representation.
+*  CONTROL - Turned over to STR$ by the parser.
+*  USES    - The usual temporaries used by string function
+*            when it calls LITS06. Uses the Roll-out area
+*            for a temporary storage area when allocating
+*            the result string.
+*  OUTPUT  - FAC is set up in the usual manner for a string
+***********************************************************
+STRZ01 CALL PARFF             Insure left parenthesis & par
+       BS   ERRSNM             If not numeric-error
+       CLR  @FAC11            Select XB floating type
+       XML  XBCNS             Convert the number to string
+       CEQ  SPACE,*FAC11      If leading space
+       BR   GA53E
+       INC  @FAC11            Suppress it out
+       DEC  @FAC12            Shorten the length
+GA53E  CLR  @BYTES            Prepare for 2-byte value
+       ST   @FAC12,@BYTES+1   Get length of string
+       MOVE @BYTES,*FAC11,V@VROAZ    Put the string in VDP
+       DST  VROAZ,@TEMP5      Copy-from address(for LITSTR)
+       CALL LITS06            Allocate and set up FAC
+       DST  @BYTES,@FAC6      Put in the length
+       XML  CONT
+***********************************************************
+* VAL(A$) - Takes as its input a string, A$, and converts
+*           the string into a number if the string is a
+*           valid representation of a number.
+*  CONTROL - From the parser.
+*  OUTPUT  - FAC contains the floating point number.
+***********************************************************
+VAL01  CALL PARFF             Insure left parenthesis & par
+       BR   ERRSNM             If not string - error
+       CZ   @FAC7             Can't have null string
+       BS   ERRBA
+       CALL VALCD             So bad argument error
+       BS   ERRBA
+       XML  CONT
+* Short routine to parse a single argument enclosed in
+*  parenthesis for a function or a subprogram and set
+*  condition based upon whether the value parsed was a
+*  string or a numeric.
+PARFF  CALL COMB              (?
+       XML  PARSE
+       BYTE >FF               *
+       CEQ  >65,@FAC2
+       RTNC
+VALCD  DST  @FAC4,@TEMP5      Pointer to string
+       DADD @FAC6,@TEMP5      Pointer to trailing length by
+       DST  @FAC6,@BYTES      For suppressing trailing blan
+       DINC @BYTES            Prepare for undue subtraction
+GA57C  DDEC @TEMP5            Keep track of end of string
+       DDEC @BYTES            Decrease length of string
+       BS   RTNSET            End up with empty string,
+       CEQ  SPACE,V*TEMP5     Wild trailing blanks
+       BS   GA57C
+       DINC @BYTES            Allow for terminator
+       XML  VPUSH             Save the ptr to the string
+       XML  GETSTR            Get a new string
+       XML  VPOP              Retrieve the ptr to the strin
+       DST  @FAC4,@TEMP5      Get the ptr to the string
+       CLR  @FAC8             Force VDP mode
+       CALL LITS09            Copy the string and set up FA
+       DADD @SREF,@BYTES      Point to the trailing length
+       DDEC @BYTES            Point at the last character
+       ST   SPACE,V*BYTES     Put in the terminator
+       DST  @SREF,@FAC12      Address for the conversion
+GA5A4  CEQ  SPACE,V*FAC12     While leading spaces
+       BR   GA5AE
+       DINC @FAC12            Skip leading blank
+       BR   GA5A4
+GA5AE  CLR  @FAC2             Get rid of string (in case=0)
+       CLR  @FAC10            Assume no error
+       XML  CSNUM             Convert it
+       DCEQ @BYTES,@FAC12     Convert all of it?
+       BS   WRNNO             Yes, check overflow & return
+RTNSET CEQ  @PAD,@PAD         No, return with condition set
+       RTNC
+***********************************************************
+* POS(A$,B$,X) - Attempts to match the string, B$, in A$
+*    beginning at character # X in A$. If X is > LEN(A$), a
+*    match is not found or A$ is the null string then the
+*    returned value is 0. If B$ is the null string then the
+*    returned value is 1. Otherwise, the returned value is
+*    the column # of the 1st character matched in A$
+*  CONTROL - Fromn the parser. Returned through common code
+*            IN LEN.
+*  USES    - Not temporaries - Utilizes FAC and ARG.
+***********************************************************
+POS01  CALL LPARR             Insure "(", parse , insure ",
+       CALL PUSSTR            STACK THE STRING AND GET TOKE
+       XML  SPEED             Parse the match string and
+       BYTE PARCOM      *      insure end on comma
+       CALL PUSSTR            STACK THE STRING AND GET TOKE
+       XML  PARSE             Get position
+       BYTE RPARZ
+       XML  SPEED             Must have
+       BYTE SYNCHK          *  ended on a
+       BYTE RPARZ           *   right parenthesis
+       CALL INTARG            Check and convert it
+       DCZ  @FAC              Value out of range
+       BS   ERRBV
+       DST  @FAC,@BYTES       Keep the offset
+       DDEC @BYTES            Correct for position 0
+       XML  VPOP              Get match string back
+       MOVE 8,@FAC,@ARG       Put match in ARG
+       XML  VPOP              Get source back
+       CZ   @FAC7             If source null
+       BS   POS12
+       CH   @BYTES+1,@FAC7    OFFSET > LENGTH?
+       BR   POS12             Yes, no match possible
+       CZ   @ARG7             If null string
+       BS   POS06
+       DADD @BYTES,@FAC4      Adjust ptr for offset
+       SUB  @BYTES+1,@FAC7    Adjust length
+POS02  CHE  @ARG7,@FAC7       Enough space left for a match
+       BR   POS12             No, no match possible
+       DST  @FAC4,@FAC        Get first ARG
+       DST  @ARG4,@ARG        Get second ARG
+       ST   @ARG7,@ARG8       And length of second
+POS04  CEQ  V*FAC,V*ARG       Compare the characters
+       BR   POS10             Didn't match
+       DINC @FAC              Next in source
+       DINC @ARG              Next in match
+       DEC  @ARG8             Reached end of match?
+       BR   POS04             Not yet, so loop
+POS06  INC  @BYTES+1          Matched! Correct for 1 index
+POS08  DST  @BYTES,@FAC       Character position of match
+       BR   LEN02             Convert to floating point
+* NOTE: Utilizes the LEN code to do the conversion and
+*       finish up.
+POS10  INC  @BYTES+1          Step index of match character
+       DEC  @FAC7             Move 1 position down 1st
+       DINC @FAC4              Argument
+       BR   POS02             Try to match again
+* JUMP ALWAYS
+POS12  CLR  @BYTES+1          NO MATCH POSSIBLE
+       BR   POS08
+***********************************************************
+* RPT$(A$,X) - Creates a string consisting of X copies of
+*              A$. If X is negative or non-numeric, an
+*              exception occurs. If A$ is not a string, an
+*              exception occurs.
+***********************************************************
+RPTZ01 CALL LPARR             Insure "(", parse, insure ","
+       CALL PUSSTR            Insure a string and push it
+       XML  PARSE             Parse second argument
+       BYTE RPARZ
+       XML  SPEED             Must have
+       BYTE SYNCHK       *     ended on a
+       BYTE RPARZ        *      right parenthesis
+       CALL INTARG            Check numeric and convert
+       DMUL V@6(@VSPTR),@FAC  Compute result length
+       DCZ  @FAC1
+       BS   GA649
+WRNST2 CALL WARNZZ            Give truncation message
+       BYTE 19                * STRING TRUNCATED message
+       DST  255,@FAC2         Make it a maximum string
+GA649  DST  @FAC2,@BYTES      Copy requested string length
+       XML  GETSTR            Get the new string
+       XML  VPOP              Retrieve the original string
+* At this point BYTES should still contain the length
+       DST  @FAC6,@ARG        Copy original length in ARG
+       DCZ  @BYTES            Zero copies requested
+       BR   GA659
+       DCLR @ARG              So we copy zero!!!!!!!
+GA659  DEX  @ARG,@BYTES       Original length to BYTE
+       DST  @FAC4,@TEMP5      And also original start addr
+       CLR  @FAC8             Clear flag for LITS08
+       CALL LITS08            Create FAC and copy on copy
+* ARG contains total length now.
+       DST  @ARG,@FAC6        Store new length
+RPTZ02 DSUB @BYTES,@ARG       Subtract one copy
+       DCZ  @ARG              <<<<<THE WAY OUT
+       BS   XMLCON
+       DADD @BYTES,@SREF      Compute new start address
+       DCH  @ARG,@BYTES
+       BR   GA679
+       DST  @ARG,@BYTES       Truncate string
+GA679  MOVE @BYTES,V*TEMP5,V*SREF
+       BR   RPTZ02
+***********************************************************
+*                   TRACE STATEMENT
+***********************************************************
+NTRACE OR   >10,@FLAG         Set the trace bit
+XMLCON XML  CONT              Continue on
+***********************************************************
+*                 UNTRACE STATEMENT
+***********************************************************
+NUNTRC AND  >EF,@FLAG         Reset the trace bit
+       XML  CONT              Continue on
+***********************************************************
+*          BREAK AND UNBREAK STATEMENTS
+***********************************************************
+NBREAK ST   >FF,@ARG          BREAK flag
+       CALL CHKEND            Check for end of statement
+       BR   LINEGP            If not goto LINEGP
+       DDEC @PGMPTR           Back up so CON will rescan en
+       CZ   @PRGFLG           Rative without line #
+       BR   EXEC6C
+ERROLP CALL ERRZZ             Only legal in a program
+       BYTE 27
+NUNBRK CLR  @ARG              UNBREAK flag for common
+       CALL CHKEND            Check for end of statement
+       BS   UNBK01            If end then goto UNBK01
+LINEGP CALL LINE              Get line #
+       DST  @ENLN,@ARG2
+       DSUB >03,@ARG2         1st line #
+LNGP1  DCHE @STLN,@ARG2       If line not found
+       BR   WRNLNF
+       CALL GRSUB3            Read line # of data from ERAM
+       BYTE >5E           *   (use GREAD1) or VDP
+* @ARG2: Source addr in ERAM/VDP, reset possible breakpoint
+       DCEQ @FAC,@EEE1        If line found
+       BS   LNGP2
+       DSUB 4,@ARG2           Next line in VDP or ERAM
+       BR   LNGP1
+* JUMP ALWAYS
+LNGP2  CZ   @RAMTOP           If ERAM exists
+       BS   GA6DA
+       AND  >7F,@EEE1         Assume UNBREAK flag
+       CZ   @ARG              If BREAK flag
+       BS   GA6D1
+       OR   >80,@EEE1         Set the breakpoint
+GA6D1  CALL GWSUB             Write a few bytes of data to
+*                              ERAM (use GWRITE)
+       BYTE >5E,>58,>01     * ARG2,EEE1,1
+*                            @ARG2: Destination addr on ERA
+*                            @EEE1: Data
+*                            1    : Byte count
+       B    LNGP2B
+GA6DA  AND  >7F,V*ARG2        Assume UNBREAK flag first
+       CZ   @ARG              If BREAK flag
+       BS   LNGP2B
+       OR   >80,V*ARG2        Set the breakpoint
+LNGP2B CALL CHKEND            Check for end of statement
+       BS   LNGP4             If end then continue
+       XML  SPEED             Must be
+       BYTE SYNCHK         *     at a
+       BYTE COMMAZ         *       comma now
+       BR   LINEGP
+* JUMP ALWAYS
+WRNLNF CALL WARNZZ            Note: warning not error
+       BYTE 38             *  'LINE NOT FOUND'
+       BR   LNGP2B            And contiue on
+* JUMP ALWAYS
+UNBK01 CALL UBSUB             Clear all bkpt in line # tabl
+LNGP4  XML  CONT              Contiue
+*     CLEAR ALL BREAKPOINTS
+UBSUB  DST  @STLN,@FAC8       END OF LINE # BUFFER
+GA6FF  CALL UBSUB1            Reset one line # at a time
+       DADD 4,@FAC8           Got to the next line
+       DCH  @ENLN,@FAC8       End of table
+       BR   GA6FF
+       RTN
+UBSUB1 CALL GRSUB3            Read the line # from ERAM/VDP
+*                             Reset possible bkpt too
+       BYTE >52            *  @FAC8: Source addr on ERAM/VD
+       CALL GWSUB             Write a few bytes of data to
+*                              ERAM(use GWRITE) or VDP
+       BYTE >52,>58,>01    *  FAC8,EEE1,1
+*                          @FAC8: Destination adr in ERAM/V
+*                          @EEE1: Data
+*                          1    : Byte count
+       RTN
+***********************************************************
+*                USER DEFINED FUNCTIONS
+* Subroutine to store away the information of the tokens in
+* a function reference, go into the 'DEF' statement,
+* calculate the value of the expression and then resume
+* execution of the user's program after the reference.
+* An entry in the FAC and on the stack for a function
+* reference looks like:
+* +--------+-----+---------------------+--------+---------+
+* | PGMPTR | >68 | string/numeric flag | SYMTAB | FREPTR  |
+* +--------+-----+---------------------+--------+---------+
+*  FAC      FAC2  FAC3                  FAC4     FAC6
+*
+* The 'PGMPTR' is where execution resumes after evaluating
+* the function. String (80)/numeric(00) flag is function
+* type. SYMTAB is the old symbol table pointer and FREPTR
+* is the old free space pointer. These are restored after
+* the function is evaluated.
+***********************************************************
+UDF    CZ   @PRGFLG           If imperative
+       BR   GA720
+       CZ   @RAMTOP+1         And ERAM, error
+       BR   ERROLP
+GA720  CLR  @FAC7             Assume no args
+       DCLR @ERRCOD           Clear the error code for cont
+       CLR  @ARG2             Safety for VPUSH
+       CLR  @FAC2             Sagety for VPUSH
+       CEQ  LPARZ,@CHAT
+       BR   GA73B
+       XML  VPUSH             Save ptr to function definiti
+       XML  PARSE             PARSE to get arg value
+       BYTE >FF
+       MOVE 8,@FAC,@ARG       Save PARSE result
+       XML  VPOP              Get S.T. ptr to function defi
+       INC  @FAC7             Indicate theat we have an arg
+GA73B  ST   @FAC7,@TEMP5      Move the parmeter count
+       DST  @FAC,@TEMP4       S.T. ptr to definition
+       XML  VPUSH             Allow room for UDF result
+       MOVE 8,@ARG,@FAC       Retrieve parse result
+       XML  VPUSH             Save parse result
+       ST   V*TEMP4,@FAC2     Get S.T. declarations
+       ST   @FAC2,@FAC3       Do this to save string bit
+* NOTE: THIS IS TO ALLOW THE CHECKING AFTER THE FUNCTION HA
+*       BEEN EVALUATED TO MAKE SURE THE FUNCTION
+*       TYPE (STRING/NUMERIC) MATCHES THE RESULT IT PRODUCE
+       AND  >07,@FAC2         Mask all but # of parameters
+       CEQ  @TEMP5,@FAC2
+       BR   ERRIAL
+* Incorrect argument list error above.
+       DST  @PGMPTR,@FAC      Will resume execution here
+       ST   >70,@FAC2         Entering parameter into symbo
+*                    table while in UDF statement executing
+       AND  >80,@FAC3         Mask all but string bit
+       DSUB 16,@VSPTR         Get below parse result
+ 
+       DST  @SYMTAB,@FAC4     Save current symbol table ptr
+       DST  @FREPTR,@FAC6     Save current free space ptr
+       XML  VPUSH             Save the return info
+       DADD 8,@VSPTR          Get back to parse result
+*********** SHIFT EXECUTION TO FUNCTION DEFINITION ********
+       DST  V@6(@TEMP4),@PGMPTR    Set text ptr to definiti
+       XML  PGMCHR            Get 1st character in the defi
+       CH   >A4,@SUBSTK       Stack overflow
+       BS   ERRSO
+       MOVE 24,@PAD,V@VROAZ   Roll out temporaries
+       OR   >08,@FLAG         Set function flag for ENTER
+       ST   >80,@XFLAG        Make calls look like ENTERX
+       CEQ  EQUALZ,@CHAT
+       BR   GA79C
+* NOTE: This is to keep the global/local variables correct
+*       the event that a function uses another function in
+*       its evaluation.
+       CLR  @FAC15            Create a dummy entry in table
+       CALL ENT09              for no-paremter function
+       DDECT @PGMPTR          Back up to equal sign
+       CLR  V@2(@VSPTR)       This is to keep ASSGNV(called
+*                              below) not to screw up in
+*                              case FAC2 happens to have a
+*                              value (greater) >65
+       BR   GA79F
+GA79C  CALL ENTER             Enter the parameter
+GA79F  XML  PGMCHR            Get the '=' (Checked in PSCAN
+       AND  >F7,@FLAG         Reset to normal ENTERs
+       MOVE 24,V@VROAZ,@>8300
+       ST   >68,V@-6(@VSPTR)  Correct stack entry ID
+       DST  V@SYMBOL,V@2(@SYMTAB)  Fudge link to
+*                                   get global values
+       DST  @SYMTAB,@FAC      Set up for SMB
+       XML  SMB               Get value space
+       MOVE 8,@FAC,@FAC8      Destination
+       XML  VPOP              Get arg back
+       MOVE 8,@FAC,@ARG       Argument value
+       MOVE 8,@FAC8,@FAC      Destination
+       XML  VPUSH             Push to destination
+       MOVE 8,@ARG,@FAC       Argument value
+       CEQ  >65,@FAC2         If a string
+       BR   GA7E2
+       DCEQ >001C,@FAC        If not temp
+       BS   GA7E2
+       DST  V*FAC,@FAC4       Get new location of string
+*                             Parameter was allocated in S.
+GA7E2  XML  PGMCHR            Skip the '='
+       XML  ASSGNV            Assign the value to the param
+       XML  PARSE             PARSE to end of function defi
+       BYTE TREMZ
+**** CHECK FOR TYPE MATCH (STRING/STRING OR NUM/NUM)*******
+**** BETWEEN THE RESULT AND THE FUNCTION TYPE *************
+       CEQ  >65,@FAC2         If result string
+       BR   GA7F6
+       CZ   V@3(@VSPTR)       If functional
+       BS   ERRSNM
+       BR   GA7FC              not a string
+GA7F6  CZ   V@3(@VSPTR)       If functional
+       BR   ERRSNM
+***** NOW RESTORE SYMBOL TABLE AND RESUME *****************
+***** EXECUTION AT THE ORIGINAL LINE **********************
+GA7FC  CALL DELINK            Delink the parameter entry
+       DST  V@8(@VSPTR),@PGMPTR Manual pop to get ptr back
+       DDEC @PGMPTR           Back up text pointer
+       XML  PGMCHR            Get next token
+       XML  CONT
+DELINK DST  @SYMTAB,@TEMP5    Save addr of S.T. entry just
+*                             in case entry is a string
+*                             (must free the string)
+       MOVE 4,V@4(@VSPTR),@SYMTAB  Restore old symbol table
+*                             pointer and free space pointe
+*                             This handles the freeing of t
+*                             string value which was assign
+*                             to the parameter.
+       CGE  0,V*TEMP5         If string parmeter
+       BS   GA84C
+       DST  V@6(@TEMP5),@TEMP5 Where the string is
+       DCZ  @TEMP5            If non-null string
+       BS   GA833
+       DST  V@-3(@TEMP5),@TEMP2 Get backpointer
+       DCHE @SYMTAB,@TEMP2    If not used
+       BS   GA833
+       DCLR V@-3(@TEMP5)      Free up the string
+* This handles the special case of F$(X$)=X$
+* The result, which was permanent, must be made a temp.
+GA833  CEQ  >65,@FAC2         If string result
+       BR   GA84A
+       DCHE @SYMTAB,@FAC      If came from argument
+       BS   GA84A
+       DCZ  @FAC4             If non-null
+       BS   GA846
+       DCLR V@-3(@FAC4)       Clear the backpointer
+GA846  DST  >001C,@FAC        Make it a temp
+GA84A  BR   GA856             If numeric parameter
+GA84C  CZ   @RAMTOP           If ERAM exist
+       BS   GA856
+       DADD 8,@RAMFRE         Remove 8 bytes of value
+GA856  DSUB 8,@VSPTR          Trash the stack entry
+       RTN                    And retrun
+ATTNUT XML  PARSE
+       BYTE RPARZ
+       CALL CKSTNM            CHECK FOR NUMERIC OR STRING
+       XML  SPEED             Insure argument is in
+       BYTE RANGE          *   range of 0-30
+       BYTE 0
+       DATA 30
+       SRL  1,@FAC1           0,1 : 0000        ATTENUATION
+*                             2,3 : 0001
+*                             4,5 : 0010
+*                             6,7 : 0011        ETC...
+       OR   >F0,@FAC1         REGISTER BITS
+       RTN
+***********************************************************
+* SUBROUTINE TO SET POINTER TO EACH DATUM
+***********************************************************
+DATAST DDEC @LNBUF            Point to 1st byte of line ptr
+       CALL GRSUB2            Read 2 bytes from VDP or ERAM
+       BYTE LNBUF           *  (use GREAD1), @LNBUF: Source
+*                           *  address in ERAM or VDP
+       DST  @EEE1,@DATA       Put it in @DATA
+       CALL SRDATA            Look for 'DATA' on the line
+       BR   DATST1            OK, FOUND ANOTHER 'DATA' STMT
+       DDECT @LNBUF           NO
+       DCEQ  @STLN,@LNBUF
+       BS   GA887
+       DDEC @LNBUF            Point to 1st token address
+       BR   DATAST
+GA887  CLR  @DATA             Indicate no data
+DATST1 RTN
+***********************************************************
+* Subroutine to get line number and goto routine to display
+* it on the screen.
+***********************************************************
+ASC    CZ   @RAMFLG
+       BR   GA897
+       DST  V@-2(@EXTRAM),@ARG2   Get line # in
+       BR   GA8A5
+GA897  DST  2,@FFF1           @FFF1 : Byte count
+       DST  @EXTRAM,@DDD1     @DDD1 : Source addr in ERAM
+       DDECT @DDD1
+       XML  GREAD1            Read data from ERAM
+       DST  @EEE1,@ARG2       @EEE1 : Destination addr on C
+GA8A5  AND  >7F,@ARG2         Reset the breakpoint if any
+       B    DISO
+***********************************************************
+* Code to decode error returned from ALC
+***********************************************************
+ERORZ  CASE @ERRCOD           DECODE ERROR FROM INTERPRETER
+       BR   ERRSYN            0 SYNTAX ERROR
+       BR   ERRMEM            1 MEMORY FULL
+       BR   ERRBV             2 BAD VALUE
+       BR   ERRLNF            3 LINE NOT FOUND
+       BR   ERRSYN            4 SYNTAX
+       BR   ERRBS             5 BAD SUBSCRIPT
+       BR   ERRSNM            6 STRING-NUMBER MISMATCH
+       BR   ERRSO             7 STACK OVERFLOW
+       BR   ERRBA             8 BAD ARGUMENT
+       BR   ERRRWG            9 RETURN WITHOUT GOSUB
+       BR   ERRIAL            A INCORRECT ARGUMENT LIST
+       BR   ERRFNN            B FOR/NEXT NESTING
+       BR   ERRNWF            C NEXT WITHOUT FOR
+       BR   ERRMUV            D IMPROPERLY USED NAME
+       BR   ERRIAL            E INCORRECT ARGUMENT LIST
+       BR   ERRRSC            F RECURSIVE SUBPROGRAM CALL
+       BR   ERRSNF           10 SUBPROGRAM NOT FOUND
+       BR   ERROLP           11 ONLY LEGAL IN A PROGRAM
+       BR   ERRSNS           12 MUST BE IN SUBPROGRAM
+***********************************************************
+* SUBROUTINE TO GET LINE # FOLLOWING 'BREAK', 'UNBREAK',
+* 'RESTORE'
+***********************************************************
+LINE   CEQ  LNZ,@CHAT         Should be line # reference
+       BR   ERRSYN
+       XML  PGMCHR            Get high order line #
+       ST   @CHAT,@FAC        Build result in FAC, FAC1
+       XML  PGMCHR
+       ST   @CHAT,@FAC1       Low order line #
+       XML  PGMCHR            Get token following line #
+       RTN
+CONV1  CLR  @FAC10
+       XML  CSNUM             Convert String to Number
+***********************************************************
+       ST   @FAC10,V@CSNTP1
+       DST  @FAC12,V@CSNTMP Save those in temporary, becaus
+*                            in ERROV : WARNING routine hav
+*                            FAC12 and FAC10 values changed
+***********************************************************
+WRNNO  CZ   @FAC10            Numeric overflow
+       BS   GA8F9
+       CALL WARNZZ
+       BYTE 2
+GA8F9  RTN
+***********************************************************
+*                SUBROUTINE FOR 'GCHAR'                   *
+***********************************************************
+* CALL GCHAR(row,column,variable,...)                     *
+***********************************************************
+GCHARZ DST  @XPT,@PAD2     Save XPT:YPT
+GCHAR1 CALL LPARR          (?
+       XML  SPEED          Insure in range
+       BYTE RANGE          *  of 1 - 24
+       BYTE 1
+       DATA 24
+       DEC  @FAC1          Adjust to internal range
+       DST  @XPT,@PAD2     Save old XPT:YPT
+       ST   @FAC1,@YPT     Set row pointer
+       XML  SPEED          Get column value
+       BYTE PARCOM         *  and insure a comma
+       XML  SPEED          Insure in range
+       BYTE RANGE          *  of 1 to 32
+       BYTE 1
+       DATA 32
+       DEC  @FAC1          Internal range: 0 - 31
+       ST   @FAC1,@XPT     Set column pointer
+GCHAR2 CALL NUMVAR         Get pointer return variable
+       MOVE 8,G@FLT1,@FAC  Clear FAC
+       ST   @CB,@FAC1      Get the character
+       SUB  OFFSET,@FAC1   Remove screen offset
+       CHE  100,@FAC1      100>=?
+       BR   GCHAR3         No, pass value 
+       EX   @FAC1,@FAC2    Swap if over offset size
+       DIV  100,@FAC1      Set correct range
+       INC  @FAC           Set from Assembly to XB
+GCHAR3 DST  @PAD2,@XPT     Restore XPT:YPT
+       XML  ASSGNV         Assign the value to the symbol
+       CEQ  COMMAZ,@CHAT   ,? 
+       BS   GCHAR1         Loop
+       DST  @PAD2,@XPT     Restore XPT:YPT
+LNKRTN XML  SPEED          Must be at
+       BYTE SYNCHK    *     a right
+       BYTE RPARZ     *      parenthesis
+LNKRT2 CALL CHKEND         Check end of statement
+       BR   ERRSYN         If not end-of-stmt , error
+       CALL RETURN         Return to caller
+***********************************************************
+* CALL COLOR(ALL,FORGROUND,BACKGROUND,...)                *
+* CALL COLOR(SET#,FORGROUND,BACKGROUND,... )              * 
+* CALL COLOR(SPRITE#,FORGROUND,...)                       *
+***********************************************************
+COLORZ XML  SPEED             Must be
+       BYTE SYNCHK        *     at a
+       BYTE LPARZ         *       left parenthesis
+COL08  DCLR @PAD              Clear ALL pointer
+       CEQ  ALLZ,@CHAT        ALL?
+       BR   COL09             No.
+       ST   ALLZ,@PAD         Yes, store it in pointer
+       DCLR @FAC              Set 0
+       XML  PGMCHR            Skip ALL token.
+       CALL COMMA2            Skip comma.
+       BR   COL21             Start ALL RXB routine
+COL09  CEQ  NUMBEZ,@CHAT      If sprite number specified
+       BR   COL20
+       CALL SPNUM3             Check sprite number (SPNUM3)
+COL10  CALL SPCOL             Put the color in SAL
+       CEQ  COMMAZ,@CHAT      More color changes
+       BR   LNKRTN
+       CALL SPNUM2             Skip and get sprite number (S
+       BR   COL10
+* This part for regular color change routine
+COL20  XML  SPEED             Parse the character
+       BYTE PARCOM         *   set and insure a comma
+       XML  SPEED             Insure in range of
+       BYTE RANGE          *   0<= x <= 14
+       BYTE 0,0,16
+COL21  DADD >080F,@FAC        Color table addr(>0810 - >081
+       XML  VPUSH             Push table set address
+       XML  SPEED             Parse the foreground color
+       BYTE PARCOM         *   and insure a comma
+       CALL RAN16             Error if >16 or <1
+       ST   @FAC1,@VAR4       Save it
+       SLL  4,@VAR4           Foreground color in 4 MSBits
+       XML  PARSE             Get background color
+       BYTE RPARZ
+       CALL RAN16             Error if >16 or <1
+       OR   @FAC1,@VAR4       Background color in 4 LSBits
+       XML  VPOP              Get color table address
+       ST   @VAR4,V*FAC       Load the colors into the tabl
+       CEQ  ALLZ,@PAD         ALL in pointer.
+       BR   COL22             No.
+       MOVE 14,V*FAC,V@1(@FAC) Fill color table with values
+COL22  CEQ  COMMAZ,@CHAT      End of call. Go back.
+       BR   LNKRTN
+       XML  PGMCHR            Skip ","
+       BR   COL08             Take care of the next set
+*      CALL SPCOL -- Changes color of sprite.
+*                    Called also from SPRITE.
+SPCOL  XML  PARSE
+       BYTE RPARZ          *  Get the color number
+       CALL RAN16             Check range 1 - 16
+       ST   @FAC1,V@3(@PAD8)  Store in SAL
+       RTN
+***********************************************************
+* INTARG - Insures that the value in FAC is a numeric,
+*          converts it to integer, issues error message if
+*          necessary or returns.
+***********************************************************
+INTARG CH   >63,@FAC2         If string - error
+       BS   ERRSNM      ERROR STRING NUMBER MISMATCH       
+       CLR  @FAC10            ASSUME NO ERROR OR WARNING
+       DCLR @FPERAD
+       XML  FLTINT
+       CZ   @FAC10            If error
+       BR   ERRBV
+       CGE  0,@FAC            Can't be < zero
+       BR   ERRBV
+       RTN
+* FAC IS SET UP WITH F.P. 1
+JOYXY  ST   @PAD,@FAC1
+       CZ   @PAD              If <>0
+       BR   JOYNZ             No, not zero (0)
+       CLR  @FAC              (>0000000000000000)
+       BR   JOYAV             Assign value
+JOYNZ  CGE  0,@PAD            PAD>=0?
+       BS   JOYAV             Yes assign value
+       ST   >BF,@FAC          Negative value
+JOYAV  XML  ASSGNV            Assign the value
+       RTN
+       ST   @FAC1,@PAD        Keyboard selection
+       CALL NUMVAR            Get variable for key-code
+       CEQ  COMMAZ,@CHAT      If not comma - error
+       BR   ERRSYN
+       XML  PGMCHR            Get next character
+       CALL NUMVAR            Get variable for key-status
+       ST   @PAD,@KEYBD       Keyboard selection
+       MOVE 8,G@FLT1,@FAC     Set up float
+       SCAN                   SCAN the keyboard
+       CLR  @KEYBD            Clear the code(No affect on s
+       RTNC                   Return scan condition code
+*
+NUMVAR XML  SYM               Get the symbol name
+       CLOG >C0,V*FAC         Can't be string or function
+       BR   ERRMUV            It is, IMPROPERLY USED NAME E
+       XML  SMB               Get value pointer
+       XML  VPUSH             Put on stack for ASSGNV
+       RTN                    And return
+*
+ATTREG DATA >8000,>A000,>C000,
+       BYTE >9F,>BF,>DF,>FF,>00,>06
+COMB   CEQ  LPARZ,@CHAT       If not '(' - error
+       BR   ERRSYN
+       RTN
+*
+SQUISH MOVE 8,V*FAC8,@FAC     Sneak it out
+       DST  @VSPTR,@FAC14     Now move stack to squish it
+       DSUB @FAC8,@FAC14        out - # of bytes to move
+       BS   SQU05             If none to move
+       MOVE @FAC14,V@8(@FAC8),V@-16(@FAC8)
+SQU05  DSUB 8,@VSPTR
+       RTN
+***********************************************************
+*                 SUBPROGRAM FOR CLEAR                    *
+***********************************************************
+* CALL CLEAR                                              *
+***********************************************************
+CLEARZ ALL  SPACE+OFFSET      Clear the screen
+       ST   3,@XPT            Initialize screen pointer
+       BR   LNKRT2            Return to caller
+***********************************************************
+* CALL CLEARPRINT                                         *
+***********************************************************
+CLRPZ  CLR  @>6004       Set ROM 3 page
+       XML  CLEARP       Disply them
+       BR   LNKRT2  
+***********************************************************
+* INIALIZATION DATA FOR SOUND
+FLTS   BYTE >42,>0B,>12,>22,>00,>00,>00,>00
+SNDREG BYTE >01,>FF,>01,>04,>9F,>BF,>DF,>FF,>00
+***********************************************************
+*                SUBPROGRAM FOR 'SOUND'                   *
+* CALL SOUND(duration,frequency,volume1,...)              *
+* Builds 2 blocks in VDP RAM                              *
+* 1st BLOCK : >01,<ATTENUATION FOR NOISE>,<INTERRUPT COUNT>
+* 2nd BLOCK : >04,>9F,>BF,>DF,>FF,>00                     *
+***********************************************************
+XSOUND DCEQ VRMSND,@>83CC     Insure previous sound started
+       BS   XSOUND
+       MOVE 9,G@SNDREG,V@VRMSND
+       CALL LPARR             Duration in milliseconds
+       CGE  0,@FAC            Don't wait for completion
+       BS   GAA39
+       DNEG @FAC                of previous sound
+       DCLR @PRTNFN           Make GPL interpeters stop pre
+GAA39  XML  SPEED             Insure duration
+       BYTE RANGE           *  is in range
+       BYTE 1               *   of 1 - 4250
+       DATA 4250
+* Convert duration into 1/60s of a second
+       DMUL 6,@FAC            Duration * 6
+       DDIV 100,@FAC          (duration * 6) / 100
+       CZ   @FAC1             If duration =0
+       BR   GAA4D
+       INC  @FAC1             Set it to 1/60th of a second
+GAA4D  ST   @FAC1,V@VRMSND+2    3rd byte of the 1st block
+*                          | INTERUPT COUNT
+***********************************************************
+*      SOUND TABLE OF 10 BYTES IN CPU RAM (>00 - >09)
+* >00 - >05 : FREQUENCY CONTROL
+* >06 - >08 : ATTENUATION CONTROL
+* >09       : NOISE CONTROL(non-zero = noise encountered)
+* >0A       : POINTER FOR CURRENT FREQENCY CONTROL
+* >0B       : POINTER FOR CURRENT ATTENUATION CONTROL
+*                    >00 , >01 FOR REG 0;
+*                    >02 , >03 FOR REG 1;
+*                    >04 , >05 FOR REG 2;
+* REG0 : >8000, REG1 : >A000, REG3 : >C000
+* INITIALIZE ATTENUATION CONTROL
+* REG0 : >9F, REG1 : >BF, REG2 : >DF
+***********************************************************
+       MOVE 12,G@ATTREG,@>8300
+SOUND1 XML  SPEED             Parse the frequency value
+       BYTE PARCOM         *   and insure a comma
+       CALL CKSTNM            Must be a numeric
+       CGE  0,@FAC            Noise if negative
+       BR   SOUND2
+       MOVE 8,G@FLTS,@ARG     Constant 111834
+       XML  FDIV              P = 111834/FREQUENCY
+       XML  SPEED             Insure in range
+       BYTE RANGE
+       BYTE 3               * Range: 3 - 1023
+       DATA 1023
+* GET THE 4 L.S.Bits BITS AND 6 M.S.Bits OF 'P'
+       DSRC 4,@FAC
+       SRL  4,@FAC
+       DOR  @FAC,*STADDR  1st byte of frequency control byt
+*                         BIT   7   6   5   4   3   2   1
+*                               1  <REG>    0  <L.S.B. 4 OF
+*                         2nd byte of frequency control byt
+*                               0   0   <M.S.B. 6 of 'P'
+       INCT @STADDR           Advance ponter for next time
+       CALL ATTNUT            Get attenuation
+*                        BIT    7   6   5   4   3   2   1
+*                               1   <REG>   1   0   0   0
+       AND  @FAC1,*PADB         1   <REG>   1   <ATTN/2 DB>
+       INC  @PADB             Advance pointer for next time
+* CHECK FOR END OF SOUND CALL
+SOUND3 CEQ  RPARZ,@CHAT       End of statement?
+       BS   SOUND5
+       XML  SPEED             If not right parenthesis
+       BYTE SYNCHK        *    then must be at
+       BYTE COMMAZ        *      a comma
+
+       CEQ  6,@STADDR         If not 3 regs yet
+       BR   SOUND1
+* 3 sound regs already - so must be noise control
+       XML  SPEED             Get frequency (should be nois
+       BYTE PARCOM        *     and insure a comma
+       CALL CKSTNM            Must be a numeric value
+       CGE  0,@FAC            If not noise-error
+       BS   ERRBV
+* NOISE CONTROL
+SOUND2 CEQ  >FF,@>8309        * BAD ARGUMENT ERROR
+       BR   ERRBA
+       DNEG @FAC              -(FREQUENCY)
+       XML  SPEED             Insure in range
+       BYTE RANGE         *    of 1 - 8
+       BYTE 1             *
+       DATA 8
+       DEC  @FAC1             0 - 7 (2nd BIT: 'T')
+*                                           OTH, 1ST BITS:
+       ST   @FAC1,@>8309
+       OR   >E0,@>8309        Noise control byte:
+*                        BIT  7   6   5   4   3   2   1   0
+*                             1   1   1   0   0  <T>  < S >
+* PUT ATTENUATION IN THE 2ND BYTE OF 1ST BLOCK
+       CALL ATTNUT
+       ST   @FAC1,V@VRMSND+1
+*                             1   1   1   1   < ATTN/2  DB>
+       BR   SOUND3            Go check for end of list
+SOUND5 CLR  @VAR5             Pointer to sound table
+SND05  CZ   @PRTNFN           Wait untild previous
+       BS   SOUND6
+       SCAN                   Is finished and
+       BR   SND05              look for a break-key
+       CEQ  BREAK,@RKEY       If not break-key
+       BR   SND05
+       BR   EXEC6C            If BREAK-KEY encountered
+* LOAD SOUND TABLE
+SOUND6 ST   *VAR5,@>8400      SOUND ADDRESS PORT
+       INC  @VAR5             Next byte in table
+       CEQ  >0A,@VAR5         If not finished
+       BR   SOUND6
+       DST  VRMSND,@FAC       Where the 2 blocks are
+       I/O  1,@FAC            Start sound from VDP list
+       BR   LNKRTN            Return to caller
+***********************************************************
+* CALL HCHAR(row,column,character#,repetition[,...])      *
+***********************************************************
+HCHARZ CALL COMB              (?
+HCHAR1 CALL HVRC              Get X, Y values
+       CALL HVCHR             character#
+       DCZ  @FAC              If 0 characters
+       BS   HCHAR2
+       CLR  @>6004            Set ROM 3 page
+       XML  HCHAR             Disply them
+HCHAR2 CEQ  COMMAZ,@CHAT
+       BS   HCHAR1
+       BR   LNKRTN            Return to XB
+***********************************************************
+* CALL VCHAR(row,column,character#,repetition[,...])      *
+***********************************************************
+VCHARZ CALL COMB              (?
+VCHAR1 CALL HVRC              Get X, Y values
+       CALL HVCHR             character#
+       DCZ  @FAC              If 0 characters
+       BS   VCHAR2
+       CLR  @>6004            Set ROM 3 page
+       XML  VCHAR             Disply them
+VCHAR2 CEQ  COMMAZ,@CHAT      COMMA?   
+       BS   VCHAR1            No run again
+       BR   LNKRTN            Done
+***********************************************************
+* SUBROUTINE TO GET ROW, COLUMN VALUES
+***********************************************************
+* Get ROW, COLUMN VALUES AND NUMBER OF CHARACTERS
+HVRC   CALL NUMFCH          * Get ROW
+       XML  SPEED             Insure in range
+       BYTE RANGE           *  of 1 - 24
+       BYTE 1
+       DATA 24
+       DEC  @FAC1           * Adjust for Assembly
+       DSLL 5,@FAC          * FAC times 32  
+       DST  @FAC,@PAD2      * VDP ADDRESS
+       CALL NUMFCH          * Get Column
+       XML  SPEED           *  Insure in range
+       BYTE RANGE           *  of 1 to 32
+       BYTE 1
+       DATA 32
+       DEC  @FAC1           * Adjust for Assembly: 0 - 31
+       DADD @FAC,@PAD2      * Set column pointer
+       RTN
+* Get Character minus OFFSET
+HVCHR  CALL SUBLP3          * Get character number
+       ADD  OFFSET,@FAC1    * Add OFFSET
+       DST  @FAC1,@PAD      * Pass value
+HVCHR1 DST  1,@FAC          * ASSUME 1 REPETITION
+       CEQ  RPARZ,@CHAT     * If not right parenthesis
+       BS   HVCHS           * Yes return
+       CALL SUBLP3          * Skip comma, Get repetition
+HVCHS  RTN                  * Return
+************************************************************
+RGPHV  CALL LPARR             Insure '(', parse, insure ','
+GPHVRC XML  SPEED             Insure in range
+       BYTE RANGE           *  of 1 - 24
+       BYTE 1
+       DATA 24
+       DEC  @FAC1           * Adjust for Assembly
+       DSLL 5,@FAC          * FAC times 32  
+       DST  @FAC,@PAD2      * VDP ADDRESS
+       XML  SPEED           * Get column value
+       BYTE PARCOM          *  and insure a comma
+       XML  SPEED           *  Insure in range
+       BYTE RANGE           *  of 1 to 32
+       BYTE 1
+       DATA 32
+       DEC  @FAC1           * Adjust for Assembly: 0 - 31
+       DADD @FAC,@PAD2      * Set column pointer
+       RTN
+***********************************************************
+* CALL CHAR(char#,pattern,...)                            *
+* CALL CHAR(ALL,pattern,...)                              *
+***********************************************************
+CHARLY CALL COMB            (?
+CHAR5  XML  PGMCHR          Skip "(" or ","
+       CEQ  ALLZ,@CHAT      ALL token?
+       BR   CHAR2           No
+       XML  PGMCHR          Skip ALL token
+       CEQ  COMMAZ,@CHAT    ,?
+       BR   ERRSYN          SYNTAX ERROR
+       CLR  @PAD16          ALL FLAG
+       DST  >0032,@VAR9     Starting char
+       BR   CHAR1           Skip normal CHAR
+CHAR2  ST   >FF,@PAD16      No ALL flag
+       XML  PARSE           Get char number 
+       BYTE RPARZ
+       CALL S1ET9F          30 - 159?
+       DST  @FAC,@VAR9      Move to PAD2 30 - 159
+CHAR1  CALL STRGET          Check and get String
+CHARLD CLR  @>6004          Set ROM 3 page
+       XML  DCHAR 
+       DCEQ >994A,@ARG
+       BS   ERRBA           ERROR BAD ARGUEMENT
+       CZ   @PAD16          ALL FLAG?
+       BR   CHARL4          NO
+       DST  >0400,@PAD16    SET UP INDEX COUNTER
+CHRFIL MOVE 8,@>8300,V@0(@PAD16)
+       DADD 8,@PAD16          COUNTER+8
+       DCEQ >0780,@PAD16     End of Char Table? 
+       BR   CHRFIL          No, loop
+CHARL4 CEQ  COMMAZ,@CHAT    More specified?
+       BS   CHAR5
+       BR   LNKRTN          Return
+***********************************************************
+*              SUBPROGRAM FOR 'KEY'                       * 
+***********************************************************
+*****************************************************************
+* CALL KEY(key-unit,return-variable,status-variable,...)        *
+* CALL KEY(string,key-unit,return-variable,status-variable,...) *
+*****************************************************************
+KEY    CALL SPAR              GET KEY UNIT
+* RXB PATCH LABEL ************
+GABD1  XML  SPEED             Insure in range
+       BYTE RANGE          *   of 0 - 5
+       BYTE 0
+       DATA 5
+       CALL KEYJOY            Get variables for code and st
+*                              and scan keyboard
+*                             KEYJOY returns key status
+       BS   KEY1B             KEY STATUS = 1
+       DNEG @FAC              Assume status = -1
+       CEQ  >FF,@RKEY         But correct if = 0
+       BR   KEY1B
+       DCLR @FAC              KEY STATUS = 0
+KEY1B  XML  ASSGNV            Assign value in variable
+       DST  >4001,@FAC        Re-store F.P. 1 in FAC
+       CZ   @RKEY             If key-code = 0
+       BS   KEY2
+       CEQ  >FF,@RKEY         No key depressed,
+       BS   KEY1C              key code assigned to -1
+* FORMAT FOR KEYCODES ABOVE 99 ADDED FOR 99/4A HIGHEST
+* KEYCODE (OTHER THAN >FF) IS >C6=198
+* 5/7/81
+       CHE  100,@RKEY
+       BR   GAC04
+       INC  @FAC
+       SUB  100,@RKEY
+       ST   @RKEY,@FAC2       FLOATING FORMAT (>4001__00000
+       B    GAC07
+GAC04  ST   @RKEY,@FAC1       FLOATING FORMAT (>40__0000000
+GAC07  BR   KEY2A
+KEY1C  DNEG @FAC              KEY CODE ASSIGNED TO -1
+       BR   KEY2A
+KEY2   DCLR @FAC              (>000000000000000)
+KEY2A  XML  ASSGNV            ASSIGN VALUE TO VARIABLE
+* RXB PATCH CODE *************
+*      BR   LNKRTN
+       RTN
+***********************************************************
+* INSURE LEFT PARENTHESIS AND THEN PARSE TO A COMMA
+***********************************************************
+* RXB PATCH CODE
+LPARR  CEQ  COMMAZ,@CHAT
+       BS   CPAR
+       XML  SPEED           *  Must be
+       BYTE SYNCHK          *  at a
+       BYTE LPARZ           *    left parenthesis
+       BR   CPAR2
+CPAR   XML  SPEED
+       BYTE SYNCHK
+       BYTE COMMAZ
+* RXB PATCH LABEL ***********
+CPAR2  XML  PARSE             Do the parse
+       BYTE COMMAZ          * Stop on a comma
+       XML  SPEED           *  Must be
+       BYTE SYNCHK          *  at a
+       BYTE COMMAZ          *    left comma
+       RTN
+*****************************
+CPAR3  XML  SPEED           * Similar to LPARR
+       DATA COMMAZ          * Syntax check ,
+       BR   CPAR2           * Parse value
+***********************************************************
+* SUBROUTINE FOR 'RANGE' USED IN ALL SOUND AND GRAPHICS
+***********************************************************
+RAN16  XML  SPEED             Insure in range
+       BYTE RANGE          *   of 1 to 16
+       BYTE 1
+       DATA 16
+       DEC  @FAC1             Adjust to internal range
+       RTN
+*************************************************************
+*  Subroutine to control border color
+* Character background is also affected since transparent
+*  is used.
+BORDER CALL PARFF             Insure '(' , and parse
+       CALL RAN16             Check 1 - 16 & put in interna
+       MOVE 1,@FAC1,#7        Load VDP register
+       BR   LNKRT2            Return to XB program
+***********************************************************
+* ERRWXY - Is the subroutine for CALL ERR(W,X,Y,Z)
+*  The parameters indicate:
+*   W - The error code # of the error
+*   X - Indicates whether execution(-1) error or
+*       I/O (0-255) error on LUNO 0-255
+*   Y - Indicates the severity code of the error
+*   Z - Line number of the error
+*   ERR Can be called with 2 forms:
+*       CALL ERR(W,X,Y,Z) and CALL ERR(W,X)
+*   If ERR is called and no error has occured then all
+*   values returned are zero.
+***********************************************************
+ERRWXY DST  @VSPTR,@FAC8      Get a temp VSPTR
+GAC99  DCH  @STVSPT,@FAC8     While not a bottom of stack
+       BR   GACD0
+       ST   V@2(@FAC8),@ARG   Keep ID code in ARG area
+       CEQ  >69,@ARG          *** ERROR entry
+       BR   GACAF
+       CALL SQUISH            Squish it out of the stack
+       XML  VPUSH             Put permanent copy of error
+*                              entry on stack
+       BR   ERR10             Jump out now
+* Jump always
+GACAF  CEQ  >67,@ARG          *** FOR entry
+       BR   GACBA
+       DSUB 32,@FAC8          Skip it
+       BR   GACCE
+GACBA  CEQ  >66,@ARG          *** GOSUB entry
+       BR   GACC5
+       DSUB 8,@FAC8           Skip it
+       BR   GACCE
+GACC5  CEQ  >6A,@ARG          * SYNTAX ERROR
+       BR   ERRSYN
+       DSUB 16,@FAC8          Skip it
+GACCE  BR   GAC99
+GACD0  DST  >0080,@FAC        No error entry there so
+       DST  >6900,@FAC2        fake one
+       DCLR @FAC4
+       DCLR @FAC6
+ERR10  XML  VPUSH             Push the temporary entry on
+*                              top of stack
+* Code to get "W" in
+       CALL COMB              Check for left parenthesis
+       CALL ERRC05            Pick up user's symbol
+       ST   V@-8(@VSPTR),@FAC1 Get error code
+       XML  CIF               Convert it to floating
+       XML  ASSGNV            Assign it
+* Code to get "X" in
+       CALL ERRCOM            Check syntax & get user's sym
+       CLOG >80,V@-7(@VSPTR)  If execution
+       BR   GAD03
+       MOVE 8,G@FLT1,@FAC     Make it such
+       DNEG @FAC              Make it a negative
+       BR   GAD0B
+GAD03  ST   V@-5(@VSPTR),@FAC1 Get I/O LUNO number
+       XML  CIF               Convert it to floating
+GAD0B  XML  ASSGNV
+* Code to get "Y" in
+       CEQ  RPARZ,@CHAT       If long form of CALL ERR
+       BS   GAD42
+       CALL ERRCOM            Check syntax & get user's sym
+       ST   V@-7(@VSPTR),@FAC1 Get severity code
+       AND  >7F,@FAC1         Reset execution  /  I/O flag
+       XML  CIF               Convert it
+       XML  ASSGNV            Assign it
+* Code to get "Z" in
+       CALL ERRCOM            Check syntax & get symbol
+       DST  V@-2(@VSPTR),@FAC2 Get line pointer
+       DST  @FAC2,@FAC
+       DCZ  @FAC2             If line number exists
+       BS   GAD3E
+       DDECT @FAC2            Point to the line #
+       CALL GRSUB1            Read line # (2 bytes) from VD
+*                              or ERAM (use GREAD)
+       BYTE >4C             * @FAC2: Source addr on ERAM/VD
+       DST  @EEE,@FAC         Put the line # in FAC
+       AND  >7F,@FAC          Reset the breakpoint if any
+GAD3E  XML  CIF               Convert it
+       XML  ASSGNV            Assign it
+GAD42  XML  VPOP              Trash the temporary entry
+       B    LNKRTN            Return from subprogram
+* Must be long branch because of AND above
+ERRCOM CEQ  COMMAZ,@CHAT      Check for comma
+       BR   ERRSYN
+ERRC05 XML  PGMCHR            Get the next character
+       XML  SYM               Collect name & s.t. entry
+       XML  SMB               Get value space
+       XML  VPUSH             Push it
+       CLR  @FAC              Set up for conversion
+       RTN
+* CHANGE IN ADDRESS OF THE ERROR CALLS WILL AFFECT
+* THE FILE SUBS.....
+*     ERROR messages called from this file
+ERRSYN CALL ERRZZ             * SYNTAX ERROR
+       BYTE 3             *   (shared by SUBS)
+ERRSNM CALL ERRZZ             * STRING-NUMBER MISMATCH
+       BYTE 7             *   (shared by SUBS)
+ERRMUV CALL ERRZZ             * IMPROPERLY USED NAME
+       BYTE 9
+ERRMEM CALL ERRZZ             * MEMORY FULL
+       BYTE 11
+ERRSO  CALL ERRZZ             * STACK OVERFLOW
+       BYTE 12
+ERRNWF CALL ERRZZ             * NEXT WITHOUT FOR
+       BYTE 13
+ERRFNN CALL ERRZZ             * FOR/NEXT NESTING
+       BYTE 14
+ERRSNS CALL ERRZZ             * MUST BE IN SUBPROGRAM
+       BYTE 15
+ERRRSC CALL ERRZZ             * RECURSIVE SUBPROGRAM CALL
+       BYTE 16
+ERRRWG CALL ERRZZ             * RETURN WITHOUT GOSUB
+       BYTE 18
+ERRBS  CALL ERRZZ             * BAD SUBSCRIPT
+       BYTE 20
+ERRLNF CALL ERRZZ             * LINE NOT FOUND
+       BYTE 22
+ERRBA  CALL ERRZZ             * BAD ARGUMENTS
+       BYTE 28
+ERRBV  CALL ERRZZ             * BAD VALUE
+       BYTE 30            *   (shared by SUBS)
+ERRIAL CALL ERRZZ             * INCORRECT ARGUMENT LIST
+       BYTE 31            *   (shared by SUBS)
+ERRSNF CALL ERRZZ             * SUBPROGRAM NOT FOUND
+       BYTE 37
+* Other error messages appear in this program
+* ERRRDY      * READY                        DATA 0
+* ERRBRK      * BREAK POINT                  DATA 1
+* ERROLP      * ONLY LEGAL IN A PROGRAM      DATA 27
+*
+* WRNN01      * NUMERIC OVERFLOW             DATA 2
+* WRNS02
+* WRNST1      * STRING TRUNCATED             DATA 19
+* WRNST2
+* WRNLNF      * LINE NOT FOUND               DATA 38
+*
+***********************************************************
+* SUBROUTINE LINK LIST
+LINKS1 DATA LINKS2
+       STRI 'SPRITE'         SPRITE
+       DATA SPRTE
+LINKS2 DATA LINKS3
+       STRI 'DELSPRITE'      DELSPRITE
+       DATA SPRDEL
+LINKS3 DATA LINKS4
+       STRI 'POSITION'       POSITION
+       DATA SPRPOS
+LINKS4 DATA LINKS5
+       STRI 'COINC'          CONIC
+       DATA ZSCOI
+LINKS5 DATA LINKS6
+       STRI 'MAGNIFY'        MAGNIFY
+       DATA SPRMAG
+LINKS6 DATA LINKS7
+       STRI 'MOTION'         MOTION
+       DATA SPRMOV
+LINKS7 DATA LINKS8
+       STRI 'LOCATE'         LOCATE
+       DATA SPRLOC
+LINKS8 DATA LINKS9
+       STRI 'PATTERN'        PATTERN
+       DATA SPRPAT
+LINKS9 DATA LINKSA
+       STRI 'DISTANCE'       DISTANCE
+       DATA ZDIST
+LINKSA DATA LINKSB
+       STRI 'SAY'            SAY
+       DATA SAY
+LINKSB DATA LINKSC
+       STRI 'SPGET'          SPGET   
+       DATA SPGET
+LINKSC DATA LINKSD
+       STRI 'CHARSET'        CHARSET
+       DATA CHRSET
+LINKSD DATA LINKSE
+       STRI 'ONKEY'          ONKEY
+       DATA  ZONKEY
+LINKSE DATA LINKSF
+       STRI 'MOVES'          MOVES
+       DATA MOVES
+LINKSF DATA LINKSG
+       STRI 'HPUT'           HPUT
+       DATA HPUTZ
+LINKSG DATA LINKSH
+       STRI 'VPUT'           VPUT
+       DATA VPUTZ
+LINKSH DATA LINKSI
+       STRI 'HGET'           HGET
+       DATA HGETZ 
+LINKSI DATA LINKSJ
+       STRI 'VGET'           VGET
+       DATA VGETZ
+LINKSJ DATA LINKSK
+       STRI 'GMOTION'        GMOTION
+       DATA GMOT
+LINKSK DATA LINKSL
+       STRI 'RMOTION'        RMOTION
+       DATA RMOT
+LINKSL DATA LINKSM
+       STRI 'HEX'            HEX
+       DATA HEX
+LINKSM DATA LINKSN
+       STRI 'IO'             IO
+       DATA RXBIO
+LINKSN DATA LINKSO
+       STRI 'JOYMOTION'      JOYMOTION
+       DATA ZJOMO
+LINKSO DATA LINKSP
+       STRI 'JOYLOCATE'      JOYLOCATE 
+       DATA ZJOLO
+LINKSP DATA LINKSQ
+       STRI 'INVERSE'        INVERSE
+       DATA INVERS
+LINKSQ DATA LINKSR
+       STRI 'SWAPCHAR'       SWAPCHAR
+       DATA SWCHR
+LINKSR DATA LINKSS       
+       STRI 'SWAPCOLOR'      SWAPCOLOR
+       DATA SWCLR
+LINKSS DATA LINKST
+       STRI 'CLEARPRINT'     CLEARPRINT       
+       DATA  CLRPZ
+LINKST DATA >C010  * LINK LIST IN >C000          
+       STRI 'COLLIDE'        COLLIDE
+       DATA COLLZ
+***********************************************************
+* CALL SPRITE(#SPRITE,CHAR,COLOR,Y,X,(YSPEED,XSPEED),...) *
+***********************************************************
+SPRTE  CALL COMB             Check sprite mode and skip "(
+       CALL SPNUM2            Get sprite number
+SPRT3  CALL SPCHR             Put character number for spri
+       XML  SPEED             Check for comma and skip it
+       BYTE SYNCHK
+       BYTE COMMAZ        
+       CALL SPCOL             Put sprite color in SAL(SPCOL)
+       XML  SPEED             Insure at a comma  
+       BYTE SYNCHK          * Syntax checker
+       BYTE COMMAZ          * Only COMMA is valid
+       CALL SPLOC             Put location of sprite in SAL
+       DST  @PAD4+1,V*PAD8    Put in location of sprite
+* Finish defining SAL. Check if velocity is specified
+SPRT4  CEQ  COMMAZ,@CHAT      Finished!!!!!
+       BR   LNKRTN
+       XML  PGMCHR            Skip COMMA
+       CEQ  NUMBEZ,@CHAT      Next sprite specified
+       BR   GAEBB
+       CALL SPNUM3            Get the next sprite number
+       BR   SPRT3             And go!
+GAEBB  CALL SPMOVE            Get the velocity first
+       BR   SPRT4
+***********************************************************
+* CALL DELSPRITE(#SPR,...)                                *
+* CALL DESPRITE(ALL)                                      *
+***********************************************************
+SPRDEL CALL COMB              Insure at '('
+SPDEL1 XML  PGMCHR            Skip "(" or ","
+       CEQ  NUMBEZ,@CHAT      If sprite number
+       BR   GAEF6             No, must be ALL  
+       XML  PGMCHR            Skip "#"
+       XML  PARSE             Parse the sprite number
+       BYTE RPARZ
+       CALL SPNUM4            Check and convert number
+* Sprite handling code for speeeding up XB   2/4/2024
+       CLR  @>6004          * SET ROM 3 ON
+       XML  SPDEL           * ASSEMBLY REPLACEMENT
+SPDEL2 CEQ  COMMAZ,@CHAT      If more sprites
+       BS   SPDEL1            LOOP
+       BR   LNKRTN            Return to caller
+GAEF6  XML  SPEED             Must have 'ALL' else error
+       BYTE SYNCHK
+       BYTE ALLZ
+       CALL SPRINT            Reinitialize all sprites
+GAEFD  BR   LNKRTN            Return to caller
+***********************************************************
+* CALL POSTION(#SPR,Y,X,...)                              *
+***********************************************************
+SPRPOS CALL COMB             Check for sprites and skip "(
+SPRP02 CALL SPNUM2            Check sprite number
+       CALL PREPN             Prepare Y-position return v     
+       XML  SPEED           * SPEED CHECK
+       BYTE SYNCHK          * Syntax checker
+       BYTE COMMAZ          * Only COMMA is valid
+       DST  V*PAD8,@PAD       Read X, Y position
+       ST   @PAD,@FAC1        Get Y position
+       CEQ  >FE,@FAC1
+       BR   GAF1C
+       DINCT @FAC             Get 256 as an output
+       BR   GAF1E
+GAF1C  INCT @FAC1             Regular adjustment for user
+GAF1E  CALL SPRP03            Check, convert & assign value
+       CALL PREPN             Prepare X-pos return variable
+       ST   @PAD+1,@FAC1      Get X position
+       DINC @FAC              Adjust for the user
+       CALL SPRP03            Check, convert & assign value
+       CEQ  COMMAZ,@CHAT      If not finished
+       BS   SPRP02
+       BR   LNKRTN             
+SPRP03 XML  CIF               Convert integer to float
+       DCEQ >C000,@PAD        If hidden sprite
+       BR   GAF3D
+       DCLR @FAC              Return value zero
+GAF3D  XML  ASSGNV            Assign to variable
+       RTN
+***********************************************************
+* CALL COINC(#SPR,#SPR,TOLERANCE,CODE,...)                *
+* CALL COINC(#SPR,YLOC,XLOC,TOLERANCE,CODE,...)           *
+* CALL COINC(ALL,variable,...)                            *
+***********************************************************
+SPRCOI CALL COMB              (?
+       XML  PGMCHR            Skip "("
+       CEQ  ALLZ,@CHAT        Check coinc of all sprites
+       BR   GAF56
+       XML  PGMCHR            Skip "ALL"
+       CALL COMMA2            Check and skip ","
+       CLOG >20,@VDPSTT       Check VDP status
+       BS   NR
+       BR   GAF6C
+GAF56  CALL CODIST            Get distance of 2 sprites
+       CALL COMMA             Get tolerance level
+       XML  SPEED
+       BYTE RANGE           * Check against range
+       BYTE 0               * FAC has tolerance level
+       DATA 255
+       DCH  @FAC,@PAD         Y-loc out of range
+       BS   NR
+       DCH  @FAC,@PAD4        X-loc out of range
+       BS   NR
+* If no conincidence just return zero
+GAF6C  CALL PREPN             Prepare for numeric output
+       DST  >BFFF,@FAC        Store -1 in FAC
+       BR   AR
+***********************************************************
+* CALL MAGNIFY(magnification factor=1 - 4)                *
+* CALL MAGNIFY(number,number,number)                      *
+* CALL MAGNIFY(variable,variable,variable)                *
+***********************************************************
+SPRMAG CALL COMB             Insure at "("
+SPRMLP XML  PGMCHR            Skip the "("
+       XML  PARSE             Parse the magnification facto
+       BYTE RPARZ          
+       XML  SPEED
+       BYTE RANGE            * Magnification 1 to 4
+       BYTE 1              
+       DATA 4
+* Next statement adding >DF to subtract 1 from FAC
+       ADD  >DF,@FAC1         Turn on screen and interrupt
+       MOVE 1,@FAC1,#1        Store it to VDP register 1
+       CEQ  COMMAZ,@CHAT      COMMA?
+       BS   SPRMLP            Yes, loop
+       BR   LNKRTN            Return to XB
+***********************************************************
+* CALL MOTION(#SPR,YSPEED,XSPEED,...)                     *
+***********************************************************
+SPRMOV CALL COMB              Insure at "("
+SPRMV2 B    SPGS              # or ALL or GO or STOP
+SPRMV3 CALL SPMOVE            Store velocity
+SPRMV4 CEQ  COMMAZ,@CHAT      Loop if more
+       BS   SPRMV2
+       BR   LNKRTN
+***********************************************************
+* CALL LOCATE(#SPR,YLOC,XLOC,...)                         *
+***********************************************************
+SPRLOC CALL COMB              Insure at "("
+SPRLC2 CALL SPNUM2            Check sprite number
+       CALL SPLOC             Read location
+       DST  @PAD4+1,V*PAD8    Put in sprite location
+       CEQ  COMMAZ,@CHAT      Loop if more
+       BS   SPRLC2
+       BR   LNKRTN
+***********************************************************
+* CALL PATTERN(#SPR,CHAR,...)                             *
+***********************************************************
+SPRPAT CALL COMB             Insure at "("
+SPRPT2 CALL SPNUM2            Get sprite number
+       CALL SPCHR             Set the sprite character
+       CEQ  COMMAZ,@CHAT      Loop if more
+       BS   SPRPT2
+       BR   LNKRTN
+***********************************************************
+* CALL DISTANCE(#1,#2,DISTANCE,...)                       *
+* CALL DISTANCE(#1,Y,X,DISTANCE,...)                      *
+***********************************************************
+DIST   CALL COMB             Insure at "("
+* RXB PATCH LABEL ************
+GAFC4  XML  PGMCHR            Skip "("
+       CALL CODIST            Get distance in Y and X
+       CALL PREPN             Prepare return variable
+       DMUL @PAD,@PAD         X=X*X
+       DMUL @PAD4,@PAD4       Y=Y*Y
+       DADD @PAD6,@PAD2       @PAD2=X*X+Y*Y
+       OVF                    Checking overflow bit
+       BS   OVER              If overflow-indicate maximum
+       DST  @PAD2,@FAC        Put distance squared in FAC
+       DCH  >7FFF,@PAD2       If bigger then 128
+       BR   GAFE5
+OVER   DST  >7FFF,@FAC        Put maximum value
+GAFE5  XML  CIF               Convert to floating format
+* RXB PATCH CODE
+*      BR   ASSRTN            Assign value and return
+       BR   AR
+***********************************************************
+* CODIST routine gets locations of two sprites or one
+*  sprite and Y and X position specified by a user and
+*  calculates absolute value of Y and X distance.
+***********************************************************
+CODIST CLR  @PAD
+       MOVE 7,@PAD,@PAD+1     Clear up first 8 bytes
+       CEQ  NUMBEZ,@CHAT      Check for #
+       BR   ERRSYN
+       CALL SPNUM3            Get the first sprite
+       DST  V*PAD8,@PAD+1     Location of first sprite
+       INC  @PAD+1            Increment to make range 1-256
+       ST   @PAD2,@PAD2+1     Put X in PAD2+1
+       CLR  @PAD2             Y in PAD+1
+       CEQ  NUMBEZ,@CHAT      Get 2nd sprite
+       BR   CODIS1
+       CALL SPNUM3            Get the next sprite
+       DST  V*PAD8,@PAD4+1    Location of second sprite
+       BR   CODIS2
+CODIS1 CALL SPLOC             Get Y and X location
+       CALL COMMA2            Check for comma and skip
+CODIS2 INC  @PAD4+1           Increment to make range 1-256
+       DSUB @PAD4,@PAD        Difference in Y at PAD
+       DABS @PAD              Get absolute value
+       CLR  @PAD4+1           Clear byte before X
+       DSUB @PAD2,@PAD4+1     Difference in Y at PAD4
+       DABS @PAD4+1           get the absolute value
+       ST   @PAD6,@PAD4+1     Put in the right place
+       RTN
+***********************************************************
+* CHRSET restores the standard character set and the
+*  standard colors for the standard character set
+*  (black on transparent)
+***********************************************************
+* CALL CHARSET                                            *
+* CALL CHARSET(ALL) * RXB ADDITION *                      *
+***********************************************************
+* RXB PATCH CODE ADDTION OF CALL CHARSET(ALL) *************
+CHRSET CEQ  LPARZ,@CHAT   * (?
+       BS   CHRALL        * Yes, CHARSET(ALL)
+       CLR  @>6004       * SET ROM 3 ON
+       XML  CHRLDR       * LOAD ROM 3 Definitions
+       ST   >10,V@>080F  * Set 1st black on transparent
+       MOVE 16,V@>080F,V@>0810 * Ripple for rest
+       CALL CHKEND        * Must be at EOS now
+       CALL RETURN        * Return to the caller
+*******************************************************   
+CHRALL XML  PGMCHR        * Skip (
+       CEQ  ALLZ,@CHAT    * ALL?
+       BR   ERRSYN        * No Syntax error
+       XML  PGMCHR        * Skip ALL token up to )
+       CLR  @>6004        * SET ROM 3 ON
+       XML  CHRLDR        * LOAD ROM 3 Definitions 
+       CLR  V@>0700       * Clear byte
+       MOVE 255,V@>0700,V@>0701 * Ripple the rest
+       ST   >10,V@>080F * Set 1st Black on Transparent
+       MOVE 16,V@>080F,V@>0810 * Ripple the rest
+       BR   LNKRTN        * RETURN
+*******************************************************
+* OLD SPNUM1 REPLACED WITH COMB NOW *
+*************************************
+* SPNUM2 ROUTINE             *
+******************************
+SPNUM2 XML  PGMCHR            Get the next character
+SPNUM6 CEQ  NUMBEZ,@CHAT      Must be "#"
+       BR   ERRSYN
+SPNUM3 XML  PGMCHR            Skip character # or ( or ,
+       CALL COMMA             Parse up to comma and skip it
+SPNUM4 XML  SPEED
+       BYTE RANGE           * Verify the value is in range
+       BYTE 1               * Sprite number 1 - 28
+       DATA 28
+*----------------------------------------------------------
+* Sprite handling code for speeeding up XB   2/4/2024
+SPNUM5 CLR  @>6004          * SET ROM 3 ON
+       XML  SPSPD5          * ASSEMBLY REPLACEMENT
+       RTN
+******************************
+* SPLOC ROUTINE              *
+******************************
+SPLOC  CALL COMMA             Parse up to comma and skip it
+SPLOC2 XML  SPEED
+       BYTE RANGE           * Range of Y: 1 - 256
+       BYTE 1
+       DATA 256
+       DECT @FAC1             Adjust for internal use: FF -
+       DST  @FAC,@PAD4        Store in PAD4 area
+       XML  PARSE
+       BYTE RPARZ           * Parse to ")" or less
+       XML  SPEED
+       BYTE RANGE           * Get X value. Range: 1 - 256
+       BYTE 1
+       DATA 256
+       DEC  @FAC1             Adjust for internal use: 0 -
+       ST   @FAC1,@PAD6       PAD4+1=Y-loc and PAD6=X-loc
+       RTN
+******************************
+* SPCHR ROUTINE              *
+******************************
+SPCHR  XML  PARSE
+       BYTE RPARZ
+       XML  SPEED
+       BYTE RANGE           * Check upper range
+       BYTE 30
+       DATA 159
+       ADD  >60,@FAC1         Add offset to character number
+       ST   @FAC1,V@2(@PAD8)  Store the character value
+       RTN
+******************************
+* SPMOVE ROUTINE             *
+******************************
+SPMOVE CALL COMMA             Parse up to comma and skip
+       CALL RANGEV            Check if numeric and convert
+*                              to integer
+       ST   @FAC1,@PADA       Store Y velocity
+       XML  PARSE             Get X velocity
+       BYTE RPARZ           * Check for ")" or less
+       CALL RANGEV            Numeric check and convert
+*                              to integer
+       ST   @PADA,@FAC      * @FAC=Y velocity, @FAC1=X velocity
+       DST  @FAC,V@>0480(@PAD8) Store velocities in SAL
+*----------------------------------------------------------
+* Add the following 3 lines for speeding up XB
+       CH   @NOMSPR,V@SPNUM   Check current sprite
+       BR   SPMOVF             against sprite motion
+*                               counter
+       ST   V@SPNUM,@NOMSPR   higher? Yes, replace it
+*----------------------------------------------------------
+SPMOVF RTN
+*****************************
+* RANGEV ROUTINE            *
+*****************************
+RANGEV CH   >63,@FAC2         The same as INTARG
+       BS   ERRSNM      ERROR STRING NUMBER MISMATCH
+       CLR  @FAC10            For FLTINT
+       DCLR @FPERAD
+       XML  FLTINT            FP TO INTEGER
+       CZ   @FAC10
+       BR   ERRBV       ERROR BAD VALUE      
+       DCGE 0,@FAC            If positive number,
+       BR   GB0DB
+       DCH  >007F,@FAC         should be 0 - 127
+       BS   ERRBV       ERROR BAD VALUE
+       BR   GB0E1             If negative number,
+GB0DB  DCHE >FF80,@FAC         Should be -1 to -128
+       BR   ERRBV       ERROR BAD VALUE
+GB0E1  RTN                    Otherwise its ok.
+******************************
+* COMMA ROUTINE              *
+******************************
+COMMA  XML  PARSE
+       BYTE COMMAZ
+COMMA2 CEQ  COMMAZ,@CHAT
+       BR   ERRSYN            ERROR SYNTAX 
+       XML  PGMCHR            Skip COMMA
+       RTN
+******************************
+* LINK BACK TO XB            *
+******************************
+NULRTN CALL PREPN
+ASSRTN XML  ASSGNV
+       B    LNKRTN
+*******************************
+* LINK RETURN TO GPL          *
+*******************************
+NR     CALL PREPN
+AR     XML  ASSGNV
+       RTN
+*******************************
+* PREPARE FOR PASSING ARGUMENT*
+*******************************
+PREPN  XML  SYM               Pick up name & search table
+       XML  SMB               Evaluate any subscripts
+       CH   >63,@FAC2         If not numeric, error
+       BS   ERRIAL
+       XML  VPUSH             Save entry on stack
+       CLR  @FAC              Clear FAC for new value
+       MOVE 7,@FAC,@FAC1
+       RTN
+***********************************************************
+* CALL SAY(....................)                          *
+*  Decode given parameter(s). Store all data first, then  *
+*   go speak it all at once.                              *
+***********************************************************
+SAY    CALL COMB              Must start with "("
+       DST  @VSPTR,@FAC2      Save current top of stack on
+       XML  VPUSH              the stack
+       DST  255,@BYTES        255 bytes = 85 3 byte entires
+       XML  GETSTR            Get temp speech list string
+       DST  >001C,@FAC        Indicate it is temp string (S
+       DST  >6500,@FAC2       Indicate it is string entry
+       DST  @SREF,@FAC4       Save pointer to temp string
+       DST  @BYTES,@FAC6      Length is 255
+       XML  VPUSH             Make it semi-permenant
+* Set up pointers into the speak list
+       DST  @FAC4,@PTFBSL     Front points to begining
+       DST  @FAC4,@PTLBSL     Last now points to beginning
+       DST  @PTFBSL,@PTEBSL
+       DADD @FAC6,@PTEBSL     End points to the end+1
+       CALL SETRW             Set PHROM read/write address
+       CALL WAIT              Wait till no one is speaking
+DIRSPK CALL GETPRM            Get next parameter
+       BS   NEXT1             If non-null ASCII string
+       DST  @FAC4,@PTFCIS     Set up pointer to first char
+       DST  @FAC6,@PTLCIS     Set ptr-to-last-char-in-strin
+       DADD @PTFCIS,@PTLCIS    by adding length-of-string
+       DDEC @PTLCIS            and subtracting 1
+* Make a speech list
+       CALL SETRW             Set speech read/write addrs
+       DST  @PTFCIS,@PTCCIS   Start at beginning of string
+       CLR  @TOTTIM           Clear total time delay
+       CALL GETTIM            Get first timing mark
+       CALL TIMING            Get any subsequent marks
+* The total first time delay is in TOTTIM now
+GB158  DCH  @PTLCIS,@PTCCIS   While more string
+       BS   GB1A7
+       CALL PHRASE            Get next phrase
+* If spell flag is 0, try to look the phrase up. If it
+* can not be found, then set the spell flag, and it will be
+* spelled out. If found, save on speak list.
+       CZ   @SPLFLG           There is a phrase
+       BR   GB173
+       CALL LOOKUP            Try to look it up in the PHRO
+       DCZ  @DATAAD           If not found then
+       BR   GB170
+       ST   1,@SPLFLG         Set the spell flag
+       BR   GB173
+GB170  CALL STDATA            Store data in list
+* If spell flag is 1, set time delay to >3C, and take the
+* phrase one character at a time (spell it). Look up each
+* character: if not found, use 'UHOH' data instead.
+* Regardless, store data on speak list.
+GB173  CEQ  1,@SPLFLG         Need to spell it out?
+       BR   GB1A0
+       DST  @PTLCIP,@PTLCIL   Est last char to spell out
+       ST   >3C,@TOTTIM       >3C used because sounds good
+*                      Take each single character
+* Skip over any embedded spaces encountered in a phrase
+GB17E  CEQ  SPACE,V*PTFCIP
+       BR   GB188
+       DINC @PTFCIP
+       BR   GB17E
+* Set first and last pointers to same one character
+GB188  DST  @PTFCIP,@PTLCIP
+       CALL LOOKUP            Try to look it up
+* If not found, use data to 'UHOH'
+       DCZ  @DATAAD
+       BR   GB196
+       DST  >71F4,@DATAAD     Put addr of 'UHOH' in
+GB196  CALL STDATA            Store data on speak list
+       DINC @PTFCIP           Go on to next character
+       DCH  @PTLCIL,@PTFCIP   Until done all
+       BR   GB17E
+* At this point, get next timing group. The first timing
+* character has already been found, and it's value is still
+* in TIMLEN. Therefore, initiatory call to GETTIM not
+* needed. Simply clear TOTTIM and call TIMING.
+GB1A0  CLR  @TOTTIM
+       CALL TIMING
+       BR   GB158
+* At this point, finished all the phrases in this string.
+* TOTTIM should equal >FE, it indicate end of sting If it
+* doesn't equal >FE, it indicates that a timing group was
+* put on the end of the string. Therefore, save the timing
+* group with a null data address to show it is only timing.
+GB1A7  CEQ  >FE,@TOTTIM
+       BS   NEXT1
+       DCLR @DATAAD
+       CALL STDATA
+* Next item could be direct string.
+NEXT1  CEQ  COMMAZ,@CHAT      If direct string present
+       BR   SPEAK
+       CALL GETPRM            Get the next parameter
+       BS   NEXT2             If non-null direct string
+       ST   >FF,@TOTTIM       Mark TOTTIM as direct string
+       XML  VPUSH             Save direct string on stack
+       DST  @VSPTR,@DATAAD    Store stack addr on string
+       CALL STDATA            And add to the speak list
+* If the next character is a comma, loop thru it again
+NEXT2  CEQ  COMMAZ,@CHAT
+       BS   DIRSPK
+* If end fall into SPEAK
+***********************************************************
+* SPEAK will actually speak the speech list. It tests the
+* timing byte to see if it is an >FF. If it is, then the
+* data following it points to a direct speech data string
+* in VDP. If it is not, then the data following it points
+* to a PHROM speech data list. In the first case, this
+* routine will issue a speak external command to the PHROM
+* and then feed bytes out to the PHROM as it requests them.
+* In the second case, the address will be loaded out to the
+* PHROM, and then a speak command will be issued.
+***********************************************************
+SPEAK  CALL SETRW             Set read/write address
+GB1CE  DCHE @PTLBSL,@PTFBSL   More speech list to go
+       BS   GB258
+       CALL WAIT              Yes, wait until previous
+*                              speech is though
+       CEQ  >FF,V*PTFBSL      External speech data
+       BS   GB1FE
+       ST   V*PTFBSL,@TIMER   No, load timer
+       NEG  @TIMER             and neg it to correct
+       DST  V@1(@PTFBSL),@PTFBPH   Put addr into PTFBPH
+       DADD 3,@PTFBSL               and skip to next node
+LOOP1  CGE  0,@TIMER          Wait for time delay
+       BR   LOOP1
+       CZ   @PTFBPH           If there is data
+       BS   GB1FC
+       CALL LOADAD            Load the addr to PHROM
+       ST   >50,@PAD(@WRITE)   and issue speak command
+GB1FC  BR   CONTIN
+GB1FE  DINC @PTFBSL           Speak external, skip over >FF
+       DST  V*PTFBSL,@PTCBED  Set up pointer to 1st byte
+       DST  V@4(@PTCBED),@PTCBED    in external speech data
+       DINCT @PTFBSL          Skip addr bytes
+       ST   V@-1(@PTCBED),@LENWST  Get Len of whole string
+DIRSPH SUB  3,@LENWST         Minus 3 bytes overhead
+* All external speech strings start with a >60
+       CEQ  >60,V*PTCBED      Bad speech string
+       BR   ERRBV
+       CALL WAIT              Wait for go ahead
+       DINCT @PTCBED          Skip spk ext & 1st byte len
+       ST   V*PTCBED,@LENCST  Get len of current string
+       DINC @PTCBED           Skip len byte to 1st real byt
+       ST   16,@TEMP2         Do 1st 16 bytes (fill buff)
+       ST   >60,@PAD(@WRITE)  Start Speak External
+LOOPR  ST   V*PTCBED,@PAD(@WRITE) Write byte to PHROM
+       DINC @PTCBED           Go to next byte
+       DEC  @LENWST           1 less char in whole string
+       BS   CONTIN            Finished whole string?
+       DEC  @LENCST           1 less char in curr string
+       BS   DIRSPH            Finished current string?
+       DEC  @TEMP2            1 less char in this loop
+       BR   LOOPR             Not finished curr loop yet?
+GB241  ST   @PAD(@READ),@SPKSTS Read status from PHROM
+ 
+* If the next statement is true, it means that speak was
+* probably interupted and that it is shot at this point.
+* Therefore, we are going to quit now.
+       CLOG >80,@SPKSTS
+       BS   CONTIN
+       CLOG >40,@SPKSTS       Loop till buff below half
+       BS   GB241
+       ST   8,@TEMP2          Put 8 more bytes to PHROM
+       BR   LOOPR              and go do these
+CONTIN B    GB1CE             We've said it all!!
+* Now pop all entries off stack that we put on!
+GB258  XML  VPOP              Free up a temporary string
+       DCEQ @FAC2,@VSPTR
+       BR   GB258
+       BR   LNKRTN       
+***********************************************************
+* SPGET subprogram. Load speech data from external device.
+*       Use standard file I/O
+***********************************************************
+* CALL SAY(word-string,return-string)                     *
+***********************************************************
+SPGET  CALL COMB             Must have left parenthesis
+       CALL SETRW             Set PHROM read/write address
+       CALL WAIT              Wait till no one is speaking
+NXTPAR CALL GETPRM            Get the next parameter
+       DCZ  @FAC6             If non-null ASCII string
+       BS   GB318
+       DST  @FAC4,@PTFCIS     Pointer to 1st char in string
+       DST  @FAC6,@PTLCIS     Pointer to last-char-in-strin
+       DADD @PTFCIS,@PTLCIS    by adding length-of-string
+       DDEC @PTLCIS             and subtracting 1
+       CALL SETRW             Set the speech read/write add
+       DST  @PTFCIS,@PTCCIS   Set curr char to first char
+       CLR  @TOTTIM           Clear total time delay
+       CALL GETTIM            Get first timing mark
+       CALL TIMING            Get any subsquent marks
+* Get one phrase, and look it up. If the phrase is not foun
+* substitute in 'UHOH'.
+       DCH  @PTLCIS,@PTCCIS   Possible phrase
+       BS   GB318
+       CALL PHRASE            Yes, go get it
+       CEQ  1,@SPLFLG         Spell flag set then set
+       BR   GB29C
+       DST  @PTFCIP,@PTLCIP    last ptr to first (1 char)
+GB29C  CALL LOOKUP            Look up the phrase
+       DCZ  @DATAAD           If not there,
+       BR   GB2AA
+       DST  >71F4,@DATAAD      use 'UHOH' data addr
+       ST   >51,@STRLEN        'UHOH' data length
+* Data must be in PHRADD and PHLEN, so move it
+GB2AA  DST  @DATAAD,@PHRADD
+       ST   @STRLEN,@PHLEN
+       ADD  3,@PHLEN          For overhead info
+* There must be a variable to put this data in. If not, err
+       XML  SPEED
+       BYTE SYNCHK
+       BYTE COMMAZ
+       XML  SYM               Find symbol in table
+       XML  SMB               Evaluate andy subscripts
+       XML  VPUSH             Save for assignment
+       CLR  @BYTES            Two byte value
+       ST   @PHLEN,@BYTES+1   Length of string needed
+       XML  GETSTR            Get a string for the data
+       CALL SETRW             Set up speech read/write addr
+       DST  >001C,@FAC        Now build string FAC entry
+       DST  >6500,@FAC2       String ID
+       DST  @SREF,@FAC4       Pointer to string
+       DST  @BYTES,@FAC6      Length of string
+       DST  >6000,V*SREF      Mark string as speech data
+       ST   @PHLEN,V@2(@SREF) Put in string length
+       DSUB 3,V@1(@SREF)       minus thei info
+* LOADAD expects addr to be in PTFBPH, so move it.
+       DST  @PHRADD,@PTFBPH
+       CALL LOADAD
+* Going to copy string from PHROM to VDP. The actual data
+* from PHROM is in bit-reversed order, so must reverse the
+* order after reading in the order. Remember that 3 bytes
+* PHLEN are our own overhead, so don't copy all
+GB2EB  CH   3,@PHLEN
+       BR   GB316
+       ST   >10,@PAD(@WRITE)   Issue read byte command
+       ST   @PAD(@READ),@BYTE3 Read the byte
+* the following code is somewhat tricky. It will bit
+* reverse the contents of BYTE3 into BYTE1 through
+* BYTE2 by means of word shifts. Note the definition of
+* BYTE1 , BYTE2, and BYTE3 in EQU's. You might try an
+* example if it isn't clear what is going on.
+       CLR  @BYTE2
+       ST   >08,@TEMP1
+RNDAG  DSRC 1,@BYTE2
+       DSLL 1,@BYTE1
+       DEC  @TEMP1
+       BR   RNDAG
+* Store the bit-corrected byte into the string & inc str pt
+       ST   @BYTE1,V@3(@SREF)
+       DINC @SREF
+       DEC  @PHLEN            Dec the string length
+       BR   GB2EB             Go do next char if there is o
+GB316  XML  ASSGNV            Assign the string to variable
+GB318  CEQ  COMMAZ,@CHAT      If more go do
+       BS   NXTPAR
+       BR   LNKRTN
+***********************************************************
+* GETPAM gets the next string paameter passed to the
+* routine. If that parameter is non-exist or null, then
+* condition bit is set. If the parameter is there then
+* condition bit is reset and the FAC entry describes the
+* string. In either case, return with condition is done.
+***********************************************************
+GETPRM XML  PGMCHR            Get next token
+       CEQ  COMMAZ,@CHAT      Go set condition no parm
+       BS   SETCB
+       XML  PARSE
+       BYTE RPARZ
+       CEQ  >65,@FAC2         If not string, error
+       BR   ERRSNM
+       DCZ  @FAC6             Set cond if null string
+       RTNC                   Else return
+SETCB  CEQ  @PAD,@PAD         Set condition bit
+       RTNC
+***********************************************************
+* Get the next phrase out of the current string. The phrase
+* may begin with a #, which means it will continue to the
+* next #, or it many begin with an ordinary character, in
+* which case it will end with the character just before the
+* first timing character encountered. In either case, the
+* end of the string will indicate a legal end of phrase if
+* it occurs before the usual indicator!
+***********************************************************
+PHRASE CEQ  NUMBER,@CCHAR     Phrase start with #?
+       BR   GB370
+       DINC @PTCCIS           Yes, inc CC ptr past #
+GB33C  CEQ  SPACE,V*PTCCIS    Skip spaces
+       BR   GB346
+       DINC @PTCCIS
+       BR   GB33C
+GB346  CEQ  NUMBER,V*PTCCIS   All spaces?
+       BR   GB34F
+       DINC @PTCCIS           Yes, skip this # too
+       RTN                    And ignore this phrase
+GB34F  DST  @PTCCIS,@PTFCIP   Save 1st char in phrase
+GB352  DINC @PTCCIS           Go on to next char
+* Got to watch for end of string. If encountered before a
+* #, act like char after string is #. Then last char will
+* be char before, or the last char in the string!!
+       DCH  @PTLCIS,@PTCCIS
+       BS   FNDNUM
+       ST   V*PTCCIS,@CCHAR   No, get char in CCHAR
+       CEQ  NUMBER,@CCHAR     If not # continue looking
+       BR   GB352
+FNDNUM DST  @PTCCIS,@PTLCIP   Last char in phrase is one
+       DDEC @PTLCIP            before the #
+       DINC @PTCCIS           Point to char after #
+       CALL GETTIM            Get 1st timing char after phr
+       CLR  @SPLFLG           Indicate don't spell
+       BR   GB38B             No # as 1st char in phrase
+GB370  DST  @PTCCIS,@PTFCIP   Curr char is 1st char phrase
+       CLR  @SPLFLG           Assume don't spell
+       CHE  >41,@CCHAR        If not alphabetic   (>41="A")
+       BS   GB37C
+       INC  @SPLFLG            set spell flag
+* Need to find end of phrase, which is char before next
+* timing char we find. Therefore, look for a timing char!
+GB37C  DINC @PTCCIS
+       CALL GETTIM
+       CEQ  >FF,@TIMLEN       If not timing, loop
+       BS   GB37C
+       DST  @PTCCIS,@PTLCIP   Char before curr char is
+       DDEC @PTLCIP            the last char in phrase
+GB38B  RTN
+***********************************************************
+* TIMING will loop through chars in string until it finds
+* non-timing char. Non-timing chars have TIMLEN values of
+* >FE or >FF. GETTIM must be called before this routine to
+* establish a correct value of TIMLEN. Also, most likely
+* TOTTIM should have been cleared.
+***********************************************************
+TIMING CHE  >FE,@TIMLEN
+       BS   GB39B
+       DADD @TIMLEN,@TOTTIM
+       DINC @PTCCIS
+       CALL GETTIM
+       BR   TIMING
+GB39B  RTN
+***********************************************************
+* GETTIM will examine the current char in the string and
+* set TIMLEN to the appropriate time delay value. TIMLEN
+* can take on the following values:
+*           >00 if char is timing '+'
+*           >06 if char is timing ' '
+*           >0C if char is timing '-'
+*           >12 if char is timing ','
+*           >1E if char is timing ';'
+*           >30 if char is timing ':'
+*           >3C if char is timing '.'
+*           >FE if char is out of stirng bounds
+*           >FF if char is not timing
+* Note that to test timing, some manipulation of PTCCIS
+* would be neccesary, so it is stored and used in TEMP1
+***********************************************************
+GETTIM ST   V*PTCCIS,@CCHAR   Get the char
+       DST  @PTCCIS,@TEMP1     store curr ptr in TEMP1
+       DCH  @PTLCIS,@TEMP1     out of string bounds?
+       BR   GB3AC
+       ST   >FE,@TIMLEN       Yes, load value and return
+       RTN
+GB3AC  CH   SEMICO,@CCHAR     Can not be timing
+       BS   NOTIME
+       CEQ  SPACE,@CCHAR
+       BR   GB3C5
+       ST   6,@TIMLEN
+GB3B9  CEQ  SPACE,V@1(@PTCCIS) While spaces
+       BR   GB3C4
+       DINC @PTCCIS           Skip them
+       BR   GB3B9
+GB3C4  RTN
+GB3C5  CEQ  PLUS,@CCHAR
+       BR   GB3D4
+       DINC @TEMP1            Need to test the next char
+       CALL NUMERC            Is it numeric
+       BS   NOTIME            Was numeric => not timing cha
+       CLR  @TIMLEN           Not numeric => set as no timi
+       RTN
+GB3D4  CEQ  COMMAT,@CCHAR
+       BR   GB3DD
+       ST   >12,@TIMLEN
+       RTN
+GB3DD  CEQ  PERIOD,@CCHAR
+       BR   GB3F4
+       DDEC @TEMP1            Go back to preceding char
+       CALL NUMERC            Is it numeric?
+       BR   PTIME             No, so it is timing
+       DINCT @TEMP1           Yes, on to following char
+       CALL NUMERC            Is it numeric too?
+       BS   NOTIME            Yes, both numeric => not timi
+PTIME  ST   >3C,@TIMLEN       Both not numeric  => timing
+       RTN
+GB3F4  CEQ  HYPEN,@CCHAR
+       BR   GB404
+       DINC @TEMP1            Check next char
+       CALL NUMERC            Is it numeric?
+       BS   NOTIME            Was numeric => not a timing c
+       ST   >0C,@TIMLEN       Was not numeric => set as tim
+       RTN
+GB404  CEQ  COLON,@CCHAR
+       BR   GB40D
+       ST   >30,@TIMLEN
+       RTN
+GB40D  CEQ  SEMICO,@CCHAR
+       BR   NOTIME
+       ST   >1E,@TIMLEN
+       RTN
+NOTIME ST   >FF,@TIMLEN       Set as no timing char present
+       RTN
+***********************************************************
+* NUMERC tests the char pointed to by PTCCIS and verifies
+* the following:
+*  1 - it is within the current string boundaries
+*  2 - it is numeric (i.e. between '0' and '9')
+* If both of the above conditions are true, COND is set
+* upon return, otherwise COND is reset
+***********************************************************
+NUMERC DCH  @PTLCIS,@TEMP1
+       BS   GB430
+       DCH  @TEMP1,@PTFCIS
+       BS   GB430
+       CHE  >30,V*TEMP1
+       BR   GB430
+       CH   >39,V*TEMP1
+       BR   SETCB
+GB430  RTNC
+***********************************************************
+* LOOKUP is a prolong routine to SEARCH. In each PHROM,
+* there may be 2 trees, one starting at >0000 and the other
+* at >8000. Either may or may not be present. Presences is
+* determined if a >AA byte is at the starting location.
+* LOOKUP determines if the tree at >0000 is in, and if so,
+* calls SEARCH with that addr. If that tree is not present
+* or the phrase couldn't be found in it, LOOKUP then checks
+* if the tree at >8000 is present, and again, if so, calls
+* SEARCH with that tree address. If the word was found in
+* the first tree, or after searching the second tree, the
+* routine will return.
+***********************************************************
+LOOKUP DCLR @BYTE1            BYTE1 contains addr of curr t
+TRYAGN DST  @BYTE1,@PTFBPH    Look for >AA tree header
+       CALL LOADAD            LOADAD expects addr in PTFBPH
+       ST   >10,@PAD(@WRITE)  Put out read byte command
+       CEQ  >AA,@PAD(@READ)   Tree out there?
+       BR   GB44E
+       DINC @PTFBPH           Skip the tree header
+       CALL SEARCH            Go search this PHROM tree
+       DCZ  @DATAAD           Phrase found => exit
+       BR   FOUND
+GB44E  DADD >8000,@BYTE1      Go to start of next PHROM tre
+* Note >8000 + >8000 = >0000 => tried both trees
+       DCZ  @BYTE1
+       BR   TRYAGN
+       DCLR @DATAAD           Didnt find phrase in either t
+FOUND  RTN
+***********************************************************
+* SEARCH actually searches the PHROM tree for the phrase.
+* The PHROM tree organization is as follows:
+*        (i.e. this is one phrase node)
+*              phrase ASCII length      1 byte
+*              actual ASCII characters  n bytes
+*              less then pointer        2 bytes
+*              greater then pointer     2 bytes
+*              speech data pointer      3 bytes
+*              speech data length       1 byte
+* The comparison of two words proceeds on a char by char
+* basis, where length is secondary to char values, i.e.
+* move > answer; number < we; eight < eighty; etc...
+***********************************************************
+SEARCH CALL LOADAD            Set PHROM to start phrase nod
+       ST   >10,@PAD(@WRITE)  Issue read byte command
+       CLR  @PTLCPH           Length of phrase => PTLCPH
+       ST   @PAD(@READ),@PTLCPH+1 (stored as 2 byte value
+       DADD @PTFBPH,@PTLCPH   Add front ptr giving end ptr
+       DST  @PTFBPH,@PTCCPH   Set up curr char as 1 beyond
+       DINC @PTCCPH            length byte
+       DST  @PTFCIP,@PTCCIP   Reset current ptr into phrase
+* Compare two characters
+NEXT   ST   >10,@PAD(@WRITE)  Issue read byte command
+       ST   @PAD(@READ),@PHDATA Get char in from PHROM
+       CEQ  V*PTCCIP,@PHDATA  Compare the char
+       BR   GB4D1
+       DINC @PTCCPH           Equal, advance both pointers
+       DINC @PTCCIP
+       CEQ  SPACE,V*PTCCIP    Skip extra spaces
+       BR   GB4A1
+GB48D  CEQ  SPACE,V@1(@PTCCIP) While spaces
+       BR   GB498
+       DINC @PTCCIP           Skip them
+       BR   GB48D
+* By skipping extra spaces, might have reached end of phras
+* If this is true, next char in phrase = #. If so, advance
+* the pointer to be beyond end of phrase.
+GB498  CEQ  NUMBER,V@1(@PTCCIP)
+       BR   GB4A1
+       DINC @PTCCIP
+GB4A1  DCH  @PTLCPH,@PTCCPH   End of PHROM word?
+       BR   GB4C6
+       DCH  @PTLCIP,@PTCCIP   Yes, end of phrase
+       BR   GB4C0
+       DST  @PTLCPH,@PTFBPH   Yes, word found
+* Skip 5 bytes down from last char to data pointer
+       DADD 6,@PTFBPH
+       CALL READAD            Set data addr => DATAAD
+       ST   >10,@PAD(@WRITE)  Issue read byte command
+       ST   @PAD(@READ),@STRLEN Get length of speech data
+       RTN
+GB4C0  DST  3,@PTFBPH         Move 3 bytes past PTLCPH
+       BR   NXTPHR
+GB4C6  DCH  @PTLCIP,@PTCCIP   2 characters
+       BR   NEXT
+       DST  1,@PTFBPH         Phrase linger: use LT ptr
+       BR   NXTPHR
+* Two characters compared were not equal
+GB4D1  DST  3,@PTFBPH         3 bytes past last to GT
+       CH   V*PTCCIP,@PHDATA  After phrase
+       BR   NXTPHR
+       DDECT @PTFBPH          Back up 2 bytes to LT link
+* Go get next phrase out of the PHROM to compare
+NXTPHR DADD @PTLCPH,@PTFBPH   Add displacement to last char
+       CALL READAD             and get the new address
+       DCZ  @DATAAD           More leaves on this tree
+       BR   GB4E8
+       RTN                    No, return empty handed
+GB4E8  DST  @DATAAD,@PTFBPH   Store new addr in PTFBPH
+       BR   SEARCH            Go compare this new word!
+* The program should never reach this point!! It should
+* return somewhere up above.
+***********************************************************
+* LOADAD will set the addr out in the PHROM to the addr
+* found in PTFBPH. Note that the PHROM is expecting five
+* nybbles to be written out as the address.
+***********************************************************
+LOADAD DST  @PTFBPH,@TEMP1    This is destructive, so copy
+       DST  @PTFBPH,@TEMP2     address into temporary areas
+       SRL  4,@TEMP1          Isolate the MSN of the MSB
+       SRL  4,@TEMP1+1        Isolate the MSN of the LSB
+       DAND >0F0F,@TEMP2      Isolate the LSN of the MSB, L
+       DOR  >4040,@TEMP1      Include a 4 as MSN of all 4 n
+       DOR  >4040,@TEMP2       to indicate a Load Address C
+       ST   @TEMP2+1,@PAD(@WRITE) Write out the LSN of th
+       ST   @TEMP1+1,@PAD(@WRITE) Write out the LSN of th
+       ST   @TEMP2,@PAD(@WRITE)   Write out the MSN of th
+       ST   @TEMP1,@PAD(@WRITE)   Write out the MSN of th
+       ST   >40,@PAD(@WRITE)      Write out 0 as fifth ny
+       RTN
+***********************************************************
+* READAD will read an address from the PHROM and store it
+* in DATAAD. Note that PTFBPH should contain the addr of
+* the PHROM location to be read so LOADAD will work.
+***********************************************************
+READAD CALL LOADAD            Set the addr of the PHROM
+       ST   >10,@PAD(@WRITE)  Get high byte of addr
+       ST   @PAD(@READ),@DATAAD Store it in DATAAD
+       ST   >10,@PAD(@WRITE)  Get low byte of addr
+       ST   @PAD(@READ),@DATAAD+1 Store it in DATAAD+1
+       RTN
+***********************************************************
+* STDATA will store the data in DATAAD and TOTTIM onto the
+* speech list. It will also check that there is room on the
+* speech list for this entry, and abort with error if not.
+***********************************************************
+STDATA DCEQ @PTEBSL,@PTLBSL   Is there room?
+       BS   ERRSSL
+       MOVE 3,@TOTTIM,V*PTLBSL   Put data in list
+       DADD 3,@PTLBSL              and inc top of list
+       RTN
+***********************************************************
+* WAIT loops until the speech peripheral goes idle.
+***********************************************************
+*    ( Loop until nobody is talking)
+WAIT   ST   @PAD(@READ),@SPKSTS  Read status from PHROM
+       CLOG >80,@SPKSTS
+       BR   WAIT
+       RTN
+***********************************************************
+* SETRW moves addrs of speech read/write from GROM to VDP
+***********************************************************
+SETRW  MOVE 4,G@>0046,@READ
+       RTN
+***********************************************************
+*                    ERROR MESSAGES
+***********************************************************
+*      The following calls are in EXECS file.
+* ERRSYN CALL ERRZZ           * SYNTAX ERROR
+*        BYTE 3
+* ERRSNM CALL ERRZZ           * STRING-NUMBER MISMATCH
+*        BYTE 7
+* ERRBV  CALL ERRZZ           * BAD VALUE
+*        BYTE 30
+* ERRIAL CALL ERRZZ           * INCORRECT ARGUMENT LIST
+*        BYTE 31
+***********************************************************
+ERRSSL  CALL ERRZZ          * SPEECH STRING TOO LONG
+        BYTE 21
+***********************************************************
+* CALL MOVES("$$",bytes,$variable,$variable,...)          *
+* CALL MOVES(type$,bytes,from-address,to-address,...)     *
+* CALL MOVES(type$,bytes,from-address,$variable,...)      *
+* CALL MOVES(type$,bytes,$variable,to-address,...)        *
+* type$:R=RAM, V=VDP, G=GRAM/GROM, $=string variable      *
+***********************************************************
+MOVES   CALL COMB           MOVES(TYPE$,BYTES,$,TO)
+*                            or MOVES(TYPE$,BYTES,FROM,$)
+MOVESA CALL STRGET          * ( or ,
+       DST  V*FAC4,@VAR5    * TYPE "VRG$"
+       CALL GETNUM          * ,BYTES
+       DCZ  @FAC            0?
+       BS   ERRBV           BAD VALUE
+       DST  @FAC,@BYTES     SAVE NUMBER OF BYTES
+       CALL STRFCH          * ,FROM
+       CEQ  36,@VAR5        * $? VDP STRING VARIABLE?       
+       BR   MOVESX
+       CHE  @FAC6,@BYTES+1
+       BS   MOVESB
+       CLR  @BYTES
+       ST   @FAC6,@BYTES+1
+       BR   MOVESB
+MOVESX CALL CFIFCH
+       DST  @FAC,@FAC4
+MOVESB DST  @FAC4,@VARY
+       CEQ  36,@VAR6        * $? VDP STRING VARIABLE?   
+       BR   MOVESN
+       DCHE 256,@BYTES
+       BS   ERRBV
+       XML  GETSTR
+       CALL NGOOD
+       DST  @SREF,@FAC
+       BR   MOVESC
+MOVESN CALL SUBLP3          * ,TO
+MOVESC DST  @FAC,@VARY2
+       CEQ  36,@VAR5        * $? VDP STRING VARIABLE? 
+       BR   MTYPES
+       ST   86,@VAR5        * V? VDP ADDRESS?
+MTYPES CEQ  36,@VAR6        * $? VDP STRING VARIABLE? 
+       BR   MTYPE
+       ST   86,@VAR6        * VDP 
+MTYPE  CEQ  86,@VAR5        * V? VDP FROM
+       BR   MTYPE3
+       CEQ  86,@VAR6        * V? VDP TO
+       BR   MTYPE1
+MTYPE0 MOVE @BYTES,V@0(@VARY),V@0(@VARY2)
+MTYPE1 CEQ  82,@VAR6        * R? RAM TO
+       BR   MTYPE2
+       MOVE @BYTES,V@0(@VARY),@0(@VARY2)
+MTYPE2 CEQ  71,@VAR6        * G? GRAM TO
+       BR   MTYPE3
+       MOVE @BYTES,V@0(@VARY),G@0(@VARY2)
+MTYPE3 CEQ  82,@VAR5        * R? RAM FROM
+       BR   MTYPE7
+       CEQ  86,@VAR6        * V? VDP TO
+       BR   MTYPE5
+MTYPE4 MOVE @BYTES,@0(@VARY),V@0(@VARY2)
+MTYPE5 CEQ  82,@VAR6        * R? RAM TO
+       BR   MTYPE6
+       MOVE @BYTES,@0(@VARY),@0(@VARY2)
+MTYPE6 CEQ  71,@VAR6        * G? GRAM TO
+       BR   MTYPE7
+       MOVE @BYTES,@0(@VARY),G@0(@VARY2)
+MTYPE7 CEQ  71,@VAR5        * G? GRAM FROM
+       BR   MOVESD
+       CEQ  86,@VAR6        * V? VDP TO
+       BR   MTYPE9
+MTYPE8 MOVE @BYTES,G@0(@VARY),V@0(@VARY2)
+MTYPE9 CEQ  82,@VAR6        * R? RAM TO
+       BR   MTYPEA
+       MOVE @BYTES,G@0(@VARY),@0(@VARY2)
+MTYPEA CEQ  71,@VAR6        * G? GRAM TO
+       BR   MOVESD
+       MOVE @BYTES,G@0(@VARY),G@0(@VARY2)
+MOVESD CEQ  >B3,@CHAT       * COMMA?  
+       BS   MOVESA
+       BR   LNKRTN
+**********************************************************
+* CALL HEX($variable,variable,...)                       *
+* CALL HEX(variable,$variable,...)                       *
+**********************************************************
+HEX    CALL COMB             * HEX(variable,variable)
+HEXAGN CALL STRFCH            Get STRING or NUMBER
+       CEQ  >65,@FAC2         STRING?
+       BS   HEX00             Yes
+****************************** Number to HEX String
+       CALL CFIFCH            Turn from DEC to HEX
+       DST  @FAC,@TEMP2       Save it
+       DST  >0004,@BYTES      Number of byte for string
+       XML  GETSTR            Get String 
+       DST  @SREF,@STRPTR     Save string location 
+       ST   @TEMP2,@PAD       Get one byte in PAD
+       SRL  4,@PAD            Strip off low bits
+       CALL HEXNS             Convert to ASCII
+       ST   @TEMP2,@PAD       Get one byte in PAD
+       SLL  4,@PAD            Strip off high bits
+       SRL  4,@PAD            Put back now high bits gone
+       CALL HEXNS             Convert to ASCII
+       ST   @TEMP2+1,@PAD     Get one byte in PAD 
+       SRL  4,@PAD            Strip off low bits
+       CALL HEXNS             Convert to ASCII
+       ST   @TEMP2+1,@PAD     Get one byte in PAD 
+       SLL  4,@PAD            Strip off high bits
+       SRL  4,@PAD            Put back now high bits gone
+       CALL HEXNS             Convert to ASCII
+       CEQ  COMMAZ,@CHAT      , COMMA?
+       BR   ERRSYN            ERROR SYNTAX
+       CALL NGOOD             Assign to Variable
+       BR   HEXDON            Go check for COMMA
+HEXNS  CHE  >0A,@PAD          10 or higher?
+       BR   HEXNS2            No
+       ADD  >07,@PAD          Add 7
+HEXNS2 ADD  >30,@PAD          Add 48
+       ST   @PAD,V*STRPTR     Save new byte
+       DINC @STRPTR           Next Character
+       RTN
+***************************** HEX String to NUMBER
+HEX00  CALL HEXSTR            ASC to HEX
+       XML  PGMCHR            Next value?
+       CALL SNDER             Send value
+       CALL CLRFAC            Clear FAC
+       CLR  @>6004            Set ROM 3 page
+       XML  ASCHEX            Convert ASC to HEX
+       DCEQ >994A,@ARG        ERROR FLAG?
+       BS   ERRBA             ERROR BAD ARGUMENT
+       CALL CIFSND            Convert Integer to FP send
+HEXDON CEQ  COMMAZ,@CHAT      , COMMA?  
+       BS   HEXAGN            Next set to run
+       BR   LNKRTN            Return to XB
+******************************
+HEXSTR DCZ  @FAC6         Zero length string?
+       BS   ERRBA         ERROR BAD ARGUMENT
+       CEQ  62,V*FAC4     > ?
+       BR   HEX01         No
+       DINC @FAC4         Add 1 to ignore >
+       DEC  @FAC7         Length -1 ignore >
+       CZ   @FAC7
+       BS   ERRBA         ERROR BAD ARGUMENT
+HEX01  DST  >3030,@PAD    ZERO BUFFER
+       DST  >3030,@PAD2   ZERO BUFFER
+       CEQ 1,@FAC7        1 to move
+       BR   HEX02         No
+       MOVE 1,V@0(@FAC4),@PAD3 Get 1 chr
+       BR   HEX05         Check valid
+HEX02  CEQ  2,@FAC7       2 to move 
+       BR   HEX03         No
+       MOVE 2,V@0(@FAC4),@PAD2 Get 2 chr
+       BR   HEX05         Check valid
+HEX03  CEQ  3,@FAC7       3 to move
+       BR   HEX04         No
+       MOVE 3,V@0(@FAC4),@PAD1 Get 3 chr
+       BR   HEX05         Check valid
+HEX04  MOVE 4,V@0(@FAC4),@PAD Get 4 chr
+HEX05  RTN                Return to caller
+*********************************************************
+* CALL IO(type,address,...)                             *
+* CALL IO(type,bits,cru-base,variable,variable,...)     *
+* CALL IO(type,length,VDP-address,...)                  *
+*********************************************************
+RXBIO  CALL COMB         * IO
+IOAGN  CALL GETNUM       * TYPE 0-6
+       CHE  >07,@FAC1
+       BS   ERRBV
+       ST   @FAC1,@VARY
+       CALL SUBLP3       * ADDRESS/
+       CASE @VARY        * BITS/BYTES
+       BR   SOG
+       BR   SOV
+       BR   CRUI
+       BR   CRUO
+       BR   CSW
+       BR   CSR
+       BR   CSV
+SOG    I/O  0,@FAC
+       BR   IODONE
+SOV    I/O  1,@FAC
+       BR   IODONE
+CRUI   CALL CRUSET
+       I/O  2,@VAR4
+       XML  PGMCHR
+       CALL SNDER
+       CALL CLRFAC
+       ST   @PAD,@FAC1
+       CALL CIFSND       * VARIABLE1
+       CHE  >09,@VARY
+       BS   CRUI16
+       BR   IODONE
+CRUI16 XML  PGMCHR
+       CALL SNDER
+       CALL CLRFAC
+       ST   @PAD1,@FAC1
+       CALL CIFSND       * VARIABLE2
+       BR   IODONE
+CRUO   CALL CRUSET
+       CALL SUBLP3       * VARIABLE1
+       DCHE >0100,@FAC
+       BS   ERRBV
+       CHE  >09,@VARY
+       BS   CRUO16
+       ST   @FAC1,@PAD
+       BR   CRUO8
+CRUO16 DST  @FAC,@PAD
+       CALL SUBLP3       * VARIABLE2
+       DCHE >0100,@FAC
+       BS   ERRBV
+       ST   @FAC1,@PAD1
+CRUO8  I/O  3,@VAR4
+       BR   IODONE
+CSW    CALL CSLOAD
+       I/O  4,@VAR4
+       BR   IODONE
+CSR    CALL CSLOAD
+       I/O  5,@VAR4
+       BR   IODONE
+CSV    CALL CSLOAD
+       I/O  6,@VAR4
+IODONE CEQ  >B3,@CHAT
+       BS   IOAGN
+       BR   LNKRTN
+CRUTMP DST  @FAC,@VAR4
+       DCLR @VAR5
+       DCLR @PAD
+       RTN
+CRUSET CZ   @FAC1
+       BS   ERRBV
+       CHE  >11,@FAC
+       BS   ERRBV
+       ST   @FAC1,@VARY
+       CALL SUBLP3       * CRU-ADDRESS
+       CALL CRUTMP
+       ST   @VARY,@VAR5
+       RTN
+CSLOAD CALL CRUTMP
+       CALL SUBLP3       * ADDRESS
+       DST  @FAC,@VAR5
+       RTN
+*********************************************************
+* CALL HPUT(row,column,$variable,...)                    *
+* CALL HPUT(row,column,number-variable,...)              *
+**********************************************************
+HPUTZ  CALL PUTZ    
+HPUTS  CLR  @>6004        Set ROM 3 page
+       XML  HPUT
+HPOUT  CEQ  COMMAZ,@CHAT
+       BS   HPUTZ
+       BR   LNKRTN
+**********************************************************
+* CALL VPUT(row,column,$variable,...)                    *
+* CALL VPUT(row,column,number-variable,...)              *
+**********************************************************
+VPUTZ  CALL PUTZ              Get ( and ROW         No, CNS
+VPUTS  CLR  @>6004        Set ROM 3 page
+       XML  VPUT
+VPOUT  CEQ  COMMAZ,@CHAT
+       BS   VPUTZ
+       BR   LNKRTN
+*******************************
+PUTZ   CALL RGPHV
+       CALL STRPAR
+       CEQ  >65,@FAC2
+       BS   PUTZ1
+       CLR  @FAC11            Select XB FLP
+       XML  XBCNS             Convert Number to String
+       CEQ  SPACE,*FAC11      Leading space?
+       BR   HVPUTN
+       INC  @FAC11            Supress space out
+       DEC  @FAC12            Shorten length
+HVPUTN CLR  @BYTES
+       ST   @FAC12,@BYTES+1        Length
+       XML  GETSTR                 Get string
+       MOVE @BYTES,*FAC11,V*SREF   Store in VDP rollout
+       DST  @SREF,@FAC4            VDP rollout address
+       DST  @BYTES,@FAC6           Store length
+PUTZ1  RTN
+**********************************************************
+* CALL HGET(row,column,length,$variable,...)             *
+**********************************************************
+HGETZ  CALL COMB              (?
+HGETS  CALL HVGETS            Get Row:Column,Length,String
+       CLR  @>6004            Set ROM 3 page 
+       XML  HGET              Assembly
+       CEQ  >B3,@CHAT         ,? 
+       BS   HGETS             Yes        
+       BR   LNKRTN            Return to XB
+**********************************************************
+* CALL VGET(row,column,length,$variable,...)             *
+**********************************************************
+VGETZ  CALL COMB              (? 
+VAGAIN CALL HVGETS            Get Row & Column & Length
+       CLR  @>6004            Set ROM 3 page
+       XML  VGET              Assembly
+       CEQ  >B3,@CHAT         ,? 
+       BS   VAGAIN            Yes
+       BR   LNKRTN            Return to XB
+******************************
+HVGETS CALL HVRC         Get Row & Column (PAD2)
+       CALL SUBLP3       Skip comma get Length 
+       DCZ  @FAC         0?
+       BS   ERRBV        ERROR BAD VALUE
+       DCGT >00FF,@FAC   Larger then 255?
+       BS   ERRBV        ERROR BAD VALUE
+       DST  @FAC,@BYTES
+       XML  GETSTR       Get string location
+       DST  @BYTES,@PAD6 Set string Length (PAD6)
+       DST  @SREF,@PAD4  Save String location (PAD4)
+       CALL NGOOD        Skip comma & assign string
+       RTN
+**********************************************************
+* CALL GMOTION(#sprite,row-varable,col-variable,...)     *
+**********************************************************
+GMOT   CALL COMB              * 
+GMAGN  CALL SPNUM2
+       ST   >02,@TEMP1
+       DST  V@>0480(@PAD8),@TEMP2
+GMO1   CALL PREPN
+       ST   @TEMP2,@FAC+1
+       CH   >7F,@FAC+1
+       BR   GMO2
+       NEG  @FAC+1
+       DNEG @FAC
+GMO2   CALL CIFSND
+       CEQ  >01,@TEMP1
+       BS   GMO3
+       XML  SPEED
+       DATA >00B3
+GMO3   EX   @TEMP2,@TEMP2+1
+       DEC  @TEMP1
+       BR   GMO1
+       CEQ  >B3,@CHAT
+       BS   GMAGN
+       BR   LNKRTN
+**********************************************************
+* CALL RMOTION(#sprite,ALL)                              *
+* CALL RMOTION(#sprite,#sprite,...)                      *
+**********************************************************
+RMOT   CALL COMB               *  
+RMAGN  XML  PGMCHR
+       CEQ  >EC,@CHAT
+       BR   NOALL
+       XML  SPEED
+       DATA >00EC
+       DST  >001C,@PAD
+NXALL  DST  @PAD,@FAC
+       CALL SPNUM5
+       BR   RMALL
+NOALL  DST  >0001,@PAD
+       CEQ  NUMBEZ,@CHAT
+       BR   ERRSYN
+       CALL NUMFCH
+       CALL SPNUM4
+RMALL  DST  V@>0480(@PAD8),@TEMP1
+       ST   >02,@TEMP2
+RMOTLP CZ   @TEMP1
+       BS   J2
+       CEQ  >80,@TEMP1
+       BS   J3
+       CH   >7F,@TEMP1
+       BS   J1
+       NEG  @TEMP1
+       BR   J2
+J1     ABS  @TEMP1
+J2     EX   @TEMP1,@TEMP1+1
+       DEC  @TEMP2
+       BR   RMOTLP
+       DST  @TEMP1,V@>0480(@PAD8)
+J3     DDEC @PAD
+       BR   NXALL
+       CEQ  >B3,@CHAT
+       BS   RMAGN
+       BR   LNKRTN
+************************************************************
+* CALL COINC(#sprite,#sprite,tolerance,variable,...)       *
+* CALL COINC(#sprite,dotrow,dotcol,tolerance,variable,...) *
+************************************************************ 
+ZSCOI  CALL SPRCOI       *    
+COINLP CEQ  >B3,@CHAT    *
+       BR   LNKRTN       *
+       XML  PGMCHR       *
+       CALL GAF56        *
+       BR   COINLP       *
+************************************************************
+* CALL DISTANCE(#sprite,#sprite,variable,...)              *
+* CALL DISTANCE(#sprite,dot-row,dot-col,variable,...)      *
+************************************************************
+ZDIST CALL DIST          *    
+DISLP  CEQ  >B3,@CHAT    *
+       BR   LNKRTN       *
+       CALL GAFC4        *
+       BR   DISLP        *
+
+***********************************************************
+* CALL KEY(string,keyunit,Nvarible,Nvariable...)          *
+* CALL KEY(keyunit,Nvariable,Nvarible...)                 *
+***********************************************************
+ZKEY   CALL KEY               Get key
+       CEQ  COMMAZ,@CHAT
+       BS   ZKEY
+       BR   LNKRTN
+***********************************************************
+KEYJOY ST   @FAC1,@PAD        Keyboard selection
+       CALL NUMVAR            Get variable for key-code
+       CEQ  COMMAZ,@CHAT      If not comma - error
+       BR   ERRSYN            SYNTAX error
+       XML  PGMCHR            Get next character
+       CALL NUMVAR            Get variable for key-status
+       ST   @PAD,@KEYBD       Keyboard selection
+       MOVE 8,G@FLT1,@FAC     Set up float
+       CALL KEYSTR            * RXB KEY STRING COMPARISON *
+       ST   @STATUS,@VARY     Save stutus
+       RTNC                   Return scan condition co
+***********************************************************
+KEYSTR DCEQ >994A,@TOPSTK     Flag set?
+       BR   RSCAN3            No.
+       DST  @VARY,@PAD8       String address.
+       DST  @CCPPTR,@ACCUM    Copy length.
+       CLR  @BYTE3            Zero out counter
+RSCAN  CEQ  ONZ,@BYTE1        ON flag?
+       BR   RSCAN0            No
+       SCAN                   Get a key
+       B    RSCAN1            Jump past normal KEY
+RSCAN0 SCAN                   Any key?
+       BR   RSCAN0            No.
+RSCAN1 DCZ  @CCPPTR           Length 0?
+       BS   RSCAN4            Yes.
+RSCAN2 INC  @BYTE3            Counter +1
+       CEQ  V*PAD8,@RKEY      Same?
+       BS   RSCAN5            Yes.
+       DINC @PAD8             Address +1
+       DDEC @ACCUM            Length -1
+       BR   RSCAN2            No matcth.
+       CEQ  ONZ,@BYTE1        ON flag?
+       BS   RSCAN4            Yes
+       B    KEYSTR            Restart.
+RSCAN3 SCAN                   Normal key scan.
+RSCAN4 CLR  @KEYBD            Clear key unit
+       DCLR @TOPSTK           Clear flag.
+       RTNC                   Return save condition
+RSCAN5 CALL RSCAN4
+       CEQ  @PAD,@PAD         Force condition bit on
+       RTNC                   Return save condition
+***********************************************************
+* CALL ONKEY(string,keyunit,variable,variable)            *
+* GOTO line#,line#,line#...                               *
+***********************************************************
+ZONKEY ST   ONZ,@BYTE1
+       CZ   @PRGFLG           Program mode?
+       BS   ERRLNF            ERROR LINE NOT FOUND
+       CALL KEY               Get normal key,status
+       CZ   @VARY             Was a key pressed?
+       BR   GOTON0            No ONZ flag stays set
+       CLR  @BYTE1            Clear ONZ flag
+GOTON0 CEQ  RPARZ,@CHAT       )
+       BR   ERRSYN            SYNTAX ERROR
+       XML  PGMCHR            Skip )
+       CEQ  GOTOZ,@CHAT       GOTO flag?
+       BR   ERRSYN            SYNTAX ERROR
+       CLR  @BYTE2            Zero out Counter
+ONLP   INC  @BYTE2            Counter +1
+       XML  PGMCHR            Skip GO
+       CEQ  LNZ,@CHAT         Line# token?
+       BR   ERRSYN            SYNTAX ERROR
+       XML  PGMCHR            Skip line# token
+       ST   @CHAT,@FAC        Store high byte line#
+       XML  PGMCHR            Skip high byte line#
+       ST   @CHAT,@FAC1       Store low byte line#
+       XML  PGMCHR            Skip low byte line#
+       CEQ  @BYTE3,@BYTE2     $ counter = line# counter
+       BR   ONKEY1            No
+       DST  @FAC,@VARY        Save line#
+ONKEY1 CEQ  COMMAZ,@CHAT      ,?
+       BS   ONLP              Yes, keep going
+       DST  @VARY,@FAC        Get saved line#
+       CEQ  ONZ,@BYTE1        ONZ flag?
+       BS   GKEY1             Yes, load line#
+       CALL RETURN            Return to XB
+**********************************************************
+GKEY1  DST  @ENLN,@FAC2        Get last address
+       DSUB 3,@FAC2            Point to first LINE#
+GKEY2  CALL GRSUB3             Read from VDP/RAM
+       BYTE FAC2
+       DCEQ @EEE1,@FAC         Same?
+       BS   GKEY3              Yes, found line#
+       DCH  @STLN,@FAC2        No line# left
+       BR   ERRLNF             ERROR LINE NOT FOUND
+       DSUB 4,@FAC2            Next LINE#
+       BR   GKEY2              Loop
+GKEY3  DST  @FAC2,@EXTRAM      Got LINE#
+       DADD 4,@EXTRAM          Point to begining of line
+       DINCT @EXTRAM           Point to ADDRESS
+       DST  @EXTRAM,@PGMPTR    Set pointer to line to run
+       DINCT @PGMPTR           Point to tokens
+       CALL RETURN             Return to XB
+**********************************************************
+* CALL JOYST(key-unit,x-return,y-return,...)             *
+**********************************************************
+GJOYST CALL SPAR              KEY UNIT
+JOYRPT XML  SPEED             Insure in range
+       BYTE RANGE          *   of 1 - 4
+       BYTE 1
+       DATA 4
+*                             GET VARIABLES FOR X, Y
+*                              AND SCAN KEYBOARD
+       ST   @FAC1,@PAD        Keyboard selection
+       CALL NUMVAR            Get variable for key-code
+       CEQ  COMMAZ,@CHAT      If not comma - error
+       BR   ERRSYN
+       XML  PGMCHR            Get next character
+       CALL NUMVAR            Get variable for key-status
+       ST   @PAD,@KEYBD       Keyboard selection
+       MOVE 8,G@FLT1,@FAC     Set up float
+       SCAN                   SCAN the keyboard
+* RXB PATCH CODE SAVE KEY & JOYST
+JOYSTS ST   @RKEY,@FNUM       SAVE KEY VALUE 
+       DST  @JOYY,@VAR9       JOYY & JOYX
+       CLR  @KEYBD            Clear the code(No affect on s
+       ST   @JOYY,@PAD        JOYSTICK Y POSITION
+       CALL JOYXY             -4 to +4
+       DST  >4001,@FAC        Re-store F.P. 1 in FAC
+       ST   @JOYX,@PAD        JOYSTICK X POSITION
+       CALL JOYXY             -4 to +4
+       RTN                    Return 
+***********************************************************
+ZJOYST CALL GJOYST
+JOYAGN CEQ  COMMAZ,@CHAT
+       BR   LNKRTN
+       CALL CPAR3
+       CALL JOYRPT
+       BR   JOYAGN
+***********************************************************
+* MOTION PATCH for GO and STOP
+SPGS   XML  PGMCHR            ( or ,
+       CEQ  ALLZ,@CHAT        ALL?
+       BR   SPGS1             No.
+       XML  PGMCHR            Skip ALL
+       XML  PGMCHR            Skip ,
+       DST  1,@FAC            First sprite
+       CALL SPNUM5            Get sprite table
+       CALL SPMOVE            Store velocity
+       ST   28,@FAC           Last sprite
+       DCLR @PAD              Index
+SPGSA  MOVE 2,V@>0780,V@>0780(@PAD)
+       DADD 4,@PAD            Index +4
+       DEC  @FAC              Sprite -1
+       BR   SPGSA             Done?
+       B    SPRMV4            Done?
+*
+SPGS1  CEQ  NUMBEZ,@CHAT      #?
+       BR   SPGS2             No.
+       CALL SPNUM6            Standard routine.
+       B    SPRMV3            No.
+*
+SPGS2  CEQ  GOZ,@CHAT         GO?
+       BR   SPGS3             No.
+       AND  >BF,@GKFLG        GO!!!
+       B    SPGS4             Done.
+*
+SPGS3  CEQ  STOPZ,@CHAT       STOP?
+       BR   ERRSYN            No
+       OR   >40,@GKFLG        STOP!!!
+SPGS4  XML  PGMCHR            Skip GO or STOP
+SPGSE  B    SPRMV4            Done?
+*********************************************************
+* RXB KEY & JOYSTICK LEFT PARENTHESES AND CHECK FOR STRING?
+SPAR   CEQ  LPARZ,@CHAT       (?
+       BS   SPAR1             Yes.
+       CEQ  COMMAZ,@CHAT      ,?
+       BR   ERRSYN            No.
+SPAR1  XML  PGMCHR            Skip ( or ,
+       XML  PARSE             Get string or value.
+       BYTE RPARZ
+       CEQ  >65,@FAC2         RXB version String?
+       BR   SPAR2             No normal xb version          
+       DST  @FAC4,@VARY       Save string address.
+       DST  @FAC6,@VARY2      Save string length.
+       DST  >994A,@TOPSTK     Set RXB flag.
+       CALL LPARR           * Left PARENTHESES or COMMA 
+* RXB Version               * Get String or key value
+       RTN
+*
+SPAR2  XML  SPEED
+       BYTE SYNCHK          * SYNTAX CHECKER
+       BYTE COMMAZ          * ONLY COMMA IS VALID
+       RTN
+************************************************************
+* CALL JOYMOTION(keyunit,X,Y,#sprite,Rindex,Cindex)        *
+* CALL JOYMOTION(keyunit,X,Y,#sprite,Rindex,Cindex,KEY)    *
+* CALL JOYMOTION(keyunit,X,Y,#sprite,Rindex,Cindex,KEY)    *
+* GOTO line-number                                         *
+************************************************************
+ZJOMO  CALL GJOYST         * Get Key unit, X & Y 
+       CEQ  COMMAZ,@CHAT   * COMMA?
+       BR   ERRSYN         * SYNTAX ERROR
+       CALL SPNUM2         * PAD8=SPRITE ADDRESS 
+       CALL COMMA             Parse up to comma and skip
+       CALL RANGEV            Check if numeric and convert
+*                              to integer
+       ST   @FAC1,@PADA      Store Y velocity
+       XML  PARSE            Get X velocity
+       BYTE RPARZ          * Check for ")" or less
+       CALL RANGEV           Numeric check and convert
+*                             to integer
+      ST   @PADA,@FAC     * @FAC=Y velocity, @FAC1=X velocity 
+* CHECK DIRECTION OF JOYST AND SET UP FAC FOR LOADING VALUES 
+       DCEQ >0000,@VAR9   * >0000 JOYST
+       BR   ZJOMO1        * Go UP 
+       DCLR @FAC          * Zero both
+ZJOMO1 DCEQ >0400,@VAR9   * UP
+       BR   ZJOMO2        * Go DOWN
+       NEG  @FAC          * Negative
+       CLR  @FAC1         * Zero
+ZJOMO2 DCEQ >FC00,@VAR9   * DOWN
+       BR   ZJOMO3        * Go LEFT
+       ABS  @FAC          * Postive
+       CLR  @FAC1         * Zero
+ZJOMO3 DCEQ >00FC,@VAR9   * LEFT
+       BR   ZJOMO4        * Go RIGHT
+       CLR  @FAC          * Zero
+       NEG  @FAC1         * Negative
+ZJOMO4 DCEQ >0004,@VAR9   * RIGHT
+       BR   ZJOMO5        * Go DOWNLEFT
+       CLR @FAC           * Zero
+       ABS @FAC1          * Postive
+ZJOMO5 DCEQ >FCFC,@VAR9   * DOWNLEFT
+       BR   ZJOMO6        * Go DOWNRIGHT
+       ABS  @FAC          * Postitive
+       NEG  @FAC1         * Negative
+ZJOMO6 DCEQ >FC04,@VAR9   * DOWNRIGHT     
+       BR   ZJOMO7        * Go UPLEFT
+       ABS  @FAC          * Positive
+       ABS  @FAC1         * Postive
+ZJOMO7 DCEQ >04FC,@VAR9   * UPLEFT
+       BR   ZJOMO8        * Go UPRIGHT
+       NEG  @FAC          * Negative
+       NEG  @FAC1         * Negative
+ZJOMO8 DCEQ >0404,@VAR9   * UPRIGHT 
+       BR   ZJOMO9        * Done
+       NEG  @FAC          * Negative
+       ABS  @FAC1         * Positive    
+ZJOMO9 DST  @FAC,V@>0480(@PAD8) * Store velocities PAD8
+       CH   @NOMSPR,V@SPNUM    * Check current sprite
+       BR   ZJOKG              *  against sprite motion
+*                              *   counter
+       ST   V@SPNUM,@NOMSPR * higher? Yes, replace it
+* KEY SECTION
+ZJOKG  CEQ  RPARZ,@CHAT   * )?
+       BS   LNKRTN        * Yes, END RETURN TO XB
+       CALL ERRCOM      * Check for comma, push on stack  
+       ST   @FNUM,@FAC1   * KEY         
+       XML  CIF           * Convert to floating point
+       XML  ASSGNV        * Save KEY to XB      
+       CEQ  RPARZ,@CHAT   * )?
+       BR   ERRSYN        * SYNTAX ERROR
+       XML  PGMCHR        * Skip )
+* GOTO LINE# SECTION
+       CEQ  GOTOZ,@CHAT   * GOTO flag?
+       BR   ZJOMOR        * No, just RETURN to XB
+       XML  PGMCHR        * Skip GOTO or COMMA
+       CEQ  LNZ,@CHAT     * Line# token?
+       BR   ERRSYN        * SYNTAX ERROR
+       XML  PGMCHR        * Skip line# token
+       ST   @CHAT,@FAC    * Store high byte line#
+       XML  PGMCHR        * Skip high byte line#
+       ST   @CHAT,@FAC1   * Store low byte line#
+       XML  PGMCHR        * Skip low byte line#
+       CEQ  18,@FNUM      * FIRE BUTTON 1?
+       BS   GKEY1         * Yes, find & run line#
+ZJOMOR CALL RETURN        * RETURN TO XB
+************************************************************
+* CALL JOYLOCATE(keyunit,X,Y,Rindex,Cindex,#sprite,dr,dc)  *
+* CALL JOYLOCATE(keyunit,X,Y,Rindex,Cindex,#sprite,dr,dc,K)*
+* CALL JOYLOCATE(keyunit,X,Y,Rindex,Cindex,#sprite,dr,dc,K)*
+* GOTO line-number                                         *
+************************************************************
+ZJOLO  CALL GJOYST       * Get Key unit, X & Y 
+       CEQ  COMMAZ,@CHAT * COMMA?
+       BR   ERRSYN       * SYNTAX ERROR
+       XML  PGMCHR       * Skip COMMA
+       CALL SPLOC        * Get index into PAD4 & PAD6
+       ST   @PAD4+1,@PAD * Get Rindex
+       INCT @PAD         * RESET VALUE
+       ST   @PAD6,@PAD1  * Get Cindex
+       INC  @PAD1        * RESET VALUE
+       CEQ  COMMAZ,@CHAT * COMMA?
+       BR   ERRSYN       * SYNTAX ERROR
+       CALL SPNUM2       * PAD8=SPRITE ADDRESS 
+       CALL PREPN        * Set up for variable
+       DST  V*PAD8,@FAC  * Get current dr & dc into FAC  
+*
+* CHECK DIRECTION OF JOYST AND SET UP FAC FOR LOADING VALUES 
+       DCEQ >0000,@VAR9   * >0000 JOYST
+       BS   ZJOLO9        * No change 
+ZJOLO1 DCEQ >0400,@VAR9   * UP
+       BR   ZJOLO2        * Go DOWN
+       SUB  @PAD,@FAC     * Negative
+ZJOLO2 DCEQ >FC00,@VAR9   * DOWN
+       BR   ZJOLO3        * Go LEFT
+       ADD  @PAD,@FAC     * Postive
+ZJOLO3 DCEQ >00FC,@VAR9   * LEFT
+       BR   ZJOLO4        * Go RIGHT
+       SUB  @PAD,@FAC1    * Negative
+ZJOLO4 DCEQ >0004,@VAR9   * RIGHT
+       BR   ZJOLO5        * Go DOWNLEFT
+       ADD  @PAD,@FAC1    * Postive
+ZJOLO5 DCEQ >FCFC,@VAR9   * DOWNLEFT
+       BR   ZJOLO6        * Go DOWNRIGHT
+       ADD  @PAD,@FAC     * Postitive
+       SUB  @PAD,@FAC1    * Negative
+ZJOLO6 DCEQ >FC04,@VAR9   * DOWNRIGHT     
+       BR   ZJOLO7        * Go UPLEFT
+       ADD  @PAD,@FAC     * Positive
+       ADD  @PAD,@FAC1    * Postive
+ZJOLO7 DCEQ >04FC,@VAR9   * UPLEFT
+       BR   ZJOLO8        * Go UPRIGHT
+       SUB  @PAD,@FAC     * Negative
+       SUB  @PAD,@FAC1    * Negative
+ZJOLO8 DCEQ >0404,@VAR9   * UPRIGHT 
+       BR   ZJOLO9        * Done
+       SUB  @PAD,@FAC     * Negative
+       ADD  @PAD,@FAC1    * Positive  
+ZJOLO9 DST  @FAC,V*PAD8   * Load ROW:COL into Sprite
+       DST  @FAC,@BYTES   * Save value
+       CALL CLRFAC
+       ST   @BYTES,@FAC1
+       CALL CIFSND     * Put into Row
+       CALL COMMA2     * Next value & skip COMMA
+       CALL PREPN      * Prepare X-pos return variable
+       CALL CLRFAC
+       ST   @BYTES+1,@FAC1 * Get X position
+       CALL CIFSND     * Assign value
+* KEY SECTION
+       B    ZJOKG
+*************************************************************
+* CALL INVERSE(char#[,...])                                 *
+*************************************************************
+INVERS CALL COMB             * INVERSE(CHAR#)
+INVAGN XML  PGMCHR
+       CEQ  ALLZ,@CHAT
+       BR   INOALL
+       XML  SPEED
+       DATA >00EC
+       DST  >001E,@FAC
+       DSLL 3,@FAC
+       DST  >01C8,@TEMP1
+       BR   INVLP
+INOALL XML  PARSE
+       BYTE RPARZ
+       CALL S1ET9F
+       DSLL 3,@FAC
+       DST  >0004,@TEMP1
+INVLP  DINV V@>0300(@FAC)
+       DADD >0002,@FAC
+       DDEC @TEMP1
+       BR   INVLP
+INVNOK CEQ  COMMAZ,@CHAT
+       BS   INVAGN
+       BR   LNKRTN
+*************************************************************
+* CALL SWAPCHAR(character-code,character-code[,...])        *
+*************************************************************
+SWCHR  CALL COMB       * SWAPCHAR(CHAR#,CHAR#)
+SWCHAG CALL SSDSLL
+       DST  @FAC,@VAR4
+       CEQ  COMMAZ,@CHAT
+       BR   ERRSYN
+       CALL SSDSLL
+       DST  @FAC,@VAR5
+       MOVE 8,V@>0300(@VAR4),@FAC
+       MOVE 8,V@>0300(@VAR5),V@>0300(@VAR4)
+       MOVE 8,@FAC,V@>0300(@VAR5)
+       CEQ  COMMAZ,@CHAT
+       BS   SWCHAG
+       BR   LNKRTN
+*************************************************************
+* CALL SWAPCOLOR(#sprite-number,#sprite-number[,...])       *
+* CALL SWAPCOLOR(character-set,character-set[,...])         *
+*************************************************************
+SWCLR  XML  SPEED            * Must be
+       BYTE SYNCHK           *  at a
+       BYTE LPARZ            *   left parenthesis
+SCOL10 CEQ  NUMBEZ,@CHAT
+       BR   SCOL20
+       CALL SPNUM3
+       ST   V@>0003(@FAC),@VAR4
+       DST  @FAC,@VAR5
+       CEQ  NUMBEZ,@CHAT
+       BR   ERRSYN
+       CALL STRFCH
+       CALL SPNUM4
+       ST   V@>0003(@FAC),V@>0003(@VAR5)
+       ST   @VAR4,V@>0003(@FAC)
+       CEQ  COMMAZ,@CHAT
+       BR   LNKRTN
+       XML  PGMCHR
+       BR   SCOL10
+SCOL20 XML  SPEED
+       BYTE >01
+       CALL S00T10
+       DADD >080F,@FAC
+       DST  @FAC,@VAR4
+       XML  PARSE
+       BYTE RPARZ
+       CALL S00T10
+       DADD >080F,@FAC
+       ST   V*FAC,@PAD
+       ST   V*VAR4,V*FAC
+       ST   @PAD,V*VAR4
+       CEQ  COMMAZ,@CHAT
+       BR   LNKRTN
+       XML  PGMCHR
+       BR   SCOL20     
+*****************************************
+SSDSLL CALL STRFCH
+       CALL S1ET9F
+       DSLL 3,@FAC
+       RTN
+*****************************************
+S1ET9F XML  SPEED  * CHECK FROM
+       DATA >021E  * 30 TO 159
+       DATA >009F  *
+       RTN         *
+******************************************
+S00T10 XML  SPEED  * CHECK FROM
+       DATA >0200  * 0 TO 16
+       DATA >0010  *
+       RTN         *
+*************************************************************
+* CALL COLLIDE(#SPR1,#SPR2,TOLERANCE,S1DOTROW,S1DOTCOL)     * 
+* CALL COLLIDE(#SPR,DOTROW,DOTCOL,TOLERANCE,DOTROW,DOTCOL)  *                     
+*************************************************************
+COLLZ  CALL COMB              If not '(' - error
+COLL3  CALL SPNUM2            Skip ( or , get SPRITE 1 value
+       DST  V*FAC,@PAD        Read ROW:COL position SPRITE1
+       CEQ  NUMZ,@CHAT      #?
+       BR   COLL1             Yes SPRITE not Dot values  
+       CALL SUBLP4            Get DOT ROW
+       DEC  @FAC1             Adjust for Assembly
+       ST   @FAC1,@PAD2       Save DOT ROW
+       CALL GETNUM            Get DOT COL 
+       DEC  @FAC1             Adjust for Assembly
+       ST   @FAC1,@PAD3       Save DOT COL 
+       XML  PGMCHR            Skip COMMA 
+       BR   COLL2             Go to TOLLERANCE
+COLL1  CALL SPNUM6            Skip # get SPRITE 2 value
+       DST  V*FAC,@PAD2       Read ROW:COL position SPRITE2
+COLL2  CALL SUBLP4            Get TOLERANCE in FAC     
+       CLR  @>6004            Set ROM 3 page
+       XML  COLLSP            COLLIDE SPRITES
+       XML  PGMCHR            Skip COMMA
+       CALL SNDER            Get variable info
+       CALL CLRFAC           Clear for FP
+       DST  @PAD,@FAC        Get QUOTIENT
+       CALL CIFSND           Send QUOTIENT
+       XML  PGMCHR           Skip COMMA
+       CALL SNDER            Get variable info 
+       CALL CLRFAC           Clear for FP       
+       DST  @PAD2,@FAC       REMAINDER
+       CALL CIFSND           Send REMAINDER 
+       CEQ  COMMAZ,@CHAT     ,?
+       BS   COLL3            Yes loop
+       BR   LNKRTN           RETURN TO XB
+*******************************
+SETSND XML  SYM               Pick up name & search table
+       XML  SMB               Evaluate any subscripts
+       CH   >63,@FAC2         If not numeric, error
+       BS   ERRIAL            ERROR INCORRECT ARGUMENT LIST
+       CALL CLRFAC            Clear FAC 8 bytes
+       RTN                    Return
+******************************************************************
+* RXB SIZE ADDRESS DISPLAY
+CASCII XML  SCROLL
+       ST   @ARG,@PAD         * Bit 1
+       SRL  4,@PAD            * Strip off Bit 2
+       CHE  >0A,@PAD          * Higher >0A?
+       BS   BIT1D             * Yes
+       ADD  48,@PAD           * 0 - 9 + "0 ASCII"
+       BR   BIT2              * Done Bit 1
+BIT1D  SUB  10,@PAD
+       ADD  65,@PAD           * A - F + "@ ASCII"
+BIT2   ST   @PAD,@FAC         * Save Bit 1 as ASCII
+       ST   @ARG,@PAD         * Bit 2
+       SLL  4,@PAD            * Strip off Bit 1
+       SRL  4,@PAD            * Reset Bit 2
+       CHE  >0A,@PAD          * Higher >0A?
+       BS   BIT2D             * Yes
+       ADD  48,@PAD           * 0 - 9 + "0 ASCII"
+       BR   BIT3              * Done Bit 2
+BIT2D  SUB  10,@PAD
+       ADD  65,@PAD           * A - F + "@ ASCII"             
+BIT3   ST   @PAD,@FAC1        * Save Bit 2 as ASCII      
+       ST   @ARG1,@PAD        * Bit 3
+       SRL  4,@PAD            * Strip off Bit 4        
+       CHE  >0A,@PAD          * Higher >0A?
+       BS   BIT3D             * Yes
+       ADD  48,@PAD           * 0 - 9 + "0 ASCII"
+       BR   BIT4              * Done Bit 3
+BIT3D  SUB  10,@PAD
+       ADD  65,@PAD           * A - F + "@ ASCII"
+BIT4   ST   @PAD,@FAC2        * Save Bit 3 as ASCII
+       ST   @ARG1,@PAD        * Bit 4
+       SLL  4,@PAD            * Strip off Bit 3
+       SRL  4,@PAD            * Reset Bit 4
+       CHE  >0A,@PAD          * Higher >0A?
+       BS   BIT4D             * Yes
+       ADD  48,@PAD           * 0 - 9 + "0 ASCII"
+       BR   BITDI             * Done Bit 2
+BIT4D  SUB  10,@PAD
+       ADD  65,@PAD           * A - F + "@ ASCII"             
+BITDI  ST   @PAD,@FAC3        * Save Bit 2 as ASCII      
+       FMT
+        SCRO >60
+        ROW 23
+        COL 4
+        HCHA 1,62
+        ROW 23
+        COL 5
+        HSTR 4,@FAC   
+       FEND
+       RTN
+********************************************************
+
+       AORG >1FE0
+* MOSTLY SUBROUTINES FOR GROM 6
+       BR   COMB        * >BFE0
+       BR   STRFCH      * >BFE2
+       BR   STRPAR      * >BFE4
+       BR   STRGET      * >BFE6
+       BR   NUMFCH      * >BFE8
+       BR   CFIFCH      * >BFEA
+       BR   GNRTN       * >BFEC
+       BR   NGOOD       * >BFEE
+       BR   SNDER       * >BFF0
+       BR   CIFSND      * >BFF2
+       BR   SNDASS      * >BFF4
+       BR   SUBLP3      * >BFF6
+       BR   SUBLP4      * >BFF8
+       BR   CLRFAC      * >BFFA
+       BR   GETNUM      * >BFFC
+********************************************************
+       END

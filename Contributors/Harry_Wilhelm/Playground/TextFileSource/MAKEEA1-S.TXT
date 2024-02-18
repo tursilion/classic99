@@ -1,0 +1,104 @@
+*MAKEEA will take a playground program and make it into an EA5 program
+	DEF SFIRST
+	DEF SLOAD
+
+	
+	
+WKSP	EQU >83A2
+
+SFIRST
+SLOAD	JMP SLOAD1
+LSTADD DATA 0		last address gets aorg'd here by makeea2
+SLOAD1	LI R0,SLOAD3	will move pageloader into scratchpad RAM
+	LI R1,>8320	from >8320
+MAKEE1	MOV *R0+,*R1+
+	CI R1,>83C2	to >83C2
+	JNE MAKEE1
+	
+	LWPI WKSP	playground workspace, some registers are preloaded
+	B @>8320	execute code from scratchpad
+	
+************************************	
+*Code to be moved into scratchpad from >8320 to >83C1
+SLOAD3	MOV @LSTADD,R0	SLAST was put into LSTADD
+	S R0,R13	r13 has >3be3+1 (can be up to >4000 for more room)
+*			now R13 should have offset to add
+	S R1,R0	now R0 has length of program
+	S R0,R8	now R8 points to start VDP address to load program
+	
+	MOVB @WKSP+17,*R15
+	MOVB R8,*R15
+	NOP
+PGMOVL	MOVB *R1+,*R10	move program into VDP RAM
+	C R1,@LSTADD		LSTADD points to end of program
+	JNE PGMOVL		jump till done
+	
+GPLLNK	LWPI >83E0		change to GPL workspace
+	MOV @>0050,R4		put >0864 into GPLWS4
+	LI R6,>27E3		GPL routine is in R0. Move into GPLWS6
+	BL *R4			push grom address to substack (routine @ >0864)
+	LI R9,>8366
+	MOV R9,@>831C		XML >F0 will branch to address here
+	LI R9,>1675		grom at >1675 contains >0FFE in reg TI and V2.2
+	MOV R9,@>8302(R4)	put >1675 onto stack
+	INCT @>8373					and INC stack pointer
+	B @>0060		to GPL interpreter
+
+*>8366 below
+	LWPI >83A2		workspace used by PLAYGROUND
+	MOV R12,@>8372	gpl substack pointer is >8368: kscan+GPLLNK need
+	MOV R6,@>837E		gpl changes this address
+	MOV R7,R15		gpl changes R15
+	B @>837E		go to pageloader
+	
+*>8372 to >837D below
+PGLDR	DATA >0010	>8372 >8373 is GPL substack pointer006C  0068 FOR MOST
+	DATA 0		>8374
+	DATA 0		>8376
+	DATA >3567	>8378	random number seed
+	DATA 0		>837A
+	DATA 0		>837C
+	
+*>837E - start of page loader
+*>837E - BL @PAGE comes here
+	MOV *R11,@>83D0   	puts >834C at >8380-at prog start becomes >83D0
+*>8382 - BL @SUB comes here
+	MOV R11,@>83D2    	INTWS registers 8&9 seem to be unused
+*>8386 - BL @SUBPAG comes here
+	A R13,*R11	    	now points to code in VDP	
+	MOVB @1(R11),*R15 	set address to read from
+	MOVB *R11,*R15	""
+	LI R12,>8300		load code starting at >8300	
+	MOV R12,R11		entry point of page into R11
+*>8394 - SUBRTN comes here
+	MOVB *R14,@>839D	puts length byte into LSB below
+PGLOOP	MOVB *R14,*R12+	copy page out of VDP
+	CI R12,>8300		length byte of page is in LSB
+	JNE PGLOOP
+	B *R11			enter page
+
+*WORKSPACE starts at >83A2(32 bytes)
+	DATA 0		R0 
+	DATA PGPGST	R1 pointer to 1st page to load
+	DATA PGPGST	R2 pointer to 1st page to load
+	DATA 0		R3 
+	DATA 0		R4 
+	DATA 0		R5 
+	DATA >C81B	R6 to restore code at >837E which gpl modifies
+	DATA >8C02	R7 goes to R15 to fix code gpl modifies 
+	DATA >7BE3	R8 BASIC has this number at >8330 with call files(1)
+	DATA 0		R9
+	DATA >8C00	R10 VDPWD
+	DATA >83A6	R11 points to R2, address of page to load
+	DATA >0068	R12 gpl substack pointer to >8372
+	DATA >3BE3+1	R13 will have offset
+	DATA >8800	R14
+	DATA >8C02	R15
+*Playground program start below
+PGPGST
+
+
+
+	END
+	
+	
