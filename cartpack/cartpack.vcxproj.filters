@@ -289,6 +289,18 @@
     <None Include="roms\ScottAdams\VOYAGE">
       <Filter>DataFiles\DiskFiles</Filter>
     </None>
+    <None Include="roms\XB29GEM_G.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\XB29GEM_8.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\RXB2024B_8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\RXB2024B_G.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="cartpack.rc">

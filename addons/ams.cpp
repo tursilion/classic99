@@ -219,7 +219,7 @@ void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte, bool force)
 				{
 					mapperRegisters[reg] = ((mapperRegisters[reg] & 0xFF00) | value);
 				}
-				debug_write("AMS Register %X now >%04X", reg, mapperRegisters[reg]);
+				//debug_write("AMS Register %X now >%04X", reg, mapperRegisters[reg]);
 				break;
 
 			case None:

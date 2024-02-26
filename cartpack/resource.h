@@ -66,6 +66,8 @@
 #define IDR_TUNDOOMG                    219
 #define IDR_PENNIES                     222
 #define IDR_QUEST                       223
+#define IDR_RXB8                        224
+#define IDR_RXBG                        225
 #define IDR_EPSGMODG                    303
 #define IDR_TIPLAYERC                   304
 #define IDR_TIMUSIF                     305
@@ -78,8 +80,6 @@
 #define IDR_TIWORKSHOP                  312
 #define IDR_TURBOFORTHD                 324
 #define IDR_TURBOFORTHC                 325
-#define IDR_RXB8                        326
-#define IDR_RXBG                        328
 #define IDR_XB27EEPROM                  341
 #define IDR_XB27GROM                    342
 #define IDR_XB27ROM                     343
@@ -91,7 +91,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        348
+#define _APS_NEXT_RESOURCE_VALUE        352
 #define _APS_NEXT_COMMAND_VALUE         40001
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101

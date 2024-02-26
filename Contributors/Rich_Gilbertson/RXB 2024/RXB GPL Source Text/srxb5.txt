@@ -249,6 +249,7 @@ RAMFRE EQU  >8386            Free pointer in the ERAM
 RAMFLG EQU  >8389            ERAM flag
 GKFLG  EQU  >83C2  * GKXB flag PEEK/LOAD VDP/GROM/QUIT KEY
 PRTNFN EQU  >83CE            Sound - previous tone finished
+VDPR1  EQU  >83D4      CONTENTS OF VDP REGISTER 1 (KEYSCAN)
 ***********************************************************
 *    VDP addresses
 NLNADD EQU  >02E2             New LiNe ADDress
@@ -2093,13 +2094,30 @@ RAN16  XML  SPEED             Insure in range
        DEC  @FAC1             Adjust to internal range
        RTN
 *************************************************************
+* CALL SCREEN(background-color,...)                         *
+* CALL SCREEN(ON,...)                                       *
+* CALL SCREEN(OFF,...)                                      *
+*************************************************************
 *  Subroutine to control border color
 * Character background is also affected since transparent
 *  is used.
-BORDER CALL PARFF             Insure '(' , and parse
-       CALL RAN16             Check 1 - 16 & put in interna
-       MOVE 1,@FAC1,#7        Load VDP register
-       BR   LNKRT2            Return to XB program
+BORDER CEQ  LPARZ,@CHAT     * If not '(' - error
+       BR   ERRSYN          * ERROR SYNTAX
+BORAGN CALL STRFCH          * Skip ( or , and get it  
+       DCEQ >4F46,V*FAC4    * OF? SCREEN OFF      
+       BR   SCRON           * No, check for ON
+       AND  >BF,@VDPR1      * TURN OFF SCREEN
+       BR   LDSCRN          * Return to XB program
+SCRON  DCEQ >4F4E,V*FAC4    * ON? SCREEN ON
+       BR   BORDES          * Must be a number
+       OR   >40,@VDPR1      * TURN ON SCREEN
+LDSCRN MOVE 1,@VDPR1,#1     * LOAD REGISTER 1
+       BR   BORCRN          * Return to XB program
+BORDES DEC  @FAC1           * Adjust to internal range
+       MOVE 1,@FAC1,#7      * Load VDP register
+BORCRN CEQ  >B3,@CHAT       * , COMMA?
+       BS   BORAGN          * MORE SO REPEAT
+       BR   LNKRTN          * Return to XB program
 ***********************************************************
 * ERRWXY - Is the subroutine for CALL ERR(W,X,Y,Z)
 *  The parameters indicate:
@@ -2558,6 +2576,7 @@ CHRALL XML  PGMCHR        * Skip (
        MOVE 255,V@>0700,V@>0701 * Ripple the rest
        ST   >10,V@>080F * Set 1st Black on Transparent
        MOVE 16,V@>080F,V@>0810 * Ripple the rest
+       MOVE 8,G@>635C,V@>03F0 Cursor character
        BR   LNKRTN        * RETURN
 *******************************************************
 * OLD SPNUM1 REPLACED WITH COMB NOW *

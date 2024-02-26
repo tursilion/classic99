@@ -248,6 +248,7 @@ Byte SPEECH[65536];							// Speech Synth ROM
 Byte DSR[16][16384];						// 16 CRU bases, up to 16k each (ROM >4000 space)
 int  nDSRBank[16];							// Is the DSR bank switched?
 struct GROMType GROMBase[17];				// support 16 GROM bases (there is room for 256 of them!), plus 1 for PCODE
+int  bankedConsoleGROMs = 0;                // if non-zero, console groms bank just like cartridge GROMs do. No real hardware for this today.
 int  nSystem=1;								// Which system do we default to?
 int  nCartGroup=0;							// Which cart group?
 int	 nCart=-1;								// Which cart is loaded (-1=none)
@@ -724,6 +725,9 @@ void ReadConfig() {
 	// Read flag for SAMS memory size if selected
 	sams_size = GetPrivateProfileInt("emulation", "sams_size", sams_size, INIFILE);
 
+    // whether to use banked console GROMs - special case and no hardware exists today
+	bankedConsoleGROMs = GetPrivateProfileInt("emulation", "bankedConsoleGROMs",   bankedConsoleGROMs, INIFILE);
+
 	// Joystick active: 0 - off, 1 on
 	fJoy=		GetPrivateProfileInt("joysticks", "active",		fJoy,		INIFILE);
 	joyStick[0].mode=	 (unsigned)GetPrivateProfileInt("joysticks", "joy1mode",	joyStick[0].mode,	 INIFILE);
@@ -1063,6 +1067,7 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"emulation",	"enableAltF4",			enableAltF4,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableF10Menu",		enableF10Menu,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableINIWrite",		bEnableINIWrite,			INIFILE);
+    WritePrivateProfileInt(     "emulation",    "bankedConsoleGROMs",   bankedConsoleGROMs,         INIFILE);
 
 	WritePrivateProfileInt(		"joysticks",	"active",				fJoy,						INIFILE);
 
@@ -5496,8 +5501,8 @@ Byte ReadValidGrom(int nBase, Word x, bool sideEffects) {
 	// the -1 accounts for the prefetch to get the data we're going to read
     // account for GROM wraparound
 	int nPrevAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
-	if ((Word)(nPrevAddress) < 0x6000) {
-		// console GROMs always respond
+	if (((Word)(nPrevAddress) < 0x6000) && (!((bankedConsoleGROMs) && (grombanking)))) {
+		// console GROMs always respond, unless the optional banked console GROMs is on AND we have loaded GROM banks
 		nBase=0;
 	}
 

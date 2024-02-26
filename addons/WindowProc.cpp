@@ -693,9 +693,21 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_USER:	
 			// wrap ShowCursor()
 			if (wParam) {
-				ShowCursor(TRUE);
+                int cnt = ShowCursor(TRUE);
+                debug_write("Show cursor got %d", cnt);
+                // if we didn't get to zero call a few more times
+                // note that no mouse will lock it at -1, so this
+                // loop will try once more to no avail
+                for (int x = cnt; x < 0; ++x) {
+                    ShowCursor(TRUE);
+                }
 			} else {
-				ShowCursor(FALSE);
+                int cnt = ShowCursor(FALSE);
+                debug_write("Hide cursor got %d", cnt);
+                // same thing on the hide side, but there's no infinite case
+                for (int x = cnt; x >= 0; --x) {
+    				ShowCursor(FALSE);
+                }
 			}
 			break;
 
