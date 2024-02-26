@@ -2197,3 +2197,10 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 - added RXB2024a
 - made ubergrom EEPROM non-volatile
 
+-----------------------------------------------
+26 Feb 2024
+
+- added RXB2024b
+- fixed TIPI mouse capture cursor hide
+- added option to bank console GROMs - completely untested
+
