@@ -1,7 +1,18 @@
-// TODO: add an I/O error reference to the help menu
+// TODO: Add RPK support. Wavemotion has offered the use of his DS code:
+// @Tursi - I know you've got 1001 projects cooking but if you do get to RPK support, 
+// you're free to use any part of my codebase. 
+// https://github.com/wavemotion-dave/DS994a/tree/main/arm9/source/rpk 
+// The two libraries I use are lowzip (for depacking) and yxml  (for XML parsing) - 
+// both are really simple and designed to work on virtually any architecture (you 
+// provide the file read callback). Both are released under the permissive MIT 
+// license for any use imaginable.  My code is, of course, equally free to 
+// borrow in part or whole.
 
 // TODO: add to the auto-cart loader a check for a like-named INI file
 // If present, treat it like it was part of Classic99.ini and read the cart that way
+
+// TODO: add an I/O error reference to the help menu
+
 
 //
 // (C) 2007-2014 Mike Brent aka Tursi aka HarmlessLion.com
@@ -3391,12 +3402,27 @@ void do1()
 		}
 	}
 
+    // Make control by itself stop talking, but only if no other key was pressed. So it will stop on release.
+    static int ctrlState = 0;   // 0=not pressed, 1=down, 2=cancelled
+    if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+        if (ctrlState == 0) ctrlState = 1;
+    } else {
+        if (ctrlState == 1) {
+            // ctrl was pressed and released with no other key - stop talking
+            debug_write("Control pressed and released - stop talking.");
+            ScreenReader::ShutUp();
+        }
+        ctrlState = 0;
+    }
+
     // some shortcut keys that are always active...
     // these all require control to be active
     // launch debug dialog (with control)
 	if (key[VK_HOME]) 
 	{
 		if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
+
 		    if (NULL == dbgWnd) {
 			    PostMessage(myWnd, WM_COMMAND, ID_EDIT_DEBUGGER, 0);
 			    // the dialog focus switch may cause a loss of the up event, so just fake it now
@@ -3412,6 +3438,7 @@ void do1()
 	// edit->paste (with control)
 	if (key[VK_F1]) {
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
             PostMessage(myWnd, WM_COMMAND, ID_EDITPASTE, 0);
             key[VK_F1] = 0;
         }
@@ -3422,6 +3449,7 @@ void do1()
         // we'll try to use the screen offset byte - 0x83d3
         // we'll explicitly check for only 0x60, otherwise 0
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
             PostMessage(myWnd, WM_COMMAND, ID_EDIT_COPYSCREEN, 0);
             key[VK_F2]=0;
         }
@@ -3430,6 +3458,7 @@ void do1()
 	// read screen once (with control)
 	if (key[VK_F4]) {
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
 			ScreenReader::ReadScreenOnce();
             key[VK_F4]=0;
         }
@@ -3438,6 +3467,7 @@ void do1()
 	// toggle continuous screen reader (with control)
 	if (key[VK_F9]) {
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
 			PostMessage(myWnd, WM_COMMAND, ID_SCREENREADER_CONTINUOUS, 0);
             key[VK_F9]=0;
         }
@@ -3446,6 +3476,7 @@ void do1()
 	// stop talking (with control)
 	if (key[VK_F10]) {
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
 			ScreenReader::ShutUp();
             key[VK_F10]=0;
         }
@@ -3627,6 +3658,7 @@ void do1()
 			key[VK_F5]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+                if (ctrlState) ctrlState = 2;
 				SaveScreenshot(true, false);
 			} else {
 				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 0);
@@ -3638,6 +3670,7 @@ void do1()
 			key[VK_F6]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+                if (ctrlState) ctrlState = 2;
 				SaveScreenshot(true, true);
 			} else {
 				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
@@ -3649,6 +3682,7 @@ void do1()
 			key[VK_F7]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+                if (ctrlState) ctrlState = 2;
 				SendMessage(myWnd, WM_COMMAND, ID_LAYERS_DISABLESPRITES, 0);
 			} else {
 				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
@@ -3660,6 +3694,7 @@ void do1()
 			key[VK_F8]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+                if (ctrlState) ctrlState = 2;
 				SendMessage(myWnd, WM_COMMAND, ID_LAYERS_DISABLEBACKGROUND, 0);
 			} else {
 				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
@@ -3697,6 +3732,7 @@ void do1()
 			key[VK_F12]=0;
 			
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+                if (ctrlState) ctrlState = 2;
 				SendMessage(myWnd, WM_COMMAND, ID_FILE_RESET, 0);
 			} else {
 				DoLoadInterrupt();
