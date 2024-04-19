@@ -523,7 +523,7 @@ void VDPmain()
 
 	// load the Filter DLL
 	TVFiltersAvailable=0;
-	hFilterDLL=LoadLibrary("FilterDll.dll");
+	hFilterDLL=LoadLibrary("FilterDLL.dll");
 	if (NULL == hFilterDLL) {
 		debug_write("Failed to load filter library.");
 	} else {
@@ -556,7 +556,7 @@ void VDPmain()
 		}
 	}
 
-	hHQ4DLL=LoadLibrary("HQ4xDll.dll");
+	hHQ4DLL=LoadLibrary("hq4xdll.dll");
 	if (NULL == hHQ4DLL) {
 		debug_write("Failed to load HQ4 library.");
 	} else {

@@ -15,7 +15,7 @@
 
 
 //
-// (C) 2007-2014 Mike Brent aka Tursi aka HarmlessLion.com
+// (C) 2007-2024 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
 // express or implied is provided.
 //
@@ -2787,8 +2787,11 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					debug_write("%s overwrites memory block - truncating.", pImg->szFileName);
 					nLen=8192;
 				}
-				// TODO: throw a debug warning if the address is not a valid CRU base
-				memcpy(&DSR[(pImg->nLoadAddr>>8)&0x0f][0], pData, nLen);
+				if ((pImg->nLoadAddr & 0xF000) != 0x1000) {
+					debug_write("%s has invalid CRU base %04X for DSR - not loading.", pImg->szFileName, pImg->nLoadAddr);
+				} else {
+					memcpy(&DSR[(pImg->nLoadAddr>>8)&0x0f][0], pData, nLen);
+				}
 				break;
 
 			case TYPE_DSR2:	// always loads at >4000, the load address is the CRU base
@@ -5949,14 +5952,15 @@ void SetSuperBank2() {
 
 //////////////////////////////////////////////////////////////////
 // Write a bit to CRU
+//
+// Despite the following, I finally do have the 9901 data manual ;)
+//
 // Better 9901 CRU notes:
 // There are 32 bits, from 0-31:
 //
-// 0     is a mode select - see below
-// 1-6   connect to pins !INT1 to !INT6. In interrupt mode, each bit as a dedicated input pin. (No output).
-// 7-15  share nine I/O pins with bits 23-31. These are pins 23 and 27-34. The order DECREMENTS with the pin number! Bits 7-15 support interrupts.
-// 16-22 are strict I/O pins
-// 23-31 share nine I/O pins with bits 7-15. These are pins 23 and 27-34. The order INCREMENTS with the pin number! Bits 23-31 are strict I/O.
+// 0     is a mode select for clock or interrupt mode - see below
+// 1-15  represent interrupt pins !INT1 through !INT15. Some physical pins are shared with I/O pins. Reads read the bit, writes set the interrupt mask (Active high)
+// 16-31 represent I/O pins P0-P15. Some physical pins are shared with interrupt pins. Reads read the bit, writes change to output mode (until reset).
 //
 // Bit 0:
 //  When set to 1, bits 1-15 enable clock logic.
@@ -6098,12 +6102,61 @@ void wcru(Word ad, int bt)
 			}
 		}
 		return;
+	} else if (ad >= 0x400) {
+        // normally unmapped space, some special carts
+        ad = (ad&0xfff);
+
+		if (bt) {											// write the data
+            CRU[ad]=1;
+            switch (ad) {
+                case 0x040f:
+                    // super-space cart piggybacked on 379 code for now
+                    debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank();
+                    break;
+
+                case 0x587:
+                    debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank2();
+                    break;
+
+                default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                    break;
+            }
+		} else {
+            CRU[ad]=0;
+            switch (ad) {
+                case 0x040f:
+                    // super-space cart piggybacked on 379 code for now
+                    debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank();
+                    break;
+
+                case 0x587:
+                    debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank2();
+                    break;
+
+                default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                    break;
+            }
+		}
+        
 	} else {
 		if (NULL != SetSidBanked) {
 			SetSidBanked(true);		// SID is enabled no matter the write
 		}
 
-		ad=(ad&0x0fff);										// get actual CRU line
+		ad=(ad&0x01f);										// get actual CRU line (0-31, within the 1k space)
+
+        // debug interrupts lines
+        if ((ad>0)&&(ad<16)) {
+            if (bt != CRU[ad]) {
+                debug_write("CRU interrupt change on %d to %d at PC >%04X", ad, bt, pCurrentCPU->GetPC());
+            }
+        }
 
 //		debug_write("Write CRU 0x%x with %d", ad, bt);
 
@@ -6139,8 +6192,6 @@ void wcru(Word ad, int bt)
                         // timer mode (update readback reg)
                         // We don't need to do anything here, since we update the read register when we're supposed to
                         break;
-
-                       
 
 					case 3:
 						// timer interrupt bit
@@ -6178,17 +6229,6 @@ void wcru(Word ad, int bt)
                         debug_write("CS2 is not supported.");
                         break;
 					
-					case 0x040f:
-						// super-space cart piggybacked on 379 code for now
-                        debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
-						SetSuperBank();
-						break;
-
-                    case 0x587:
-                        debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
-                        SetSuperBank2();
-                        break;
-
                     default:
 //                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
                         break;
@@ -6216,10 +6256,13 @@ void wcru(Word ad, int bt)
 	                CRU[25]=0;	// mag tape out - needed for Robotron to work!
 	                CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
 				} else if (ad == 0) {
+                    // TODO: I think datasheet says time resets and runs any time it's not zero?
 					// Turning off timer mode - start timer (but don't reset it, as proven by camelForth)
                     // Not sure this matters to this emulation, but Adam doc notes that the 9901 will exit
                     // clock mode if it ever sees "a 1 on select line S0", even when chip select is not active.
                     // this may be the bit I mention below that Thierry noted as well.
+                    // Ninerpedia notes this is TEMPORARY only /while/ A10 is high. But has all the same effects
+                    // as exiting/entering on purpose
 					CRU[ad]=0;
                     // We definitely do NOT reset the timer here - and doing so breaks both camelForth and fbForth
                     // docs explicitly say to update the read register here, for no reason...
@@ -6270,17 +6313,6 @@ void wcru(Word ad, int bt)
                         setTapeMotor(false);
                         break;
 					
-					case 0x040f:
-						// super-space cart piggybacked on 379 code for now
-                        debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
-						SetSuperBank();
-						break;
-
-                    case 0x587:
-                        debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
-                        SetSuperBank2();
-                        break;
-
                     default:
 //                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
                         break;
@@ -6315,6 +6347,9 @@ int CheckJoysticks(Word ad, int col) {
 	int joyX, joyY, joyFire;
 	int joy1col, joy2col;
 	int ret=1;
+
+    // TODO: the joysticks appear not to work if a key pressed
+    // on the same row is pressed (joystick axis returns 0)
 
 	// Read external hardware
 	joyX=0;
@@ -6603,9 +6638,12 @@ int rcru(Word ad)
 //                debug_write("Read unsupported CRU 0x%04X", ad);
 				return 1;	// "false"
 		}
-	}
+	} else if (ad >= 0x0400) {
+        // some add-on cards, no special read support here
+        return CRU[ad];
+    }
 
-	// The CRU bits >0000 through >001f are repeated through the whole 4k range!
+	// The CRU bits >0000 through >001f are repeated through the whole 1k range from 0000-0400!
 	ad=(ad&0x001f);										// get actual CRU line
 	ret=1;												// default return code (false)
 
@@ -6657,8 +6695,8 @@ int rcru(Word ad)
 
 	// no other hardware devices at this time, check keyboard/joysticks
 
-	// keyboard reads as an array. Bits 24, 26 and 28 set the line to	
-	// scan (columns). Bits 6-14 are used for return. 0 means on.		
+	// keyboard reads as an array. Bit addresses hex 24, 26 and 28 set the line to	
+	// scan (columns). Bit addreses hex 6-14 are used for return. 0 means on.		
 	// The address was divided by 2 before being given to the routine	
 
 	// Some hacks here for 99/4 scanning
@@ -6718,19 +6756,31 @@ int rcru(Word ad)
 
 /////////////////////////////////////////////////////////////////////////
 // Write a line to the debug buffer displayed on the debug screen
+// We no longer display duplicated lines to the internal debug log.
+// The external debug log will see them though.
 /////////////////////////////////////////////////////////////////////////
 void debug_write(char *s, ...)
 {
 	char buf[1024];
+	static char lastbuf[1024] = "";
 
 	_vsnprintf(buf, 1023, s, (char*)((&s)+1));
 	buf[1023]='\0';
 
+	// let all lines reach the external debugger
 	OutputDebugString(buf);
 	OutputDebugString("\n");
 
+	// but skip duples to the internal log
+	if (0 == strcmp(buf, lastbuf)) {
+		return;
+	}
+	strcmp(lastbuf, buf);
+
+	// trim to the internal debug size
 	buf[DEBUGLEN-1]='\0';
 
+	// critical section needed to avoid conflict with the display code
 	EnterCriticalSection(&DebugCS);
 	
 	memcpy(&lines[0][0], &lines[1][0], (DEBUGLINES-1)*DEBUGLEN);			// scroll data

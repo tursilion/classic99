@@ -676,10 +676,11 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 		// One goal is that in the future Classic99 will be able to extract parts of files and thus do more
 		// Perhaps for that we can implement file system filters - they take in the
 		// filename and the FileInfo object for the open, and extract appropriate data
-		if ((csFileName.Right(4).CompareNoCase(".TXT") == 0) || 
-		(csFileName.Right(4).CompareNoCase(".OBJ") == 0) || 
-		(csFileName.Right(4).CompareNoCase(".COB") == 0) ||
-		((bAllowTxtWithoutExtension)&&(-1 == csFileName.Find('.'))) ||
+		debug_write("Filename test against %s", (LPCSTR)pFile->csName);
+		if ((pFile->csName.Right(4).CompareNoCase(".TXT") == 0) || 
+		(pFile->csName.Right(4).CompareNoCase(".OBJ") == 0) || 
+		(pFile->csName.Right(4).CompareNoCase(".COB") == 0) ||
+		((bAllowTxtWithoutExtension)&&(-1 == pFile->csName.Find('.'))) ||
 		(pFile->csOptions.Find('W')!=-1)  ) {
 			if (bReadTxtAsDV) {
 				debug_write("Detected %s as a Host TEXT file", (LPCSTR)csFileName);
@@ -749,7 +750,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 
 	// check for image filetype. Any file with NO extension is ok. 
 	// These would always be DF128. 
-	if (((csFileName.Find('.')==-1) && (bAllowNoHeaderAsDF128)) ||
+	if (((pFile->csName.Find('.')==-1) && (bAllowNoHeaderAsDF128)) ||
 	     (pFile->csOptions.Find('X')!=-1)) {
 		debug_write("Detected %s as a PC (headerless) file - read as DF128.", (LPCSTR)csFileName);
 		pFile->ImageType = IMAGE_IMG;

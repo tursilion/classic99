@@ -2204,3 +2204,14 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 - fixed TIPI mouse capture cursor hide
 - added option to bank console GROMs - completely untested
 
+-----------------------------------------------
+19 Apr 2024
+
+- Fix DF128 headerless detection when the FIAD path includes a period (was causing refusal to open)
+- mute "Skipped 0 sentences on shut up" message (we don't care if it was 0)
+- fixed case of DLL load on FilterDLL.dll and hq4xdll.dll for those running from case sensitive filesystems. (If you renamed the DLLs, you may have to rename them back).
+- emit a warning in the debug log if loading a DSR to an invalid CRU base
+- correct address wraparound in the 9901 address mapping
+- add debug pin warning to debug log in the 9901 emulation (Classic99 does not support 9901 hardware interrupts)
+- don't spam the same debug statement repeatedly to the log (note: no timeout. If you NEED to see a repeated statement, force another one inbetween. For instance, press Control to get the speech clear debug)
+- also note the external debugger (debugview) is NOT filtered this way, so that you have best visibility there

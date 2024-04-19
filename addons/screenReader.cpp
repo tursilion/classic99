@@ -458,7 +458,7 @@ void ShutUp() {
 		// try to skip off the end of the current sentence
 		ULONG cnt = 0;
 		pVoice->Skip(L"Sentence", 9999, &cnt);
-		debug_write("Skipped %d sentences on shut up...", cnt);
+		if (cnt > 0) debug_write("Skipped %d sentences on shut up...", cnt);
 	LeaveCriticalSection(&csSpeech);
 }
 
