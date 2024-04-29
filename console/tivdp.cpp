@@ -919,7 +919,7 @@ void updateVDP(int cycleCount)
 		} else {
             // when it is time to draw a fullframe, then we just force the full cycle
             // per frame count to get it out.
-			cycleCount = max_cpf;
+			cycleCount = cyclesPerLine*262;
 			newCycles = cycleCount;
 		}
 	} else {
@@ -930,8 +930,8 @@ void updateVDP(int cycleCount)
         // when the full instruction count comes in, we account for the
         // cycles already dealt with.
         if (cycleCount == FULLFRAME) {
-            // should never happen....
-            return;
+            // should never happen... but we should draw a full frame anyway (user requested?)
+			newCycles = cyclesPerLine*262;
         } else {
             if (cycleCount < 0) {
     		    newCycles = nCycles - cycleCount;   // add a negative number

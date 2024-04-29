@@ -6349,7 +6349,11 @@ int CheckJoysticks(Word ad, int col) {
 	int ret=1;
 
     // TODO: the joysticks appear not to work if a key pressed
-    // on the same row is pressed (joystick axis returns 0)
+    // on the same column is pressed.
+    // This is confirmed. It appears to be because the keys are directly
+    // connected to the 9901, but the joystick runs through a diode. So
+    // not enough current makes it through the diode if a key on the same column
+    // is pressed and so the joystick has no response.
 
 	// Read external hardware
 	joyX=0;
@@ -6775,7 +6779,7 @@ void debug_write(char *s, ...)
 	if (0 == strcmp(buf, lastbuf)) {
 		return;
 	}
-	strcmp(lastbuf, buf);
+	strcpy(lastbuf, buf);
 
 	// trim to the internal debug size
 	buf[DEBUGLEN-1]='\0';
@@ -6912,6 +6916,7 @@ void __cdecl TimerThread(void *)
 			if (nEnd.QuadPart<nStart.QuadPart) {
 				// We wrapped around. This should be a once in a lifetime event, so rather
 				// than go nuts, just skip this frame
+				debug_write("Timer wrapped around");
 				nStart.QuadPart=nEnd.QuadPart;
 				continue;
 			}
@@ -6921,7 +6926,7 @@ void __cdecl TimerThread(void *)
 			nAccum.QuadPart+=(((nEnd.QuadPart-nStart.QuadPart)*1000000i64)/nFreq.QuadPart);	
 			nStart.QuadPart=nEnd.QuadPart;					// don't lose any time
 			
-			// see function header comments for these numbers (62hz or 60hz : 50hz)
+			// convert nFreq into one frame of time
 			nFreq.QuadPart=(hzRate==HZ60) ? /*16129i64*/ 16666i64 : 20000i64;
 
 			while (nAccum.QuadPart >= nFreq.QuadPart) {
@@ -6953,11 +6958,13 @@ void __cdecl TimerThread(void *)
 					nAccum.QuadPart = 0;
 					InterlockedExchange((LONG*)&cycles_left, max_cpf);
 					nVDPFrames = 1;
+					debug_write("Too far behind, drop frames");
 				}
 			}
 			SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
 
 			if (total_cycles_looped) {
+				debug_write("Total cycles looped");
 				total_cycles_looped=false;
 				old_total_cycles=0;		// mistiming, but survives the wrap.
 				// very very fast machines may someday break this loop
