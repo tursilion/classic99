@@ -372,6 +372,9 @@ extern int statusFrameCount;
 
 void renderBML(int y);
 
+// this is used only in full screen blits for now
+#define DPIFIX(xx) MulDiv((xx), dpi, 96)
+
 //////////////////////////////////////////////////////////
 // Helpers for the TV controls
 //////////////////////////////////////////////////////////
@@ -919,7 +922,7 @@ void updateVDP(int cycleCount)
 		} else {
             // when it is time to draw a fullframe, then we just force the full cycle
             // per frame count to get it out.
-			cycleCount = cyclesPerLine*262;
+			cycleCount = (int)(cyclesPerLine*262);
 			newCycles = cycleCount;
 		}
 	} else {
@@ -1669,6 +1672,35 @@ unsigned int* drawTextLine(unsigned int *pDat, const char *buf) {
     return pDat;
 }
 
+// we manually wrap the Win10 function GetDpiForWindow()
+// if it's not available, we just return the default of 96
+// this is only used for full screen
+UINT WINAPI GetDpiForWindow(_In_ HWND hWnd) {
+	static UINT (WINAPI *getDpi)(_In_ HWND) = NULL;
+	static bool didSearch = false;
+
+	if (!didSearch) {
+		didSearch = true;
+		HMODULE hMod = LoadLibrary(_T("user32.dll"));
+		if (NULL == hMod) {
+			debug_write("Failed to load user32.dll (what? really??)\n");
+		} else {
+			getDpi = (UINT (WINAPI *)(_In_ HWND))GetProcAddress(hMod, "GetDpiForWindow");
+			if (NULL == getDpi) {
+				debug_write("Failed to find GetDpiForWindow, defaulting to 96dpi\n");
+			} else {
+				debug_write("Got GetDpiForWindow, should be able to auto-scale.\n");
+			}
+		}
+	}
+
+	if (NULL == getDpi) {
+		return 96;
+	} else {
+		return getDpi(hWnd);
+	}
+}
+
 ////////////////////////////////////////////////////////////////
 // Stretch-blit the buffer into the active window
 //
@@ -1871,10 +1903,23 @@ void doBlit()
 	// TODO: I hate these numbers... fix that
 	if (StretchMode == STRETCH_FULL) {
 		// full screen is the desktop size
+#if 0
+		// this didn't help. My monitor DPI is 120 meaning all the images got larger, making the blit fail
+		int dpi = GetDpiForWindow(myWnd);
+		rect1.top = DPIFIX(rect1.top);
+		rect1.left = DPIFIX(rect1.left);
+		rect1.right = DPIFIX(rect1.right);
+		rect1.bottom = DPIFIX(rect1.bottom);
+#else
+		// for some reason in full screen, the width is 3840 correctly, but the height is an odd 2910? (or so)
+		// not sure where that number would come from... it doesn't match either screen.
+		// This forces it to match the desktop size which should work. But one person is reporting
+		// the right edge is cut off in full screen mode.
 		rect1.top=0;
 		rect1.left=0;
 		rect1.right = fullscreenX;
 		rect1.bottom = fullscreenY;
+#endif
 	}
 
 	// even though aspect ratio is forced by the window resize for everything but full screen,

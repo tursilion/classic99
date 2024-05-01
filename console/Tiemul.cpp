@@ -6882,6 +6882,14 @@ void __cdecl TimerThread(void *)
 
 		// process debugger, if active
 		processDbgPackets();
+
+		// handle breakpoint
+		if (max_cpf == 0) {
+			QueryPerformanceCounter((LARGE_INTEGER*)&nStart);
+			nAccum.QuadPart=0;
+			Sleep(10);
+			continue;
+		}
          
 		if ((PauseInactive)&&(!WindowActive)) {
 			// Reduce CPU usage when inactive (hack)
@@ -6916,7 +6924,7 @@ void __cdecl TimerThread(void *)
 			if (nEnd.QuadPart<nStart.QuadPart) {
 				// We wrapped around. This should be a once in a lifetime event, so rather
 				// than go nuts, just skip this frame
-				debug_write("Timer wrapped around");
+				//debug_write("Timer wrapped around");
 				nStart.QuadPart=nEnd.QuadPart;
 				continue;
 			}
@@ -6928,6 +6936,8 @@ void __cdecl TimerThread(void *)
 			
 			// convert nFreq into one frame of time
 			nFreq.QuadPart=(hzRate==HZ60) ? /*16129i64*/ 16666i64 : 20000i64;
+
+			unsigned long cycles_used = nOldCyclesLeft - cycles_left;
 
 			while (nAccum.QuadPart >= nFreq.QuadPart) {
 				nVDPFrames++;
@@ -6964,7 +6974,7 @@ void __cdecl TimerThread(void *)
 			SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
 
 			if (total_cycles_looped) {
-				debug_write("Total cycles looped");
+				//debug_write("Total cycles looped"); - this does happen
 				total_cycles_looped=false;
 				old_total_cycles=0;		// mistiming, but survives the wrap.
 				// very very fast machines may someday break this loop
@@ -6987,11 +6997,22 @@ void __cdecl TimerThread(void *)
 			} else {
 				// this side is used in overdrive
 				if (nVDPFrames > 0) {
+					static MY_LARGE_INTEGER last;
 					// run one frame every time we're able (and it's needed)
 					Counting();					// update counters & VDP interrupt
-					nVDPFrames--;
+					nVDPFrames=0;
 					bDrawDebug=true;
+
+#if 0
+					QueryPerformanceFrequency((LARGE_INTEGER*)&nFreq);
+					if ((nStart.QuadPart - last.QuadPart)*1000000i64/nFreq.QuadPart < 16000i64) {
+						debug_write("VDP Force frame after %I64d microseconds, %ld cycles used", (nStart.QuadPart - last.QuadPart)*1000000i64/nFreq.QuadPart, cycles_used);
+					}
+					last.QuadPart = nStart.QuadPart;
+#endif
+
 					vdpForceFrame();
+
 				}
 			}
 

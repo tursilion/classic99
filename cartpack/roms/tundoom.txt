@@ -15,5 +15,34 @@ AND THEN ENTER:
 F880: MOVE 128 FROM G@>F800 TO VDP@>0120      31 00 80 A1 20 F8 00
       B G@>a05c                               05 a0 5c
 
+---
+
+The delay loop often hangs in Overdrive. For some reason, it appears that
+the interrupt might fire twice before the interrupt counter can be checked.
+This is non intuitive but I haven't figured out exactly why, so we'll patch
+the game not to check only exactly zero.
+
+Original code at A707:
+
+a707 8e 79   cz    @timer               ; <- >a709, >b1f2
+a709 47 07   br    >a707                
+a70b 00      rtn
+
+Replace with a call:
+
+06 F8 D0     call >F8d0
+00           rtn
+
+At 98D0, check for zero or 1. (I wasn't sure I sometimes saw 3 hits, but that's less common)
+
+8e 79       cz @timer
+78 de       bs >F8DE
+d6 79 01    ceq >01,@timer
+78 de       bs >F8DE
+d6 79 02    ceq >02,@timer
+58 d0       br >F8D0
+00          rtn
+
+
 
 
