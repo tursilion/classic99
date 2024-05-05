@@ -3446,6 +3446,33 @@ LRESULT CALLBACK newEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         EndPaint(hWnd, &ps);
         break;
 
+    case WM_USER:
+        {
+            // control-c
+            char *pText;
+            int len;
+            if (hWnd == ctrl1) {
+                pText = szCaption1;
+                len = sizeof(szCaption1);
+            } else {
+                pText = szCaption2;
+                len = sizeof(szCaption2);
+            }
+            if (OpenClipboard(hWnd)) {
+                EmptyClipboard();
+                HANDLE hCopy = GlobalAlloc(GMEM_MOVEABLE, (len+1)*sizeof(TCHAR));
+                if (NULL != hCopy) {
+                    unsigned char *pLock = (unsigned char*)GlobalLock(hCopy);
+                    memcpy(pLock, pText, len);
+                    pLock[len] = (TCHAR)'\0';
+                    GlobalUnlock(pLock);
+                    SetClipboardData(CF_TEXT, hCopy);
+                }
+                CloseClipboard();
+            }
+        }
+        break;
+
     default:
         return DefWindowProc(hWnd, msg, wParam, lParam);
         break;
@@ -4116,7 +4143,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 				case IDC_EDITMEM:
 				;
 
-				case ID_DEBUG_RESETUNINITMEM:
+                case ID_DEBUG_RESETUNINITMEM:
 					// should breakpoint before this...
 					memset(CPUMemInited, 0, sizeof(CPUMemInited));
 					memset(VDPMemInited, 0, sizeof(VDPMemInited));
@@ -4278,7 +4305,15 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
                     LeaveCriticalSection(&csDisasm);
                     break;
 
-				case ID_MAKE_SAVEPROGRAM:
+                case ID_VIEW_COPYLEFTPANETOCLIPBOARD:
+                    SendMessage(ctrl1, WM_USER, 0, 0);
+                    break;
+
+                case ID_VIEW_COPYRIGHTPANETOCLIPBOARD:
+                    SendMessage(ctrl2, WM_USER, 0, 0);
+                    break;
+                
+                case ID_MAKE_SAVEPROGRAM:
 					DoMakeDlg(hwnd);
 					PostMessage(hwnd, WM_COMMAND, ID_VIEW_REDRAW, 0);
 					break;
