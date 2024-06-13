@@ -346,15 +346,15 @@ Byte progStatus(Word adr) {
     return output | (toggleByte&0x7f);
 }
 
-Byte read6000(Word adr, bool rmw) {
+Byte read6000(Word adr, READACCESSTYPE rmw) {
     static int oldState = -1;
     if (oldState != state) {
         debug_write("Now in state %s", getStateName(state));
         oldState = state;
     }
 
-    // rmw indicates what it's a read-before-write cycle
-    // most of the time, that shouldn't matter, mostly it's for the debugger
+    // rmw indicates whether it's a read-before-write cycle
+    // most of the time, that shouldn't matter to this system
     runStateMachine();
 
     // reads only go through to the flash chip when Gigamask allows it (is 00)
@@ -443,10 +443,10 @@ Byte read6000(Word adr, bool rmw) {
     return 0xff;
 }
 
-Byte readE000(Word adr, bool rmw) {
+Byte readE000(Word adr, READACCESSTYPE rmw) {
     runStateMachine();
     // this is normally not legal and we should never deliberately do it
-    if (!rmw) {
+    if (rmw == ACCESS_READ) {
         debug_write("Gigacart read from PC >%X to write port address >%X!", pCurrentCPU->GetPC(), adr);
     }
 

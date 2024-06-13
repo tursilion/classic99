@@ -66,31 +66,31 @@ public:
 	virtual CString GetDiskName();
 
 	// standard PAB opcodes
-	virtual FileInfo *Open(FileInfo *pFile);
-//	virtual bool Close(FileInfo *pFile);				// base class ok
-//	virtual bool Read(FileInfo *pFile);					// base class ok
-//	virtual bool Write(FileInfo *pFile);				// base class ok
-//	virtual bool Restore(FileInfo *pFile);				// base class ok
-	virtual bool Load(FileInfo *pFile);
-	virtual bool Save(FileInfo *pFile);
-	virtual bool Delete(FileInfo *pFile);
-//	virtual bool Scratch(FileInfo *pFile);				// not supported
-//	virtual void MapStatus(FileInfo *src, FileInfo *dest);// base class ok
-//	virtual bool GetStatus(FileInfo *pFile);			// base class ok
+	virtual FileInfo *Open(FileInfo *pFile) override;
+//	virtual bool Close(FileInfo *pFile) override;				// base class ok
+//	virtual bool Read(FileInfo *pFile) override;				// base class ok
+//	virtual bool Write(FileInfo *pFile) override;				// base class ok
+//	virtual bool Restore(FileInfo *pFile) override;				// base class ok
+	virtual bool Load(FileInfo *pFile) override;
+	virtual bool Save(FileInfo *pFile) override;
+	virtual bool Delete(FileInfo *pFile) override;
+//	virtual bool Scratch(FileInfo *pFile) override;				// not supported
+//	virtual void MapStatus(FileInfo *src, FileInfo *dest) override;// base class ok
+//	virtual bool GetStatus(FileInfo *pFile) override;			// base class ok
 
 	// SBRLNK opcodes (files is handled by shared handler)
-	virtual bool ReadSector(FileInfo *pFile);
-	virtual bool WriteSector(FileInfo *pFile);
-	virtual bool ReadFileSectors(FileInfo *pFile);
-//	virtual bool WriteFileSectors(FileInfo *pFile);		// TODO
-//	virtual bool FormatDisk(FileInfo *pFile);			// TODO - maybe someday
-//	virtual bool ProtectFile(FileInfo *pFile);			// not supported
-//	virtual bool UnProtectFile(FileInfo *pFile);		// not supported
-//	virtual bool RenameFile(FileInfo *pFile);			// TODO - maybe someday
+	virtual bool ReadSector(FileInfo *pFile) override;
+	virtual bool WriteSector(FileInfo *pFile) override;
+	virtual bool ReadFileSectors(FileInfo *pFile) override;
+	virtual bool WriteFileSectors(FileInfo *pFile) override;
+//	virtual bool FormatDisk(FileInfo *pFile) override;			// TODO - maybe someday
+//	virtual bool ProtectFile(FileInfo *pFile) override;			// TODO - maybe never
+//	virtual bool UnProtectFile(FileInfo *pFile) override;       // TODO - maybe never
+	virtual bool RenameFile(FileInfo *pFile, const char *csNewFile) override;
 
 	// class-specific functions
 	bool BufferSectorFile(FileInfo *pFile);
-	bool ReadVIB(FileInfo *pFile);
+    bool VerifyFormat(FILE *fp, bool &bIsPC99, int &Gap1, int &PreIDGap, int &PreDatGap, int &SLength, int &SekTrack, int &TrkLen);
 	bool GetSectorFromDisk(FILE *fp, int nSector, unsigned char *buf);
 	bool PutSectorToDisk(FILE *fp, int nSector, unsigned char *buf);
 	bool FindFileFDR(FILE *fp, FileInfo *pFile, unsigned char *fdr);
@@ -99,13 +99,15 @@ public:
 	int  GetDirectory(FileInfo *pFile, FileInfo *&Filenames);
 	const char* GetAttributes(int nType);
 	bool freeSectorFromBitmap(FILE *fp, int nSec);
-	bool lockSectorInBitmap(FILE *fp, int nSec);
-	bool WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, int cnt);
+    void WriteCluster(unsigned char *buf, int clusterOff, int startnum, int ofs);
+    bool WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, int cnt);
 	int findFreeSector(FILE *fp, int lastFileSector);
 	void FreePartialFile(FILE *fp, int fdr, int *sectorList, int sectorCnt);
-
+    bool sortDirectory(FILE *fp, int newFDR);
+    bool ReadFileSectorsToAddress(FileInfo *pFile, unsigned char *pAdr);
 
 	// configuration data
-	bool bUseV9T9DSSD;			// use the reverse sector order for DSSD disks that V9T9 did
+	bool bUseV9T9DSSD;			// use the reverse sector order for DSSD disks that V9T9 did - deprecated
+    bool detected;              // used to throttle the PC99 image detection debug a bit
 };
 

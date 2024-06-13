@@ -1,3 +1,8 @@
+// TODO: add a hotkey to enable/disable the menu in full screen mode, 
+// otherwise we can't change disks or quit without exitting full screen mode,
+// which people want to use. Windows often uses f10, can we? It doesn't
+// really do anything useful for us...
+
 //
 // (C) 2011 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
@@ -42,7 +47,7 @@
 //*****************************************************
 
 #define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 
 #include <stdio.h>
 #include <windows.h>
@@ -58,6 +63,7 @@
 #include "tiemul.h"
 #include "cpu9900.h"
 #include "..\addons\makecart.h"
+#include "..\addons\screenReader.h"
 #include "..\keyboard\kb.h"
 #include "..\disk\diskclass.h"
 #include "..\disk\FiadDisk.h"
@@ -77,11 +83,11 @@ extern Z80 myZ80;
 extern CPU9900 * volatile pCurrentCPU;
 extern CPU9900 *pCPU, *pGPU;
 extern const char *szDefaultWindowText;
+extern bool bIgnoreConsoleBreakpointHits;
 extern HDC tmpDC;
 extern int VDPDebug;
 extern int CtrlAltReset;
 extern int gDontInvertCapsLock;
-extern int gLogSNPSG;
 extern int max_volume;
 extern int starttimer9901;
 extern int timer9901;										// 9901 interrupt timer
@@ -97,7 +103,8 @@ extern void GenerateSIDBuffer();
 extern int max_cpf, cfg_cpf;
 // needed for configuration
 extern char AVIFileName[256];
-extern int drawspeed, fJoy, joy1mode, joy2mode;
+extern int drawspeed, fJoy;
+extern joyStruct joyStick[2];
 extern int fJoystickActiveOnKeys;
 extern int slowdown_keyboard;
 extern HINSTANCE hInstance;						// global program instance
@@ -108,9 +115,9 @@ extern struct CARTS *Users;
 extern int nTotalUserCarts;
 extern struct _break BreakPoints[];
 extern int nBreakPoints;
-extern char lines[34][DEBUGLEN];				// debug lines
+extern char lines[DEBUGLINES][DEBUGLEN];				// debug lines
 extern bool bDebugDirty;
-extern struct history Disasm[20];				// last 20 addresses for disasm
+extern struct history Disasm[DEBUGLINES];				// last x addresses for disasm
 extern bool bScrambleMemory;
 extern RECT gWindowRect;
 extern bool bCorruptDSKRAM;
@@ -119,6 +126,21 @@ extern unsigned char UberRAM[15*1024];
 extern unsigned char UberEEPROM[4*1024];
 extern bool bWindowInitComplete;
 extern CString csCf7Bios;
+extern int bEnableAppMode;
+extern int enableF10Menu;
+extern int enableAltF4;
+extern char AppName[];
+extern Byte SidCache[29];
+extern int WindowActive;
+extern int enableSpeedKeys;
+extern bool mouseCaptured;
+extern int logAudio;
+extern bool openAudioLogFiles();
+extern void closeAudioLogFiles();
+
+// window
+extern int nVideoLeft, nVideoTop;
+extern int bAppLockFullScreen;
 
 // VDP tables
 extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
@@ -130,9 +152,17 @@ extern bool bDisableBlank, bDisableSprite, bDisableBackground;
 extern bool bDisableColorLayer, bDisablePatternLayer;
 extern int bEnable80Columns, bEnable128k, bF18Enabled, bInterleaveGPU;
 extern int bShowFPS;
+extern int bShowKeyboard;
+extern int statusReadLine;
+extern int statusReadCount;
 // sams config
 extern int sams_enabled, sams_size;
 extern Byte staticCPU[0x10000];					// main memory for debugger
+extern Word mapperRegisters[16];
+Byte ReadRawAMS(int address);
+void WriteRawAMS(int address, int value);
+void dumpMapperRegisters();
+void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte, bool force);
 // sound
 extern int nRegister[4];						// frequency registers
 extern int nVolume[4];							// volume attenuation
@@ -149,6 +179,7 @@ extern HWND hBugWnd;
 extern bool BreakOnIllegal, BreakOnDiskCorrupt;
 extern bool bWarmBoot;
 extern int installedJoysticks;
+extern bool gResetTimer;
 
 extern void sound_init(int freq);
 extern void SetSoundVolumes();
@@ -174,6 +205,8 @@ extern CString csLastDiskImage[MAX_MRU];
 extern CString csLastDiskPath[MAX_MRU];
 extern CString csLastUserCart[MAX_MRU];
 
+extern void RestoreWindowPosition();
+
 const char *pCurrentHelpMsg=NULL;
 HWND hKBMap=NULL;
 HWND hHeatMap=NULL;
@@ -181,8 +214,23 @@ HWND hBrkHlp=NULL;
 HWND hTVDlg=NULL;
 HBITMAP hHeatBmp=NULL;
 
+// used for dynamic titles
+static char speedTitle[256];
+
+// used for debug window edit controls
+void newPaint(HWND hWnd, LPPAINTSTRUCT lpPS);
+LRESULT CALLBACK newEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+HWND ctrl1,ctrl2;
+HFONT mainfont;
+char szCaption1[4096] = {0}, szCaption2[4096] = {0};
+
 // used to initialize the disk config dialog 
 int g_DiskCfgNum;
+
+// whether logging disassembly to disk
+FILE *fpDisasm = NULL;
+int disasmLogType = 0;  // 0 = all, 1 = exclude < 2000
+CRITICAL_SECTION csDisasm;  // initialized in tiemul.c
 
 #ifndef GET_X_LPARAM
 #define GET_X_LPARAM(x) (x&0xffff)
@@ -206,14 +254,51 @@ static char szTopMemory[5][32] = { "", "", "6000", "0000", "0000" };		// CPU, VD
 #define MEMVDP 3
 #define MEMPORT 4
 
+// getting back out of full screen
+bool preFullSet = false;
+int preFullX, preFullY, preFullXS, preFullYS;
+
 // references
 // CartDlgProc is in makecart.cpp
-BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void ConfigureDisk(HWND hwnd, int nDiskNum);
-BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines);
 void UpdateUserCartMRU();
+
+// checks for open files. Returns true to continue or false to abort
+bool VerifyOpenFiles(HWND hwnd) {
+	EnterCriticalSection(&csDriveType);
+
+    bool isOpen = false;
+
+	for (int idx=0; idx<MAX_DRIVES; idx++) {
+		if (NULL != pDriveType[idx]) {
+			if (pDriveType[idx]->CheckOpenFiles()) {
+                isOpen = true;
+            }
+		}
+	}
+
+    if (isOpen) {
+		if (IDYES != MessageBox(hwnd, "Please close all open files before changing disk configuration. If you are sure you want to override this and force files to close, click YES.", "Files open - data may be lost if you proceed.", MB_YESNO | MB_ICONASTERISK)) {
+			LeaveCriticalSection(&csDriveType);
+			return false;
+		}
+    }
+
+	for (int idx=0; idx<MAX_DRIVES; idx++) {
+		if (NULL != pDriveType[idx]) {
+			if (pDriveType[idx]->CheckOpenFiles()) {
+				pDriveType[idx]->CloseAllFiles();
+			}
+		}
+	}
+
+    LeaveCriticalSection(&csDriveType);
+    return true;
+}
 
 // add a string to the MRU list
 void addMRU(CString *pList, CString newStr) {
@@ -257,6 +342,11 @@ void OpenUserCart(OPENFILENAME &ofn) {
 	Users[nUsr].pDisk=NULL;
 	Users[nUsr].szMessage=NULL;
 	nCnt=0;
+
+	// clear out all previous roms detected here
+	for (int idx=0; idx<MAXROMSPERCART; ++idx) {
+		Users[nUsr].Img[idx].nType = TYPE_NONE;
+	}
                             
     // we now have to support all the different legacy naming types, /AND/ a new concept with
     // no extension whatsoever. That confuses a lot of this code, so we skip over it in that case...
@@ -275,6 +365,11 @@ void OpenUserCart(OPENFILENAME &ofn) {
 		// since only V9T9 carts should be indexed that way. Another good reason for the RPK carts...
 		// Anyway, we'll make a semi-honest effort for them...case must match!
 		pPartIdx = strstr(ofn.lpstrFile, "(Part ");
+		if (pPartIdx == NULL) {
+			// And... of course, someone decided they didn't like "Part" and used "File" for a set,
+			// so again, %$%#@$ you very much. THE FILENAME IS THE METADATA, %$#%@#$@$#!
+			pPartIdx = strstr(ofn.lpstrFile, "(File ");
+		}
 
 		if (NULL != pPartIdx) {
 			pPartIdx+=6;
@@ -335,12 +430,28 @@ void OpenUserCart(OPENFILENAME &ofn) {
 				if (NULL != fp) {
 					fseek(fp, 0, SEEK_END);
 					Users[nUsr].Img[nCnt].dwImg=NULL;
+					Users[nUsr].Img[nCnt].nLength=ftell(fp);
+                    // And it gets better /still/, FinalGROM users are now using "C.BIN" to
+                    // name /bank switched/ carts. THANK YOU VERY $%#%#$%# MUCH. I only
+                    // spent 15 years establishing the standard. Now I am spending hours
+                    // on "why doesn't my ROM work?????" Because it %$#@%$#@ LIES TO THE EMULATOR.
+					// We should have used a header.
+                    if ((Users[nUsr].Img[nCnt].nType == TYPE_ROM) && (Users[nUsr].Img[nCnt].nLength > 8192)) {
+                        // at least we can assume it's non-inverted. Thank you for small favors.
+                        debug_write("Cartridge image is improperly named - C.BIN images max 8k. Treating as type 8.");
+                        Users[nUsr].Img[nCnt].nType = TYPE_378;
+                    }
+                    // might as well check the opposite, since the no-extension case could happen
+                    if ((Users[nUsr].Img[nCnt].nType == TYPE_378) && (Users[nUsr].Img[nCnt].nLength <= 8192)) {
+                        // can't bank less than 8k
+                        debug_write("Cartridge image is improperly named - not banked. Treating as type C.");
+                        Users[nUsr].Img[nCnt].nType = TYPE_ROM;
+                    }
 					if ((Users[nUsr].Img[nCnt].nType==TYPE_378)||(Users[nUsr].Img[nCnt].nType==TYPE_379)||(Users[nUsr].Img[nCnt].nType==TYPE_MBX)) {
 						Users[nUsr].Img[nCnt].nLoadAddr=0x0000;
 					} else {
 						Users[nUsr].Img[nCnt].nLoadAddr=0x6000;
 					}
-					Users[nUsr].Img[nCnt].nLength=ftell(fp);
 					strncpy(Users[nUsr].Img[nCnt].szFileName, ofn.lpstrFile, 1024);
 					Users[nUsr].Img[nCnt].szFileName[1023]='\0';
 					nCnt++;
@@ -581,10 +692,11 @@ void ParseForXB(char *pStr) {
 /////////////////////////////////////////////////////////////////////////
 // Window handler
 /////////////////////////////////////////////////////////////////////////
-LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// winuser.h has the VK_key key defines
 	// also fill in the key[] array for on/off
+	// WM_USER is used to alias ShowCursor(wParam)
     
 	PAINTSTRUCT ps;
     HDC hDC;
@@ -595,6 +707,27 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	if (myWnd == hwnd) {	// Main TI window
 		switch(msg) {
+		case WM_USER:	
+			// wrap ShowCursor()
+			if (wParam) {
+                int cnt = ShowCursor(TRUE);
+                debug_write("Show cursor got %d", cnt);
+                // if we didn't get to zero call a few more times
+                // note that no mouse will lock it at -1, so this
+                // loop will try once more to no avail
+                for (int x = cnt; x < 0; ++x) {
+                    ShowCursor(TRUE);
+                }
+			} else {
+                int cnt = ShowCursor(FALSE);
+                debug_write("Hide cursor got %d", cnt);
+                // same thing on the hide side, but there's no infinite case
+                for (int x = cnt; x >= 0; --x) {
+    				ShowCursor(FALSE);
+                }
+			}
+			break;
+
 		case WM_INITMENUPOPUP:
 			if (IsClipboardFormatAvailable(CF_TEXT)) {
 				EnableMenuItem(GetMenu(myWnd), ID_EDITPASTE, MF_ENABLED | MF_BYCOMMAND);
@@ -620,7 +753,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_PAINT:
 			hDC = BeginPaint(hwnd, &ps);
 			GetClientRect(myWnd, &myrect);
-			if (StretchMode==0) {
+			if (StretchMode==STRETCH_NONE) {
 				FillRect(hDC, &myrect, (HBRUSH)(COLOR_MENU+1));
 			}
 			SetEvent(BlitEvent);
@@ -638,16 +771,16 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case WM_KEYDOWN:
 			key[wParam]=1;
-			if (lParam&0x1000000) {
+			if (lParam&0x1000000) {	// bit 24 is an extended key
 				decode(0xe0);	// extended
 			}
 			decode(wParam);
-			fKeyEverPressed=true;
+    		fKeyEverPressed=true;
 			break;
 
 		case WM_KEYUP:
 			key[wParam]=0;
-			if (lParam&0x1000000) {
+			if (lParam&0x1000000) { // bit 24 is an extended key
 				decode(0xe0);	// extended
 			}
 			decode(0xf0);	// key up
@@ -655,37 +788,24 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case WM_SYSKEYDOWN:				// returns from ALT and ALT+KEY (I use as FCTN)
-			// some system keys we want Windows to process, namely F4 (close)
-			if ((wParam != VK_F4) & (wParam != VK_RETURN))
+			// some system keys we want Windows to process, but we don't take F4 anymore
+			if (wParam != VK_RETURN)
 			{	
 				key[wParam]=1;
-				if (lParam&0x1000000) {
+				if (lParam&0x1000000) {	// bit 24 is an extended key
 					decode(0xe0);	// extended
 				}
 				decode(wParam);
 			}
 			else
 			{
-				switch (wParam)
-				{
-				case VK_F4:
-					if (!GetWindowRect(myWnd, &gWindowRect)) {
-						gWindowRect.left = -1;
-						gWindowRect.top = -1;
-					}
-					quitflag=1;
-					PostQuitMessage(0);
-					break;
-				
-				default:
-					return(DefWindowProc(hwnd, msg, wParam, lParam));
-				}
+				return(DefWindowProc(hwnd, msg, wParam, lParam));
 			}
 			break;
 
 		case WM_SYSKEYUP:
 			key[wParam]=0;
-			if (lParam&0x1000000) {
+			if (lParam&0x1000000) {	// bit 24 is an extended key
 				decode(0xe0);	// extended
 			}
 			decode(0xf0);	// key up
@@ -695,15 +815,20 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_SYSCHAR:
 			// Don't remove this check, even if we need no ALT keys - otherwise all FCTN keys on the TI ding ;)
 			// Fullscreen toggle - Alt-Enter
-			if ((wParam==VK_RETURN)&&((lParam&0x8000)==0)) {
-				if (3 == StretchMode) {
-					StretchMode=2;
-					PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
-				} else {
-					if ((2 == StretchMode) && (0 != FullScreenMode)) {
-						StretchMode=3;
-						PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_DXFULL_320X240X8+FullScreenMode-1, 1);
+			if ((wParam==VK_RETURN)&&((lParam&0x8000)==0)) {	// TODO: bit 15 is ??? Part of repeat count?
+				// don't toggle if full screen is locked
+				if (!bAppLockFullScreen) {
+					if (STRETCH_FULL == StretchMode) {
+						StretchMode=STRETCH_DX;
+						PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
+					} else {
+						if (STRETCH_DX == StretchMode) {
+							StretchMode=STRETCH_FULL;
+							PostMessage(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
+						}
 					}
+				} else {
+					debug_write("Saw alt+enter but full screen is locked.");
 				}
 			}
 			break;
@@ -733,13 +858,15 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             char buf[1024];
             // we only care about the first file - even if the user dropped multiple
             if (DragQueryFile(hDrop, 0, buf, sizeof(buf))) {
-			    int ret;
+			    int ret = IDNO;
                 DragFinish(hDrop);
-//			    if (fKeyEverPressed) {
-//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
-//			    } else {
-				    ret=IDYES;
-//			    }
+                if (VerifyOpenFiles(hwnd)) {
+			        if (fKeyEverPressed) {
+				        ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
+			        } else {
+				        ret=IDYES;
+			        }
+                }
 			    if (IDYES == ret) {
                     // Make a fake OPENFILENAME
                     // hwndOwner, lpstrFileTitle, lpstrFile, nFileExtension
@@ -776,12 +903,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			// Check for dynamic ones first, so we don't need a huge switch
 			if ((wParam >= ID_SYSTEM_0) && (wParam < ID_SYSTEM_0+100)) {
 				// user requested to change system
-				int ret;
-//				if ((!lParam)&&(fKeyEverPressed)) {
-//					ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change System Type", MB_YESNO|MB_ICONQUESTION);
-//				} else {
-					ret=IDYES;
-//				}
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if ((!lParam)&&(fKeyEverPressed)) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change System Type", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					nSystem=wParam-ID_SYSTEM_0;
 					for (int idx=0; idx<100; idx++) {
@@ -807,12 +936,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			if ((wParam >= ID_APP_0) && (wParam < ID_APP_0+100)) {
 				// user requested to change cartridge (apps)
-				int ret;
-//			    if (fKeyEverPressed) {
-//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
-//			    } else {
-				    ret=IDYES;
-//			    }
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if (fKeyEverPressed) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=0;
@@ -835,12 +966,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			if ((wParam >= ID_GAME_0) && (wParam < ID_GAME_0+100)) {
 				// user requested to change cartridge (games)
-				int ret;
-//			    if (fKeyEverPressed) {
-//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
-//			    } else {
-				    ret=IDYES;
-//			    }
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if (fKeyEverPressed) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=1;
@@ -863,12 +996,14 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			if ((wParam >= ID_USER_0) && (wParam < ID_USER_0+MAXUSERCARTS)) {
 				// user requested to change cartridge (user)
-				int ret;
-//			    if (fKeyEverPressed) {
-//				    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Load cartridge", MB_YESNO|MB_ICONQUESTION);
-//			    } else {
-				    ret=IDYES;
-//			    }
+				int ret=IDNO;
+                if (VerifyOpenFiles(hwnd)) {
+				    if (fKeyEverPressed) {
+					    ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change Cartridge", MB_YESNO|MB_ICONQUESTION);
+				    } else {
+					    ret=IDYES;
+				    }
+                }
 				if (IDYES == ret) {
 					int idx;
 					nCartGroup=2;
@@ -902,7 +1037,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					// we don't initialize COM, so some shell extensions may cause issues.
 					// MS wants us to do this: CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)
 					// But that's per-thread! And you have to DeInitialize and track how many times and everything, oi.
-					int nResult = (int)ShellExecute(hwnd, "open", pDriveType[wParam-ID_DSK0_OPENDSK0]->GetPath(), NULL, NULL, SW_SHOWNORMAL);
+					int nResult = (int)ShellExecute(hwnd, NULL, pDriveType[wParam-ID_DSK0_OPENDSK0]->GetPath(), NULL, NULL, SW_SHOWNORMAL);
 					LeaveCriticalSection(&csDriveType);
 					if (nResult < 32) {
 						HLOCAL pMsg;
@@ -1040,7 +1175,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_HELP_ABOUT:
 				sprintf(szTemp, "Classic99 %s\n"\
-								"©1994-2017\n\n"\
+								"©1994-2024\n\n"\
 								"By Mike Brent (Tursi)\n"\
 								"ROM data included under license from Texas Instruments.\n\n"\
 								"So many people in the TI community make this all worthwhile!\n\n"\
@@ -1081,9 +1216,9 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_HELP_OPENHELPFILE:
 				// just try to launch the PDF file
 				{
-					int nResult = (int)ShellExecute(hwnd, "open", "Classic99 Manual.pdf", NULL, NULL, SW_SHOWNORMAL);
+					int nResult = (int)ShellExecute(hwnd, NULL, "Classic99 Manual.pdf", NULL, NULL, SW_SHOWNORMAL);
 					if (nResult < 32) {
-						debug_write("Failed to open help with code %d, and FormatMessage failed with code %d", nResult, GetLastError());
+						debug_write("Failed to open help with code %d", nResult);
 						MessageBox(hwnd, "Failed to open manual. Make sure it is in the Classic99 folder, and a PDF reader is installed.", "Error", MB_OK | MB_ICONERROR);
 					}
 				}
@@ -1093,106 +1228,111 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			case ID_FILE_WARMRESET:
 			case ID_FILE_SCRAMBLERESET:
 			case ID_FILE_ERASEUBERGROM:
-				// save roms before we wipe all the memory!
-				saveroms();
+                if (VerifyOpenFiles(hwnd)) {
+				    // save roms before we wipe all the memory!
+				    saveroms();
 				
-				// now erase memories as appropriate
-				if (LOWORD(wParam) == ID_FILE_ERASEUBERGROM) {
-					memrnd(UberGROM, sizeof(UberGROM));
-					memrnd(UberRAM, sizeof(UberRAM));
-					memrnd(UberEEPROM, sizeof(UberEEPROM));
-					bScrambleMemory=false;
-					bWarmBoot = false;
-				}
-				if (LOWORD(wParam) == ID_FILE_RESET) {
-					bScrambleMemory=false;
-					bWarmBoot = false;
-				}
-				if (LOWORD(wParam) == ID_FILE_WARMRESET) {
-					bScrambleMemory = false;
-					bWarmBoot = true;
-				}
-				if (LOWORD(wParam) == ID_FILE_SCRAMBLERESET) {
-					bScrambleMemory=true;
-					bWarmBoot = false;
-				}
+				    // now erase memories as appropriate
+				    if (LOWORD(wParam) == ID_FILE_ERASEUBERGROM) {
+					    memrnd(UberGROM, sizeof(UberGROM));
+					    memrnd(UberRAM, sizeof(UberRAM));
+					    memrnd(UberEEPROM, sizeof(UberEEPROM));
+					    bScrambleMemory=false;
+					    bWarmBoot = false;
+				    }
+				    if (LOWORD(wParam) == ID_FILE_RESET) {
+					    bScrambleMemory=false;
+					    bWarmBoot = false;
+				    }
+				    if (LOWORD(wParam) == ID_FILE_WARMRESET) {
+					    bScrambleMemory = false;
+					    bWarmBoot = true;
+				    }
+				    if (LOWORD(wParam) == ID_FILE_SCRAMBLERESET) {
+					    bScrambleMemory=true;
+					    bWarmBoot = false;
+				    }
 				
-				TriggerBreakPoint(true);				// halt the CPU
-				Sleep(50);								// wait for it...
+				    TriggerBreakPoint(true, false);			// halt the CPU
+				    Sleep(50);								// wait for it...
 
-				memset(CRU, 1, 4096);					// reset 9901
-	            CRU[0]=0;	// timer control
-	            CRU[1]=0;	// peripheral interrupt mask
-	            CRU[2]=0;	// VDP interrupt mask
-	            CRU[3]=0;	// timer interrupt mask??
-            //  CRU[12-14]  // keyboard column select
-            //  CRU[15]     // Alpha lock 
-            //  CRU[24]     // audio gate (leave high)
-	            CRU[25]=0;	// mag tape out - needed for Robotron to work!
-	            CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
-				timer9901 = 0;
-                timer9901Read = 0;
-				starttimer9901 = 0;
-				timer9901IntReq=0;
-				wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
-				init_kb();								// Reset keyboard emulation
-				SetupSams(sams_enabled, sams_size);		// Prepare the AMS system
-                ayemu_reset(&aypsg);
-                // mute channels (your program startup does this)
-                aywritesound(8,0);    // volume to zero
-                aywritesound(9,0);
-                aywritesound(10,0);
-                aywritesound(7,0xf8); // mixer to no noise
-				if (NULL != InitSid) {
-					InitSid();							// reset the SID chip
-					if (NULL != SetSidBanked) {		
-						SetSidBanked(false);			// switch it out for now
-					}
-				}
-				resetDAC();
-				readroms();								// reload the real ROMs
-				if (NULL != pCurrentHelpMsg) {
-					szDefaultWindowText="Classic99 - See Help->Known Issues for this cart";
-					SetWindowText(myWnd, szDefaultWindowText);
-				} else {
-					szDefaultWindowText="Classic99";
-					SetWindowText(myWnd, szDefaultWindowText);
-				}
-				pCPU->reset();
-				pGPU->reset();
-                z80_reset(&myZ80);
+				    memset(CRU, 1, 4096);					// reset 9901
+	                CRU[0]=0;	// timer control
+	                CRU[1]=0;	// peripheral interrupt mask
+	                CRU[2]=0;	// VDP interrupt mask
+	                CRU[3]=0;	// timer interrupt mask??
+                //  CRU[12-14]  // keyboard column select
+                //  CRU[15]     // Alpha lock 
+                //  CRU[24]     // audio gate (leave high)
+	                CRU[25]=0;	// mag tape out - needed for Robotron to work!
+	                CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
+				    timer9901 = 0;
+                    timer9901Read = 0;
+				    starttimer9901 = 0;
+				    timer9901IntReq=0;
+				    wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
+				    init_kb();								// Reset keyboard emulation
+				    SetupSams(sams_enabled, sams_size);		// Prepare the AMS system
+                	ayemu_reset(&aypsg);
+                	// mute channels (your program startup does this)
+                	aywritesound(8,0);    // volume to zero
+                	aywritesound(9,0);
+                	aywritesound(10,0);
+                	aywritesound(7,0xf8); // mixer to no noise
+				    if (NULL != InitSid) {
+					    InitSid();							// reset the SID chip
+					    if (NULL != SetSidBanked) {		
+						    SetSidBanked(false);			// switch it out for now
+					    }
+				    }
+				    resetDAC();
+				    readroms();								// reload the real ROMs
+				    if (NULL != pCurrentHelpMsg) {
+					    szDefaultWindowText="Classic99 - See Help->Known Issues for this cart";
+					    SetWindowText(myWnd, szDefaultWindowText);
+				    } else {
+                        szDefaultWindowText = AppName;
+					    SetWindowText(myWnd, szDefaultWindowText);
+				    }
 
-				pCurrentCPU = pCPU;
-				bF18AActive = 0;
-				for (int idx=0; idx<=PCODEGROMBASE; idx++) {
-					GROMBase[idx].grmaccess=2;			// no GROM accesses yet
-				}
-				nCurrentDSR=-1;
-				memset(nDSRBank, 0, sizeof(nDSRBank));
-				doLoadInt=false;						// no pending LOAD
-				vdpReset(true);								// TODO: should move these vars into the reset function
-				vdpaccess=0;							// No VDP address writes yet 
-				vdpwroteaddress=0;						// timer after a VDP address write to allow time to fetch
-				vdpscanline=0;
-				vdpprefetch=0;
-				vdpprefetchuninited = true;
-				end_of_frame=0;							// No end of frame yet
-				CPUSpeechHalt=false;					// not halted for speech reasons
-				CPUSpeechHaltByte=0;					// byte pending for the speech hardware
-				cpucount=0;
-				cpuframes=0;
-				fKeyEverPressed=false;					// No key pressed yet (to disable the warning on cart change)
-				memset(CPUMemInited, 0, sizeof(CPUMemInited));	// no CPU mem written to yet
-				memset(VDPMemInited, 0, sizeof(VDPMemInited));	// or VDP
-				bWarmBoot = false;						// if it was a warm boot, it's done now
-				// set both joysticks as active
-				installedJoysticks = 0x03;
-				// but don't reset g_bCheckUninit
-				DoPlay();
-				// these must come AFTER DoPlay()
-				max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
-				cfg_cpf=max_cpf;
-				InterlockedExchange((LONG*)&cycles_left, max_cpf);
+				    pCPU->reset();
+				    pGPU->reset();
+             	    z80_reset(&myZ80);
+
+				    pCurrentCPU = pCPU;
+				    bF18AActive = 0;
+				    for (int idx=0; idx<=PCODEGROMBASE; idx++) {
+					    GROMBase[idx].grmaccess=2;			// no GROM accesses yet
+				    }
+				    nCurrentDSR=-1;
+				    memset(nDSRBank, 0, sizeof(nDSRBank));
+				    doLoadInt=false;						// no pending LOAD
+				    vdpReset(true);	    					// TODO: should move these vars into the reset function
+				    vdpaccess=0;							// No VDP address writes yet 
+				    vdpwroteaddress=0;						// timer after a VDP address write to allow time to fetch
+				    vdpscanline=0;
+				    vdpprefetch=0;
+				    vdpprefetchuninited = true;
+				    VDPREG[0]=0;
+				    VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
+				    end_of_frame=0;							// No end of frame yet
+				    CPUSpeechHalt=false;					// not halted for speech reasons
+				    CPUSpeechHaltByte=0;					// byte pending for the speech hardware
+				    cpucount=0;
+				    cpuframes=0;
+				    fKeyEverPressed=false;					// No key pressed yet (to disable the warning on cart change)
+				    memset(CPUMemInited, 0, sizeof(CPUMemInited));	// no CPU mem written to yet
+				    memset(VDPMemInited, 0, sizeof(VDPMemInited));	// or VDP
+				    bWarmBoot = false;						// if it was a warm boot, it's done now
+				    // set all joysticks as available
+				    installedJoysticks = 0xffff;
+				    // but don't reset g_bCheckUninit
+				    DoPlay();
+				    // these must come AFTER DoPlay()
+				    max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
+				    cfg_cpf=max_cpf;
+				    InterlockedExchange((LONG*)&cycles_left, max_cpf);
+                }
 				break;
 
 			case ID_FILE_QUIT:
@@ -1350,7 +1490,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				if (Recording)
 				{
 					debug_write("Stoping AVI recording");
-					szDefaultWindowText="Classic99";
+                    szDefaultWindowText = AppName;
 					SetWindowText(myWnd, szDefaultWindowText);
 					CloseAVI();
 					Recording=0;
@@ -1378,6 +1518,13 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				else
 				{
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_MAINTAINASPECT, MF_UNCHECKED);
+				}
+				// we won't resize, but for sanity's sake, wipe the background
+				if ((MaintainAspect)||(STRETCH_NONE == StretchMode)) {
+					GetClientRect(myWnd, &myrect);
+					myDC=GetDC(myWnd);
+					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENUTEXT+1));	// must add 1 to system colors - this is normally black
+					ReleaseDC(myWnd, myDC);
 				}
 				break;
 
@@ -1423,6 +1570,17 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWFPS, MF_CHECKED);
 				} else {
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWFPS, MF_UNCHECKED);
+				}
+				break;
+
+            case ID_VIDEO_SHOWKEYBOARDDEBUG:
+				if (1 != lParam) {
+					bShowKeyboard = bShowKeyboard ? 0 : 1;
+				}
+				if (bShowKeyboard) {
+					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWKEYBOARDDEBUG, MF_CHECKED);
+				} else {
+					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_SHOWKEYBOARDDEBUG, MF_UNCHECKED);
 				}
 				break;
 
@@ -1492,45 +1650,82 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					InterlockedExchange((LONG*)&cycles_left, 0);
 
 					// Now just used to set the check boxes correctly
-					if ((CPUThrottle == CPU_NORMAL) && (SystemThrottle == VDP_CPUSYNC) && (max_cpf > SLOW_CPF)) {
+					switch (ThrottleMode) {
+					default:
+						// force a known value
+						debug_write("Unknown throttle mode %d - resetting to normal.", ThrottleMode);
+						ThrottleMode = THROTTLE_NORMAL;
+						// fall through
+
+					case THROTTLE_NORMAL:
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_CHECKED);
-						szDefaultWindowText="Classic99";
-					} else {
-						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
-					}
-
-					if ((CPUThrottle == CPU_NORMAL) && (SystemThrottle == VDP_CPUSYNC) && (max_cpf == SLOW_CPF)) {
-						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_CHECKED);
-						szDefaultWindowText="Classic99 - Slow CPU";
-					} else {
+						if (Fast16BitRam) {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - 16-bit RAM", AppName);
+							szDefaultWindowText = speedTitle;
+						} else {
+							szDefaultWindowText = AppName;
+						}
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_UNCHECKED);
-					}
-
-					if ((CPUThrottle == CPU_OVERDRIVE) && (SystemThrottle == VDP_REALTIME)) {
-						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_CHECKED);
-						szDefaultWindowText="Classic99 - CPU Overdrive";
-					} else {
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_UNCHECKED);
-					}
-
-					if ((CPUThrottle == CPU_MAXIMUM) && (SystemThrottle == VDP_CPUSYNC)) {
-						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_CHECKED);
-						szDefaultWindowText="Classic99 - System Maximum";
-					} else {
 						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_UNCHECKED);
+						break;
+
+					case THROTTLE_SLOW:
+						snprintf(speedTitle, sizeof(speedTitle), "%s - Slow CPU", AppName);
+						if (Fast16BitRam) {
+							strncat(speedTitle, " - 16-bit RAM", sizeof(speedTitle)-strlen(speedTitle)-1);
+						}
+						szDefaultWindowText = speedTitle;
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_CHECKED);
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_UNCHECKED);
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_UNCHECKED);
+						break;
+
+					case THROTTLE_OVERDRIVE:
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_CHECKED);
+						if (enableSpeedKeys) {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - CPU Overdrive (F6 for normal)", AppName);
+						} else {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - CPU Overdrive", AppName);
+						}
+						if (Fast16BitRam) {
+							strncat(speedTitle, " - 16-bit RAM", sizeof(speedTitle)-strlen(speedTitle)-1);
+						}
+						szDefaultWindowText = speedTitle;
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_UNCHECKED);
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_UNCHECKED);
+						break;
+
+					case THROTTLE_SYSTEMMAXIMUM:
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_SYSTEMMAXIMUM, MF_CHECKED);
+						if (enableSpeedKeys) {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - System Maximum (F6/F11 for normal)", AppName);
+						} else {
+							snprintf(speedTitle, sizeof(speedTitle), "%s - System Maximum", AppName);
+						}
+						if (Fast16BitRam) {
+							strncat(speedTitle, " - 16-bit RAM", sizeof(speedTitle)-strlen(speedTitle)-1);
+						}
+						szDefaultWindowText = speedTitle;
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUOVERDRIVE, MF_UNCHECKED);
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_CPUSLOW, MF_UNCHECKED);
+						CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_NORMAL, MF_UNCHECKED);
+						break;
 					}
 					SetWindowText(myWnd, szDefaultWindowText);
 				}
 				break;
 
 			case ID_CPUTHROTTLING_NORMAL:
-				CPUThrottle=CPU_NORMAL;
-				SystemThrottle=VDP_CPUSYNC;
-				max_cpf=cfg_cpf;
-				resetDAC();		// otherwise we will be way out of sync
-				SetSoundVolumes();		// unmute in case it was in slow mode
-				if (max_cpf <= SLOW_CPF) {
+				ThrottleMode = THROTTLE_NORMAL;
+				if (lParam != 1) max_cpf=cfg_cpf;   // lParam(1) means internal message, don't change
+				resetDAC();							// otherwise we will be way out of sync
+				SetSoundVolumes();					// unmute in case it was in slow mode
+				if ((lParam != 1) && (max_cpf <= SLOW_CPF)) {
 					// we've lost the configured speed.. sorry? to remove that later anyway
+					debug_write("cfg_cpf was lost, this isn't supposed to happen. Resetting.");
 					max_cpf=(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF);
 					cfg_cpf=max_cpf;
 				}
@@ -1538,8 +1733,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_CPUTHROTTLING_CPUSLOW:
-				CPUThrottle=CPU_NORMAL;
-				SystemThrottle=VDP_CPUSYNC;
+				ThrottleMode = THROTTLE_SLOW;
 				max_cpf=SLOW_CPF;
 				resetDAC();		// just to empty it, it won't be filled in slow mode
 				MuteAudio();
@@ -1547,19 +1741,62 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_CPUTHROTTLING_CPUOVERDRIVE:
-				CPUThrottle=CPU_OVERDRIVE;
-				SystemThrottle=VDP_REALTIME;
+				ThrottleMode = THROTTLE_OVERDRIVE;
 				max_cpf=cfg_cpf;
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
 				break;
 
 			case ID_CPUTHROTTLING_SYSTEMMAXIMUM:
-				CPUThrottle=CPU_MAXIMUM;
-				SystemThrottle=VDP_CPUSYNC;
+				ThrottleMode = THROTTLE_SYSTEMMAXIMUM;
 				max_cpf=cfg_cpf;
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
+				break;
+
+			case ID_CPUTHROTTLING_16:
+				// lParam of 1 means internal message, value already changed
+				if (lParam != 1) {
+					Fast16BitRam = !Fast16BitRam;
+				}
+				if (Fast16BitRam) {
+					snprintf(speedTitle, sizeof(speedTitle), "%s - 16-bit RAM", AppName);
+					szDefaultWindowText = speedTitle;
+					CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_16, MF_CHECKED);
+					if (lParam != 1) {
+						MessageBox(myWnd, "Warning: 16-bit RAM setting also affects AMS. This mode is accurate only for 32k apps.", "Performance warning", MB_OK);
+					}
+				} else {
+					szDefaultWindowText = AppName;
+					CheckMenuItem(GetMenu(myWnd), ID_CPUTHROTTLING_16, MF_UNCHECKED);
+				}
+				break;
+
+			case ID_SCREENREADER_CONTINUOUS:
+				{
+					bool val = ScreenReader::GetContinuousRead();
+					if (lParam == 0) {
+						val = !val;
+						ScreenReader::SetContinuousRead(val);
+					} else {
+						// sent from config - force to true
+						val = true;
+						ScreenReader::SetContinuousRead(val);
+					}
+					if (val) {
+						CheckMenuItem(GetMenu(myWnd), ID_SCREENREADER_CONTINUOUS, MF_CHECKED);
+					} else {
+						CheckMenuItem(GetMenu(myWnd), ID_SCREENREADER_CONTINUOUS, MF_UNCHECKED);
+					}
+				}
+				break;
+
+			case ID_SCREENREADER_READONCE:
+				ScreenReader::ReadScreenOnce();
+				break;
+
+			case ID_SCREENREADER_STOPTALKING:
+				ScreenReader::ShutUp();
 				break;
 
 			case ID_OPTIONS_AUDIO: 
@@ -1619,18 +1856,6 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 				break;
 
-			case ID_OPTIONS_LOGSNPSG:
-				if (1 != lParam) {
-					// toggle value
-					gLogSNPSG=gLogSNPSG?0:1;
-				}
-				if (gLogSNPSG) {
-					CheckMenuItem(GetMenu(myWnd), ID_OPTIONS_LOGSNPSG, MF_CHECKED);
-				} else {
-					CheckMenuItem(GetMenu(myWnd), ID_OPTIONS_LOGSNPSG, MF_UNCHECKED);
-				}
-				break;
-
 			case ID_EDIT_PASTEXB:
 				// this falls through into EDITPASTE, where we parse the string to remove spaces not needed to enter an XB line
 				// in hopes of more listings being pastable
@@ -1664,9 +1889,9 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     CString csOut;
                     if (GetAsyncKeyState(VK_SHIFT)&0x8000) {
                         // BASIC offset
-                        csOut = captureScreen(-96);
+                        csOut = captureScreen(-96, '.');
                     } else {
-                        csOut = captureScreen(0);
+                        csOut = captureScreen(0, '.');
                     }
                     if (csOut != "") {
           	            HGLOBAL hGlob;
@@ -1721,7 +1946,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1752,7 +1977,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1783,7 +2008,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1814,7 +2039,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
-				if (0 == StretchMode) {
+				if (STRETCH_NONE == StretchMode) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
 					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
@@ -1836,60 +2061,70 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				break;
 
 			case ID_VIDEO_STRETCHMODE_NONE:		// This mode is a fallback, it must not fail and must not loop back
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_CHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_UNCHECKED);
 				InvalidateRect(myWnd, NULL, false);
 				break;
 
 			case ID_VIDEO_STRETCHMODE_DIB:
-				StretchMode=1;
+				StretchMode=STRETCH_DIB;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_CHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_UNCHECKED);
 				InvalidateRect(myWnd, NULL, false);
 				break;
 
 			case ID_VIDEO_STRETCHMODE_DX:
-				StretchMode=2;
+				StretchMode=STRETCH_DX;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_CHECKED);
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_UNCHECKED);
+				// NOT checking for bAppLockFullScreen here - this is not a security setting
+				// if the user bypasses it, then good for them
 				takedownDirectDraw();
-				SetupDirectDraw(0);
-				if (2 != StretchMode) {
+				SetupDirectDraw(false);
+				if (preFullSet) {
+					nVideoLeft = preFullX;
+					nVideoTop = preFullY;
+					nXSize = preFullXS;
+					nYSize = preFullYS;
+				}
+				RestoreWindowPosition();
+				if (STRETCH_DX != StretchMode) {
 					myproc(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE, 0);
 				} else {
 					InvalidateRect(myWnd, NULL, false);
 				}
 				break;
 
-			case ID_VIDEO_STRETCHMODE_DXFULL_320X240X8:
-			case ID_VIDEO_STRETCHMODE_DXFULL_640X480X8:
-			case ID_VIDEO_STRETCHMODE_DXFULL_640X480X16:
-			case ID_DXFULL_640X480X32:
-			case ID_VIDEO_STRETCHMODE_DXFULL_800X600X16:
-			case ID_DXFULL_800X600X32:
-			case ID_DXFULL_1024X768X16:
-			case ID_DXFULL_1024X768X32:
-				StretchMode=3;
-				FullScreenMode=wParam-ID_VIDEO_STRETCHMODE_DXFULL_320X240X8+1;
+			case ID_VIDEO_STRETCHMODE_DXFULLSCREEN:
+				StretchMode=STRETCH_FULL;
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_NONE, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DIB, MF_UNCHECKED);
 				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DX, MF_UNCHECKED);
-				{
-					for (DWORD idx=ID_VIDEO_STRETCHMODE_DXFULL_320X240X8; idx<ID_DXFULL_1024X768X32; idx++) {
-						if (idx==wParam) {
-							CheckMenuItem(GetMenu(myWnd), wParam, MF_CHECKED);
-						} else {
-							CheckMenuItem(GetMenu(myWnd), wParam, MF_UNCHECKED);
-						}
-					}
+				CheckMenuItem(GetMenu(myWnd), ID_VIDEO_STRETCHMODE_DXFULLSCREEN, MF_CHECKED);
+				if (!GetWindowRect(myWnd, &gWindowRect)) {
+					gWindowRect.left = -1;
+					gWindowRect.top = -1;
+				} else {
+					nVideoLeft = gWindowRect.left;
+					nVideoTop = gWindowRect.top;
 				}
+				preFullX = nVideoLeft;
+				preFullY = nVideoTop;
+				preFullXS = nXSize;
+				preFullYS = nYSize;
+				preFullSet = true;
+				// no need to check bAppLockFullScreen here, we are /entering/ full screen
 				takedownDirectDraw();
-				SetupDirectDraw(FullScreenMode);
-				if (3 != StretchMode) {
+				SetupDirectDraw(true);
+				// SetupDirectDraw will cancel StretchMode if it fails
+				if (STRETCH_FULL != StretchMode) {
 					myproc(hwnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE, 0);
 				} else {
 					InvalidateRect(myWnd, NULL, false);
@@ -2030,15 +2265,15 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 				}
 
-				if (0 == StretchMode) {
+				if ((MaintainAspect)||(STRETCH_NONE == StretchMode)) {
 					GetClientRect(myWnd, &myrect);
 					myDC=GetDC(myWnd);
-					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENU+1));
+					FillRect(myDC, &myrect, (HBRUSH)(COLOR_MENUTEXT+1));	// must add 1 to system colors - this is normally black
 					ReleaseDC(myWnd, myDC);
 				}
 
-				if (!IsZoomed(myWnd)) {
-					// save sizes if not maximized (and finished setting up)
+				if ((!IsZoomed(myWnd)) && (StretchMode != STRETCH_FULL)) {
+					// save sizes if not maximized, not full screen (and finished setting up)
                     if (bWindowInitComplete) {
 					    GetWindowRect(myWnd, &myrect);
 					    nXSize = myrect.right-myrect.left;
@@ -2054,12 +2289,19 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			return(DefWindowProc(hwnd, msg, wParam, lParam));
 			break;
 
-		case WM_RBUTTONUP:	// exit full screen
-			if (3 == StretchMode) {
+		case WM_RBUTTONUP:	// exit full screen - if allowed
+			if ((STRETCH_FULL == StretchMode) && (!bAppLockFullScreen)) {
 				MuteAudio();
-				StretchMode=2;
+				StretchMode=STRETCH_DX;
 				takedownDirectDraw();
 				SetupDirectDraw(false);
+				if (preFullSet) {
+					nVideoLeft = preFullX;
+					nVideoTop = preFullY;
+					nXSize = preFullXS;
+					nYSize = preFullYS;
+				}
+				RestoreWindowPosition();
 				SetSoundVolumes();
 			}
 			break;
@@ -2068,6 +2310,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if (PauseInactive) {
 				// Re-enable sounds
 				SetSoundVolumes();
+                WindowActive = 1;
 			}
 			break;
 
@@ -2075,6 +2318,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			// Disable sounds, cache current levels
 			if (PauseInactive) {
 				MuteAudio();
+                WindowActive = 0;
 			}
 			// clear all keyboard state
 #ifdef _DEBUG
@@ -2100,7 +2344,7 @@ LONG FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 
-BOOL CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static int nRate=22050;
 //	static int nLocalSidEnable = false;
 
@@ -2180,7 +2424,7 @@ BOOL CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) 
     { 
         case WM_COMMAND: 
@@ -2195,16 +2439,23 @@ BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					slowdown_keyboard=IsDlgButtonChecked(hwnd, IDC_CHKSLOWKEY)?1:0;
 					
 					if (IsDlgButtonChecked(hwnd, IDC_THROTTLECPU)) {
-						CPUThrottle=CPU_NORMAL;
-						SystemThrottle=VDP_CPUSYNC;
+						ThrottleMode = THROTTLE_NORMAL;
 					}
 					if (IsDlgButtonChecked(hwnd, IDC_UNTHROTTLECPU)) {
-						CPUThrottle=CPU_OVERDRIVE;
-						SystemThrottle=VDP_REALTIME;
+						ThrottleMode = THROTTLE_OVERDRIVE;
 					}
 					if (IsDlgButtonChecked(hwnd, IDC_UNTHROTTLEALL)) {
-						CPUThrottle=CPU_MAXIMUM;
-						SystemThrottle=VDP_CPUSYNC;
+						ThrottleMode = THROTTLE_SYSTEMMAXIMUM;
+					}
+					if (IsDlgButtonChecked(hwnd, IDC_CHKALTF4)) {
+						enableAltF4 = true;
+					} else {
+						enableAltF4 = false;
+					}
+					if (IsDlgButtonChecked(hwnd, IDC_CHKF10)) {
+						enableF10Menu = true;
+					} else {
+						enableF10Menu = false;
 					}
 					{
 						// SAMS
@@ -2231,8 +2482,10 @@ BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						}
 						if ((sams_enabled!=old_sams_enabled)||(sams_size!=old_sams_size)) {
 							// changing this in real time wipes memory, so don't do that!
-							int ret;
-							ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change AMS Memory size", MB_YESNO|MB_ICONQUESTION);
+				            int ret=IDNO;
+                            if (VerifyOpenFiles(hwnd)) {
+    							ret=MessageBox(hwnd, "This will reset the emulator - are you sure?", "Change AMS Memory size", MB_YESNO|MB_ICONQUESTION);
+                            }
 							if (IDYES == ret) {
 								PostMessage(myWnd, WM_COMMAND, ID_FILE_RESET, 0);
 							} else {
@@ -2244,12 +2497,8 @@ BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 					// joysticks
 					fJoy=IsDlgButtonChecked(hwnd, IDC_CHKJOYST)?1:0;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY1KEY))  joy1mode=0;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY1JOY1)) joy1mode=1;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY1JOY2)) joy1mode=2;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY2KEY))  joy2mode=0;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY2JOY1)) joy2mode=1;
-					if (IsDlgButtonChecked(hwnd, IDC_JOY2JOY2)) joy2mode=2;
+					joyStick[0].changeMode(SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_GETCURSEL, 0, 0));
+					joyStick[1].changeMode(SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_GETCURSEL, 0, 0));
 					fJoystickActiveOnKeys=0;		// reset here too
 
 					// Special - tell the CPU Throttle menu item the new state
@@ -2297,26 +2546,47 @@ BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			SendDlgItemMessage(hwnd, IDC_SLDFRAMESKIP, TBM_SETPOS, TRUE, drawspeed);
 			SendDlgItemMessage(hwnd, IDC_CHKJOYST, BM_SETCHECK, fJoy?BST_CHECKED:BST_UNCHECKED, 0);
 			SendDlgItemMessage(hwnd, IDC_CHKSLOWKEY, BM_SETCHECK, slowdown_keyboard?BST_CHECKED:BST_UNCHECKED, 0);
+			SendDlgItemMessage(hwnd, IDC_CHKALTF4, BM_SETCHECK, enableAltF4?BST_CHECKED:BST_UNCHECKED, 0);
+			SendDlgItemMessage(hwnd, IDC_CHKF10, BM_SETCHECK, enableF10Menu?BST_CHECKED:BST_UNCHECKED, 0);
 			
 			// default
 			CheckRadioButton(hwnd, IDC_THROTTLECPU, IDC_UNTHROTTLEALL, IDC_THROTTLECPU);
-			if ((CPUThrottle == CPU_OVERDRIVE) && (SystemThrottle == VDP_REALTIME)) {
+			if (ThrottleMode == THROTTLE_OVERDRIVE) {
 				CheckRadioButton(hwnd, IDC_THROTTLECPU, IDC_UNTHROTTLEALL, IDC_UNTHROTTLECPU);
 			}
-			if ((CPUThrottle == CPU_MAXIMUM) && (SystemThrottle == VDP_CPUSYNC)) {
+			if (ThrottleMode == THROTTLE_SYSTEMMAXIMUM) {
 				CheckRadioButton(hwnd, IDC_THROTTLECPU, IDC_UNTHROTTLEALL, IDC_UNTHROTTLEALL);
 			}
 
-			CheckRadioButton(hwnd, IDC_JOY1KEY, IDC_JOY1JOY2, IDC_JOY1KEY+joy1mode);
-			CheckRadioButton(hwnd, IDC_JOY2KEY, IDC_JOY2JOY2, IDC_JOY2KEY+joy2mode);
-			CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_1024K, sams_enabled?sams_size+IDC_AMS_128K:IDC_AMS_0K);
+			// TODO: AMS configuration doesn't work right now anyway
+//			CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_1024K, sams_enabled?sams_size+IDC_AMS_128K:IDC_AMS_0K);
+
+			SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_RESETCONTENT, 0, 0);
+			SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_RESETCONTENT, 0, 0);
+			SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_ADDSTRING, 0, (LPARAM)"0 - Keyboard");
+			SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_ADDSTRING, 0, (LPARAM)"0 - Keyboard");
+			for (int idx=JOYSTICKID1; idx<JOYSTICKID1+16; ++idx) {
+				JOYCAPS caps;
+				if (JOYERR_NOERROR == joyGetDevCaps(idx, &caps, sizeof(caps))) {
+					char buf[256];
+					_snprintf(buf, sizeof(buf), "%d - %s", idx-JOYSTICKID1+1, caps.szPname);
+					buf[sizeof(buf)-1]='\0';
+					SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_ADDSTRING, 0, (LPARAM)buf);
+					SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_ADDSTRING, 0, (LPARAM)buf);
+				}
+			}
+			if (joyStick[0].mode < 0) joyStick[0].mode = 0;	// -1 erases the list, so don't allow that
+			if (joyStick[1].mode < 0) joyStick[1].mode = 0;
+			SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_SETCURSEL, joyStick[0].mode, 0);
+			SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_SETCURSEL, joyStick[1].mode, 0);
+
 			return TRUE;
 
     } 
     return FALSE; 
 } 
 
-BOOL CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) 
     { 
         case WM_COMMAND: 
@@ -2345,7 +2615,7 @@ BOOL CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 }
 
-BOOL CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	// only tricky part is loading the kb image resource
 	static HBITMAP hBmp=NULL;
 	HWND hWnd=NULL;
@@ -2382,7 +2652,7 @@ BOOL CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-BOOL CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	// handles a running heatmap display - showing accessed memory
 	HWND hWnd=NULL;
 
@@ -2418,7 +2688,7 @@ BOOL CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	// nothing fancy here
     switch (uMsg) 
     { 
@@ -2441,7 +2711,7 @@ BOOL CALLBACK BreakPointHelpProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 } 
 
 // External references
-BOOL CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static double hue=0, sat=0, cont=0, bright=0, sharp=0;
 	double thue, tsat, tcont, tbright, tsharp, tmp;
 
@@ -2585,7 +2855,7 @@ BOOL CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return FALSE; 
 } 
 
-// read a four digit hex address which might also be a range
+// read a one-five digit hex address which might also be a range
 bool ReadRange(int nType, int *A, int *B, int *Bank, char *str) {
 	*A=-1;		// set the failure state now
 	*Bank=-1;	// no bank specified by default
@@ -2596,8 +2866,8 @@ bool ReadRange(int nType, int *A, int *B, int *Bank, char *str) {
 			// invalid, ignore what we got
 			*A=-1;
 		} else {
-			*A &= 0xFFFF;
-			*B &= 0xFFFF;
+			*A &= 0xFFFFF;
+			*B &= 0xFFFFF;
 		}
 	} else {
 		// single value, B to 0
@@ -2608,14 +2878,14 @@ bool ReadRange(int nType, int *A, int *B, int *Bank, char *str) {
 				// invalid, ignore what we got
 				*A=-1;
 			} else {
-				*A &= 0xFFFF;
+				*A &= 0xFFFFF;
 			}
 		} else {
 			if (1 != sscanf(str, "%x", A)) {
 				// invalid, ignore what we got
 				*A=-1;
 			} else {
-				*A &= 0xFFFF;
+				*A &= 0xFFFFF;
 			}
 		}
 	}
@@ -2645,6 +2915,10 @@ const char *FormatBreakpoint(int idx) {
 	if (idx < MAX_BREAKPOINTS) {
 		// write the prefix, if any
 		switch (BreakPoints[idx].Type) {
+            case BREAK_PC:
+                // nothing to do here
+                break;
+
 			case BREAK_ACCESS:
 				szTmp[pos++]='*';
 				break;
@@ -2653,7 +2927,7 @@ const char *FormatBreakpoint(int idx) {
 				szTmp[pos++]='>';
 				break;
 
-			case BREAK_WRITEVDP:
+            case BREAK_WRITEVDP:
 				szTmp[pos++]='>';
 				szTmp[pos++]='V';
 				break;
@@ -2667,7 +2941,8 @@ const char *FormatBreakpoint(int idx) {
 				szTmp[pos++]='<';
 				break;
 
-			case BREAK_READVDP:
+
+            case BREAK_READVDP:
 				szTmp[pos++]='<';
 				szTmp[pos++]='V';
 				break;
@@ -2693,7 +2968,8 @@ const char *FormatBreakpoint(int idx) {
 				szTmp[pos++]='U';
 				break;
 
-			case BREAK_EQUALS_REGISTER:
+
+            case BREAK_EQUALS_REGISTER:
 				szTmp[pos++]='R';
 				break;
 
@@ -2721,6 +2997,7 @@ const char *FormatBreakpoint(int idx) {
 				pos+=sprintf(&szTmp[pos], "%d", BreakPoints[idx].A);
 				break;
 
+
 			default:
 				if (BreakPoints[idx].B != 0) {
 					pos+=sprintf(&szTmp[pos], "(%04X-%04X)", BreakPoints[idx].A, BreakPoints[idx].B);
@@ -2746,9 +3023,6 @@ const char *FormatBreakpoint(int idx) {
 		switch (BreakPoints[idx].Type) {
 			case BREAK_EQUALS_WORD:
 			case BREAK_EQUALS_REGISTER:
-				// a word
-				pos+=sprintf(&szTmp[pos], "=%04X", BreakPoints[idx].Data);
-				break;
 
 			case BREAK_EQUALS_BYTE:
 			case BREAK_EQUALS_VDP:
@@ -2822,16 +3096,19 @@ bool AddBreakpoint(char *buf1) {
 				nType=BREAK_READ;
 			}
 			break;
-		case 'W':	// Word =
-			nType=BREAK_EQUALS_WORD;
-			pTmp=strchr(buf1, '=');
-			if (NULL == pTmp) {
-				nType=BREAK_NONE;
-			} else {
-				if (1 != sscanf(pTmp+1, "%x", &nData)) {
-					nType=BREAK_NONE;
-				}
-			}
+		case 'W':	// Word =, or WP=
+            {
+			    nType=BREAK_EQUALS_WORD;
+			    pTmp=strchr(buf1, '=');
+			    if (NULL == pTmp) {
+				    nType=BREAK_NONE;
+			    } else {
+				    if (1 != sscanf(pTmp+1, "%x", &nData)) {
+					    nType=BREAK_NONE;
+				    }
+                    nData &= 0xffff;
+			    }
+            }
 			break;
 		case 'M':	// Memory = 
 			nType=BREAK_EQUALS_BYTE;
@@ -2842,6 +3119,7 @@ bool AddBreakpoint(char *buf1) {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
 				}
+                nData &= 0xff;
 			}
 			break;
 		case 'U':	// VDP register =
@@ -2853,6 +3131,7 @@ bool AddBreakpoint(char *buf1) {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
 				}
+                nData &= 0xff;
 			}
 			break;
 		case 'V':	// VDP memory =
@@ -2864,6 +3143,7 @@ bool AddBreakpoint(char *buf1) {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
 				}
+                nData &= 0xff;
 			}
 			break;
 		case 'R':	// Register =
@@ -2925,67 +3205,68 @@ bool AddBreakpoint(char *buf1) {
 			break;
 		}
 
-		if (nType != BREAK_NONE) {
-			if (ReadRange(nType, &A, &B, &bank, &buf1[1])) {
-				// eliminate a few special cases
-				switch (nType) {
-					case BREAK_RUN_TIMER:
-						if (B==0) {
-							nType = BREAK_NONE;		// invalid without range
-						}
-						break;
-
-					case BREAK_EQUALS_REGISTER:
-					case BREAK_EQUALS_VDPREG:
-						if (B!=0) {
-							nType = BREAK_NONE;		// range not legal on registers
-						}
-						if (bank != -1) {
-							nType = BREAK_NONE;		// bank not valid on registers
-						}
-						break;
-
-					case BREAK_EQUALS_VDP:
-						if (bank != -1) {
-							nType = BREAK_NONE;		// bank not valid on VDP
-						}
-						break;
-
-					case BREAK_WRITEVDP:
-					case BREAK_READVDP:
-						if ((A>0x47ff) || (B>0x47ff)) {
-							nType = BREAK_NONE;		// out of range for VDP RAM
-						}
-						break;
-				}
-
-				// check for a mask
-				Mask = 0xffff;
-				pTmp = strchr(buf1, '{');
-				if (NULL != pTmp) {
-					if (1 != sscanf(pTmp+1, "%x", &Mask)) {
-						nType = BREAK_NONE;
+        // if it's STILL good...
+        if (nType != BREAK_NONE) {
+			// eliminate a few special cases
+            A&=0xffff;
+            B&=0xffff;
+			switch (nType) {
+				case BREAK_RUN_TIMER:
+					if (B==0) {
+						nType = BREAK_NONE;		// invalid without range
 					}
-					if (Mask == 0) Mask = 0xffff;
-					if ((nData&Mask) != nData) {
-						// invalid data
-						nType = BREAK_NONE;
-					}
-				}
+					break;
 
-				if (nType != BREAK_NONE) {
-					// still valid, now we need to save and format it
-					BreakPoints[nBreakPoints].Type=nType;
-					BreakPoints[nBreakPoints].A=A;
-					BreakPoints[nBreakPoints].B=B;
-					BreakPoints[nBreakPoints].Bank=bank;
-					BreakPoints[nBreakPoints].Data=nData;
-					BreakPoints[nBreakPoints].Mask=Mask;
-					strcpy(buf1, FormatBreakpoint(nBreakPoints));
-					nBreakPoints++;
-					bRet=true;
-				}
+				case BREAK_EQUALS_REGISTER:
+				case BREAK_EQUALS_VDPREG:
+					if (B!=0) {
+						nType = BREAK_NONE;		// range not legal on registers
+					}
+					if (bank != -1) {
+						nType = BREAK_NONE;		// bank not valid on registers
+					}
+					break;
+
+				case BREAK_EQUALS_VDP:
+					if (bank != -1) {
+						nType = BREAK_NONE;		// bank not valid on VDP or AMS
+					}
+					break;
+
+				case BREAK_WRITEVDP:
+				case BREAK_READVDP:
+					if ((A>0x47ff) || (B>0x47ff)) {
+						nType = BREAK_NONE;		// out of range for VDP RAM
+					}
+					break;
 			}
+		}
+
+        // check for a mask
+		Mask = 0xffff;
+		pTmp = strchr(buf1, '{');
+		if (NULL != pTmp) {
+			if (1 != sscanf(pTmp+1, "%x", &Mask)) {
+				nType = BREAK_NONE;
+			}
+			if (Mask == 0) Mask = 0xffff;
+			if ((nData&Mask) != nData) {
+				// invalid data
+				nType = BREAK_NONE;
+			}
+		}
+
+		if (nType != BREAK_NONE) {
+			// still valid, now we need to save and format it
+			BreakPoints[nBreakPoints].Type=nType;
+			BreakPoints[nBreakPoints].A=A;
+			BreakPoints[nBreakPoints].B=B;
+			BreakPoints[nBreakPoints].Bank=bank;
+			BreakPoints[nBreakPoints].Data=nData;
+			BreakPoints[nBreakPoints].Mask=Mask;
+			strcpy(buf1, FormatBreakpoint(nBreakPoints));
+			nBreakPoints++;
+			bRet=true;
 		}
 	}
 
@@ -3001,6 +3282,13 @@ void LaunchDebugWindow() {
 	Sleep(100);
 	if (NULL == dbgWnd) {
 		dbgWnd=CreateDialog(NULL, MAKEINTRESOURCE(IDD_DEBUG), myWnd, DebugBoxProc);
+
+		// the new bigger debug views flicker pretty badly,
+		// so we need to subclass them
+		ctrl1 = GetDlgItem(dbgWnd, IDC_MAINEDIT);
+		SetWindowLongPtr(ctrl1, GWLP_WNDPROC, (LONG_PTR)newEditProc);
+		ctrl2 = GetDlgItem(dbgWnd, IDC_SECONDEDIT);
+		SetWindowLongPtr(ctrl2, GWLP_WNDPROC, (LONG_PTR)newEditProc);
 	}
 	ShowWindow(dbgWnd, SW_SHOW);
 	Sleep(100);
@@ -3017,7 +3305,178 @@ void UpdateMakeMenu(HWND hwnd, int enable) {
 	}
 }
 
-BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+// TODO: this creates a new bitmap every frame... optimize and also check for handle leaks
+// We can improve it by reusing the same bitmap every frame
+static void newPaint(HWND hWnd, LPPAINTSTRUCT lpPS)
+{
+    RECT rc;
+    HFONT hfntOld = NULL;
+	char *cap;
+    HDC hdcMem;
+    HBITMAP hbmMem, hbmOld;
+    HBRUSH hbrBkGnd;
+
+	// check which control
+	if (hWnd == ctrl1) {
+		cap = szCaption1;
+	} else if (hWnd == ctrl2) {
+		cap = szCaption2;
+	} else {
+		return;
+	}
+
+	// create the bitmap to draw into
+    GetClientRect(hWnd, &rc);
+	hdcMem = CreateCompatibleDC(lpPS->hdc);
+    hbmMem = CreateCompatibleBitmap(lpPS->hdc,
+                                    rc.right-rc.left,
+                                    rc.bottom-rc.top);
+    hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
+
+	// erase the bitmap
+    hbrBkGnd = CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
+    FillRect(hdcMem, &rc, hbrBkGnd);
+    DeleteObject(hbrBkGnd);
+
+	// add the font
+	if (mainfont != NULL) {
+		hfntOld = (HFONT)SelectObject(hdcMem, mainfont);
+	}
+
+	// draw it offscreen
+    SetBkMode(hdcMem, TRANSPARENT);
+    SetTextColor(hdcMem, GetSysColor(COLOR_WINDOWTEXT));
+    DrawText(hdcMem,
+             cap,
+             -1,
+             &rc,
+             DT_LEFT);
+
+    if (hfntOld) {
+        SelectObject(lpPS->hdc, hfntOld);
+    }
+
+	// blit the changed image
+    BitBlt(lpPS->hdc,
+           rc.left, rc.top,
+           rc.right-rc.left, rc.bottom-rc.top,
+           hdcMem,
+           0, 0,
+           SRCCOPY);
+
+	// clean up
+    SelectObject(hdcMem, hbmOld);
+    DeleteObject(hbmMem);
+    DeleteDC(hdcMem);
+}
+
+//https://docs.microsoft.com/en-us/previous-versions/ms969905(v=msdn.10)?redirectedfrom=MSDN
+//https://docs.microsoft.com/en-us/windows/win32/controls/subclassing-overview
+LRESULT CALLBACK newEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    PAINTSTRUCT ps;
+	char *cap;
+
+	if (hWnd == ctrl1) {
+		cap = szCaption1;
+	} else if (hWnd == ctrl2) {
+		cap = szCaption2;
+	} else {
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+	}
+
+    switch(msg) {
+    case WM_SETTEXT:
+        strncpy(cap, (LPSTR)lParam, sizeof(szCaption1));	// assumes both strings are same size
+        InvalidateRect(hWnd, NULL, TRUE);
+        break;
+
+    case WM_SETFONT:
+		// we use the parent window default font
+        break;
+
+	case WM_ERASEBKGND:
+		// doesn't seem to be sent anyway...
+		// lie and say we did it.
+		return (LRESULT)1;
+		break;
+
+    case WM_PAINT:
+        BeginPaint(hWnd, &ps);
+        newPaint(hWnd, &ps);
+        EndPaint(hWnd, &ps);
+        break;
+
+    case WM_USER:
+        {
+            // control-c
+            char *pText;
+            int len;
+            if (hWnd == ctrl1) {
+                pText = szCaption1;
+                len = sizeof(szCaption1);
+            } else {
+                pText = szCaption2;
+                len = sizeof(szCaption2);
+            }
+            if (OpenClipboard(hWnd)) {
+                EmptyClipboard();
+                HANDLE hCopy = GlobalAlloc(GMEM_MOVEABLE, (len+1)*sizeof(TCHAR));
+                if (NULL != hCopy) {
+                    unsigned char *pLock = (unsigned char*)GlobalLock(hCopy);
+                    memcpy(pLock, pText, len);
+                    pLock[len] = (TCHAR)'\0';
+                    GlobalUnlock(pLock);
+                    SetClipboardData(CF_TEXT, hCopy);
+                }
+                CloseClipboard();
+            }
+        }
+        break;
+
+    default:
+        return DefWindowProc(hWnd, msg, wParam, lParam);
+        break;
+    }
+
+    return NULL;
+}
+
+// TODO: we don't handle banking yet, so if you have address conflicts across
+// banks only the last one read will be recorded.
+extern void ImportMapFile(const char *fn);
+int LoadMap(HWND *myhwnd) {
+	OPENFILENAME ofn;                          // Structure for filename dialog
+	char buf[256], buf2[256];
+
+	memset(&ofn, 0, sizeof(OPENFILENAME));
+	ofn.lStructSize    = sizeof(OPENFILENAME);
+	ofn.hwndOwner      = NULL;
+	ofn.lpstrFilter    = "Map file\0*.lst;*.map;*.txt\0\0"; 
+	strcpy(buf, "");
+	ofn.lpstrFile      = buf;
+	ofn.nMaxFile       = 256;
+	strcpy(buf2, "");
+	ofn.lpstrFileTitle = buf2;
+	ofn.nMaxFileTitle  = 256;
+	ofn.Flags          = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	char szTmpDir[MAX_PATH];
+	GetCurrentDirectory(MAX_PATH, szTmpDir);
+
+    bool ret = GetOpenFileName(&ofn);
+
+    SetCurrentDirectory(szTmpDir);
+
+	if (ret) {
+		debug_write("Reading map file ....");
+		ImportMapFile(ofn.lpstrFile);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	char buf1[80];
 	int idx;
 
@@ -3063,6 +3522,10 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				case IDC_BREAKGPU:
 					pGPU->enableDebug = (SendDlgItemMessage(hwnd, IDC_BREAKGPU, BM_GETCHECK, 0, 0)==BST_CHECKED) ? 1 : 0;
 					break;
+
+                case IDC_IGNORECONSOLE:
+                    bIgnoreConsoleBreakpointHits = !bIgnoreConsoleBreakpointHits;
+                    break;
 
 				case IDC_ADDBREAK:
 					{
@@ -3111,7 +3574,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					}
 					break;
 
-// max lines is 34, each line is 8 bytes
+// max lines is DEBUGLINES, each line is 8 bytes
 #define LINES_TO_STEP 32
 				case IDC_NEXT:
 					switch (nMemType) {
@@ -3146,22 +3609,19 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									// it is a number, not a register
 									x+=(LINES_TO_STEP*8);
 
-									if (nMemType == MEMVDP) {
-										if (bF18Enabled) {
-											if (x >= 0x4800) {
-												x=0;
-											}
-										} else {
-											if (x >= 0x4000) {
-												x=0;
-											}
-										}
+                                    {
+									    if (nMemType == MEMVDP) {
+										    if (bF18Enabled) {
+											    if (x >= 0x4800) {
+												    x=0;
+											    }
+										    } else {
+											    if (x >= 0x4000) {
+												    x=0;
+											    }
+										    }
+									    }
 									    x &= 0xffff;
-									} else {
-                                        if (x > 0x200) {
-                                            x = 0;
-                                        }
-                                        x &= 0x1ff;
                                     }
 
 									sprintf(szTopMemory[nMemType], "%04X", x);
@@ -3256,12 +3716,43 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								break;
 							}
 							if (1 == sscanf(buf, "WP=%X", &x)) {
-								// make a change to the Workspace Pointer (9900 only)
+								// make a change to the Workspace Pointer
 								pCurrentCPU->SetWP(x);
 								// refresh the dialog
 								SetEvent(hDebugWindowUpdateEvent);
 								break;
 							}
+							if (1 == sscanf(buf, "ST=%X", &x)) {
+								// make a change to the Status register
+								pCurrentCPU->SetST(x);
+								// refresh the dialog
+								SetEvent(hDebugWindowUpdateEvent);
+								break;
+							}
+                            if (0 == _stricmp(buf, "AMS")) {
+                                dumpMapperRegisters();
+                                break;
+                            }
+                            if (0 == _stricmp(buf, "help")) {
+                                debug_write("==== debugger control ====");
+                                debug_write("xxxx                - set base address to view in CPU, AMS, VDP and GROM");
+                                debug_write("PC=xxxx             - set Program Counter to xxxx");
+                                debug_write("WP=xxxx             - set Workspace Pointer to xxxx");
+                                debug_write("ST=xxxx             - set Status register to xxxx");
+                                debug_write("Cxxxx=yy[yyyyyy...] - write byte or bytes to CPU memory");
+                                debug_write("Vxxxx=yy[yyyyyy...] - write byte or bytes to VDP memory");
+                                debug_write("Gxxxx=yy[yyyyyy...] - write byte or bytes to GROM");
+                                debug_write("Xxxxxx=yy[yyyyyy...]- write byte or bytes to raw AMS (X=eXtended)");
+                                debug_write("CRxx=yy             - set CPU register xx to value yy");
+                                debug_write("VRxx=yy             - set VDP register xx to value yy");
+                                debug_write("ARxx=yy             - set AMS register xx to value yy");
+                                debug_write("DISASM=xxxx,yyyy    - write disasm.txt from addresses xxxx-yyyy");
+                                debug_write("AMS                 - dump AMS register summary to debug");
+                                debug_write(" ");
+                                debug_write("Note register indexes are always in DECIMAL, all other");
+                                debug_write("values are assumed to be hex");
+                                break;
+                            } 
 						}
 
 						// special check for disassembly req
@@ -3270,6 +3761,8 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								if (y<=x) {
 									MessageBox(hwnd, "Bad disassembly range", "Classic99 Debugger", MB_OK | MB_ICONSTOP);
 								} else {
+                                    x&=0xffff;
+                                    y&=0xffff;
 									FILE *fp = fopen("disasm.txt", "w");
 									if (NULL == fp) {
 										MessageBox(hwnd, "Failed to open file", "Classic99 Debugger", MB_OK | MB_ICONSTOP);
@@ -3479,6 +3972,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							ok=IDYES;
 							switch (nCurMemType) {
 								case MEMCPU:		// CPU
+                                    x&=0xffff;
 									if ((bIsReg) && (x > 15)) {
 										MessageBox(hwnd, "Out of range for CPU registers", "Classic99 Debugger", MB_ICONSTOP);
 										ok=IDNO;
@@ -3648,11 +4142,15 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				case IDC_EDITMEM:
 				;
 
-				case ID_DEBUG_RESETUNINITMEM:
+                case ID_DEBUG_RESETUNINITMEM:
 					// should breakpoint before this...
 					memset(CPUMemInited, 0, sizeof(CPUMemInited));
 					memset(VDPMemInited, 0, sizeof(VDPMemInited));
 					break;
+
+                case ID_DEBUG_RESETTIMERSTATISTICS:
+                    gResetTimer= true;
+                    break;
 
 				case ID_DEBUG_DETECTUNINITMEM:
 					if (g_bCheckUninit) {
@@ -3729,6 +4227,20 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					}
 					break;
 
+				case ID_DEBUG_LOGAUDIO:
+					if (logAudio) {
+						closeAudioLogFiles();
+						logAudio = 0;
+						CheckMenuItem(GetMenu(hwnd), ID_DEBUG_LOGAUDIO, MF_UNCHECKED);
+					} else {
+						MessageBox(myWnd, "Audio logging will survive reset, make sure to stop it!", "Warning", MB_OK);
+						if (openAudioLogFiles()) {
+							logAudio = true;
+							CheckMenuItem(GetMenu(hwnd), ID_DEBUG_LOGAUDIO, MF_CHECKED);
+						}
+					}
+					break;
+
 				case ID_VIEW_FREEZE:
 					if (bFrozenText) {
 						bFrozenText=false;
@@ -3764,7 +4276,43 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					}
 					break;
 
-				case ID_MAKE_SAVEPROGRAM:
+                case ID_VIEW_LOGDISASMTODISK:
+                    EnterCriticalSection(&csDisasm);
+                    if (fpDisasm) {
+                        fclose(fpDisasm);
+                        fpDisasm = NULL;
+                        CheckMenuItem(GetMenu(hwnd), ID_VIEW_LOGDISASMTODISK, MF_UNCHECKED);
+                    } else {
+                        int ret = MessageBox(hwnd, "This will write all disassembly to 'disasm.txt' until you turn it off,\r\n"
+                            "quickly creating a very large file. Do you want to include console ROM (interrupt, etc)?\r\n"
+                            "Click Yes to include, No to exclude, or Cancel to abort logging.", "Classic99", MB_YESNOCANCEL);
+                        if (ret != IDCANCEL) {
+                            if (ret == IDYES) {
+                                disasmLogType = 0;  // include ROM
+                            } else {
+                                disasmLogType = 1;  // exclude > 0x2000
+                            }
+
+                            fpDisasm = fopen("disasm.txt", "w");
+                            if (NULL == fpDisasm) {
+                                MessageBox(hwnd, "Failed to open file!", "Classic99 Error", MB_OK);
+                            } else {
+                                CheckMenuItem(GetMenu(hwnd), ID_VIEW_LOGDISASMTODISK, MF_CHECKED);
+                            }
+                        }
+                    }
+                    LeaveCriticalSection(&csDisasm);
+                    break;
+
+                case ID_VIEW_COPYLEFTPANETOCLIPBOARD:
+                    SendMessage(ctrl1, WM_USER, 0, 0);
+                    break;
+
+                case ID_VIEW_COPYRIGHTPANETOCLIPBOARD:
+                    SendMessage(ctrl2, WM_USER, 0, 0);
+                    break;
+                
+                case ID_MAKE_SAVEPROGRAM:
 					DoMakeDlg(hwnd);
 					PostMessage(hwnd, WM_COMMAND, ID_VIEW_REDRAW, 0);
 					break;
@@ -3772,6 +4320,8 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			return TRUE;
 
 		case WM_INITDIALOG:
+			mainfont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+
 			CheckRadioButton(hwnd, IDC_RADIO1, IDC_RADIO5, IDC_RADIO1);
 			nMemType=0;
 			SendDlgItemMessage(hwnd, IDC_MAINEDIT, WM_SETTEXT, NULL, (LPARAM)"");
@@ -3791,7 +4341,7 @@ BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				strcpy(buf, FormatBreakpoint(idx));
 				SendDlgItemMessage(hwnd, IDC_COMBO1, CB_ADDSTRING, NULL, (LPARAM)buf);
 			}
-			SendDlgItemMessage(hwnd, IDC_COMBO1, CB_LIMITTEXT, 16, NULL);
+			SendDlgItemMessage(hwnd, IDC_COMBO1, CB_LIMITTEXT, 32, NULL);
 			// fall through
 		case WM_APP:
 			// refresh the dialog
@@ -3822,10 +4372,7 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines) 
 	} else if ((cPrefix == ' ') && (obj.bank == -1)) {
 		cPrefix = 'G';
 		pLclCPU = pGPU;
-	} else if (cPrefix == '}') {
-        // GPU alt
-        pLclCPU = pGPU;
-    }
+	}
 
     if ((cPrefix == 'G')||(cPrefix == '}')) {
         char buf2[80];
@@ -3908,8 +4455,9 @@ void DebugUpdateThread(void*) {
 				switch (nMemType) {
 					case 0:		// debug
 						if (bDebugDirty) {
-							for (idx=1; idx<34; idx++) {
+							for (idx=0; idx<DEBUGLINES; idx++) {
 								csOut+=lines[idx];
+                                csOut.TrimRight();
 								csOut+="\r\n";
 							}
 							bDebugDirty=false;
@@ -3918,19 +4466,21 @@ void DebugUpdateThread(void*) {
 
 					case 1:		// disassembly
 						{
-							// work out how many lines we can display to get close to 20
+							// work out how many lines we can display
 							int nLineCnt=0;
 							struct history myHist;
 
 							// show line with bank only for multi-bank cartridges
-							for (idx=0; idx<20; idx++) {
+							// we want to generate a few extra lines to guarantee the cursor is stable
+							int precount = DEBUGLINES*2/3;
+							for (idx=precount-10; idx<DEBUGLINES; idx++) {
 								if ((xb)&&((Disasm[idx].pc & 0xE000) == 0x6000)) {
 									EmitDebugLine('b', Disasm[idx], csOut, nLineCnt);
 								} else {
 									EmitDebugLine(' ', Disasm[idx], csOut, nLineCnt);
 								}
 							}
-							while (nLineCnt > 20) {
+							while (nLineCnt > precount) {
 								// most likely at least a few
 								int nPos = csOut.Find('\n');
 								if (nPos == -1) break;
@@ -3957,7 +4507,7 @@ void DebugUpdateThread(void*) {
                                 myHist.pc += EmitDebugLine('>', myHist, csOut, nLineCnt);
                             }
 
-							for (idx=0; idx<13; idx++) {
+							for (idx=nLineCnt; idx<DEBUGLINES; idx++) {
 								int nTmp = EmitDebugLine(' ', myHist, csOut, nLineCnt);
 								myHist.pc += nTmp;
 								while (nTmp > 2) {
@@ -4273,22 +4823,14 @@ void ConfigureDisk(HWND hwnd, int nDiskNum) {
         return;
     }
 
-	// this is a bit harsh, but we keep the disk system locked and make this dialog modal
+    if (!VerifyOpenFiles(hwnd)) {
+        return;
+    }
+
+    // this is a bit harsh, but we keep the disk system locked and make this dialog modal
 	EnterCriticalSection(&csDriveType);
 
-	for (int idx=0; idx<MAX_DRIVES; idx++) {
-		if (NULL != pDriveType[idx]) {
-			if (pDriveType[idx]->CheckOpenFiles()) {
-				if (IDYES != MessageBox(hwnd, "Please close all open files before changing disk configuration. If you are sure you want to override this and force files to close, click YES.", "Files open - data may be lost if you proceed.", MB_YESNO | MB_ICONASTERISK)) {
-					LeaveCriticalSection(&csDriveType);
-					return;
-				}
-				pDriveType[idx]->CloseAllFiles();
-			}
-		}
-	}
-
-	// Create a dialog to reconfigure disk settings - note we hold the lock through this whole thing!
+    // Create a dialog to reconfigure disk settings - note we hold the lock through this whole thing!
 	g_DiskCfgNum = nDiskNum;						// a bit hard to pass data to a modal dialog!
 	DialogBox(NULL, MAKEINTRESOURCE(IDD_DISKCFG), hwnd, DiskBoxProc);
 
@@ -4467,7 +5009,7 @@ void FakeRadioButton(HWND hwnd, int nCtrlClicked, int nCtrlAffected) {
 }
 
 // everything in this dialog locks the disk system, so protected by the disk critical section
-BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static int nIndex = 0;
 	static bool bFiadSet = false;
 	static bool bImageSet = false;
@@ -4773,7 +5315,7 @@ BOOL CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_ADDSTRING, 0, (LPARAM)"Files (FIAD)");
 			SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_ADDSTRING, 0, (LPARAM)"Image (DSK)");
 			SendDlgItemMessage(hwnd, IDC_LSTTYPE, CB_ADDSTRING, 0, (LPARAM)"TI Controller (DSK)");
-			bFiadSet = false;
+            bFiadSet = false;
 			bImageSet = false;
 
 			nIndex = g_DiskCfgNum;

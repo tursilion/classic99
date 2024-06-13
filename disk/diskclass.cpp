@@ -53,6 +53,21 @@
 // from the DSR's file tracking information.
 // Both are needed and used as described above.
 
+// CF7 notes. There's a hacky CF7 emulation present that takes over DSK1 through DSK3
+// and doesn't have any config in the GUI.
+//
+// The CF7 reserves an additional 8 bytes in VDP RAM, right at the top:
+// 3FF8: AA03 - header, 3 devices. TODO: Unclear if the 3 can be changed!
+// 3FFA: xxxx - 16-bit big endian value for volume number mounted on DSK1
+// 3FFC: xxxx - 16-bit big endian value for volume number mounted on DSK2
+// 3FFE: xxxx - 16-bit big endian value for volume number mounted on DSK3
+//
+// Thanks Lee!
+//
+// It /is/ enough for the CF DSR to just change these valuse in VDP RAM and thus
+// access different volumes, but bypassing the DSR this way may have side effects.
+// Never do it with open files, for instance! ;)
+
 #include <windows.h>
 #include <stdio.h>
 #include <atlstr.h>
@@ -60,7 +75,7 @@
 #include "diskclass.h"
 
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
-Byte ReadMemoryByte(Word address, bool trueWrite);
+Byte ReadMemoryByte(Word address, READACCESSTYPE rmw);
 
 const char *pszOptionNames[] = {
 	"FIAD_WriteV9T9",		
@@ -96,6 +111,7 @@ const char *szDiskTypes[] = {
 	
 	"ClipBoard",				// it should be safe to let Clipboard float at the end
 	"Clock",					// and clock too
+    "TIPIsim",                  // TIPI sim
 };
 
 //********************************************************
@@ -115,6 +131,7 @@ s_FILEINFO::s_FILEINFO() {
 	LengthSectors=0;
 	FileType=0;
 	ImageType=IMAGE_UNKNOWN;
+	HeaderSize=-1;
 	RecordsPerSector=0;
 	BytesInLastSector=0;
 	RecordLength=0;
@@ -129,6 +146,8 @@ s_FILEINFO::s_FILEINFO() {
 	LastError=0;
 	nCurrentRecord=0;
 	nLocalData=0;
+    initData = NULL;
+    initDataSize = 0;
 	// warning: this is not atomic, but it will work here
 	nIndex=nCnt++;
 }
@@ -164,6 +183,7 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	nCurrentRecord = p->nCurrentRecord;
 	nLocalData = p->nLocalData;
 	ImageType = p->ImageType;
+	HeaderSize = p->HeaderSize;
 	bOpen = p->bOpen;
 	bDirty = p->bDirty;
 //	bFree = p->bFree;		// watch out for this one!
@@ -175,6 +195,10 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	p->pData=NULL;
 	nDataSize=p->nDataSize;
 	p->nDataSize=0;
+    initData = p->initData;
+    p->initData = NULL;
+    initDataSize = p->initDataSize;
+    p->initDataSize = 0;
 	// so we also nuke the open and dirty flags, since they aren't anymore
 	// no need to check if they WERE, faster to just clear them
 	p->bDirty = false;
@@ -218,7 +242,7 @@ bool BaseDisk::SetFiles(int n) {
 
 	// we just use this test to control debug, we still re-initialize everything
 	int nNewTop = 0x3def - (256+256+6)*n - 5 - 1;		// should be 0x37d7 with 3 files
-	int nCurTop = ReadMemoryByte(0x8370,false)*256 + ReadMemoryByte(0x8371,false);
+	int nCurTop = ReadMemoryByte(0x8370,ACCESS_READ)*256 + ReadMemoryByte(0x8371,ACCESS_READ);
 	if (nNewTop != nCurTop) {
 		if (n > 0) {
 			debug_write("Setting top of VRAM to >%04X (%d files)", nNewTop, n);
@@ -237,7 +261,7 @@ bool BaseDisk::SetFiles(int n) {
 		// set up the header for disk buffers - P-Code Card crashes with Stack Overflow without these
 		VDP[++nNewTop] = 0xaa;		// valid header
 		VDP[++nNewTop] = 0x3f;		// top of VRAM, MSB
-		VDP[++nNewTop] = 0xff;		// top of VRAM, LSB (TODO: CF7 will change top of VRAM value by 6 bytes)
+		VDP[++nNewTop] = 0xff;		// top of VRAM, LSB (TODO: CF7 will change top of VRAM value by 8 bytes)
 		VDP[++nNewTop] = 0x11;		// CRU of this disk controller
 		VDP[++nNewTop] = n;		// number of files
 	} else {
@@ -262,7 +286,7 @@ bool BaseDisk::CheckOpenFiles() {
 
 void BaseDisk::CloseAllFiles() {
 	for (int idx=0; idx<MAX_FILES; idx++) {
-		if (m_sFiles[idx].bOpen == false) {
+		if (m_sFiles[idx].bOpen == true) {
 			Close(&m_sFiles[idx]);
 		}
 	}
@@ -305,7 +329,12 @@ bool BaseDisk::Close(FileInfo *pFile) {
 	// because this is how we return the object to the pool
 
 	// derived classes can generally use this version
-	Flush(pFile);				// flush decides for itself if it is needed
+	bool bRet = Flush(pFile);	// flush decides for itself if it is needed
+    if ((bRet == false)&&(pFile->LastError == ERR_ILLEGALOPERATION)) {
+        // device does not implement flush, so that's okay, not an error
+        pFile->LastError = ERR_NOERROR;
+        bRet = true;
+    }
 	pFile->bOpen = false;		// whether it was set or not, just clear it
 
 	// this test is only here for the debug statement :) otherwise I'd just wipe it
@@ -320,8 +349,13 @@ bool BaseDisk::Close(FileInfo *pFile) {
 		pFile->pData=NULL;
 		pFile->nDataSize = 0;
 	}
+    if (NULL != pFile->initData) {
+        free(pFile->initData);
+        pFile->initData = NULL;
+        pFile->initDataSize = 0;
+    }
 
-	return true;
+	return bRet;
 }
 
 // Use 'Close()' to release it.
@@ -362,6 +396,12 @@ CString BaseDisk::BuildFilename(FileInfo *pFile) {
 	if (NULL == pFile) {
 		return csTmp;
 	}
+
+    // handles the unset drive index for MakeCart
+    if (pFile->nDrive == -1) {
+        // filename is already set
+        return pFile->csName;
+    }
 
 	// get local path
 	csTmp = pDriveType[pFile->nDrive]->GetPath();
@@ -428,8 +468,13 @@ bool BaseDisk::Read(FileInfo *pFile) {
 }
 
 // Writes (or overwrites) a record. May need to append data depending on record number
+// Warning: MakeCart EA#3 uses this function, don't reference disk number or open file index
 bool BaseDisk::Write(FileInfo *pFile) {
 	unsigned char *pDat;
+
+    // TODO: for systems like disk images, this mechanism does not allow us to check for
+    // disk full conditions. Should we flush after every record, maybe? Call and ask for
+    // disk full status? Nobody has run into this case yet, but sheesh.
 
 	// figure out where to write to. We have a current record if we need it
 	if (0 == (pFile->Status & FLAG_VARIABLE)) {
@@ -524,12 +569,14 @@ bool BaseDisk::Write(FileInfo *pFile) {
 // Restore/Rewind - moves the file pointer - to the
 // beginning if sequential, to a specified record if relative
 bool BaseDisk::Restore(FileInfo *pFile) {
-	if (pFile->Status & FLAG_RELATIVE) {
+	if (pFile->Status & FLAG_RELATIVE) {    // TODO: check if this is really variable vs fixed
 		pFile->nCurrentRecord = pFile->RecordNumber;
 	} else {
 		pFile->nCurrentRecord = 0;
+        // in case we need to write it back
+        pFile->RecordNumber = 0;
 	}
-	debug_write("Restore set record number to %d", pFile->nCurrentRecord);
+    debug_write("Restore set record number to %d", pFile->nCurrentRecord);
 	return true;
 }
 

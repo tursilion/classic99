@@ -75,8 +75,12 @@ int LoadBreakpoints(HWND *myhwnd) {
 	// Add new breakpoints
 	char *line;
 	line = strtok(ReadBuffer,"\n");
-	while(line != NULL) {		
-		if (AddBreakpoint(line)) {
+	while(line != NULL) {
+        // AddBreakpoint modifies the buffer, so we need to copy the data out of ReadBuffer
+        char work[32];
+        strncpy(work, line, sizeof(work));
+        work[sizeof(work)-1]='\0';
+		if (AddBreakpoint(work)) {
 			char zbuf[128];
 			strcpy(zbuf, FormatBreakpoint(nBreakPoints-1));
 			SendDlgItemMessage(*myhwnd, IDC_COMBO1, CB_ADDSTRING, NULL, (LPARAM)zbuf);		   

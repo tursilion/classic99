@@ -40,8 +40,44 @@
 // M.Brent
 ///////////////////////////////////////////////////////
 
+// TODO: F18A on soft reset doesn't turn off the BML
+
+#if 0
+F18A Reset from Matt:
+
+0 in all registers, except:
+
+VR1 = >40 (no blanking, the 4K/16K bit is ignored in the F18A)
+VR3 = >10 (color table at >0400)
+VR4 = >01 (pattern table at >0800)
+VR5 = >0A (sprite table at >0500)
+VR6 = >02 (sprite pattern table at >1000)
+VR7 = >1F (fg=black, bg=white)
+VR30 = sprite_max (set from external jumper setting)
+VR48 = 1 (increment set to 1)
+VR51 = 32 (stop sprite to max)
+VR54 = >40 (GPU PC MSB)
+VR55 = >00 (GPU PC LBS)
+VR58 = 6 (GROMCLK divider)
+
+The real 9918A will set all VRs to 0, which basically makes the screen black, blank, and off, 4K VRAM selected, and no interrupts. 
+
+Note that nothing restores the F18A palette registers to the power-on defaults, other than a power on.
+
+As for the GPU, the VR50 >80 reset will *not* stop the GPU, and if the GPU code is modifying VDP registers, then it can overwrite the reset values.  However, since the reset does clear VR50, the horizontal and vertical interrupt enable bits will be cleared, and thus the GPU will not be triggered on those events.
+
+The reset also changes VR54 and VR55, but they are *not* loaded to the GPU PC (program counter).  The only events that change the GPU PC are:
+
+* normal GPU instruction execution.
+* the external hardware reset.
+* writing to VR55 (GPU PC LSB).
+* writing >00 to VR56 (load GPU PC from VR54 and VR55, then idle).
+
+#endif
+
+
 #define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 
 #include <stdio.h>
 #include <windows.h>
@@ -141,66 +177,66 @@ const int F18APaletteReset[64] = {
 	0x0FFF   // 15 >FFFFFF (255 255 255) white
 };
 
-char digpat[10][5][3] = {
-	1,1,1,
-	1,0,1,
-	1,0,1,
-	1,0,1,
-	1,1,1,
+char *digpat[10][5] = {
+	"111",
+	"101",
+	"101",
+	"101",
+	"111",
 
-	0,1,0,
-	1,1,0,
-	0,1,0,
-	0,1,0,
-	1,1,1,
+    "010",
+	"110",
+	"010",
+	"010",
+	"111",
 
-	1,1,1,
-	0,0,1,
-	1,1,1,
-	1,0,0,
-	1,1,1,
+    "111",
+	"001",
+	"111",
+	"100",
+	"111",
 
-	1,1,1,
-	0,0,1,
-	0,1,1,
-	0,0,1,
-	1,1,1,
+    "111",
+	"001",
+	"011",
+	"001",
+	"111",
 
-	1,0,1,
-	1,0,1,
-	1,1,1,
-	0,0,1,
-	0,0,1,
+    "101",
+	"101",
+	"111",
+	"001",
+	"001",
 
-	1,1,1,
-	1,0,0,
-	1,1,1,
-	0,0,1,
-	1,1,1,
+    "111",
+	"100",
+	"111",
+	"001",
+	"111",
 
-	1,1,1,
-	1,0,0,
-	1,1,1,
-	1,0,1,
-	1,1,1,
+    "111",
+	"100",
+	"111",
+	"101",
+	"111",
 
-	1,1,1,
-	0,0,1,
-	0,0,1,
-	0,1,0,
-	0,1,0,
+    "111",
+	"001",
+	"001",
+	"010",
+	"010",
 
-	1,1,1,
-	1,0,1,
-	1,1,1,
-	1,0,1,
-	1,1,1,
+    "111",
+	"101",
+	"111",
+	"101",
+	"111",
 
-	1,1,1,
-	1,0,1,
-	1,1,1,
-	0,0,1,
-	1,1,1
+    "111",
+	"101",
+	"111",
+	"001",
+	"111"
 };
 
 // this draws a full frame for overdrive. It must be negative and more than
@@ -236,7 +272,6 @@ DDSURFACEDESC2 CurrentDDSD;					// current back buffer settings
 // deprecated directdraw functions we need to manually extract from ddraw.dll
 typedef HRESULT (WINAPI* LPDIRECTDRAWCREATEEX )( GUID FAR * lpGuid, LPVOID  *lplpDD, REFIID  iid,IUnknown FAR *pUnkOuter );
 
-int FullScreenMode=0;						// Current full screen mode
 int FilterMode=0;							// Current filter mode
 int nDefaultScreenScale=1;					// default screen scale multiplier
 int nXSize=256, nYSize=192;					// custom sizing
@@ -247,6 +282,23 @@ int bShowFPS=0;								// whether to show FPS
 int bEnable80Columns=1;						// Enable the beginnings of the 80 column mode - to replace someday with F18A
 int bEnable128k=0;							// disabled by default - it's a non-real-world combination of F18 and 9938, so HACK.
 #define TV_WIDTH (602+32)					// how wide is TV mode really?
+
+// keyboard debug - done inline like the FPS
+int bShowKeyboard=0;                        // when set, draw the keyboard debug
+extern unsigned char capslock, lockedshiftstate;
+extern unsigned char scrolllock,numlock;
+extern unsigned char ticols[8];
+extern int fJoystickActiveOnKeys;
+extern unsigned char ignorecount;
+extern unsigned char fctnrefcount,shiftrefcount,ctrlrefcount;
+
+// audio per-frame logging
+extern int logAudio;
+extern void writeAudioLogState();
+
+// menu display
+extern int bEnableAppMode;
+extern void SetMenuMode(bool showTitle, bool showMenu);
 
 sms_ntsc_t tvFilter;						// TV Filter structure
 sms_ntsc_setup_t tvSetup;					// TV Setup structure
@@ -277,6 +329,9 @@ int doLoadInt;								// execute a LOAD after this instruction
 Byte VDPREG[59];							// VDP read-only registers (9918A has 8, we define 9 to support 80 cols, and the F18 has 59 (!) (and 16 status registers!))
 Byte VDPS;									// VDP Status register
 
+int fullscreenX;							// current res of full screen X (cause GetSystemMetrics is slow)
+int fullscreenY;							// current res of full screen Y
+
 // Added by RasmusM
 int F18AStatusRegisterNo = 0;				// F18A Status register number
 int F18AECModeSprite = 0;					// F18A Enhanced color mode for sprites (0 = normal, 1 = 1 bit color mode, 2 = 2 bit color mode, 3 = 3 bit color mode)
@@ -291,7 +346,11 @@ int F18APalette[64];
 Word VDPADD;								// VDP Address counter
 int vdpaccess;								// VDP address write flipflop (low/high)
 int vdpwroteaddress;						// VDP (instruction) countdown after writing an address (weak test)
-int vdpscanline;							// current line being processed, 0-262 (TODO: 0 is top border, not top blanking)
+int vdpscanline;							// current line being processed, 0-262
+											// I think it's more or less right:
+											// 0-26 = top blanking
+											// 27-219 = 192 lines of display
+											// 220-261 = bottom blanking + vblank
 Byte vdpprefetch,vdpprefetchuninited;		// VDP Prefetch
 unsigned long hVideoThread;					// thread handle
 int hzRate;									// flag for 50 or 60hz
@@ -309,10 +368,12 @@ extern int drawspeed;						// frameskip... sorta. Not sure this is still valuabl
 extern int nVideoLeft, nVideoTop;
 extern int max_cpf;							// current CPU performance
 extern CPU9900 *pGPU;
-extern int gLogSNPSG;
-extern int nRegister[4];					// frequency registers
-extern int nVolume[4];						// volume attenuation
+extern int statusFrameCount;
+
 void renderBML(int y);
+
+// this is used only in full screen blits for now
+#define DPIFIX(xx) MulDiv((xx), dpi, 96)
 
 //////////////////////////////////////////////////////////
 // Helpers for the TV controls
@@ -350,7 +411,7 @@ int gettables(int isLayer2)
 //	if (nSystem == 0) {
 //		// disable bitmap for 99/4
 //		reg0&=~0x02;
-//	} // phoenix doesn't have a 99/4 mode
+//	}
 	if (!bEnable80Columns) {
 		// disable 80 columns if not enabled
 		reg0&=~0x04;
@@ -465,7 +526,7 @@ void VDPmain()
 
 	// load the Filter DLL
 	TVFiltersAvailable=0;
-	hFilterDLL=LoadLibrary("FilterDll.dll");
+	hFilterDLL=LoadLibrary("FilterDLL.dll");
 	if (NULL == hFilterDLL) {
 		debug_write("Failed to load filter library.");
 	} else {
@@ -498,7 +559,7 @@ void VDPmain()
 		}
 	}
 
-	hHQ4DLL=LoadLibrary("HQ4xDll.dll");
+	hHQ4DLL=LoadLibrary("hq4xdll.dll");
 	if (NULL == hHQ4DLL) {
 		debug_write("Failed to load HQ4 library.");
 	} else {
@@ -712,6 +773,9 @@ void VDPdisplay(int scanline)
 	DWORD *plong;
 	int nMax;
 
+	// reduce noisy lines
+	EnterCriticalSection(&VideoCS);
+
 	int reg0 = gettables(0);
 
 	int gfxline = scanline - 27;	// skip top border
@@ -727,7 +791,7 @@ void VDPdisplay(int scanline)
 			if ((tmplin >= 0) && (tmplin < 192+16)) {
 				plong=(DWORD*)framedata;
 				longcol=GETPALETTEVALUE(VDPREG[7]&0xf);
-				if ((reg0&0x04)&&(VDPREG[1]&0x10)) {
+				if ((reg0&0x04)&&(VDPREG[1]&0x10)&&(bEnable80Columns)) {
 					// 80 column text
 					nMax = (512+16)/4;
 				} else {
@@ -747,6 +811,7 @@ void VDPdisplay(int scanline)
 
 		if (!bDisableBlank) {
 			if (!(VDPREG[1] & 0x40)) {	// Disable display
+				LeaveCriticalSection(&VideoCS);
 				return;
 			}
 		}
@@ -812,6 +877,8 @@ void VDPdisplay(int scanline)
 			}
 		}
 	}
+
+	LeaveCriticalSection(&VideoCS);
 }
 
 //////////////////////////////////////////////////////////
@@ -845,7 +912,7 @@ void updateVDP(int cycleCount)
 	double newCycles;
 
 	// handle overdrive
-    if (SystemThrottle != VDP_CPUSYNC) {
+    if (ThrottleMode == THROTTLE_OVERDRIVE) {
         // overdrive ONLY draws full frames, so if it's not FULLFRAME, ignore it
         // the reason for this is to keep the VDP running 60fps when we don't
         // actually have a preset clockspeed to know how many cycles make a
@@ -855,7 +922,7 @@ void updateVDP(int cycleCount)
 		} else {
             // when it is time to draw a fullframe, then we just force the full cycle
             // per frame count to get it out.
-			cycleCount = max_cpf;
+			cycleCount = (int)(cyclesPerLine*262);
 			newCycles = cycleCount;
 		}
 	} else {
@@ -866,8 +933,8 @@ void updateVDP(int cycleCount)
         // when the full instruction count comes in, we account for the
         // cycles already dealt with.
         if (cycleCount == FULLFRAME) {
-            // should never happen....
-            return;
+            // should never happen... but we should draw a full frame anyway (user requested?)
+			newCycles = cyclesPerLine*262;
         } else {
             if (cycleCount < 0) {
     		    newCycles = nCycles - cycleCount;   // add a negative number
@@ -883,6 +950,8 @@ void updateVDP(int cycleCount)
 			// set the vertical interrupt
 			VDPS|=VDPS_INT;
 			end_of_frame = 1;
+			statusFrameCount++;
+			if (logAudio) writeAudioLogState();
 		} else if (vdpscanline > 261) {
 			vdpscanline = 0;
 			SetEvent(BlitEvent);
@@ -1590,12 +1659,55 @@ void VDPmulticolorII(int scanline, int isLayer2)
 	return;
 }
 
+// renders a string to the buffer - '1' is white, anything else black
+// returns new pDat
+unsigned int* drawTextLine(unsigned int *pDat, const char *buf) {
+	for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+        if (buf[idx] == '1') {
+    		*(pDat++)=0xffffff;
+		} else {
+			*(pDat++)=0;
+		}
+	}
+    return pDat;
+}
+
+// we manually wrap the Win10 function GetDpiForWindow()
+// if it's not available, we just return the default of 96
+// this is only used for full screen
+UINT WINAPI GetDpiForWindow(_In_ HWND hWnd) {
+	static UINT (WINAPI *getDpi)(_In_ HWND) = NULL;
+	static bool didSearch = false;
+
+	if (!didSearch) {
+		didSearch = true;
+		HMODULE hMod = LoadLibrary(_T("user32.dll"));
+		if (NULL == hMod) {
+			debug_write("Failed to load user32.dll (what? really??)\n");
+		} else {
+			getDpi = (UINT (WINAPI *)(_In_ HWND))GetProcAddress(hMod, "GetDpiForWindow");
+			if (NULL == getDpi) {
+				debug_write("Failed to find GetDpiForWindow, defaulting to 96dpi\n");
+			} else {
+				debug_write("Got GetDpiForWindow, should be able to auto-scale.\n");
+			}
+		}
+	}
+
+	if (NULL == getDpi) {
+		return 96;
+	} else {
+		return getDpi(hWnd);
+	}
+}
+
 ////////////////////////////////////////////////////////////////
 // Stretch-blit the buffer into the active window
 //
 // NOTES: Graphics modes we have (and some we need)
 // 272x208 -- the standard default pixel mode of the 9918A plus a fixed (incorrect) border
 // 
+// TODO: these modes all have different aspect ratios and none of them are properly 4:3, but we pretend they are
 //
 // NOTES: Graphics modes we have (and some we need)
 // 272x208 -- the standard default pixel mode of the 9918A plus a fixed (incorrect) border
@@ -1614,16 +1726,23 @@ void VDPmulticolorII(int scanline, int isLayer2)
 ////////////////////////////////////////////////////////////////
 void doBlit()
 {
-	RECT rect1, rect2;
+	RECT rect1;
 	int x,y;
 	HRESULT ret;
+	bool SecondTick = false;
+	static time_t lasttime = 0;
+	if (time(NULL) != lasttime) {
+		SecondTick = true;
+		time(&lasttime);
+	}
+
+	EnterCriticalSection(&VideoCS);
 
 	if (bShowFPS) {
 		static int cnt = 0;
-		static time_t lasttime = 0;
 		static char buf[32] = "";
 		++cnt;
-		if (time(NULL) != lasttime) {
+		if (SecondTick) {
 			sprintf(buf, "%d", cnt);
 			//debug_write("%d fps", cnt);
 			cnt = 0;
@@ -1633,31 +1752,208 @@ void doBlit()
 		for (int i2=0; i2<5; i2++) {
 			unsigned int *pDat = framedata + (256+16)*(6-i2);
 			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
-				for (int i3 = 0; i3<3; i3++) {
-					int digit = buf[idx]-'0';
-					if (digpat[digit][i2][i3]) {
-						*(pDat++)=0xffffff;
-					} else {
-						*(pDat++)=0;
-					}
-				}
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
 				*(pDat++)=0;
 			}
 		}
 	}
+    if (bShowKeyboard) {
+		// draw digits
+        const char *caps[5] = {
+            "111  1  111",
+            "1   1 1 1 1",
+            "1   111 111",
+            "1   1 1 1  ",
+            "111 1 1 1  "   };
+        const char *lock[5] = {
+            "1   111 111 1 1",
+            "1   1 1 1   11 ",
+            "1   1 1 1   11 ",
+            "1   1 1 1   1 1",
+            "111 111 111 1 1"   };
+        const char *scrl[5] = {
+            "111 111 111 1  ",
+            "1   1   1 1 1  ",
+            "111 1   11  1  ",
+            "  1 1   1 1 1  ",
+            "111 111 1 1 111"   };
+        const char *num[5] = {
+            "1 1 1 1 1 1",
+            "111 1 1 111",
+            "111 1 1 111",
+            "111 1 1 1 1",
+            "1 1 111 1 1"   };
+        const char *joy[5] = {
+            "  1 111 1 1",
+            "  1 1 1 1 1",
+            "  1 1 1 111",
+            "1 1 1 1  1 ",
+            "111 111  1 "   };
+        const char *ign[5] = {
+            "111 111 1 1",
+            " 1  1   111",
+            " 1  1 1 111",
+            " 1  1 1 111",
+            "111 111 1 1"   };
+        const char *fctn[5] = {
+            "111 111 111 1 1",
+            "1   1    1  111",
+            "11  1    1  111",
+            "1   1    1  111",
+            "1   111  1  1 1"   };
+        const char *shift[5] = {
+            "111 1 1 111 111",
+            "1   1 1 1    1 ",
+            "111 111 11   1 ",
+            "  1 1 1 1    1 ",
+            "111 1 1 1    1 "   };
+        const char *ctrl[5] = {
+            "111 111 111 1  ",
+            "1    1  1 1 1  ",
+            "1    1  11  1  ",
+            "1    1  1 1 1  ",
+            "111  1  1 1 111"   };
+		char buf[32];
 
-	if (!TryEnterCriticalSection(&VideoCS)) {
-		return;		// do it later
+		for (int i2=0; i2<5; i2++) {
+			unsigned int *pDat = framedata + (256+16)*(6-i2)+20;
+
+            if (capslock) {
+                drawTextLine(pDat, caps[i2]);
+			}
+            pDat += 20;
+
+            if (lockedshiftstate) {
+                drawTextLine(pDat, lock[i2]);
+			}
+            pDat += 20;
+
+            if (scrolllock) {
+                drawTextLine(pDat, scrl[i2]);
+			}
+            pDat += 20;
+
+            if (numlock) {
+                drawTextLine(pDat, num[i2]);
+			}
+            pDat += 20;
+        
+            if (fJoystickActiveOnKeys) {
+                drawTextLine(pDat, joy[i2]);
+			}
+            pDat += 20;
+
+            pDat = drawTextLine(pDat, ign[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", ignorecount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+            pDat+=4;
+
+            pDat = drawTextLine(pDat, fctn[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", fctnrefcount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+            pDat+=4;
+
+            pDat = drawTextLine(pDat, shift[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", shiftrefcount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+            pDat+=4;
+            
+            pDat = drawTextLine(pDat, ctrl[i2]);
+            *(pDat++) = 0;
+            sprintf(buf, "%d", ctrlrefcount);
+			for (int idx = 0; idx<(signed)strlen(buf); idx++) {
+                int digit = buf[idx] - '0';
+                pDat = drawTextLine(pDat, digpat[digit][i2]);
+				*(pDat++)=0;
+			}
+		}
+
+        for (int i2=0; i2<8; i2++) {
+			unsigned int *pDat = framedata + (256+16)*(9-i2)+220;
+            for (int mask=1; mask<0x100; mask<<=1) {
+                *(pDat++) = (ticols[i2]&mask) ? 0xffffff : 0;
+                *(pDat++) = 0xffffff;
+            }
+        }
+
 	}
 
 	GetClientRect(myWnd, &rect1);
 	myDC=GetDC(myWnd);
 	SetStretchBltMode(myDC, COLORONCOLOR);
 
+	// in full screen mode, GetClientRect lies about the screen size, which makes the DX blit fail
+	// So, just force our assumptions. (I think it includes the menu height...)
+	// TODO: I hate these numbers... fix that
+	if (StretchMode == STRETCH_FULL) {
+		// full screen is the desktop size
+#if 0
+		// this didn't help. My monitor DPI is 120 meaning all the images got larger, making the blit fail
+		int dpi = GetDpiForWindow(myWnd);
+		rect1.top = DPIFIX(rect1.top);
+		rect1.left = DPIFIX(rect1.left);
+		rect1.right = DPIFIX(rect1.right);
+		rect1.bottom = DPIFIX(rect1.bottom);
+#else
+		// for some reason in full screen, the width is 3840 correctly, but the height is an odd 2910? (or so)
+		// not sure where that number would come from... it doesn't match either screen.
+		// This forces it to match the desktop size which should work. But one person is reporting
+		// the right edge is cut off in full screen mode.
+		rect1.top=0;
+		rect1.left=0;
+		rect1.right = fullscreenX;
+		rect1.bottom = fullscreenY;
+#endif
+	}
+
+	// even though aspect ratio is forced by the window resize for everything but full screen,
+	// people still complain. They maximize or full screen on their 16:9 monitor and then complain
+	// that the image isn't 4:3. In short, bah humbug!
+	if ((MaintainAspect) && (StretchMode != STRETCH_NONE)) {
+		// make sure it fits the window and is 4:3 (1.33333)
+		// Since our borders are not 100%, 1.30 is a better match
+		const double DesiredRatio = 1.30;
+		double ratio = (double)(rect1.right - rect1.left) / (rect1.bottom - rect1.top);
+		if (ratio < 1.3) {
+			// screen is too narrow, need to make shorter to fit
+			int height = (int)((rect1.right - rect1.left) / DesiredRatio + 0.5);
+			int diff = ((rect1.bottom - rect1.top) - height) & (~1);	// make sure it's even so we can divide by 2
+			if (diff > 0) {
+				rect1.top += diff/2;
+				rect1.bottom = rect1.top + height;
+			}
+		} else if (ratio > 1.34) {
+			// screen is too wide, need to make thinner to fit
+			int width = (int)((rect1.bottom - rect1.top) * DesiredRatio + 0.5);
+			int diff = ((rect1.right - rect1.left) - width) & (~1);		// make sure it's even again
+			if (diff > 0) {
+				rect1.left += diff/2;
+				rect1.right = rect1.left + width;
+			}
+		}
+	}
+
+
 	// TODO: hacky city - 80-column mode doesn't filter or anything, cause we'd have to change ALL the stuff below.
 	if ((bEnable80Columns)&&(VDPREG[0]&0x04)&&(VDPREG[1]&0x10)) {
 		// render 80 columns to the screen using DIB blit
-		StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+16, 192+16, framedata, &myInfo80Col, 0, SRCCOPY);
+		StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+16, 192+16, framedata, &myInfo80Col, 0, SRCCOPY);
 		ReleaseDC(myWnd, myDC);
 		LeaveCriticalSection(&VideoCS);
 		return;
@@ -1675,6 +1971,8 @@ void doBlit()
 	}
 	if (FilterMode == 5) {
 		if ((NULL == hHQ4DLL) || (NULL == hq4x_init)) {
+			// TODO: it has been reported that the emulator just hangs after this message, does not fall back properly
+			// Check the other DLLs too.
 			MessageBox(myWnd, "HQ4 DLL not available - reverting to no filter.", "Classic99 Error", MB_OK);
 			PostMessage(myWnd, WM_COMMAND, ID_VIDEO_FILTERMODE_NONE, 0);
 			ReleaseDC(myWnd, myDC);
@@ -1716,30 +2014,30 @@ void doBlit()
 	}
 
 	switch (StretchMode) {
-	case 1:	// DIB
+	case STRETCH_DIB:	// DIB
 		switch (FilterMode) {
 		case 0:		// none
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 256+16, 192+16, framedata, &myInfo, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 256+16, 192+16, framedata, &myInfo, 0, SRCCOPY);
 			break;
 
 		case 4:		// TV
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, TV_WIDTH, 384+29, framedata2, &myInfoTV, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, TV_WIDTH, 384+29, framedata2, &myInfoTV, 0, SRCCOPY);
 			break;
 
 		case 5:		// hq4x
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, (256+16)*4, (192+16)*4, framedata2, &myInfo32, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, (256+16)*4, (192+16)*4, framedata2, &myInfo32, 0, SRCCOPY);
 			break;
 
 		default:	// all the SAI ones
-			StretchDIBits(myDC, 0, 0, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+32, 384+29, framedata2, &myInfo2, 0, SRCCOPY);
+			StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, 512+32, 384+29, framedata2, &myInfo2, 0, SRCCOPY);
 		}
 		break;
 
 	case 2: // DX
 		if (NULL == lpdd) {
-			SetupDirectDraw(0);
+			SetupDirectDraw(false);
 			if (NULL == lpdd) {
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				break;
 			}
 		}
@@ -1757,7 +2055,7 @@ void doBlit()
         }
 
 		if (NULL == ddsBack) {
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			break;
 		}
 
@@ -1785,30 +2083,31 @@ void doBlit()
 			}
 		}
 		ddsBack->ReleaseDC(tmpDC);
-		GetWindowRect(myWnd, &rect2);
 		// rect1 contains client coordinates (with the correct size!)
-		// rect2 contains window coordinates
+		{ 
+			POINT pt;
+			int w = rect1.right-rect1.left;
+			int h = rect1.bottom - rect1.top;
+			pt.x = rect1.left;
+			pt.y = rect1.top;
+			ClientToScreen(myWnd, &pt);
+			rect1.top = pt.y;
+			rect1.bottom = pt.y + h;
+			rect1.left = pt.x;
+			rect1.right = pt.x + w;
 
-		POINT pt;
-		pt.x = 0;
-		pt.y = 0;
-		ClientToScreen(myWnd, &pt);
-		rect1.top = pt.y;
-		rect1.bottom += pt.y;
-		rect1.left = pt.x;
-		rect1.right+= pt.x;
-
-		// The DirectDraw blit will draw using screen coordinates but into the client area thanks to the clipper
-		if (DDERR_SURFACELOST == lpdds->Blt(&rect1, ddsBack, NULL, DDBLT_DONOTWAIT, NULL)) {	// Just go as quick as we can, don't bother waiting
-			lpdd->RestoreAllSurfaces();
+			// The DirectDraw blit will draw using screen coordinates but into the client area thanks to the clipper
+			if (DDERR_SURFACELOST == lpdds->Blt(&rect1, ddsBack, NULL, DDBLT_DONOTWAIT, NULL)) {	// Just go as quick as we can, don't bother waiting
+				lpdd->RestoreAllSurfaces();
+			}
 		}
 		break;
 
 	case 3: // DX Full
 		if (NULL == lpdd) {
-			SetupDirectDraw(FullScreenMode);
+			SetupDirectDraw(true);
 			if (NULL == lpdd) {
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				break;
 			}
 		}
@@ -1818,7 +2117,7 @@ void doBlit()
 		}
 		
 		if (NULL == ddsBack) {
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			break;
 		}
 		if (DD_OK == ddsBack->GetDC(&tmpDC)) {	// color depth translation
@@ -1841,9 +2140,24 @@ void doBlit()
 			}
 		}
 		ddsBack->ReleaseDC(tmpDC);
-		if (DD_OK != (ret=lpdds->Blt(NULL, ddsBack, NULL, DDBLT_DONOTWAIT, NULL))) {
-			if (DDERR_SURFACELOST == ret) {
-				lpdd->RestoreAllSurfaces();
+
+		// rect1 contains client coordinates (with the correct size!)
+		{ 
+			POINT pt;
+			int w = rect1.right-rect1.left;
+			int h = rect1.bottom - rect1.top;
+			pt.x = rect1.left;
+			pt.y = rect1.top;
+			ClientToScreen(myWnd, &pt);
+			rect1.top = pt.y;
+			rect1.bottom = pt.y + h;
+			rect1.left = pt.x;
+			rect1.right = pt.x + w;
+
+			if (DD_OK != (ret=lpdds->Blt(&rect1, ddsBack, NULL, DDBLT_DONOTWAIT, NULL))) {
+				if (DDERR_SURFACELOST == ret) {
+					lpdd->RestoreAllSurfaces();
+				}
 			}
 		}
 		break;
@@ -2118,7 +2432,7 @@ void DrawSprites(int scanline)
 		sc=0;						// current scanline
 		
 		// Added by Rasmus M
-		// TODO: For ECM 1 we need one more bit from R24 (Mike: is that ECM? I think it's always!)
+		// TODO: For ECM 1 we need one more bit from R24
 		int paletteBase = F18AECModeSprite ? (col >> (F18AECModeSprite - 2)) * F18ASpritePaletteSize : 0;
 		int F18ASpriteColorLine[8]; // Colors indices for each of the 8 pixels in a sprite scan line
 
@@ -2419,7 +2733,7 @@ HRESULT WINAPI myCallBack(LPDDSURFACEDESC2 ddSurface, LPVOID pData) {
 // In order for Fullscreen to work, only the main thread
 // may call this function!
 ////////////////////////////////////////////////////////////
-void SetupDirectDraw(int fullscreen) {
+void SetupDirectDraw(bool fullscreen) {
 	int x,y,c;
 	RECT myRect;
 
@@ -2434,7 +2748,7 @@ void SetupDirectDraw(int fullscreen) {
     if( hInstDDraw == NULL ) {
 		MessageBox(myWnd, "Can't load DLL for DirectDraw 7\nClassic99 Requires DirectX 7 for DX and Full screen modes", "Classic99 Error", MB_OK);
 		lpdd=NULL;
-		StretchMode=0;
+		StretchMode=STRETCH_NONE;
 		goto optout;
 	}
 
@@ -2443,24 +2757,22 @@ void SetupDirectDraw(int fullscreen) {
 	if (pDDCreate(NULL, (void**)&lpdd, IID_IDirectDraw7, NULL)!=DD_OK) {
 		MessageBox(myWnd, "Unable to initialize DirectDraw 7\nClassic99 Requires DirectX 7 for DX and Full screen modes", "Classic99 Error", MB_OK);
 		lpdd=NULL;
-		StretchMode=0;
+		StretchMode=STRETCH_NONE;
 	} else {
 		if (fullscreen) {
 			DDSURFACEDESC2 myDesc;
 
 			GetWindowRect(myWnd, &myRect);
 
-			switch (fullscreen) {
-				case 1: x=320; y=240; c=8; break;
-				case 2: x=640; y=480; c=8; break;
-				case 3: x=640; y=480; c=16; break;
-				case 4: x=640; y=480; c=32; break;
-				case 5: x=800; y=600; c=16; break;
-				case 6: x=800; y=600; c=32; break;
-				case 7: x=1024; y=768; c=16; break;
-				case 8: x=1024; y=768; c=32; break;
-				default:x=640; y=480; c=16; break;
-			}
+			// select a full screen mode that equals the desktop mode
+			// Limitation: primary monitor only
+			x = GetSystemMetrics(SM_CXSCREEN);
+			y = GetSystemMetrics(SM_CYSCREEN);
+			c = 32;		// always 32-bit color now
+
+			// save those values off
+			fullscreenX = x;
+			fullscreenY = y;
 
 			// Check if mode is legal
 			ZeroMemory(&myDesc, sizeof(myDesc));
@@ -2474,7 +2786,7 @@ void SetupDirectDraw(int fullscreen) {
 				MessageBox(myWnd, "Requested graphics mode is not supported on the primary display.", "Classic99 Error", MB_OK);
 				if (lpdd) lpdd->Release();
 				lpdd=NULL;
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				MoveWindow(myWnd, myRect.left, myRect.top, myRect.right-myRect.left, myRect.bottom-myRect.top, true);
 				goto optout;
 			}
@@ -2485,7 +2797,7 @@ void SetupDirectDraw(int fullscreen) {
 				MessageBox(myWnd, "Unable to set cooperative level\nFullscreen DX is not available", "Classic99 Error", MB_OK);
 				if (lpdd) lpdd->Release();
 				lpdd=NULL;
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				MoveWindow(myWnd, myRect.left, myRect.top, myRect.right-myRect.left, myRect.bottom-myRect.top, true);
 				goto optout;
 			}
@@ -2493,17 +2805,23 @@ void SetupDirectDraw(int fullscreen) {
 			if (lpdd->SetDisplayMode(x,y,c,0,0) != DD_OK) {
 				MessageBox(myWnd, "Unable to set display mode.\nRequested DX mode is not available", "Classic99 Error", MB_OK);
 				MoveWindow(myWnd, myRect.left, myRect.top, myRect.right-myRect.left, myRect.bottom-myRect.top, true);
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				goto optout;
 			}
+
+            // disable the menu
+            SetMenuMode(false, false);
 		} else {
 			if (lpdd->SetCooperativeLevel(myWnd, DDSCL_NORMAL)!=DD_OK) {
 				MessageBox(myWnd, "Unable to set cooperative level\nDX mode is not available", "Classic99 Error", MB_OK);
 				if (lpdd) lpdd->Release();
 				lpdd=NULL;
-				StretchMode=0;
+				StretchMode=STRETCH_NONE;
 				goto optout;
 			}
+
+            // enable the menu
+            SetMenuMode(true, !bEnableAppMode);
 		}
 
 		ZeroMemory(&CurrentDDSD, sizeof(CurrentDDSD));
@@ -2515,7 +2833,7 @@ void SetupDirectDraw(int fullscreen) {
 			MessageBox(myWnd, "Unable to create primary surface\nDX mode is not available", "Classic99 Error", MB_OK);
 			if (lpdd) lpdd->Release();
 			lpdd=NULL;
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			goto optout;
 		}
 
@@ -2551,7 +2869,7 @@ void SetupDirectDraw(int fullscreen) {
 			lpdds=NULL;
 			lpdd->Release();
 			lpdd=NULL;
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			goto optout;
 		}
 
@@ -2609,11 +2927,11 @@ int ResizeBackBuffer(int w, int h) {
 	ddsBack=NULL;
 
 	if (NULL == lpdd) {
-		SetupDirectDraw(0);
+		SetupDirectDraw(false);
 		if (NULL == lpdd) {
 			MessageBox(myWnd, "Unable to create back buffer surface\nDX mode is not available", "Classic99 Error", MB_OK);
 			ddsBack=NULL;
-			StretchMode=0;
+			StretchMode=STRETCH_NONE;
 			LeaveCriticalSection(&VideoCS);
 			return 1;
 		}
@@ -2628,7 +2946,7 @@ int ResizeBackBuffer(int w, int h) {
 	if (lpdd->CreateSurface(&CurrentDDSD, &ddsBack, NULL) != DD_OK) {
 		MessageBox(myWnd, "Unable to create back buffer surface\nDX mode is not available", "Classic99 Error", MB_OK);
 		ddsBack=NULL;
-		StretchMode=0;
+		StretchMode=STRETCH_NONE;
 		LeaveCriticalSection(&VideoCS);
 		return 1;
 	}
@@ -2890,8 +3208,8 @@ unsigned char getF18AStatus() {
 	return 0;
 }
 
-// captures a text or graphics mode screen (will do bitmap too, assuming graphics mode)
-CString captureScreen(int offset) {
+// captures a text or graphics mode screen (will NOT do bitmap, assuming graphics mode)
+CString captureScreen(int offset, char illegalByte) {
     CString csout;
     int stride = getCharsPerLine();
     if (stride == -1) {
@@ -2905,7 +3223,7 @@ CString captureScreen(int offset) {
             int index = SIT+row*stride+col;
             if (index >= sizeof(VDP)) { row=25; break; }   // check for unlikely overrun case
             int c = VDP[index] + offset; 
-            if ((c>=' ')&&(c < 127)) csout+=(char)c; else csout+='.';
+            if ((c>=' ')&&(c < 127)) csout+=(char)c; else csout+=illegalByte;
         }
         csout+="\r\n";
     }

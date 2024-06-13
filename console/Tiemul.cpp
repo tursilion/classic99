@@ -1,5 +1,21 @@
+// TODO: Add RPK support. Wavemotion has offered the use of his DS code:
+// @Tursi - I know you've got 1001 projects cooking but if you do get to RPK support, 
+// you're free to use any part of my codebase. 
+// https://github.com/wavemotion-dave/DS994a/tree/main/arm9/source/rpk 
+// The two libraries I use are lowzip (for depacking) and yxml  (for XML parsing) - 
+// both are really simple and designed to work on virtually any architecture (you 
+// provide the file read callback). Both are released under the permissive MIT 
+// license for any use imaginable.  My code is, of course, equally free to 
+// borrow in part or whole.
+
+// TODO: add to the auto-cart loader a check for a like-named INI file
+// If present, treat it like it was part of Classic99.ini and read the cart that way
+
+// TODO: add an I/O error reference to the help menu
+
+
 //
-// (C) 2007-2014 Mike Brent aka Tursi aka HarmlessLion.com
+// (C) 2007-2024 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
 // express or implied is provided.
 //
@@ -46,10 +62,29 @@
 // any patches that want to access it directly (not through ROMWORD or RCPUBYTE)
 // must take note of this or they will fail
 
+// CRU device map
+// >0000	Console / SID Blaster
+// >1000	CF7
+// >1100	Classic99 DSR / TI DSR
+// >1200	TIPI Sim
+// >1300	RS232/PIO
+// >1400
+// >1500    Reserved for second RS232/PIO
+// >1600
+// >1700
+// >1800    Reserved for Thermal Printer
+// >1900
+// >1A00
+// >1B00
+// >1C00
+// >1D00
+// >1E00	AMS
+// >1F00	P-Code
+
 #pragma warning (disable: 4113 4761 4101)
 
 #define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 
 ////////////////////////////////////////////
 // Includes
@@ -70,11 +105,11 @@
 #include "..\resource.h"
 #include "tiemul.h"
 #include "cpu9900.h"
-#include "..\SpeechDll\5220intf.h"
 #include "..\addons\rs232_pio.h"
 #include "..\keyboard\kb.h"
 #include "..\keyboard\ti.h"
 #include "..\addons\ams.h"
+#include "..\addons\screenReader.h"
 #include "..\disk\diskclass.h"
 #include "..\disk\fiaddisk.h"
 #include "..\disk\imagedisk.h"
@@ -123,9 +158,11 @@ int YMadr;
 HINSTANCE hInstance;						// global program instance
 HINSTANCE hPrevInstance;					// prev instance (always null so far)
 bool bWindowInitComplete = false;           // just a little sync so we ignore size changes till we're done
+extern HANDLE hDebugWindowUpdateEvent;		// from WindowProc.cpp
 extern BOOL CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 extern void DebugUpdateThread(void*);
 extern void UpdateMakeMenu(HWND hwnd, int enable);
+void SetMenuMode(bool showTitle, bool showMenu);
 
 // User interface
 CString csLastDiskImage[MAX_MRU];
@@ -137,11 +174,14 @@ extern int AudioSampleRate;				// in hz
 extern unsigned int CalculatedAudioBufferSize;		// round audiosample rate up to a multiple of frame rate
 extern CRITICAL_SECTION csAudioBuf;
 
-// speech 
-#define SPEECHUPDATECOUNT (max_cpf/5)
+// speech
+#define SPEECHUPDATETIMESPERFRAME 5
 INT16 SpeechTmp[SPEECHRATE*2];				// two seconds worth of buffer
 int nSpeechTmpPos=0;
+CRITICAL_SECTION csSpeechBuf;
 double nDACLevel=0.0;						// DAC level percentage (from cassette port) - added into the audio buffer on update
+double CRU_TOGGLES = 0.0;
+bool enableBackgroundHum = false;
 HANDLE hSpeechBufferClearEvent=INVALID_HANDLE_VALUE;		// notification of speech buffer looping
 
 HMODULE hSpeechDll;											// Handle to speech DLL
@@ -158,20 +198,37 @@ bool total_cycles_looped=false;
 bool bDebugAfterStep=false;									// force debug after step
 bool bStepOver=false;										// whether step over is on
 int nStepCount=0;											// how many instructions to step before breakpoints work again (usually 1)
+int enableDebugOpcodes = 0;									// enable debug opcodes for CPU
 bool bScrambleMemory = false;								// whether to set RAM to random values on reset
 bool bWarmBoot = false;										// whether to leave memory alone on reset
 int HeatMapFadeSpeed = 25;									// how many pixels per access to fade - bigger = more CPU but faster fade
-int installedJoysticks = 3;									// bitmask - both joysticks are installed
+int installedJoysticks = 0xffff;							// bitmask - up to 16 possible joystick devices (TI only uses 2 though)
+
+// AppMode
+int bEnableAppMode = 0;                                     // whether to enable App Mode
+int bSkipTitle = 0;                                         // whether to skip the master title page
+int nAutoStartCart = 0;                                     // Which cartridge to autostart on the selection screen (or 0 for none)
+int bAppLockFullScreen = 0;									// if in App mode, lock to full screen only
+int bEnableINIWrite = 1;									// not /just/ app mode, but app mode enables it
+char AppName[128];                                          // the title bar name to display instead of Classic99
 
 // debug
 struct _break BreakPoints[MAX_BREAKPOINTS];
+int cycleCounter[65536];                                    // cycle counting during a trace
+bool cycleCountOn=false;
 int nBreakPoints=0;
+bool gResetTimer=false;                                     // used to reset the debug timer breakpoint
 bool BreakOnIllegal = false;
 bool BreakOnDiskCorrupt = false;
 bool gDisableDebugKeys = false;
+bool bIgnoreConsoleBreakpointHits = false;
 CRITICAL_SECTION debugCS;
 char g_cmdLine[512];
 extern bool bWarmBoot;
+extern FILE *fpDisasm;          // file pointer for logging disassembly, if active
+extern int disasmLogType;       // 0 = all, 1 = exclude < 2000, valid only when fpDisasm is not NULL
+extern CRITICAL_SECTION csDisasm; 
+int logAudio = 0;				// whether to log audio
 
 // disk
 extern bool bCorruptDSKRAM;
@@ -264,8 +321,8 @@ char key[256];										// keyboard state buffer
 // Win32 Joysticks
 JOYINFOEX myJoy;
 int fJoy;
-int joy1mode, joy2mode;
 int fJoystickActiveOnKeys;
+joyStruct joyStick[2];
 
 // Audio
 int latch_byte;										// latched byte
@@ -280,18 +337,32 @@ bool CPUSpeechHalt=false;
 Byte CPUSpeechHaltByte=0;
 
 // disassembly view
-struct history Disasm[20];							// history object
+struct history Disasm[DEBUGLINES];					// history object
 
 // video
 extern int bEnable80Columns;						// 80 column hack
 extern int bEnable128k;								// 128k hack
 extern int bF18Enabled;								// F18A support
 extern int bInterleaveGPU;							// simultaneous GPU (not really)
+extern int vdpscanline;								// used for load stats
+
+// these two variables are used to estimate a screen clear for the speech code -
+// if 768 bytes are written within 960 bytes of the start of screen memory, and they
+// are all the same byte, the screen is determined to be cleared. This is even okay
+// for text mode with 2 lines of fixed header (880 bytes would be written).
+// (768 is the size of regular 32x24, and 960 is the size of 40x24)
+unsigned char lastVideoByte = 255;
+int lastVideoCount = 0;
+
+int statusReadLine=0;								// the line we last read status at
+int statusReadCount=0;								// how many lines since we last read status
+int statusFrameCount=0;								// entire frames missed since update
+bool statusUpdateRead = false;						// frame has finished, watch for status test again
 
 // Assorted
 char qw[80];										// temp string
 volatile int quitflag;								// quit flag
-char lines[34][DEBUGLEN];							// debug lines
+char lines[DEBUGLINES][DEBUGLEN];					// debug lines
 bool bDebugDirty;									// whether debug has changed
 volatile int xbBank=0;								// Cartridge bank switch
 volatile int bInvertedBanks=false;					// whether switching uses Jon's inverted 379
@@ -303,12 +374,12 @@ unsigned int index1;								// General counter variable
 int drawspeed=0;									// flag used in display updating
 int max_cpf=DEFAULT_60HZ_CPF;						// Maximum cycles per frame (default)
 int cfg_cpf=max_cpf;								// copy of same
+int cfg_overdrive = 50;								// how much faster CPU overdrive tries for
 int slowdown_keyboard = 1;							// slowdown keyboard autorepeat in the GROM code
 int cpucount, cpuframes;							// CPU counters for timing
 int timercount;										// Used to estimate runtime
 int CtrlAltReset = 0;								// if true, require control+alt+equals
 int gDontInvertCapsLock = 0;						// if true, caps lock is not inverted
-int gLogSNPSG = 0;									// update a PSG dump every frame, VGMComp2 format
 const char *szDefaultWindowText="Classic99";		// used to set Window back to normal after a change
 
 int timer9901;										// 9901 interrupt timer
@@ -324,9 +395,15 @@ int sams_size = 3;									// SAMS emulation memory size (0 = 128k, 1 = 256k, 2 
 int retrace_count=0;								// count on the 60hz timer
 
 int PauseInactive;									// what to do when the window is inactive
+int WindowActive;                                   // true if the Classic99 window is active
 int SpeechEnabled;									// whether speech is enabled
-volatile int CPUThrottle;							// Whether or not the CPU is throttled
-volatile int SystemThrottle;						// Whether or not the VDP is throttled
+volatile int ThrottleMode = THROTTLE_NORMAL;		// overall throttling mode
+int Fast16BitRam = 0;								// whether to disable wait states on the 32K memory space
+int enableSpeedKeys = 0;							// allow the INI to make F6,F7,F8,F11 available all the time
+int enableAltF4 = 0;								// allow alt+F4 to close the emulator
+int enableF10Menu = 0;								// allow F10 to activate the menu bar
+int enableEscape = 1;								// allow Escape to act as Fctn-9 (back)
+bool mouseCaptured = false;							// used for mouse support - just TIPI today
 
 time_t STARTTIME, ENDTIME;
 volatile long ticks;
@@ -336,12 +413,13 @@ CPU9900 *pCPU, *pGPU;
 
 ATOM myClass;										// Window Class
 HWND myWnd;											// Handle to windows
+HMENU myMenu;                                       // Handle to menu (for full screen)
 volatile HWND dbgWnd;								// Handle to windows
 HDC myDC;											// Handle to Device Context
 int fontX, fontY;									// Non-proportional font x and y size
 DWORD g_dwMyStyle = WS_OVERLAPPEDWINDOW | WS_SIZEBOX | WS_VISIBLE;
 int nVideoLeft = -1, nVideoTop = -1;
-RECT gWindowRect;
+RECT gWindowRect;       // not always up to date!
 
 char AVIFileName[256]="C:\\TI99AVI.AVI";			// AVI Filename
 
@@ -357,9 +435,32 @@ CRITICAL_SECTION TapeCS;							// Tape CS
 
 extern const char *pCurrentHelpMsg;
 extern int VDPDebug;
+extern int SIT;
 extern int TVScanLines;
 
 #define INIFILE ".\\classic99.ini"
+
+///////////////////////////////////
+// JoyStruct
+///////////////////////////////////
+
+joyStruct::joyStruct() { reset(); }
+void joyStruct::reset() {
+	mode = 0;
+	Xaxis = 0;
+	Yaxis = 1;
+	btnMask = 0xffffffff;
+	minXDead = 0x4000;
+	maxXDead = 0xC000;
+	minYDead = 0x4000;
+	maxYDead = 0xC000;
+}
+void joyStruct::changeMode(int n) {
+	if (n != mode) {
+		reset();
+		mode = n;
+	}
+}
 
 ///////////////////////////////////
 // Built-in Cart library
@@ -388,9 +489,10 @@ struct CARTS Systems[] = {
 
 struct CARTS Apps[] = {
 	{	
-		"Demonstration",
-		{
-			{	IDR_DEMOG,		0x6000, 0x8000,	TYPE_GROM	, 0},
+		"NULLAPP",	
+		{	
+			{	0,	0x0000, 0x6000,	TYPE_GROM	, -1},
+			{	0,	0x0000,	0x2000,	TYPE_ROM	, -1},
 		},
 		NULL,
 		NULL,
@@ -400,10 +502,10 @@ struct CARTS Apps[] = {
 
 struct CARTS Games[] = {
 	{	
-		"Alpiner",	
+		"NULLAPP",	
 		{	
-			{	IDR_ALPINERG,	0x6000, 0x8000,	TYPE_GROM	, 0},
-			{	IDR_ALPINERC,	0x6000,	0x2000,	TYPE_ROM	, 0},
+			{	0,	0x0000, 0x6000,	TYPE_GROM	, -1},
+			{	0,	0x0000,	0x2000,	TYPE_ROM	, -1},
 		},
 		NULL,
 		NULL,
@@ -941,10 +1043,10 @@ zuint8 z80In(void*skipSideEffects, zuint16 port) {
             } else {
 			    if (port&1) {
 				    // read status
-				    return rvdpbyte(0x8802, false);
+				    return rvdpbyte(0x8802, ACCESS_READ);
 			    } else {
 				    // read data
-				    return rvdpbyte(0x8800, false);
+				    return rvdpbyte(0x8800, ACCESS_READ);
 			    }
             }
 
@@ -1266,6 +1368,8 @@ void ReadConfig() {
 
 	// audio rate
 	AudioSampleRate =		GetPrivateProfileInt("audio",	"samplerate",	AudioSampleRate,			INIFILE);
+	// continuous screen reader
+	ScreenReader::SetContinuousRead(		GetPrivateProfileInt("audio",	"continuousReader",	ScreenReader::GetContinuousRead()?1:0,INIFILE) != 0);
 
 	// load the new style config
 	EnterCriticalSection(&csDriveType);
@@ -1373,15 +1477,24 @@ void ReadConfig() {
         nCf7DiskSize = GetPrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
     }
 
+	// NOTE: emulation\enableAltF4 is down under the video block, due to needing to set different defaults
 	// Filename used to write recorded video
 	GetPrivateProfileString("emulation", "AVIFilename", AVIFileName, AVIFileName, 256, INIFILE);
-	// CPU Throttling? CPU_OVERDRIVE, CPU_NORMAL, CPU_MAXIMUM
-	CPUThrottle=	GetPrivateProfileInt("emulation",	"cputhrottle",			CPUThrottle,	INIFILE);
-	// VDP Throttling? VDP_CPUSYNC, VDP_REALTIME
-	SystemThrottle=	GetPrivateProfileInt("emulation",	"systemthrottle",		SystemThrottle,	INIFILE);
-	// Proper CPU throttle (cycles per frame) - ipf is deprecated
+	// Throttle mode is all in one now, from -1: THROTTLE_SLOW, THROTTLE_NORMAL, THROTTLE_OVERDRIVE, THROTTLE_SYSTEMMAXIMUM
+	ThrottleMode =  GetPrivateProfileInt("emulation",   "throttlemode",         ThrottleMode,   INIFILE);
+	// 16-bit RAM is now supported
+	Fast16BitRam =  GetPrivateProfileInt("emulation",   "fast16bitram",         Fast16BitRam,   INIFILE);
+	// Proper CPU throttle (cycles per frame) - ipf is deprecated - this defines "normal" and probably should go away too
 	max_cpf=		GetPrivateProfileInt("emulation",	"maxcpf",				max_cpf,		INIFILE);
 	cfg_cpf = max_cpf;
+	// Overdrive CPU multiplier
+	cfg_overdrive=	GetPrivateProfileInt("emulation",	"overdrive",			cfg_overdrive,	INIFILE);
+	// map through certain function keys as emulator speed control
+	enableSpeedKeys = GetPrivateProfileInt("emulation", "enableSpeedKeys",		enableSpeedKeys, INIFILE);
+	// map through certain function keys as emulator speed control
+	enableEscape = GetPrivateProfileInt("emulation",    "enableEscape",		    enableEscape, INIFILE);
+	// F10 can be set to enable the menu
+	enableF10Menu = GetPrivateProfileInt("emulation", "enableF10Menu",			enableF10Menu,   INIFILE);
 	// Pause emulator when window inactive: 0-no, 1-yes
 	PauseInactive=	GetPrivateProfileInt("emulation",	"pauseinactive",		PauseInactive,	INIFILE);
 	// Disable speech if desired
@@ -1389,7 +1502,7 @@ void ReadConfig() {
 	// require additional control key to reset (QUIT)
 	CtrlAltReset=	GetPrivateProfileInt("emulation",	"ctrlaltreset",			CtrlAltReset,	INIFILE);
 	// override the inverted caps lock
-	gDontInvertCapsLock = !GetPrivateProfileInt("emulation","invertcaps",	!gDontInvertCapsLock, INIFILE);
+	gDontInvertCapsLock = !GetPrivateProfileInt("emulation","invertcaps",		!gDontInvertCapsLock, INIFILE);
 	// Get system type: 0-99/4, 1-99/4A, 2-99/4Av2.2
 	nSystem=		GetPrivateProfileInt("emulation",	"system",				nSystem,		INIFILE);
 	// Read flag for slowing keyboard repeat: 0-no, 1-yes
@@ -1412,9 +1525,24 @@ void ReadConfig() {
 
 	// Joystick active: 0 - off, 1 on
 	fJoy=		GetPrivateProfileInt("joysticks", "active",		fJoy,		INIFILE);
-	// 0-keyboard, 1-PC joystick 1, 2-PC joystick 2
-	joy1mode=	GetPrivateProfileInt("joysticks", "joy1mode",	joy1mode,	INIFILE);
-	joy2mode=	GetPrivateProfileInt("joysticks", "joy2mode",	joy2mode,	INIFILE);
+	joyStick[0].mode=	 (unsigned)GetPrivateProfileInt("joysticks", "joy1mode",	joyStick[0].mode,	 INIFILE);
+	joyStick[0].Xaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy1xaxis",	joyStick[0].Xaxis,   INIFILE);
+	joyStick[0].Yaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy1yaxis",	joyStick[0].Yaxis,   INIFILE);
+	joyStick[0].btnMask= (unsigned)GetPrivateProfileInt("joysticks", "joy1btns",	joyStick[0].btnMask, INIFILE);
+	joyStick[0].minXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1minX",	joyStick[0].minXDead,INIFILE);
+	joyStick[0].minYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1minY",	joyStick[0].minYDead,INIFILE);
+	joyStick[0].maxXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1maxX",	joyStick[0].maxXDead,INIFILE);
+	joyStick[0].maxYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy1maxY",	joyStick[0].maxYDead,INIFILE);
+
+	joyStick[1].mode=	 (unsigned)GetPrivateProfileInt("joysticks", "joy2mode",	joyStick[1].mode,	 INIFILE);
+	joyStick[1].Xaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy2xaxis",	joyStick[1].Xaxis,   INIFILE);
+	joyStick[1].Yaxis=   (unsigned)GetPrivateProfileInt("joysticks", "joy2yaxis",	joyStick[1].Yaxis,   INIFILE);
+	joyStick[1].btnMask= (unsigned)GetPrivateProfileInt("joysticks", "joy2btns",	joyStick[1].btnMask, INIFILE);
+	joyStick[1].minXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2minX",	joyStick[1].minXDead,INIFILE);
+	joyStick[1].minYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2minY",	joyStick[1].minYDead,INIFILE);
+	joyStick[1].maxXDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2maxX",	joyStick[1].maxXDead,INIFILE);
+	joyStick[1].maxYDead=(unsigned)GetPrivateProfileInt("joysticks", "joy2maxY",	joyStick[1].maxYDead,INIFILE);
+
 	fJoystickActiveOnKeys = 0;		// just reset this
 
 	// Cartridge group loaded (0-apps, 1-games, 2-user)
@@ -1534,8 +1662,6 @@ skiprestofuser:
 	FilterMode=		GetPrivateProfileInt("video",	"FilterMode",		FilterMode,		INIFILE);
 	// essentially frameskip
 	drawspeed=		GetPrivateProfileInt("video",	"frameskip",		drawspeed,		INIFILE);
-	// graphics mode used for full screen direct X (see SetupDirectDraw() in tivdp.cpp)
-	FullScreenMode=	GetPrivateProfileInt("video",	"fullscreenmode",	FullScreenMode, INIFILE);
 	// heat map fade speed
 	HeatMapFadeSpeed=GetPrivateProfileInt("video",	"heatmapfadespeed",	HeatMapFadeSpeed, INIFILE);
 	// set interrupt rate - 50/60
@@ -1568,6 +1694,25 @@ skiprestofuser:
 	if (nXSize < 64) nXSize=64;
 	nYSize = GetPrivateProfileInt("video", "ScreenY", nYSize, INIFILE);
 	if (nYSize < 64) nYSize=64;
+	// full screen lock (overrides StretchMode)
+	bAppLockFullScreen = GetPrivateProfileInt("video","LockFullScreen", bAppLockFullScreen, INIFILE);
+	if (bAppLockFullScreen) {
+		StretchMode = STRETCH_FULL;
+		enableAltF4 = 1;	// by default, allow Alt+F4
+	}
+
+    // the new application mode - this can only be set manually, it's not saved
+    bEnableAppMode = GetPrivateProfileInt("AppMode", "EnableAppMode", bEnableAppMode, INIFILE);
+	if (bEnableAppMode) bEnableINIWrite = 0;	// turn off the INI write unless specifically overridden
+    bSkipTitle = GetPrivateProfileInt("AppMode", "SkipTitle", bSkipTitle, INIFILE);
+    nAutoStartCart = GetPrivateProfileInt("AppMode", "AutoStartCart", nAutoStartCart, INIFILE);
+    GetPrivateProfileString("AppMode", "AppName", "Powered by Classic99", AppName, sizeof(AppName), INIFILE);
+
+	// some late "emulation" checks
+	// so, we need to read the alt+f4 config here, AFTER we changed the default
+	enableAltF4 = GetPrivateProfileInt("emulation", "enableAltF4",	enableAltF4,   INIFILE);
+	// and also read the enableINIWrite
+	bEnableINIWrite = GetPrivateProfileInt("emulation", "enableINIWrite", bEnableINIWrite,   INIFILE);
 
 	// get screen position
 	nVideoLeft = GetPrivateProfileInt("video",		"topX",				-1,					INIFILE);
@@ -1576,6 +1721,7 @@ skiprestofuser:
 	// debug
 	bScrambleMemory = GetPrivateProfileInt("debug","ScrambleRam",	bScrambleMemory, INIFILE) ? true : false;
 	bCorruptDSKRAM =  GetPrivateProfileInt("debug","CorruptDSKRAM",	bCorruptDSKRAM, INIFILE) ? true : false;
+	enableDebugOpcodes = GetPrivateProfileInt("debug", "enableDebugOpcodes", enableDebugOpcodes, INIFILE);
 
 	// TV stuff
 	TVScanLines=	GetPrivateProfileInt("tvfilter","scanlines",		TVScanLines,	INIFILE);
@@ -1629,11 +1775,18 @@ void WritePrivateProfileInt(LPCTSTR lpApp, LPCTSTR lpKey, int nVal, LPCTSTR lpFi
 void SaveConfig() {
 	int idx;
 
+	if (!bEnableINIWrite) {
+		debug_write("Skipping INI write per configuration");
+		return;
+	}
+
 	WritePrivateProfileInt(		"audio",		"max_volume",			max_volume,					INIFILE);
 	WritePrivateProfileInt(		"audio",		"samplerate",			AudioSampleRate,			INIFILE);
 	if (NULL != GetSidEnable) {
 		WritePrivateProfileInt(	"audio",		"sid_blaster",			GetSidEnable(),				INIFILE);
 	}
+	WritePrivateProfileInt(		"audio",		"backgroundNoise",		enableBackgroundHum,		INIFILE);
+	WritePrivateProfileInt(		"audio",		"continuousReader",		ScreenReader::GetContinuousRead()?1:0,	INIFILE);
 
 	// write the new data
 	EnterCriticalSection(&csDriveType);
@@ -1665,11 +1818,15 @@ void SaveConfig() {
     WritePrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
 
 	WritePrivateProfileString(	"emulation",	"AVIFilename",			AVIFileName,				INIFILE);
-	WritePrivateProfileInt(		"emulation",	"cputhrottle",			CPUThrottle,				INIFILE);
-	WritePrivateProfileInt(		"emulation",	"systemthrottle",		SystemThrottle,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"throttlemode",			ThrottleMode,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"fast16bitram",			Fast16BitRam,				INIFILE);
+
 	if (0 != max_cpf) {
 		WritePrivateProfileInt(	"emulation",	"maxcpf",				max_cpf,					INIFILE);
 	}
+	WritePrivateProfileInt(		"emulation",	"overdrive",			cfg_overdrive,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableSpeedKeys",		enableSpeedKeys,			INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableEscape",			enableEscape,	  		    INIFILE);
 	WritePrivateProfileInt(		"emulation",	"pauseinactive",		PauseInactive,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"ctrlaltreset",			CtrlAltReset,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"invertcaps",			!gDontInvertCapsLock,		INIFILE);
@@ -1679,17 +1836,36 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"emulation",	"ps2keyboard",			ps2keyboardok,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"sams_enabled",			sams_enabled,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"sams_size",			sams_size,					INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableAltF4",			enableAltF4,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableF10Menu",		enableF10Menu,				INIFILE);
+	WritePrivateProfileInt(		"emulation",	"enableINIWrite",		bEnableINIWrite,			INIFILE);
+//    WritePrivateProfileInt(     "emulation",    "bankedConsoleGROMs",   bankedConsoleGROMs,         INIFILE);
 
 	WritePrivateProfileInt(		"joysticks",	"active",				fJoy,						INIFILE);
-	WritePrivateProfileInt(		"joysticks",	"joy1mode",				joy1mode,					INIFILE);
-	WritePrivateProfileInt(		"joysticks",	"joy2mode",				joy2mode,					INIFILE);
+
+	WritePrivateProfileInt(		"joysticks",	"joy1mode",				joyStick[0].mode,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1xaxis",			joyStick[0].Xaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1yaxis",			joyStick[0].Yaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1btns",				joyStick[0].btnMask,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1minX",				joyStick[0].minXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1minY",				joyStick[0].minYDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1maxX",				joyStick[0].maxXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy1maxY",				joyStick[0].maxYDead,		INIFILE);
+
+	WritePrivateProfileInt(		"joysticks",	"joy2mode",				joyStick[1].mode,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2xaxis",			joyStick[1].Xaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2yaxis",			joyStick[1].Yaxis,			INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2btns",				joyStick[1].btnMask,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2minX",				joyStick[1].minXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2minY",				joyStick[1].minYDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2maxX",				joyStick[1].maxXDead,		INIFILE);
+	WritePrivateProfileInt(		"joysticks",	"joy2maxY",				joyStick[1].maxYDead,		INIFILE);
 
 	WritePrivateProfileInt(		"roms",			"cartgroup",			nCartGroup,					INIFILE);
 	WritePrivateProfileInt(		"roms",			"cartidx",				nCart,						INIFILE);
 	
 	WritePrivateProfileInt(		"video",		"FilterMode",			FilterMode,					INIFILE);
 	WritePrivateProfileInt(		"video",		"frameskip",			drawspeed,					INIFILE);
-	WritePrivateProfileInt(		"video",		"fullscreenmode",		FullScreenMode,				INIFILE);
 	WritePrivateProfileInt(		"video",		"heatmapfadespeed",		HeatMapFadeSpeed,			INIFILE);
 
 	WritePrivateProfileInt(		"video",		"hzRate",				hzRate,						INIFILE);
@@ -1704,6 +1880,7 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"video",		"ScreenScale",			nDefaultScreenScale,		INIFILE);
 	WritePrivateProfileInt(		"video",		"ScreenX",				nXSize,						INIFILE);
 	WritePrivateProfileInt(		"video",		"ScreenY",				nYSize,						INIFILE);
+	WritePrivateProfileInt(		"video",		"LockFullScreen",		bAppLockFullScreen,			INIFILE);
 
 	WritePrivateProfileInt(		"video",		"topX",					gWindowRect.left,			INIFILE);
 	WritePrivateProfileInt(		"video",		"topY",					gWindowRect.top,			INIFILE);
@@ -1711,6 +1888,7 @@ void SaveConfig() {
 	// debug
 	WritePrivateProfileInt(		"debug",		"ScrambleRam",			bScrambleMemory,			INIFILE);
 	WritePrivateProfileInt(		"debug",		"CorruptDSKRAM",		bCorruptDSKRAM,				INIFILE);
+	WritePrivateProfileInt(		"debug",		"enableDebugOpcodes",	enableDebugOpcodes,			INIFILE);
 
 	// TV stuff
 	double thue, tsat, tcont, tbright, tsharp;
@@ -1834,11 +2012,31 @@ void UpdateUserCartMRU() {
 	}
 }
 
+// used at startup and when switching out of fullscreen mode
+void RestoreWindowPosition() {
+	// position the window if needed
+	if ((nVideoLeft != -1) || (nVideoTop != -1)) {
+		RECT check;
+		check.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+		check.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+		check.right = check.left + GetSystemMetrics(SM_CXVIRTUALSCREEN) - 256;
+		check.bottom = check.top + GetSystemMetrics(SM_CYVIRTUALSCREEN) - 192;
+		// if it looks onscreen more or less, then allow it
+		if ((nVideoLeft >= check.left) && (nVideoLeft <= check.right) && (nVideoTop >= check.top) && (nVideoTop <= check.bottom)) {
+			SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, 0, 0, SWP_NOOWNERZORDER | SWP_NOSIZE | SWP_NOZORDER);
+		}
+	}
+
+	SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, nXSize, nYSize, SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
+
+	ShowWindow(myWnd, SW_SHOWNORMAL);
+}
+
 ///////////////////////////////////
 // Main
 // Startup and shutdown system
 ///////////////////////////////////
-int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine, int /*nCmdShow*/)
 {
 	int idx;
 	int err;
@@ -1852,7 +2050,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	InitializeCriticalSection(&DebugCS);
 	InitializeCriticalSection(&csDriveType);
 	InitializeCriticalSection(&csAudioBuf);
+	InitializeCriticalSection(&csSpeechBuf);
     InitializeCriticalSection(&TapeCS);
+    InitializeCriticalSection(&csDisasm);
 
 	hInstance = hInst;
 	hPrevInstance=hInPrevInstance;
@@ -1967,7 +2167,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 		aclass.hCursor = LoadCursor(NULL, IDC_ARROW);
 		aclass.hbrBackground = NULL;
 		aclass.lpszMenuName = MAKEINTRESOURCE(IDR_MENU1);
-		aclass.lpszClassName = "TIWndClass";
+		aclass.lpszClassName = "PhoenixWndClass";
 		myClass = RegisterClass(&aclass);
 		if (0 == myClass)
 		{	
@@ -1986,7 +2186,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 		}
 	}
 
-	myWnd = CreateWindow("TIWndClass", "Classic99", g_dwMyStyle, CW_USEDEFAULT, CW_USEDEFAULT, 536, 446, NULL, NULL, hInstance, NULL);
+	myWnd = CreateWindow("PhoenixWndClass", "Classic99 Phoenix", g_dwMyStyle, CW_USEDEFAULT, CW_USEDEFAULT, 536, 446, NULL, NULL, hInstance, NULL);
 	if (NULL == myWnd)
 	{	
 		err=GetLastError();
@@ -1997,6 +2197,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	ShowWindow(myWnd, SW_HIDE);
 	UpdateWindow(myWnd);
 	SetActiveWindow(myWnd);
+    myMenu = ::GetMenu(myWnd);
 
 	// start the debug updater thread
 	if (-1 == _beginthread(DebugUpdateThread, 0, NULL)) {
@@ -2065,7 +2266,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
         GROMBase[idx].LastBase=0;
 	}
 		
-	vdpReset(true);			// TODO: should move these vars into the reset function
+	vdpReset(true);		// TODO: should move these vars into the reset function
 	vdpaccess=0;		// No VDP address writes yet 
 	vdpwroteaddress=0;
 	vdpscanline=0;
@@ -2088,7 +2289,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Print some initial debug
 	debug_write("---");
-	debug_write("Classic99 version %s (C)2002-2017 M.Brent", VERSION);
+	debug_write("Classic99 version %s (C)2002-2024 M.Brent", VERSION);
 	debug_write("ROM files included under license from Texas Instruments");
 
 	// copy out the command line
@@ -2103,17 +2304,16 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	strcpy(AVIFileName, "C:\\Classic99.AVI");	// default movie filename
 	nCartGroup=0;				// Cartridge group (0-apps, 1-games, 2-user)
 	nCart=-1;					// loaded cartridge (-1 is none)
-	CPUThrottle=CPU_NORMAL;		// throttle the CPU
-	SystemThrottle=VDP_CPUSYNC;	// throttle the VDP
+	ThrottleMode = THROTTLE_NORMAL;	// normal throttle
+	Fast16BitRam = 0;			// 8-bit RAM
 	drawspeed=0;				// no frameskip
 	FilterMode=2;				// super 2xSAI
 	nDefaultScreenScale=1;		// 1x by default
 	nXSize = 256+16;			// default size, but not used while screenscale is set
 	nYSize = 192+16;
-	FullScreenMode=6;			// full screen at 640x480x16
 	fJoy=1;						// enable joysticks
-	joy1mode=0;					// keyboard
-	joy2mode=1;					// joystick 1
+	joyStick[0].mode=0;			// keyboard (constructor actually covers this, but will be explicit since we need to for joy2)
+	joyStick[1].mode=1;			// joystick 2
 	fJoystickActiveOnKeys=0;	// not reading joystick in the last 3 seconds or so (180 frames)
 	hzRate=HZ60;				// 60 hz
 	MaintainAspect=1;			// Keep aspect ratio
@@ -2122,10 +2322,11 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	max_cpf=DEFAULT_60HZ_CPF;	// max cycles per frame
 	cfg_cpf=max_cpf;
 	PauseInactive=0;			// don't pause when window inactive
+    WindowActive=(myWnd == GetForegroundWindow());  // true if we're active
 	SpeechEnabled=1;			// speech is decent now
 	Recording=0;				// not recording AVI
 	slowdown_keyboard=1;		// slow down keyboard repeat when read via BASIC
-	StretchMode=2;				// dx
+	StretchMode=STRETCH_DX;		// dx
 	bUse5SpriteLimit=1;			// enable flicker by default
 	TVScanLines=1;				// on by default
 	sams_enabled=1;				// off by default
@@ -2150,26 +2351,31 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	if (NULL != SetSidEnable) {
 		SetSidEnable(false);	// by default, off
 	}
+	ScreenReader::initScreenReader();
 
 	// Read configuration - uses above settings as default!
 	ReadConfig();
+	// A little hacky, but rebuild the CPU using the new settings
+	pCPU->buildcpu();
+	pGPU->buildcpu();
 
-	// assume both joysticks are there
-	installedJoysticks = 3;
+    // right off the bat, if we are in App Mode, then we need to do some work
+    if (bEnableAppMode) {
+        // notify
+        debug_write("** Application Mode Enabled **");
+        debug_write("App: %s", AppName);
+        debug_write("Skip Title: %d  AutoStart Index: %d", bSkipTitle, nAutoStartCart);
 
-	// position the window if needed
-	if ((nVideoLeft != -1) || (nVideoTop != -1)) {
-		RECT check;
-		check.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-		check.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-		check.right = check.left + GetSystemMetrics(SM_CXVIRTUALSCREEN) - 256;
-		check.bottom = check.top + GetSystemMetrics(SM_CYVIRTUALSCREEN) - 192;
-		// if it looks onscreen more or less, then allow it
-		if ((nVideoLeft >= check.left) && (nVideoLeft <= check.right) && (nVideoTop >= check.top) && (nVideoTop <= check.bottom)) {
-			SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, 0, 0, SWP_NOOWNERZORDER | SWP_NOSIZE | SWP_NOZORDER);
-		}
-	}
-	ShowWindow(myWnd, nCmdShow);
+        // turn off the menu
+        SetMenuMode(true, false);
+    } else {
+        strcpy(AppName, "Classic99 " VERSION);
+    }
+    // set the title
+    szDefaultWindowText = AppName;
+
+	// assume whatever joysticks are there
+	installedJoysticks = 0xffff;
 
 	// Update user menu - this will be a function later
 	hMenu=GetMenu(myWnd);   // root menu
@@ -2216,16 +2422,16 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	// wait for the video thread to initialize so we can resize the window :)
 	Sleep(500);
 
+	RestoreWindowPosition();
 	if (nDefaultScreenScale != -1) {
 		SendMessage(myWnd, WM_COMMAND, ID_CHANGESIZE_1X+nDefaultScreenScale-1, 1);
-	} else {
-		SetWindowPos(myWnd, HWND_TOP, nVideoLeft, nVideoTop, nXSize, nYSize, SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
 	}
 
 	// Set menu-based settings (lParam 1 means it's coming from here, not the user)
 	// Only some messages care about that param, though
 	SendMessage(myWnd, WM_COMMAND, ID_SYSTEM_0+nSystem, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
+	SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_16, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_DISK_CORRUPTDSKRAM, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_MAINTAINASPECT, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_FILTERMODE_NONE+FilterMode, 1);
@@ -2233,20 +2439,14 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_INTERLEAVEGPU, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_ENABLE80COLUMNHACK, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_ENABLE128KHACK, 1);
-
-	if ((StretchMode>=0)&&(StretchMode<=2)) {
-		SendMessage(myWnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
-	} else {
-		if (StretchMode==3) {
-			SendMessage(myWnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_DXFULL_320X240X8+FullScreenMode-1, 1);
-		}
-	}
+	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_STRETCHMODE_NONE+StretchMode, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_50HZ, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_PAUSEINACTIVE, 1);
 	if (SpeechEnabled) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_SPEECHENABLED, 1);
 	if (CtrlAltReset) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_CTRL_RESET, 1);
 	if (!gDontInvertCapsLock) SendMessage(myWnd, WM_COMMAND, ID_OPTIONS_INVERTCAPSLOCK, 1);
 	SendMessage(myWnd, WM_COMMAND, ID_VIDEO_FLICKER, 1);
+	if (ScreenReader::GetContinuousRead()) SendMessage(myWnd, WM_COMMAND, ID_SCREENREADER_CONTINUOUS, 1);
 	
 	if (nCart != -1) {
 		switch (nCartGroup) {
@@ -2526,7 +2726,7 @@ void startsound()
 	unsigned int idx, idx2;
 	UCHAR *ptr1, *ptr2;
 	unsigned long len1, len2, len;
-	char buf[80];
+//	char buf[80];
 	latch_byte=0;
 
 	if (FAILED(DirectSoundCreate(NULL, &lpds, NULL)))
@@ -2696,7 +2896,6 @@ void fail(char *x)
 
 	// the messagebox fails during a normal exit in WIN32.. why is that?
 	OutputDebugString(buffer);
-	MessageBox(myWnd, buffer, "Classic99 Exit", MB_OK);
 
     // output the call hit log for Z80
     for (int idx=0; idx<65536; ++idx) {
@@ -2747,7 +2946,7 @@ void fail(char *x)
 	}
 	
 	if (myClass) {
-		UnregisterClass("TIWndClass", hInstance);
+		UnregisterClass("PhoenixWndClass", hInstance);
 	}
 
 	if (framedata) free(framedata);
@@ -2764,7 +2963,7 @@ void fail(char *x)
 /////////////////////////////////////////////////////////
 // Return a Word from CPU memory
 /////////////////////////////////////////////////////////
-Word romword(Word x, bool rmw)
+Word romword(Word x, READACCESSTYPE rmw)
 { 
     x&=0xfffe;		// drop LSB
 
@@ -2797,7 +2996,9 @@ void wrword(Word x, Word y)
 			case BREAK_EQUALS_WORD:
 				if (CheckRange(idx, x)) {
 					if ((y&BreakPoints[idx].Mask) == BreakPoints[idx].Data) {		// value matches
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 				}
 				break;
@@ -2805,7 +3006,9 @@ void wrword(Word x, Word y)
 			case BREAK_EQUALS_REGISTER:
 				nTmp=pCurrentCPU->GetWP()+(BreakPoints[idx].A*2);
 				if ((nTmp == x) && ((y&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 		}
@@ -2818,7 +3021,7 @@ void wrword(Word x, Word y)
 void WindowThread() {
 	MSG msg;
 	HACCEL hAccels;		// keyboard accelerator table for the debug window
-	char buf[128];
+	//char buf[128];
 	static FILE *fp=NULL;
 	int cnt, idx, wid;
 
@@ -2862,7 +3065,7 @@ void __cdecl emulti(void *)
 
 	while (!quitflag)
 	{ 
-		if ((PauseInactive)&&(myWnd != GetForegroundWindow())&&(dbgWnd != GetForegroundWindow())) {
+		if ((PauseInactive)&&(!WindowActive)) {
 			// we're supposed to pause when inactive, and we are not active
 			// So, don't execute an instruction, and sleep a bit to relieve CPU
 			// also clear the current timeslice so the machine doesn't run crazy fast when
@@ -3375,8 +3578,11 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					debug_write("%s overwrites memory block - truncating.", pImg->szFileName);
 					nLen=8192;
 				}
-				// TODO: throw a debug warning if the address is not a valid CRU base
-				memcpy(&DSR[(pImg->nLoadAddr>>8)&0x0f][0], pData, nLen);
+				if ((pImg->nLoadAddr & 0xF000) != 0x1000) {
+					debug_write("%s has invalid CRU base %04X for DSR - not loading.", pImg->szFileName, pImg->nLoadAddr);
+				} else {
+					memcpy(&DSR[(pImg->nLoadAddr>>8)&0x0f][0], pData, nLen);
+				}
 				break;
 
 			case TYPE_DSR2:	// always loads at >4000, the load address is the CRU base
@@ -3601,6 +3807,7 @@ void readroms() {
 	grombanking=0;							// not using grom banking
 	nCurrentDSR=-1;							// no DSR paged in
 	memset(nDSRBank, 0, sizeof(nDSRBank));	// not on second page of DSR
+    memset(cycleCounter, 0, sizeof(cycleCounter));
 
 	// load the always load files
 	for (idx=0; idx<sizeof(AlwaysLoad)/sizeof(IMG); idx++) {
@@ -3611,7 +3818,6 @@ void readroms() {
     if (csCf7Bios.GetLength() > 0) {
         FILE *fp = fopen(csCf7Bios, "rb");
         if (NULL != fp) {
-//            DSR[1][0] = 0x00;       // disable Classic99 DSR - not positive how important that is...
             debug_write("Replacing DSK1-3 with CF7 emulation at CRU >1000.");
             fread(DSR[0], 1, 8192, fp);
             fclose(fp);
@@ -3750,6 +3956,10 @@ void saveroms()
 //////////////////////////////////////////////////////////
 void do1()
 {
+	// TODO: instead of doing ALL the keyboard checks EVERY instruction, maybe
+	// we can split some of them off to a rotating check? Only breakpoints need
+	// to be checked EVERY instruction, and even then, maybe not EVERY.
+
 	// used for emulating idle and halts (!READY) better
 	bool nopFrame = false;
 
@@ -3785,7 +3995,7 @@ void do1()
         // TODO: so if the timer is starting at zero, which I assume it does (though it's not
         // clear, can we write a test program to find out?), then I assume the decrementer will
         // wrap around. This is an oddball case but we'll try it.
-		int nTimerCnt=CRUTimerTicks>>6;		// /64
+        int nTimerCnt=CRUTimerTicks>>6;		// /64
 		if (nTimerCnt) {
             if (timer9901 == 0) {
                 // handle the wraparound.. since we /started/ at
@@ -3818,11 +4028,11 @@ void do1()
 		// When we have peripheral card interrupts, they are masked on CRU[1]
 		if ((((VDPINT)&&(CRU[2]))||((timer9901IntReq)&&(CRU[3]))) && ((pCurrentCPU->GetST()&0x000f) >= 1) && (!skip_interrupt)) {
 //			if (cycles_left >= 22) {					// speed throttling
-				pCurrentCPU->TriggerInterrupt(0x0004);
+				pCurrentCPU->TriggerInterrupt(0x0004,2);    // TODO: what level do I want to throw here? They are all mask 2, right?
 //			}
             // the if cycles_left doesn't work because if we don't take it now, we'll
             // execute other instructions (at least one more!) instead of stopping...
-            // so we'll just take it and suffer later.
+            // so we'll just take it and pay for it later.
 		}
 
 		// If an idle is set
@@ -3831,15 +4041,31 @@ void do1()
 		}
 	}
 
+    // Make control by itself stop talking, but only if no other key was pressed. So it will stop on release.
+    static int ctrlState = 0;   // 0=not pressed, 1=down, 2=cancelled
+    if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+        if (ctrlState == 0) ctrlState = 1;
+    } else {
+        if (ctrlState == 1) {
+            // ctrl was pressed and released with no other key - stop talking
+            debug_write("Control pressed and released - stop talking.");
+            ScreenReader::ShutUp();
+        }
+        ctrlState = 0;
+    }
+
     // some shortcut keys that are always active...
     // these all require control to be active
     // launch debug dialog (with control)
 	if (key[VK_HOME]) 
 	{
 		if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
+
 		    if (NULL == dbgWnd) {
 			    PostMessage(myWnd, WM_COMMAND, ID_EDIT_DEBUGGER, 0);
 			    // the dialog focus switch may cause a loss of the up event, so just fake it now
+			    // TODO: this should not be needed with the filter in decode(), right??
 			    decode(0xe0);	// extended key
 			    decode(0xf0);
 			    decode(VK_HOME);
@@ -3851,6 +4077,7 @@ void do1()
 	// edit->paste (with control)
 	if (key[VK_F1]) {
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
             PostMessage(myWnd, WM_COMMAND, ID_EDITPASTE, 0);
             key[VK_F1] = 0;
         }
@@ -3861,10 +4088,93 @@ void do1()
         // we'll try to use the screen offset byte - 0x83d3
         // we'll explicitly check for only 0x60, otherwise 0
     	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
             PostMessage(myWnd, WM_COMMAND, ID_EDIT_COPYSCREEN, 0);
             key[VK_F2]=0;
         }
 	}
+
+	// read screen once (with control)
+	if (key[VK_F4]) {
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
+			ScreenReader::ReadScreenOnce();
+            key[VK_F4]=0;
+        }
+	}
+
+	// toggle continuous screen reader (with control)
+	if (key[VK_F9]) {
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
+			PostMessage(myWnd, WM_COMMAND, ID_SCREENREADER_CONTINUOUS, 0);
+            key[VK_F9]=0;
+        }
+	}
+
+	// stop talking (with control)
+	if (key[VK_F10]) {
+    	if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+            if (ctrlState) ctrlState = 2;
+			ScreenReader::ShutUp();
+            key[VK_F10]=0;
+        }
+	}
+
+	// check alt+f4 if enabled
+	if (enableAltF4) {
+		if (GetAsyncKeyState(VK_MENU)&0x8000) {
+			if (key[VK_F4]) {
+				PostMessage(myWnd, WM_QUIT, 0, 0);
+				key[VK_F4] = 0;
+			}
+		}
+	}
+	// check F10 menu if enabled
+	if (enableF10Menu) {
+		if (key[VK_F10]) {
+			// This magic sequence from https://stackoverflow.com/questions/256719/how-to-programmatically-activate-the-menu-in-windows-mobile
+			PostMessage((HWND)myWnd, WM_SYSCOMMAND, SC_KEYMENU, 0);
+			key[VK_F10] = 0;
+		}
+	}
+	
+	// speedKeys doesn't include slow because slow is too slow to be useful
+	// to a non-debugger. Those people can change the CPU speed in config instead.
+	// ... someone will complain someday. ;) 5/5/2021
+	if (enableSpeedKeys) {
+		// CPU normal
+		if (key[VK_F6]) {
+			key[VK_F6]=0;
+			SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
+		}
+
+		// cpu overdrive
+		if (key[VK_F7]) {
+			key[VK_F7]=0;
+			SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
+		}
+
+		// system maximum
+		if (key[VK_F8]) {
+			key[VK_F8]=0;
+			SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
+		}
+
+		// toggle turbo
+		if (key[VK_F11]) {
+			key[VK_F11] = 0;
+
+			if (ThrottleMode == THROTTLE_SYSTEMMAXIMUM) {
+				// running in fast forward, return to normal
+				ThrottleMode = THROTTLE_NORMAL;
+				DoPlay();
+			}
+			else {
+				DoFastForward();
+			}
+		}
+	} // speedkeys
 
 	// Control keys - active only with the debug view open in PS/2 mode
 	// nopFrame must be set before now!
@@ -3892,13 +4202,25 @@ void do1()
 						break;
 
 					// timing instead of breakpoints
+                    // TODO: multiple timers, proper memory placement
 					case BREAK_RUN_TIMER:
 						if ((BreakPoints[idx].Bank != -1) && (xbBank != BreakPoints[idx].Bank)) {
 							break;
 						}
 						if (PC == BreakPoints[idx].A) {
 							nFirst=total_cycles;
+                            cycleCountOn=true;
+                            // hate this hack
+                            if (gResetTimer) {
+                                gResetTimer = false;
+			                    nMax=0;
+                                nMin=0xffffffff;
+			                    nCount=0;
+			                    nTotal=0;
+                                memset(cycleCounter, 0, sizeof(cycleCounter));
+                            }
 						} else if (PC == BreakPoints[idx].B) {
+                            cycleCountOn = false;
 							if (nFirst!=0) {
 								if (total_cycles<nFirst) {
 									debug_write("Counter Wrapped, no statistics");
@@ -3975,47 +4297,51 @@ void do1()
 			key[VK_F3]=0;
 		}
 
-		// do automatic screenshot (not filtered), or set CPU Normal (ctrl)
+		// do automatic screenshot, unfiltered (ctrl), or set CPU slow (normal)
 		if (key[VK_F5]) {
 			key[VK_F5]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
-			} else {
+                if (ctrlState) ctrlState = 2;
 				SaveScreenshot(true, false);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 0);
 			}
 		}
 
-		// auto screenshot, filtered, or CPU Overdrive (ctrl)
+		// auto screenshot, filtered (ctrl), or CPU normal (normal)
 		if (key[VK_F6]) {
 			key[VK_F6]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
-			} else {
+                if (ctrlState) ctrlState = 2;
 				SaveScreenshot(true, true);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
 			}
 		}
 
-		// toggle sprites / system maximum (ctrl)
+		// toggle sprites (ctrl) / cpu overdrive (normal)
 		if (key[VK_F7]) {
 			key[VK_F7]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
-			} else {
+                if (ctrlState) ctrlState = 2;
 				SendMessage(myWnd, WM_COMMAND, ID_LAYERS_DISABLESPRITES, 0);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
 			}
 		}
 
-		// toggle background / cpu slow (ctrl)
+		// toggle background (ctrl) / system maximum (normal)
 		if (key[VK_F8]) {
 			key[VK_F8]=0;
 
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
-				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 0);
-			} else {
+                if (ctrlState) ctrlState = 2;
 				SendMessage(myWnd, WM_COMMAND, ID_LAYERS_DISABLEBACKGROUND, 0);
+			} else {
+				SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
 			}
 		}
 
@@ -4031,23 +4357,26 @@ void do1()
 			key[VK_F10]=0;
 			DoMemoryDump();
 		}
-
-		// toggle turbo
+		
+		// toggle turbo (same as speedkeys)
 		if (key[VK_F11]) {
-			key[VK_F11]=0;
+			key[VK_F11] = 0;
 
-			if (CPUThrottle==CPU_MAXIMUM) {
+			if (ThrottleMode == THROTTLE_SYSTEMMAXIMUM) {
 				// running in fast forward, return to normal
 				DoPlay();
-			} else {
+			}
+			else {
 				DoFastForward();
 			}
-		}									
+		}
+
 		// LOAD interrupt or RESET (ctrl)
 		if (key[VK_F12]) {
 			key[VK_F12]=0;
 			
 			if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+                if (ctrlState) ctrlState = 2;
 				SendMessage(myWnd, WM_COMMAND, ID_FILE_RESET, 0);
 			} else {
 				DoLoadInterrupt();
@@ -4074,11 +4403,11 @@ void do1()
 			 ((nSystem == 1) && (pCurrentCPU->GetPC()==0x478)) ||
 			 ((nSystem == 2) && (pCurrentCPU->GetPC()==0x478)) ) {
 				if (NULL != PasteString) {
-					static int nOldSpeed = -1;
+					static int nOldSpeed = THROTTLE_NONE;
 
-					if (nOldSpeed == -1) {
+					if (nOldSpeed == THROTTLE_NONE) {
 						// set overdrive during pasting, then go back to normal
-						nOldSpeed = CPUThrottle;
+						nOldSpeed = ThrottleMode;
 						SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
 					}
 
@@ -4089,7 +4418,9 @@ void do1()
 						*PasteIndex='\0';
 					}
 
-					if ((rcpubyte(0x8374)==0)||(rcpubyte(0x8374)==5)) {		// Check for pastestring - note keyboard is still active
+                    // TODO: all the writes in here will have CPU timing implications, but pasting happens
+                    // in overdrive anyway, so I guess it doesn't matter
+					if ((rcpubyte(0x8374, ACCESS_FREE)==0)||(rcpubyte(0x8374, ACCESS_FREE)==5)) {		// Check for pastestring - note keyboard is still active
 						if (*PasteIndex) {
 							if (*PasteIndex==10) {
 								// CRLF to CR, LF to CR
@@ -4099,24 +4430,24 @@ void do1()
 							}
 
 							if (PasteCount==0) {
-								if ((*PasteIndex>31)||(*PasteIndex==13)) {
+								if (((*PasteIndex>31)&&(*PasteIndex<127))||(*PasteIndex==13)) {
 									if (nSystem == 0) {
-										// TI-99/4A code is different - it expects to get the character
+										// TI-99/4 code is different - it expects to get the character
 										// from GROM, so we need to hack 8375 after it's written
 										Word WP = pCurrentCPU->GetWP();
 										wcpubyte(0x8375, toupper(*PasteIndex));
-										wcpubyte(WP, rcpubyte(0x837c) | 0x20);	/* R0 must contain the status byte */
+										wcpubyte(WP, rcpubyte(0x837c, ACCESS_FREE) | 0x20);	/* R0 must contain the status byte */
 									} else {
 										if ((PasteStringHackBuffer)&&(nSystem==1)) {	// for normal TI-99/4A only - need to verify for 2.2
 											wcpubyte(0x835F, 0x5d);		// max length for BASIC continuously set - infinite string length! Use with care!
 										}
 										Word WP = pCurrentCPU->GetWP();
 										wcpubyte(WP, *PasteIndex);					/* set R0 (byte) with keycode */
-										wcpubyte(WP+12, rcpubyte(0x837c) | 0x20);	/* R6 must contain the status byte (it gets overwritten) */
+										wcpubyte(WP+12, rcpubyte(0x837c, ACCESS_FREE) | 0x20);	/* R6 must contain the status byte (it gets overwritten) */
 									}
 								}
 								if (PasteCount<1) {
-									wcpubyte(0x837c, rcpubyte(0x837c)|0x20);
+									wcpubyte(0x837c, rcpubyte(0x837c, ACCESS_FREE)|0x20);
 								}
 								PasteCount++;
 								PasteIndex++;
@@ -4135,17 +4466,20 @@ void do1()
 
 							switch (nOldSpeed) {
 								default:
-								case CPU_NORMAL:
+								case THROTTLE_NORMAL:
 									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 0);
 									break;
-								case CPU_OVERDRIVE:
+								case THROTTLE_SLOW:
+									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 0);
+									break;
+								case THROTTLE_OVERDRIVE:
 									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 0);
 									break;
-								case CPU_MAXIMUM:
+								case THROTTLE_SYSTEMMAXIMUM:
 									SendMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
 									break;
 							}
-							nOldSpeed = -1;
+							nOldSpeed = THROTTLE_NONE;
 						}
 					}
 				}
@@ -4186,52 +4520,48 @@ void do1()
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
 			if (pCurrentCPU->enableDebug) {
 				// Update the disassembly trace
-				memmove(&Disasm[0], &Disasm[1], 19*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
+				memmove(&Disasm[0], &Disasm[1], (DEBUGLINES-1)*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
+				Disasm[DEBUGLINES-1].pc=pCurrentCPU->GetPC();
 				if (pCurrentCPU == pGPU) {
-    				Disasm[19].pc=pCurrentCPU->GetPC();
-					Disasm[19].bank = -1;
-                    Disasm[19].cycles = 0;
+					Disasm[DEBUGLINES-1].bank = -1;
 				} else {
-					Disasm[19].bank = xbBank;
-                    Disasm[19].pc = myZ80.state.pc;
-                    Disasm[19].cycles = 0;
+					Disasm[DEBUGLINES-1].bank = xbBank;
+                    Disasm[DEBUGLINES-1].pc = myZ80.state.pc;
+                    Disasm[DEBUGLINES-1].cycles = 0;
 				}
 			}
 			// will fill in cycles below
 		}
 
-#if 0
 		// disasm running log
-		static FILE *fLog=NULL;
-		if ((NULL == fLog)&&(pCurrentCPU == pCPU)&&(pCurrentCPU->GetPC() == 0x601c)) {
-			fLog=fopen("c:\\new\\RUNTRACE.TXT", "w");
-		}
-		if (NULL != fLog) {
-			char buf[1024];
-			sprintf(buf, "%04X ", pCurrentCPU->GetPC());
-			Dasm9900(&buf[5], pCurrentCPU->GetPC(), xbBank);
-			fprintf(fLog, "(%d) %s\n", xbBank, buf);
-
-			if ((pCurrentCPU == pCPU)&&(pCurrentCPU->GetPC() == 0xffff)) {
-				fclose(fLog);
-				ExitProcess(0);
-			}
-		}
-#endif
+        // TODO: doesn't support GPU run - we can add that with a second file handle
+        EnterCriticalSection(&csDisasm);
+            if ((NULL != fpDisasm) && (pCurrentCPU == pCPU)) {
+                int pc = pCurrentCPU->GetPC();
+                if ((disasmLogType == 0) || (pc >= 0x2000)) {
+			        char buf[1024];
+			        sprintf(buf, "%04X   ", pc);
+			        Dasm9900(&buf[5], pCurrentCPU->GetPC(), xbBank);
+			        fprintf(fpDisasm, "(%d) %s\n", xbBank, buf);
+                }
+            }
+        LeaveCriticalSection(&csDisasm);
 
 		// TODO: is this true? Is the LOAD interrupt disabled when the READY line is blocked?
 		if ((pCurrentCPU == pCPU) && (!nopFrame)) {
 			// this is a bad pattern, this repeated pCurrentCPU == pCPU, we can clean this up a lot
 			if ((doLoadInt)&&(!skip_interrupt)) {
-				pCurrentCPU->TriggerInterrupt(0xfffc);
+				pCurrentCPU->TriggerInterrupt(0xfffc,0);    // non maskable, what does that do to the interrupt level?
 				doLoadInt=false;
 				// load interrupt also releases IDLE
 				pCurrentCPU->StopIdle();
 			}
 		}
 
-        // Super hacky - but not too timing concerned...
-        Word in;
+        Word oldWP = pCurrentCPU->GetWP();
+        Word oldST = pCurrentCPU->GetST();
+		Word in = pCurrentCPU->ExecuteOpcode(nopFrame);
+
         if (pCurrentCPU == pCPU) {
             z80_run(&myZ80, 999999);    // I added 999999 to always run one instruction (anything > 900000)
             {
@@ -4248,20 +4578,17 @@ void do1()
                 }
             }
 
-            // and run the TI to keep timing up. We need this here cause otherwise
-            // a switch to the GPU messes everything up pretty good.
-            in = pCPU->ExecuteOpcode(nopFrame);
+            updateTape(pCurrentCPU->GetCycleCount());
+			updateDACBuffer(pCurrentCPU->GetCycleCount());
+			// count down the skip
+            if (skip_interrupt > 0) --skip_interrupt;
 
-            updateTape(pCPU->GetCycleCount());
-			updateDACBuffer(pCPU->GetCycleCount());
-			// an instruction has executed, interrupts are again enabled
-			skip_interrupt=0;
-			// update VDP too
-			updateVDP(pCPU->GetCycleCount());
+            // update VDP too
+			updateVDP(pCurrentCPU->GetCycleCount());
 
 			// and check for VDP address race
 			if (vdpwroteaddress > 0) {
-				vdpwroteaddress -= pCPU->GetCycleCount();
+				vdpwroteaddress -= pCurrentCPU->GetCycleCount();
 				if (vdpwroteaddress < 0) vdpwroteaddress=0;
 			}
 
@@ -4269,24 +4596,29 @@ void do1()
 			// TODO: this is probably not quite right (AMS?), but should work for now
 			int top = (staticCPU[0x8370] << 8) + staticCPU[0x8371];
 			if (top != filesTopOfVram) {
-				if ((pCPU->GetPC() < 0x4000) || (pCPU->GetPC() > 0x5FFF)) {
+				if ((pCurrentCPU->GetPC() < 0x4000) || (pCurrentCPU->GetPC() > 0x5FFF)) {
 					// top of VRAM changed, not in a DSR, so write a warning
 					// else this is in a DSR, so we'll assume it's legit
-					debug_write("(Non-DSR) Top of VRAM pointer at >8370 changed to >%04X by PC >%04X", top, pCPU->GetPC());
+					debug_write("(Non-DSR) Top of VRAM pointer at >8370 changed to >%04X by PC >%04X", top, pCurrentCPU->GetPC());
 				}
 				updateCallFiles(top);
 			}
+		}
 
-		    if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
-			    if (pCPU->enableDebug) {
-                    Disasm[19].cycles = myZ80.cycles;
-			    }
-		    }
+		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
+			if (pCurrentCPU->enableDebug) {
+                Disasm[DEBUGLINES-1].cycles = myZ80.cycles;
+                if (cycleCountOn) {
+                    cycleCounter[Disasm[DEBUGLINES-1].pc] += Disasm[DEBUGLINES-1].cycles;
+                }
+			}
+		}
 
-		    if ((!nopFrame) && (nStepCount > 0)) {
-			    nStepCount--;
-		    }
+		if ((!nopFrame) && (nStepCount > 0)) {
+			nStepCount--;
+		}
 
+		if (pCurrentCPU == pCPU) {
 			// Slow down autorepeat using a timer - requires 99/4A GROM
 			// We check if the opcode was "MOVB 2,*3+", (PC >025e, but we don't assume that) 
 			// the 99/4A keyboard is on, and the GROM Address
@@ -4294,19 +4626,21 @@ void do1()
 			// repeat counter). If so, we only allow the increment at a much slower rate
 			// based on the interrupt timer (for real time slowdown).
 			// This doesn't work in XB!
-			if ((CPUThrottle!=CPU_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x2a62)) {
+			if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x2a62)) {
 				if ((ticks%10) != 0) {
-					WriteMemoryByte(0x830D, ReadMemoryByte(0x830D) - 1, false);
+					WriteMemoryByte(0x830D, ReadMemoryByte(0x830D, ACCESS_FREE) - 1, false);
 				}
-			}
+			} // todo: ELSE??
 			// but this one does (note it will trigger for ANY bank-switched cartridge that uses this code at this address...)
-			if ((CPUThrottle!=CPU_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x6AB6) && (xb)) {
+			if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x6AB6) && (xb)) {
 				if ((ticks%10) != 0) {
-					WriteMemoryByte(0x8300, ReadMemoryByte(0x8300) - 1, false);
+					WriteMemoryByte(0x8300, ReadMemoryByte(0x8300, ACCESS_FREE) - 1, false);
 				}
 			}
+		}
 
-            int nLocalCycleCount = pCPU->GetCycleCount();
+		if (pCurrentCPU == pCPU) {
+			int nLocalCycleCount = pCurrentCPU->GetCycleCount();
 			InterlockedExchangeAdd((LONG*)&cycles_left, -nLocalCycleCount);
 			unsigned long old=total_cycles;
 			InterlockedExchangeAdd((LONG*)&total_cycles, nLocalCycleCount);
@@ -4314,23 +4648,21 @@ void do1()
 				total_cycles_looped=true;
 				speech_cycles=total_cycles;
 			} else {
-				// check speech
-				if ((max_cpf > 0) && (SPEECHUPDATECOUNT > 0)) {
-					if (total_cycles - speech_cycles >= (unsigned)SPEECHUPDATECOUNT) {
-						while (total_cycles - speech_cycles >= (unsigned)SPEECHUPDATECOUNT) {
+				// at 5 times per frame that's 300 updates per second, which at 8khz is 26.6 samples
+				if ((max_cpf > 0) && (SPEECHUPDATETIMESPERFRAME > 0)) {
+					if (total_cycles - speech_cycles >= (unsigned)(max_cpf/SPEECHUPDATETIMESPERFRAME)) {
+						while (total_cycles - speech_cycles >= (unsigned)(max_cpf/SPEECHUPDATETIMESPERFRAME)) {
 							static int nCnt=0;
 							int nSamples=26;
 							// should only be once
-							// now we're expecting 1/300th of a second, which at 8khz
-							// is 26.6 samples
-							nCnt++;
+							++nCnt;
 							if (nCnt > 2) {	// handle 2/3
 								nCnt=0;
 							} else {
 								nSamples++;
 							} 
 							SpeechUpdate(nSamples);
-							speech_cycles+=SPEECHUPDATECOUNT;
+							speech_cycles+=(max_cpf/SPEECHUPDATETIMESPERFRAME);
 						}
 					}
 				}
@@ -4339,7 +4671,7 @@ void do1()
 			CRUTimerTicks+=nLocalCycleCount;
 
 			// see if we can resolve a halt condition
-			int bits = pCPU->GetHalt();
+			int bits = pCurrentCPU->GetHalt();
 			if (bits) {
 				// speech is blocking
 				if (bits & (1<<HALT_SPEECH)) {
@@ -4347,26 +4679,12 @@ void do1()
 					// 0x9400 is the speech base address
 					wspeechbyte(0x9400, CPUSpeechHaltByte);
 				}
+
 				// that's all we have
 			}
+		}
 
-    		pCPU->ResetCycleCount();
-        } else {
-            // GPU cycle
-            in = pGPU->ExecuteOpcode(nopFrame);
-
-		    if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
-			    if (pGPU->enableDebug) {
-                    Disasm[19].cycles = pCurrentCPU->GetCycleCount();
-			    }
-		    }
-
-		    if ((!nopFrame) && (nStepCount > 0)) {
-			    nStepCount--;
-		    }
-
-    		pGPU->ResetCycleCount();
-        }
+		pCurrentCPU->ResetCycleCount();
 
 		if ((!nopFrame) && (bDebugAfterStep)) {
 			bDebugAfterStep=false;
@@ -4422,7 +4740,7 @@ void verifyCallFiles() {
 //////////////////////////////////////////////////////
 // Read a single byte from CPU memory
 //////////////////////////////////////////////////////
-Byte rcpubyte(Word x,bool rmw) {
+Byte rcpubyte(Word x,READACCESSTYPE rmw) {
 	// TI CPU memory map
 	// >0000 - >1fff  Console ROM
 	// >2000 - >3fff  Low bank RAM
@@ -4446,50 +4764,67 @@ Byte rcpubyte(Word x,bool rmw) {
 	// no matter what kind of access, update the heat map
 	UpdateHeatmap(x);
 
-	if (!rmw) {
+	if (rmw == ACCESS_READ) {
 		// Check for read or access breakpoints
 		for (int idx=0; idx<nBreakPoints; idx++) {
 			switch (BreakPoints[idx].Type) {
 				case BREAK_ACCESS:
 				case BREAK_READ:
 					if (CheckRange(idx, x)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}
 		}
-
-		// the cycle timing for read-before-write is dealt with in the opcodes
-		if ((x & 0x01) == 0) {					// this is a wait state (we cancel it below for ROM and scratchpad)
-			pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
-												// be right now that the CPU emulation does all Word accesses
-		}
-	}
-
+    }
 
 	switch (x & 0xe000) {
 		case 0x8000:
 			switch (x & 0xfc00) {
 				case 0x8000:				// scratchpad RAM - 256 bytes repeating.
-					if ((!rmw) && ((x & 0x01) == 0)) {
-						pCurrentCPU->AddCycleCount(-4);			// never mind for scratchpad :)
-					}
-					return ReadMemoryByte(x | 0x0300, !rmw);	// I map it all to >83xx
+					// no wait states
+					return ReadMemoryByte(x | 0x0300, rmw);	// I map it all to >83xx
 				case 0x8400:				// Don't read the sound chip (can hang a real TI? maybe only on early ones?)
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					return 0;
 				case 0x8800:				// VDP read data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
 					}
 					return(rvdpbyte(x,rmw));
 				case 0x8c00:				// VDP write data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
 					}
 					return 0;
 				case 0x9000:				// Speech read data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
@@ -4497,12 +4832,24 @@ Byte rcpubyte(Word x,bool rmw) {
                     // timing handled in rspeechbyte
 					return(rspeechbyte(x));
 				case 0x9400:				// Speech write data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
 					}
 					return 0;
 				case 0x9800:				// read GROM data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					if (x&1) {
 						// don't respond on odd addresses
 						return 0;
@@ -4513,27 +4860,60 @@ Byte rcpubyte(Word x,bool rmw) {
 						return nRet;
 					}
 				case 0x9c00:				// write GROM data
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					return 0;
 				default:					// We shouldn't get here, but just in case...
+					if (rmw != ACCESS_FREE) {
+						if ((x & 0x01) == 0) {					// this is a wait state
+							pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+																// be right now that the CPU emulation does all Word accesses
+						}
+					}
 					return 0;
 			}
 		case 0x0000:					// console ROM
-			if ((!rmw) && ((x & 0x01) == 0)) {
-				pCurrentCPU->AddCycleCount(-4);			// never mind for scratchpad :)
-			}
-			// fall through
+			// no wait states
+			return ReadMemoryByte(x, rmw);
+
 		case 0x2000:					// normal CPU RAM
 		case 0xa000:					// normal CPU RAM
 		case 0xc000:					// normal CPU RAM
-			return ReadMemoryByte(x, !rmw);
+			if ((rmw != ACCESS_FREE)&&(!Fast16BitRam)) {	// also check 16-bit RAM flag. TODO: this also affects AMS!!
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
+			return ReadMemoryByte(x, rmw);
 
 		case 0xe000:					// normal CPU RAM
-			return ReadMemoryByte(x, !rmw);
+#ifdef USE_GIGAFLASH
+			// TODO: not sure how Fast16BitRam would affects this. Probably shouldn't.
+            readE000(x,rmw);            // but never returns anything valid
+#endif
+			if ((rmw != ACCESS_FREE)&&(!Fast16BitRam)) {	// also check 16-bit RAM flag. TODO: this also affects AMS!!
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
+			return ReadMemoryByte(x, rmw);
 
 		case 0x4000:					// DSR ROM (with bank switching and CRU)
+			if (rmw != ACCESS_FREE) {
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
 			if (ROMMAP[x]) {			
 				// someone loaded ROM here, override the DSR system
-				return ReadMemoryByte(x, !rmw);
+				return ReadMemoryByte(x, rmw);
 			}
 
 			if (-1 == nCurrentDSR) return 0;
@@ -4595,6 +4975,44 @@ Byte rcpubyte(Word x,bool rmw) {
 			break;
 
 		case 0x6000:					// cartridge ROM
+			if (rmw != ACCESS_FREE) {
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
+#ifdef USE_GIGAFLASH
+        {
+            Byte xx = read6000(x,rmw);
+            return xx;
+        }
+#endif
+#ifdef USE_BIG_ARRAY
+			if (BIGARRAYSIZE > 0) {
+				// TODO BIG HACK - FAKE CART HARDWARE FOR VIDEO TEST
+				if (x == 0x7fff) {
+					if (BIGARRAYADD >= BIGARRAYSIZE) {
+						// TODO: real hardware probably won't do this either.
+						BIGARRAYADD = 0;
+					}
+					Byte ret = BIGARRAY[BIGARRAYADD++];
+					return ret;
+				}
+				if (x == 0x7ffb) {
+					// destructive address read - MSB first for consistency
+					Byte ret = (BIGARRAYADD >> 24) & 0xff;
+					BIGARRAYADD <<= 8;
+					debug_write("(Read) Big array address now 0x%08X", BIGARRAYADD);
+					return ret;
+				}
+				if (x == 0x6000) {
+					// TODO: real hardware probably will not do this. Don't count on the address being reset.
+					debug_write("Reset big array address");
+					BIGARRAYADD = 0;
+				}
+				// END TODO
+			}
+#endif
 			if (!bUsesMBX) {
 				// XB is supposed to only page the upper 4k, but some Atari carts seem to like it all
 				// paged. Most XB dumps take this into account so only full 8k paging is implemented.
@@ -4602,7 +5020,7 @@ Byte rcpubyte(Word x,bool rmw) {
                     // make sure xbBank never exceeds xb
 					return(CPU2[(xbBank<<13)+(x-0x6000)]);	// cartridge bank 2 and up
 				} else {
-					return ReadMemoryByte(x, !rmw);			// cartridge bank 1
+					return ReadMemoryByte(x, rmw);			// cartridge bank 1
 				}
 			} else {
 				// MBX is weird. The lower 4k is fixed, but the top 1k of that is RAM
@@ -4620,6 +5038,12 @@ Byte rcpubyte(Word x,bool rmw) {
 			break;
 
 		default:						// We shouldn't get here, but just in case...
+			if (rmw != ACCESS_FREE) {
+				if ((x & 0x01) == 0) {					// this is a wait state
+					pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
+														// be right now that the CPU emulation does all Word accesses
+				}
+			}
 			return 0;
 	}
 }
@@ -4632,13 +5056,19 @@ void wcpubyte(Word x, Byte c)
 	// no matter what kind of access, update the heat map
 	UpdateHeatmap(x);
 
+//    if ((x>=0x6000)&&(x<0x8000)) {
+//        debug_write("Cartridge bank switch >%04X = >%02X", x, c);
+//    }
+
 	// Check for write or access breakpoints
 	for (int idx=0; idx<nBreakPoints; idx++) {
 		switch (BreakPoints[idx].Type) {
 			case BREAK_ACCESS:
 			case BREAK_WRITE:
 				if (CheckRange(idx, x)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 
@@ -4658,6 +5088,45 @@ void wcpubyte(Word x, Byte c)
 		pCurrentCPU->AddCycleCount(4);		// we can't do half of a wait, so just do it for the even addresses. This should
 											// be right now that the CPU emulation does all Word accesses
 	}
+
+#ifndef USE_GIGAFLASH
+    // check for cartridge banking
+	if ((x>=0x6000)&&(x<0x8000)) {
+#ifdef USE_BIG_ARRAY
+		if ((x == 0x7ffd) && (BIGARRAYSIZE > 0)) {
+			// write the address register
+			BIGARRAYADD = (BIGARRAYADD<<8) | c;
+			debug_write("(Write) Big array address now 0x%08X", BIGARRAYADD);
+			goto checkmem;
+		} else
+#endif
+		
+		if ((xb) && (ROMMAP[x])) {		// trap ROM writes and check for XB bank switch
+            // collect bits from address and data buses - x is address, c is data
+            int bits = (c<<13)|(x&0x1fff);
+			if (bInvertedBanks) {
+				// uses inverted address lines!
+				xbBank=(((~bits)>>1)&xb);		// XB bank switch, up to 4096 banks
+			} else if (bUsesMBX) {
+				// MBX is weird. The lower 4k is fixed, but the top 1k of that is RAM
+				// The upper 4k is bank switched. Address >6FFE has a bank switch
+				// register updated from the data bus. (Doesn't use 'bits')
+				if ((x>=0x6C00)&&(x<0x6FFE)) {
+					mbx_ram[x-0x6c00] = c;
+				} else if (x==0x6ffe) {
+					xbBank = c&xb;
+					// the theory is this also writes to RAM
+					mbx_ram[x-0x6c00] = c;
+				}
+				// anything else is ignored
+			} else {
+				xbBank=(((bits)>>1)&xb);		// XB bank switch, up to 4096 banks
+			}
+			goto checkmem;
+		}
+		// else it's RAM there
+	}
+#endif
 
 	switch (x & 0xe000) {
 		case 0x8000:
@@ -4726,12 +5195,18 @@ void wcpubyte(Word x, Byte c)
 			break;
 
         case 0xe000:					// normal CPU RAM
+#ifdef USE_GIGAFLASH
+            writeE000(x,c);
+#endif
 			if (!ROMMAP[x]) {
 				WriteMemoryByte(x, c, false);
 			}
 			break;
 
 		case 0x6000:					// Cartridge RAM (ROM is trapped above)
+#ifdef USE_GIGAFLASH
+            write6000(x,c);
+#endif
 			// but we test it anyway. Just in case. ;) I think the above is just for bank switches
 			if (!ROMMAP[x]) {
 				WriteMemoryByte(x, c, false);
@@ -4744,6 +5219,8 @@ void wcpubyte(Word x, Byte c)
 			case -1:
 				// no DSR, so might be SID card
 				if (NULL != write_sid) {
+                    int reg = (x-0x5800)/2;
+//                    if (reg < 29) SidCache[reg] = c;
 					write_sid(x, c);
 				}
 				break;
@@ -4782,7 +5259,7 @@ void wcpubyte(Word x, Byte c)
 						// 0000 0000 000x xxx0
 						Byte reg = (x & 0x1e) >> 1;
 						bool hiByte = ((x & 1) == 0);	// registers are 16 bit!
-						WriteMapperRegisterByte(reg, c, hiByte);
+						WriteMapperRegisterByte(reg, c, hiByte, false);
 					}
 					return;
 				}
@@ -4816,7 +5293,9 @@ checkmem:
 		switch (BreakPoints[idx].Type) {
 			case BREAK_EQUALS_BYTE:
 				if ((CheckRange(idx, x)) && ((c&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 		}
@@ -4848,7 +5327,7 @@ void wspeechbyte(Word x, Byte c)
 	if ((SpeechWrite)&&(SpeechEnabled)) {
 		if (!SpeechWrite(c, CPUSpeechHalt)) {
 			if (!CPUSpeechHalt) {
-				debug_write("Speech halt triggered.");
+//				debug_write("Speech halt triggered.");
 				CPUSpeechHalt=true;
 				CPUSpeechHaltByte=c;
 				pCPU->StartHalt(HALT_SPEECH);
@@ -4859,23 +5338,24 @@ void wspeechbyte(Word x, Byte c)
 		} else {
 			// must be unblocked!
 			if (CPUSpeechHalt) {
-				debug_write("Speech halt cleared at %d cycles.", cnt*10);
+//				debug_write("Speech halt cleared at %d cycles.", cnt*10);
 			}
 			// always clear it, just to be safe
 			pCPU->StopHalt(HALT_SPEECH);
 			CPUSpeechHalt = false;
 			cnt = 0;
+			// speech chip, if attached, writes eat 64 additional cycles (verified hardware)
+			// but we don't eat those cycles if we are halted, to allow finer grain resolution
+			// of the halt...?
+			pCurrentCPU->AddCycleCount(64);
 		}
-        // speech chip, if attached, writes eat 64 additional cycles (verified hardware)
-        // TODO: not verified if this is still true after a halt occurs, but since a halt
-        // is variable length, maybe it doesn't matter...
-		pCurrentCPU->AddCycleCount(64);
 	}
 }
 
 //////////////////////////////////////////////////////
 // Speech Update function - runs every x instructions
 // Pass in number of samples to process.
+// This is called 300 times per second
 //////////////////////////////////////////////////////
 void SpeechUpdate(int nSamples) {
 	if ((speechbuf==NULL) || (SpeechProcess == NULL)) {
@@ -4892,27 +5372,42 @@ void SpeechUpdate(int nSamples) {
 		return;
 	}
 
+	EnterCriticalSection(&csSpeechBuf);
 	SpeechProcess((unsigned char*)&SpeechTmp[nSpeechTmpPos], nSamples);
 	nSpeechTmpPos+=nSamples;
+	LeaveCriticalSection(&csSpeechBuf);
 }
 
+// this is called 60 times per second
 void SpeechBufferCopy() {
 	DWORD iRead, iWrite;
 	Byte *ptr1, *ptr2;
 	DWORD len1, len2;
-	static DWORD lastRead=0;
+	static DWORD lastWrite=0;
+
+	// mixing with the main audio buffer
+	return;
 
 	if (nSpeechTmpPos == 0) {
 		// no data to write
 		return;
 	}
 
+	EnterCriticalSection(&csSpeechBuf);
+
 	// just for statistics
 	speechbuf->GetCurrentPosition(&iRead, &iWrite);
-//	debug_write("Read/Write bytes: %5d/%5d", iRead-lastRead, nSpeechTmpPos*2);
-	lastRead=iRead;
+	if (iWrite > lastWrite) {
+		debug_write("Speech write gap of %d (read=%d, write=%d, expected %d)", iWrite-lastWrite, iRead, iWrite, lastWrite);
+	} else if (iWrite < lastWrite) {
+		debug_write("Speech write over of %d (read=%d, write=%d, expected %d)", lastWrite-iWrite, iRead, iWrite, lastWrite);
+	} else {
+		debug_write("Speech write ok");
+	}
+	lastWrite=iWrite+nSpeechTmpPos*2;	// this is where we ENDED last write
 
-	if (SUCCEEDED(speechbuf->Lock(iWrite, nSpeechTmpPos*2, (void**)&ptr1, &len1, (void**)&ptr2, &len2, DSBLOCK_FROMWRITECURSOR))) 
+	// Note: flags make lock ignore the write cursor, but it should be about the same
+	if (SUCCEEDED(speechbuf->Lock(iWrite, nSpeechTmpPos*2, (void**)&ptr1, &len1, (void**)&ptr2, &len2, 0 /*DSBLOCK_FROMWRITECURSOR*/))) 
 	{
 		memcpy(ptr1, SpeechTmp, len1);
 		if (len2 > 0) {							// handle wraparound
@@ -4926,6 +5421,8 @@ void SpeechBufferCopy() {
 //		debug_write("Speech buffer lock failed");
 		// don't reset the buffer, we may get it next time
 	}
+
+	LeaveCriticalSection(&csSpeechBuf);
 }
 
 //////////////////////////////////////////////////////
@@ -4980,7 +5477,8 @@ int GetRealVDP() {
 		// notes confirm mine.
 		//
 		//         static bits       shifted bits           rotated bit
-		RealVDP = (VDPADD&0x203f) | ((VDPADD&0x0fc0)<<1) | ((VDPADD&0x1000)>>7);
+		RealVDP = (VDPADD&0x203f) | ((VDPADD&0x0fc0)<<1) | ((VDPADD&0x1000)>>6);
+		// thanks to JasonACT for spotting a bug in this math ;)
 	}
 
 	// force 8k DRAMs (strip top row bit - this should be right - console doesn't work though)
@@ -4997,7 +5495,7 @@ int GetRealVDP() {
 //////////////////////////////////////////////////////////////
 // Read from VDP chip
 //////////////////////////////////////////////////////////////
-Byte rvdpbyte(Word x, bool rmw)
+Byte rvdpbyte(Word x, READACCESSTYPE rmw)
 { 
 	unsigned short z;
 
@@ -5005,6 +5503,10 @@ Byte rvdpbyte(Word x, bool rmw)
 	{
 		return(0);											// write address
 	}
+
+    if (pCurrentCPU->GetST()&0xf) {
+        debug_write("Warning: PC >%04X reading VDP with LIMI %d", pCurrentCPU->GetPC(), pCurrentCPU->GetST()&0xf);
+    }
 
 	if (x&0x0002)
 	{	/* read status */
@@ -5028,7 +5530,7 @@ Byte rvdpbyte(Word x, bool rmw)
         // also make sure the DPM flipflop is reset
         F18APaletteRegisterData = -1;
 
-		// Added by RasmusM
+        // Added by RasmusM
 		if ((bF18AActive) && (F18AStatusRegisterNo > 0)) {
 			return getF18AStatus();
 		}
@@ -5037,9 +5539,28 @@ Byte rvdpbyte(Word x, bool rmw)
 		VDPS&=0x1f;			// top flags are cleared on read (tested on hardware)
 		vdpaccess=0;		// reset byte flag
 
+		// track polling for interrupt
+		if (statusUpdateRead) {
+			// new frame, first access since frame was reset by reading the status register, so remember when it was
+			statusUpdateRead = false;
+			statusReadLine = vdpscanline;
+			// calculate scanlines since interrupt pulse
+			if (vdpscanline > 192+27) {
+				statusReadCount = 262*statusFrameCount + (vdpscanline-192-27);
+			} else {
+				statusReadCount = 262*statusFrameCount + (vdpscanline+(262-(192+27)));
+			}
+		}
+		if (z & VDPS_INT) {
+			// we cleared an interrupt, so go ahead and allow it again
+			statusUpdateRead = true;
+			statusFrameCount = 0;
+		} 
+
 		// TODO: hack to make Miner2049 work. If we are reading the status register mid-frame,
 		// and neither 5S or F are set, return a random sprite index as if we were counting up.
 		// Remove this when the proper scanline VDP is in. (Miner2049 cares about bit 0x02)
+		// (This is still not valid to remove because sprites are still not processed in real time)
 		if ((z&(VDPS_5SPR|VDPS_INT)) == 0) {
 			// This search code borrowed from the sprite draw code
 			int highest=31;
@@ -5055,7 +5576,8 @@ Byte rvdpbyte(Word x, bool rmw)
 				}
 			}
 			if (highest > 0) {
-				z=(z&0xe0)|(rand()%highest);
+				//z=(z&0xe0)|(rand()%highest);
+				z=(z&0xe0)|(highest);
 			}
 		}
 
@@ -5073,17 +5595,24 @@ Byte rvdpbyte(Word x, bool rmw)
 			}
 		}
 
+		// if we are reading, we are probably not clearing the screen, so clear the counter
+		// this way scrolling a screen that is mostly empty won't look like a clear
+		lastVideoByte = 255;
+		lastVideoCount = 0;
+
 		vdpaccess=0;		// reset byte flag (confirmed in hardware)
 		RealVDP = GetRealVDP();
 		UpdateHeatVDP(RealVDP);
 
-		if (!rmw) {
+		if (rmw == ACCESS_READ) {
 			// Check for breakpoints
 			for (int idx=0; idx<nBreakPoints; idx++) {
 				switch (BreakPoints[idx].Type) {
 					case BREAK_READVDP:
 						if (CheckRange(idx, VDPADD-1)) {
-							TriggerBreakPoint();
+                            if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+	    						TriggerBreakPoint();
+                            }
 						}
 						break;
 				}
@@ -5112,14 +5641,19 @@ Byte rvdpbyte(Word x, bool rmw)
 ///////////////////////////////////////////////////////////////
 void wvdpbyte(Word x, Byte c)
 {
-	int RealVDP;		
+	int RealVDP;
 	
 	if (x<0x8c00 || (x&1)) 
 	{
+        debug_write("INVALID VDP WRITE IGNORED TO ADDRESS >%04X (PC >%04X)", x, pCurrentCPU->GetPC());
 		return;							/* not going to write at that block */
 	}
 
-	if (x&0x0002)
+    if (pCurrentCPU->GetST()&0xf) {
+        debug_write("Warning: PC >%04X writing VDP with LIMI %d", pCurrentCPU->GetPC(), pCurrentCPU->GetST()&0xf);
+    }
+
+    if (x&0x0002)
 	{	/* write address */
 		// count down access cycles to help detect write address/read vdp overruns (there may be others but we don't think so!)
 		// anyway, we need 8uS or we warn
@@ -5185,13 +5719,8 @@ void wvdpbyte(Word x, Byte c)
 					// Added by RasmusM
 					if (nReg == 15) {
 						// Status register select
-						debug_write("F18A status register 0x%02X selected", nData & 0x0f);
+						//debug_write("F18A status register 0x%02X selected", nData & 0x0f);
 						F18AStatusRegisterNo = nData & 0x0f;
-						return;
-					}
-                    if (nReg == 30) {
-						// Sprite flicker limit
-						VDPREG[nReg] = nData;
 						return;
 					}
 					if (nReg == 47) {
@@ -5231,14 +5760,13 @@ void wvdpbyte(Word x, Byte c)
                         // 0x20 - trigger GPU on VSYNC
                         // 0x40 - trigger GPU on HSYNC
                         // 0x80 - reset VDP registers to poweron defaults (DONE)
-                        if (nData & 0x80) {
-                            debug_write("Resetting F18A registers (PC=>%04X)", pCPU->GetPC());
+                        if (nReg & 0x80) {
+                            debug_write("Resetting F18A registers");
                             vdpReset(false);
                         }
-                        return;
                     }
 
-                    if (nReg == 54) {
+					if (nReg == 54) {
 						// GPU PC MSB
 						VDPREG[nReg] = nData;
 						return;
@@ -5288,15 +5816,20 @@ void wvdpbyte(Word x, Byte c)
 				}
 
 				if (bF18AActive) {
-					wVDPreg((Byte)(nReg&0x3f),(Byte)(nData));
+					nReg &= 0x3f;
+					wVDPreg((Byte)(nReg),(Byte)(nData));
 				} else {
 					if (nReg&0xf8) {
-                        // Coleco can't ignore, need to mask. Lots of bad hardware.
-						debug_write("Warning: writing >%02X to VDP register >%X masked to >%X (PC=>%04X)", nData, nReg, nReg&7, pCPU->GetPC());
+						// todo: why am I doing this ignore?
+						debug_write("Warning: writing >%02X to VDP register >%X ignored (PC=>%04X)", nData, nReg, pCPU->GetPC());
+						return;
 					}
 					// verified correct against real hardware - register is masked to 3 bits
-					wVDPreg((Byte)(nReg&0x07),(Byte)(nData));
+					nReg &= 0x07;
+					wVDPreg((Byte)(nReg),(Byte)(nData));
 				}
+
+				// and tell the VDP we need a full screen redraw
 				redraw_needed=REDRAW_LINES;
 			}
 
@@ -5315,6 +5848,7 @@ void wvdpbyte(Word x, Byte c)
 	else
 	{	/* write data */
 		// TODO: cold reset incompletely resets the F18 state - after TI Scramble runs we see a sprite on the master title page
+
 		// Added by RasmusM
 		// Write data to F18A palette registers
 		if (bF18AActive && bF18ADataPortMode) {
@@ -5331,7 +5865,7 @@ void wvdpbyte(Word x, Byte c)
 					F18APalette[F18APaletteRegisterNo] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
 					redraw_needed = REDRAW_LINES;
 				}
-				debug_write("F18A palette register >%02X set to >%06X", F18APaletteRegisterNo, F18APalette[F18APaletteRegisterNo]);
+				debug_write("F18A palette register >%02X set to >%04X", F18APaletteRegisterNo, F18APalette[F18APaletteRegisterNo]);
 				if (bF18AAutoIncPaletteReg) {
 					F18APaletteRegisterNo++;
 				}
@@ -5344,7 +5878,6 @@ void wvdpbyte(Word x, Byte c)
 				}
 				F18APaletteRegisterData = -1;
 			}
-    
             redraw_needed=REDRAW_LINES;
 			return;
 		}
@@ -5357,7 +5890,6 @@ void wvdpbyte(Word x, Byte c)
 		VDP[RealVDP]=c;
 		VDPMemInited[RealVDP]=1;
 
-#if 0
 		// before the breakpoint, check and emit debug if we messed up the disk buffers
 		{
 			int nTop = (staticCPU[0x8370]<<8) | staticCPU[0x8371];
@@ -5375,23 +5907,41 @@ void wvdpbyte(Word x, Byte c)
 				}
 			}
 		}
-#endif
 
 		// check breakpoints against what was written to where - still assume internal address
 		for (int idx=0; idx<nBreakPoints; idx++) {
 			switch (BreakPoints[idx].Type) {
 				case BREAK_EQUALS_VDP:
 					if ((CheckRange(idx, VDPADD)) && ((c&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 
 				case BREAK_WRITEVDP:
 					if (CheckRange(idx, VDPADD)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}
+		}
+
+		// check for probable screen clear for the speech system
+		// we assume the SIT is set up - it should be by now!
+		if (c == lastVideoByte) {
+			if ((RealVDP>=SIT)&&(RealVDP<SIT+960)) {
+				++lastVideoCount;
+				// TODO: for some reason when entering TI BASIC, it only does 767 on the ALL and then starts reading?
+				if (lastVideoCount >= 767) {
+					ScreenReader::ClearHistory();
+					lastVideoCount = 0;
+				}
+			}
+		} else {
+			lastVideoByte = c;
 		}
 
 		// verified on hardware
@@ -5422,7 +5972,9 @@ void wVDPreg(Byte r, Byte v)
 		switch (BreakPoints[idx].Type) {
 			case BREAK_EQUALS_VDPREG:
 				if ((r == BreakPoints[idx].A) && ((v&BreakPoints[idx].Mask) == BreakPoints[idx].Data)) {
-					TriggerBreakPoint();
+                    if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    					TriggerBreakPoint();
+                    }
 				}
 				break;
 		}
@@ -5438,7 +5990,6 @@ void wVDPreg(Byte r, Byte v)
 			F18APalette[0]=0x000000;	// black
 		}
 		redraw_needed=REDRAW_LINES;
-        //debug_write("VDP Register 7 set to %02X by PC >%04X", v, myZ80.state.pc);
 	}
 
 	if (!bEnable80Columns) {
@@ -5447,9 +5998,17 @@ void wVDPreg(Byte r, Byte v)
 		if ((r == 1) && ((v&0x80) == 0)) {
 			// ignore if it's a console ROM access - it does this to size VRAM
 			if (pCurrentCPU->GetPC() > 0x2000) {
-				debug_write("WARNING: Setting VDP 4k mode at PC >%04X", myZ80.state.pc);
+				debug_write("WARNING: Setting VDP 4k mode at PC >%04X", pCurrentCPU->GetPC());
 			}
 		}
+	}
+
+	// check for speech clear on screen clear write
+	// has to be here because the clear may be too fast for the speech
+	// update to detect it.
+	if ((r == 1)&&((v&0x40)==0)) {
+		// screen blank
+		ScreenReader::ClearHistory();
 	}
 
 	// for the F18A GPU, copy it to RAM
@@ -5546,9 +6105,45 @@ void wsndbyte(Byte c)
 //////////////////////////////////////////////////////////////////
 // GROM base 0 (console GROMS) manage all address operations
 //////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////
+// Increment the GROM address - handle wraparound
+//////////////////////////////////////////////////////////////////
+void IncrementGROMAddress(Word &adrRef) {
+    int base = adrRef&0xe000;
+    adrRef = ((++adrRef)&0x1fff) | base;
+}
+
+//////////////////////////////////////////////////////////////////
+// Read a data byte from GROM with no side effects (debugger)
+// TODO: MPD and UberGROM may have side effects?
+//////////////////////////////////////////////////////////////////
+Byte ReadSafeGrom(int nBase, int adr) {
+	Byte z;
+
+	if ((Word)(adr) < 0x6000) {
+		// console GROMs always respond
+		nBase=0;
+	}
+
+	z=GROMBase[nBase].GROM[adr&0xffff];
+
+	// a test for the Distorter project - special cases - GROM base is always 0 for console GROMs!
+	if (bMpdActive) {
+		z=GetMpdOverride(adr, z);
+		// the rest of the MPD works like MESS does, copying data into the GROM array. Less efficient, better for debug though
+	}
+	if ((bUberGROMActive) && ((Word)(adr) >= 0x6000)) {
+		z=UberGromRead(adr, nBase);
+	}
+
+	return(z);
+}
+
+//////////////////////////////////////////////////////////////////
 // Read a byte from GROM
 //////////////////////////////////////////////////////////////////
-Byte ReadValidGrom(int nBase, Word x) {
+Byte ReadValidGrom(int nBase, Word x, bool sideEffects) {
 	Byte z;
 
 	// NOTE: Classic99 does not emulate the 6k GROM behaviour that causes mixed
@@ -5562,8 +6157,10 @@ Byte ReadValidGrom(int nBase, Word x) {
     // the combined banks lots of people use. But at least we'd do it.
 
 	// the -1 accounts for the prefetch to get the data we're going to read
-	if ((Word)(GROMBase[0].GRMADD-1) < 0x6000) {
-		// console GROMs always respond
+    // account for GROM wraparound
+	int nPrevAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+	if ((Word)(nPrevAddress) < 0x6000){
+		// console GROMs always respond, unless the optional banked console GROMs is on AND we have loaded GROM banks
 		nBase=0;
 	}
 
@@ -5603,11 +6200,11 @@ Byte ReadValidGrom(int nBase, Word x) {
 
 		// a test for the Distorter project - special cases - GROM base is always 0 for console GROMs!
 		if (bMpdActive) {
-			z=GetMpdOverride(GROMBase[0].GRMADD - 1, z);
+			z=GetMpdOverride(nPrevAddress, z);
 			// the rest of the MPD works like MESS does, copying data into the GROM array. Less efficient, better for debug though
 		}
-		if ((bUberGROMActive) && ((Word)(GROMBase[0].GRMADD-1) >= 0x6000)) {
-			z=UberGromRead(GROMBase[0].GRMADD-1, nBase);
+		if ((bUberGROMActive) && ((Word)(nPrevAddress) >= 0x6000)) {
+			z=UberGromRead(nPrevAddress, nBase);
 		}
 
 		// update all bases prefetch
@@ -5618,7 +6215,7 @@ Byte ReadValidGrom(int nBase, Word x) {
         // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
         // an 8-bit address latch and a 1 bit select (for GROM >8000)
         // But it's enough to let me test some theories...
-   		GROMBase[0].GRMADD++;
+        IncrementGROMAddress(GROMBase[0].GRMADD);
 
         // GROM read data always adds about 19 cycles
 		pCurrentCPU->AddCycleCount(19);
@@ -5627,9 +6224,8 @@ Byte ReadValidGrom(int nBase, Word x) {
 	}
 }
 
-Byte rgrmbyte(Word x, bool rmw)
+Byte rgrmbyte(Word x, READACCESSTYPE rmw)
 {
-	unsigned int z;										// temp variable
 	int nBank;
 
 	if (x>=0x9c00)
@@ -5640,27 +6236,31 @@ Byte rgrmbyte(Word x, bool rmw)
 	if (grombanking) {
 		nBank=(x&0x3ff)>>2;								// maximum possible range to >9BFF - not all supported here though
 		if (nBank >= PCODEGROMBASE) {
-			debug_write("Invalid GROM base 0x%04X read", x);
-			return 0;
+			debug_write("Warning: Invalid GROM base 0x%04X read", x);
 		}
+        // TODO: Classic99 always supports 16 GROM bases. Note that not all
+        // carts will, so technically this mask needs to be configurable.
+        nBank &= 0xf;
 	} else {
 		nBank=0;
 	}
 
-	if (!rmw) {
+	if (rmw == ACCESS_READ) {
 		// Check for breakpoints
 		for (int idx=0; idx<nBreakPoints; idx++) {
 			switch (BreakPoints[idx].Type) {
 				case BREAK_READGROM:
 					if (CheckRange(idx, GROMBase[0].GRMADD-1)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}
 		}
 	}
 
-	return ReadValidGrom(nBank, x);
+	return ReadValidGrom(nBank, x, true);
 }
 
 //////////////////////////////////////////////////////////////////
@@ -5699,7 +6299,7 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
             // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
             // an 8-bit address latch and a 1 bit select (for GROM >8000)
             // But it's enough to let me test some theories...
-   		    GROMBase[0].GRMADD++;
+            IncrementGROMAddress(GROMBase[0].GRMADD);
 		} else {
             // first GROM address write adds about 15 cycles (verified)
     		pCurrentCPU->AddCycleCount(15);
@@ -5718,7 +6318,9 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 			switch (BreakPoints[idx].Type) {
 				case BREAK_WRITEGROM:
 					if (CheckRange(idx, GROMBase[0].GRMADD-1)) {
-						TriggerBreakPoint();
+                        if ((!bIgnoreConsoleBreakpointHits) || (pCurrentCPU->GetPC() > 0x1fff)) {
+    						TriggerBreakPoint();
+                        }
 					}
 					break;
 			}
@@ -5726,18 +6328,21 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 
 		GROMBase[0].grmaccess=2;
 
-		// MPD overrides the GRAM switch below
-		if (bMpdActive) {
-			MpdHookGROMWrite(GROMBase[0].GRMADD-1, c);
-		}
-		if ((bUberGROMActive) && ((Word)(GROMBase[0].GRMADD-1) >= 0x6000)) {
-			UberGromWrite(GROMBase[0].GRMADD-1, nBase, c);
-		}
- 
 		// Since all GRAM devices were hacks, they apparently didn't handle prefetch the same
 		// way as I expected. Because of prefetch, the write address goes to the GROM address
 		// minus one. Well, they were hacks in hardware, I'll just do a hack here.
-		int nRealAddress = (GROMBase[0].GRMADD-1)&0xffff;
+        // note because we do real GROM wraparound now, that we need to assume the wraparound
+        // is in the same GROM, not the entire space.
+		int nRealAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+
+        // MPD overrides the GRAM switch below
+		if (bMpdActive) {
+			MpdHookGROMWrite(nRealAddress, c);
+		}
+		if ((bUberGROMActive) && ((Word)(nRealAddress) >= 0x6000)) {
+			UberGromWrite(nRealAddress, nBase, c);
+		}
+ 
 		if (GROMBase[0].bWritable[(nRealAddress&0xE000)>>13]) {
 			// Allow it! The user is crazy! :)
 			GROMBase[nBase].GROM[nRealAddress]=c;
@@ -5749,7 +6354,7 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
         // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
         // an 8-bit address latch and a 1 bit select (for GROM >8000)
         // But it's enough to let me test some theories...
-   		GROMBase[0].GRMADD++;
+   		IncrementGROMAddress(GROMBase[0].GRMADD);
 
         // GROM data writes add about 22 cycles (verified)
    		pCurrentCPU->AddCycleCount(22);
@@ -5769,9 +6374,11 @@ void wgrmbyte(Word x, Byte c)
 	if (grombanking) {
 		nBank=(x&0x3ff)>>2;								// maximum possible range to >9BFF - not all supported here though
 		if (nBank >= PCODEGROMBASE) {
-			debug_write("Invalid GROM base 0x%04X write", x);
-			return;
+			debug_write("Warning: Invalid GROM base 0x%04X write", x);
 		}
+        // TODO: Classic99 always supports 16 GROM bases. Note that not all
+        // carts will, so technically this mask needs to be configurable.
+        nBank &= 0xf;
 	} else {
 		nBank=0;
 	}
@@ -5792,8 +6399,25 @@ Byte rpcodebyte(Word x)
 	}
 
 	// PCODE GROMs are distinct from the rest of the system
-
-//	debug_write("Read PCODE GROM (>%04X), >%04x, >%02x", x, GROMBase[PCODEGROMBASE].GRMADD, GROMBase[PCODEGROMBASE].grmdata);
+#if 0
+	// code I was using to reverse pCode for cartridge port
+	if ((pCurrentCPU->PC >= 0x404c)&&(pCurrentCPU->PC <= 0x4050)) {			// dummy read
+	} else if ((pCurrentCPU->PC >= 0x4070)&&(pCurrentCPU->PC <= 0x4094)) {	// copy loop 1
+	} else if ((pCurrentCPU->PC >= 0x59b4)&&(pCurrentCPU->PC <= 0x59ca)) {	// read word
+	} else if ((pCurrentCPU->PC >= 0x584a)&&(pCurrentCPU->PC <= 0x588a)) {	// VDP copy loop
+	} else if ((pCurrentCPU->PC >= 0x4190)&&(pCurrentCPU->PC <= 0x41b6)) {	// big/little endian read
+	} else if ((pCurrentCPU->PC >= 0x8300)&&(pCurrentCPU->PC <= 0x8348)) {	// scratchpad data fetch functions
+	} else if ((pCurrentCPU->PC >= 0x535e)&&(pCurrentCPU->PC <= 0x536a)) {	// byte data fetch
+	} else if ((pCurrentCPU->PC >= 0x5290)&&(pCurrentCPU->PC <= 0x52a4)) {	// two compare loops
+	} else if ((pCurrentCPU->PC >= 0x4f70)&&(pCurrentCPU->PC <= 0x4f9e)) {	// read a byte from an address
+	} else if ((pCurrentCPU->PC >= 0x4bba)&&(pCurrentCPU->PC <= 0x4bc8)) {	// copy loop
+	} else if ((pCurrentCPU->PC >= 0x53be)&&(pCurrentCPU->PC <= 0x53d0)) {	// another copy loop
+	} else if ((pCurrentCPU->PC >= 0x5118)&&(pCurrentCPU->PC <= 0x5130)) {	// more copy loop
+	} else {
+		debug_write("Read PCODE GROM (>%04X), >%04x, >%02x", x, GROMBase[PCODEGROMBASE].GRMADD, GROMBase[PCODEGROMBASE].grmdata);
+		TriggerBreakPoint();
+	}
+#endif
 
 	if (x&0x0002)
 	{
@@ -5815,7 +6439,7 @@ Byte rpcodebyte(Word x)
 
 		// update just this prefetch
 		GROMBase[PCODEGROMBASE].grmdata=GROMBase[PCODEGROMBASE].GROM[GROMBase[PCODEGROMBASE].GRMADD];
-		GROMBase[PCODEGROMBASE].GRMADD++;
+		IncrementGROMAddress(GROMBase[PCODEGROMBASE].GRMADD);
 		return(z);
 	}
 }
@@ -5831,7 +6455,18 @@ void wpcodebyte(Word x, Byte c)
 	}
 
 	// PCODE GROMs are distinct from the rest of the system
-//	debug_write("Write PCODE GROM (>%04X), >%04x, >%02x, %d", x, GROMBase[PCODEGROMBASE].GRMADD, c, GROMBase[PCODEGROMBASE].grmaccess);
+	if ((pCurrentCPU->PC >= 0x4058)&&(pCurrentCPU->PC <= 0x405e)) {	// first address set
+	} else if ((pCurrentCPU->PC >= 0x59b4)&&(pCurrentCPU->PC <= 0x59ca)) {	// read word
+	} else if ((pCurrentCPU->PC >= 0x584a)&&(pCurrentCPU->PC <= 0x588a)) {	// VDP copy loop
+	} else if ((pCurrentCPU->PC >= 0x4190)&&(pCurrentCPU->PC <= 0x41b6)) {	// big/little endian read
+	} else if ((pCurrentCPU->PC >= 0x4158)&&(pCurrentCPU->PC <= 0x4166)) {	// set address
+	} else if ((pCurrentCPU->PC >= 0x4f70)&&(pCurrentCPU->PC <= 0x4f9e)) {	// read a byte from an address
+	} else if ((pCurrentCPU->PC >= 0x50b2)&&(pCurrentCPU->PC <= 0x50cc)) {	// read a byte from an address
+	} else {
+		debug_write("Write PCODE GROM (>%04X), >%04x, >%02x, %d", x, GROMBase[PCODEGROMBASE].GRMADD, c, GROMBase[PCODEGROMBASE].grmaccess);
+		TriggerBreakPoint();
+	}
+
 
 	if (x&0x0002)
 	{
@@ -5843,7 +6478,7 @@ void wpcodebyte(Word x, Byte c)
 			
 			// update just this prefetch
 			GROMBase[PCODEGROMBASE].grmdata=GROMBase[PCODEGROMBASE].GROM[GROMBase[PCODEGROMBASE].GRMADD];
-			GROMBase[PCODEGROMBASE].GRMADD++;
+			IncrementGROMAddress(GROMBase[PCODEGROMBASE].GRMADD);
 		}
 		// GROM writes do not affect the prefetches, and have the same
 		// side effects as reads (they increment the address and perform a
@@ -5859,7 +6494,7 @@ void wpcodebyte(Word x, Byte c)
 
 		// update just this prefetch
 		GROMBase[PCODEGROMBASE].grmdata=GROMBase[PCODEGROMBASE].GROM[GROMBase[PCODEGROMBASE].GRMADD];
-		GROMBase[PCODEGROMBASE].GRMADD++;
+		IncrementGROMAddress(GROMBase[PCODEGROMBASE].GRMADD);
 	}
 }
 
@@ -5904,15 +6539,47 @@ void SetSuperBank() {
 }
 
 //////////////////////////////////////////////////////////////////
+// Set bank for PopCart CRU method (currently leans on 379 code)
+//////////////////////////////////////////////////////////////////
+void SetSuperBank2() {
+    // based on the data written, lots of 1s, this doesn't seem right
+	if (CRU[0x0580]) {
+		// is this not also true if all zeros written?
+		xbBank=0;	
+	} else if (CRU[0x0581]) {
+		xbBank=1;
+	} else if (CRU[0x0582]) {
+		xbBank=2;
+	} else if (CRU[0x0583]) {
+		xbBank=3;
+	} else if (CRU[0x0584]) {
+		xbBank=4;
+	} else if (CRU[0x0585]) {
+        // this is accessed by Toggle RAM, which is for mapping in SuperCart RAM
+		xbBank=5;
+	} else if (CRU[0x0586]) {
+		xbBank=6;
+	} else if (CRU[0x0587]) {
+		xbBank=7;
+	}
+	xbBank&=xb;
+
+	// debug helper for me
+//	TriggerBreakPoint();
+}
+
+
+//////////////////////////////////////////////////////////////////
 // Write a bit to CRU
+//
+// Despite the following, I finally do have the 9901 data manual ;)
+//
 // Better 9901 CRU notes:
 // There are 32 bits, from 0-31:
 //
-// 0     is a mode select - see below
-// 1-6   connect to pins !INT1 to !INT6. In interrupt mode, each bit as a dedicated input pin. (No output).
-// 7-15  share nine I/O pins with bits 23-31. These are pins 23 and 27-34. The order DECREMENTS with the pin number! Bits 7-15 support interrupts.
-// 16-22 are strict I/O pins
-// 23-31 share nine I/O pins with bits 7-15. These are pins 23 and 27-34. The order INCREMENTS with the pin number! Bits 23-31 are strict I/O.
+// 0     is a mode select for clock or interrupt mode - see below
+// 1-15  represent interrupt pins !INT1 through !INT15. Some physical pins are shared with I/O pins. Reads read the bit, writes set the interrupt mask (Active high)
+// 16-31 represent I/O pins P0-P15. Some physical pins are shared with interrupt pins. Reads read the bit, writes change to output mode (until reset).
 //
 // Bit 0:
 //  When set to 1, bits 1-15 enable clock logic.
@@ -5948,6 +6615,9 @@ void SetSuperBank() {
 //  After any write to an I/O pin, the pin is switched to output mode (until reset!)
 //  Note that 7-15 are input-only bits, to change those pins you need to write to 23-31. Writing to 7-15 loads the interrupt mask (or the clock).
 //  Reading an output pin returns the current output value.
+//
+//  Also check against https://www.ninerpedia.org/wiki/Programmable_Systems_Interface_TMS_9901
+//
 //////////////////////////////////////////////////////////////////
 void wcru(Word ad, int bt)
 {
@@ -5960,11 +6630,14 @@ void wcru(Word ad, int bt)
 		if (bt) {
 			// bit 0 enables the DSR rom, so we'll check that first
 			if ((ad&0xff) == 0) {
+                static int nLastSetDSR = 0;
 				int nTmp = (ad>>8)&0xf;
 				if ((nCurrentDSR != -1) && (nTmp != nCurrentDSR)) {
 					debug_write("WARNING! DSR Conflict between >1%X00 and >1%X00 at PC >%04X", nCurrentDSR, nTmp, pCurrentCPU->GetPC());
+                    if (nLastSetDSR) debug_write("         DSR was last turned on at PC >%04X", nLastSetDSR);
 				}
 				nCurrentDSR=nTmp;
+                nLastSetDSR=pCurrentCPU->GetPC();
 //				debug_write("Enabling DSR at >%04x", ad);
 				// there may also be device-dependent behaviour! Don't exit.
 			}
@@ -5997,6 +6670,10 @@ void wcru(Word ad, int bt)
 					nDSRBank[0xf]=1;
 				}
 				break;
+
+            default:
+//                debug_write("Write unsupported CRU 0x%04X = %d", ad, bt);
+                break;
 			}
 		} else {
 			// bit 0 enables the DSR rom, so we'll check that first
@@ -6037,15 +6714,68 @@ void wcru(Word ad, int bt)
 					nDSRBank[0xf]=0;
 				}
 				break;
+
+            default:
+//                debug_write("Write unsupported CRU 0x%04X = %d", ad, bt);
+                break;
 			}
 		}
 		return;
+	} else if (ad >= 0x400) {
+        // normally unmapped space, some special carts
+        ad = (ad&0xfff);
+
+		if (bt) {											// write the data
+            CRU[ad]=1;
+            switch (ad) {
+                case 0x040f:
+                    // super-space cart piggybacked on 379 code for now
+                    debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank();
+                    break;
+
+                case 0x587:
+                    debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank2();
+                    break;
+
+                default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                    break;
+            }
+		} else {
+            CRU[ad]=0;
+            switch (ad) {
+                case 0x040f:
+                    // super-space cart piggybacked on 379 code for now
+                    debug_write("SuperSpace CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank();
+                    break;
+
+                case 0x587:
+                    debug_write("Popcart CRU write 0x%04X = %d", ad, bt);
+                    SetSuperBank2();
+                    break;
+
+                default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                    break;
+            }
+		}
+        
 	} else {
 		if (NULL != SetSidBanked) {
 			SetSidBanked(true);		// SID is enabled no matter the write
 		}
 
-		ad=(ad&0x0fff);										// get actual CRU line
+		ad=(ad&0x01f);										// get actual CRU line (0-31, within the 1k space)
+
+        // debug interrupts lines
+        if ((ad>0)&&(ad<16)) {
+            if (bt != CRU[ad]) {
+                debug_write("CRU interrupt change on %d to %d at PC >%04X", ad, bt, pCurrentCPU->GetPC());
+            }
+        }
 
 //		debug_write("Write CRU 0x%x with %d", ad, bt);
 
@@ -6090,8 +6820,19 @@ void wcru(Word ad, int bt)
                         }
 						break;
 
+                    case 2:     // vdp interrupt
+                    case 21:    // alpha lock
+                        // just remember it
+                        break;
+
                     case 18:
-                    case 19:
+						CRU_TOGGLES += 0.1;		// TODO: technically, it should be a change in the value of these three bits
+												// but this works well enough for now. This noise is picked up in the audio.
+						if ((CRU[18]==1)&&(CRU[19]==0)&&(CRU[20]==1)) {
+							// column selected arbitrarily ;)
+							ScreenReader::CheckUpdateSpeechOutput();	// check screen reader on keyboard scan
+						}
+                    case 19:					
                     case 20:
                         // keyboard column select
 //                        debug_write("Keyboard column now: %d", (CRU[0x14]==0 ? 1 : 0) | (CRU[0x13]==0 ? 2 : 0) | (CRU[0x12]==0 ? 4 : 0));
@@ -6107,10 +6848,9 @@ void wcru(Word ad, int bt)
                         debug_write("CS2 is not supported.");
                         break;
 					
-					case 0x040f:
-						// super-space cart piggybacked on 379 code for now
-						SetSuperBank();
-						break;
+                    default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                        break;
 				}
 			}
 		} else {
@@ -6135,10 +6875,13 @@ void wcru(Word ad, int bt)
 	                CRU[25]=0;	// mag tape out - needed for Robotron to work!
 	                CRU[27]=0;	// mag tape in (maybe all these zeros means 0 should be the default??)
 				} else if (ad == 0) {
+                    // TODO: I think datasheet says time resets and runs any time it's not zero?
 					// Turning off timer mode - start timer (but don't reset it, as proven by camelForth)
                     // Not sure this matters to this emulation, but Adam doc notes that the 9901 will exit
                     // clock mode if it ever sees "a 1 on select line S0", even when chip select is not active.
                     // this may be the bit I mention below that Thierry noted as well.
+                    // Ninerpedia notes this is TEMPORARY only /while/ A10 is high. But has all the same effects
+                    // as exiting/entering on purpose
 					CRU[ad]=0;
                     // We definitely do NOT reset the timer here - and doing so breaks both camelForth and fbForth
                     // docs explicitly say to update the read register here, for no reason...
@@ -6172,6 +6915,11 @@ void wcru(Word ad, int bt)
                         }
 						break;
 
+                    case 2:     // vdp interrupt
+                    case 21:    // alpha lock
+                        // just remember it
+                        break;
+
                     case 18:
                     case 19:
                     case 20:
@@ -6184,10 +6932,9 @@ void wcru(Word ad, int bt)
                         setTapeMotor(false);
                         break;
 					
-					case 0x040f:
-						// super-space cart piggybacked on 379 code for now
-						SetSuperBank();
-						break;
+                    default:
+//                        debug_write("Write unsupported CRU I/O 0x%04X = %d", ad, bt);
+                        break;
 				}
 			}
 		}
@@ -6216,9 +6963,16 @@ void wcru(Word ad, int bt)
 // Read a bit from CRU
 //////////////////////////////////////////////////////////////////
 int CheckJoysticks(Word ad, int col) {
-	int joyX, joyY, joyFire, joykey;
+	int joyX, joyY, joyFire;
 	int joy1col, joy2col;
 	int ret=1;
+
+    // TODO: the joysticks appear not to work if a key pressed
+    // on the same column is pressed.
+    // This is confirmed. It appears to be because the keys are directly
+    // connected to the 9901, but the joystick runs through a diode. So
+    // not enough current makes it through the diode if a key on the same column
+    // is pressed and so the joystick has no response.
 
 	// Read external hardware
 	joyX=0;
@@ -6229,72 +6983,117 @@ int CheckJoysticks(Word ad, int col) {
 		// 99/4A
 		joy1col=4;
 		joy2col=0;
-		joykey=1;
 	} else {
 		// 99/4
 		joy1col=2;
 		joy2col=4;
-		joykey=0;
 	}
 
 	if ((col == joy1col) || (col == joy2col))				// reading joystick
 	{	
 		// TODO: This still reads the joystick many times for a single scan, but it's better ;)
 		if (fJoy) {
-			int device;
+			int device = -1;
+			int index = 0;
 
-			device=-1;
-
+			// allow for joystick number 1-16
 			if (col==joy2col) {
-				switch (joy2mode) {
-					case 1: device=JOYSTICKID1; break;
-					case 2: device=JOYSTICKID2; break;
-				}
-			} else {
-				switch (joy1mode) {
-					case 1: device=JOYSTICKID1; break;
-					case 2: device=JOYSTICKID2; break;
-				}
+				index = 1;	// else it's joystick 1, so index 0
 			}
 
-			if ((device == JOYSTICKID1)&&((installedJoysticks & 0x01) == 0)) {
-				return 1;
-			} else if ((device == JOYSTICKID2)&&((installedJoysticks & 0x02) == 0)) {
-				return 1;
+			if ((joyStick[index].mode > 0)&&(joyStick[index].mode <= 16)) {
+				device = (joyStick[index].mode-1)+JOYSTICKID1;
 			}
 
 			if (device!=-1) {
+				// check if we previously disabled this stick
+				if ((installedJoysticks&(1<<(device-JOYSTICKID1))) == 0) {
+					return 1;
+				}
+
 				memset(&myJoy, 0, sizeof(myJoy));
 				myJoy.dwSize=sizeof(myJoy);
-				myJoy.dwFlags=JOY_RETURNBUTTONS | JOY_RETURNX | JOY_RETURNY | JOY_USEDEADZONE;
+				myJoy.dwFlags=JOY_RETURNALL | JOY_USEDEADZONE;
 				MMRESULT joyret = joyGetPosEx(device, &myJoy);
 				if (JOYERR_NOERROR == joyret) {
-					if (0!=myJoy.dwButtons) {
+					// TODO: we do all this work to calculate both axes plus the buttons, but we only
+					// actually want one direction OR the button, so we should make the joystick read smarter, cache
+					// myJoy for a frame or so and just pull out the part we actually need...
+
+					if (0!=(myJoy.dwButtons & joyStick[index].btnMask)) {
 						joyFire=1;
 					}
-					if (myJoy.dwXpos<0x4000) {
-						joyX=-4;
+
+					unsigned int half = (joyStick[index].maxXDead-joyStick[index].minXDead)/2;
+					unsigned int axis;
+					switch(joyStick[index].Xaxis) {
+						case 0: axis = myJoy.dwXpos; break;
+						case 1: axis = myJoy.dwYpos; break;
+						case 2: axis = myJoy.dwZpos; break;
+						case 3: axis = myJoy.dwRpos; break;
+						case 4: axis = myJoy.dwUpos; break;
+						case 5: axis = myJoy.dwVpos; break;
+						case 6: 
+							if (myJoy.dwPOV <= 35999) {
+								// use sin() (x component)			 degrees*100 to radians
+								axis = (unsigned int)(sin(myJoy.dwPOV * 0.000174533)*(half*2)+half+joyStick[index].minXDead);
+							} else {
+								axis = joyStick[index].minXDead+half;
+							}
+							break;
+						case 7: 
+							if (myJoy.dwPOV <= 35999) {
+								// use cos() (y component)			 degrees*100 to radians
+								axis = (unsigned int)(cos(myJoy.dwPOV * 0.000174533)*(half*2)+half+joyStick[index].minXDead);
+							} else {
+								axis = joyStick[index].minXDead+half;
+							}
+							break;
+
+						default: axis = joyStick[index].minXDead+half;
 					}
-					if (myJoy.dwXpos>0xC000) {
+					if (axis<joyStick[index].minXDead) {
+						joyX=-4;
+					} else if (axis>joyStick[index].maxXDead) {
 						joyX=4;
 					}
-					if (myJoy.dwYpos<0x4000) {
-						joyY=4;
+
+					half = (joyStick[index].maxYDead-joyStick[index].minYDead)/2;
+					switch(joyStick[index].Yaxis) {
+						case 0: axis = myJoy.dwXpos; break;
+						case 1: axis = myJoy.dwYpos; break;
+						case 2: axis = myJoy.dwZpos; break;
+						case 3: axis = myJoy.dwRpos; break;
+						case 4: axis = myJoy.dwUpos; break;
+						case 5: axis = myJoy.dwVpos; break;
+						case 6: 
+							if (myJoy.dwPOV <= 35999) {
+								// use sin() (x component)			 degrees*100 to radians, inverted for y
+								axis = (unsigned int)((-sin(myJoy.dwPOV * 0.000174533))*(half*2)+half+joyStick[index].minYDead);
+							} else {
+								axis = joyStick[index].minYDead+half;
+							}
+							break;
+						case 7:
+							if (myJoy.dwPOV <= 35999) {
+								// use cos() (y component)			 degrees*100 to radians, inverted for y
+								axis = (unsigned int)((-cos(myJoy.dwPOV * 0.000174533))*(half*2)+half+joyStick[index].minYDead);
+							} else {
+								axis = joyStick[index].minYDead+half;
+							}
+							break;
+						default: axis = joyStick[index].minYDead+half;
 					}
-					if (myJoy.dwYpos>0xC000) {
+					if (axis<joyStick[index].minYDead) {
+						joyY=4;
+					} else if (axis>joyStick[index].maxYDead) {
 						joyY=-4;
 					}
 				} else {
 					// disable this joystick so we don't slow to a crawl
 					// trying to access it. We'll check again on a reset
-					if (device == JOYSTICKID1) {
-						debug_write("Disabling joystick 1 - error %d reading it.", joyret);
-						installedJoysticks&=0xfe;
-					} else {
-						// JOYSTICKID2
-						debug_write("Disabling joystick 2 - error %d reading it.", joyret);
-						installedJoysticks&=0xfd;
-					}
+					debug_write("Disabling joystick %d - error %d reading it.", (device-JOYSTICKID1)+1, joyret);
+					installedJoysticks&=~(1<<(device-JOYSTICKID1));
 				}
 			} else {	// read the keyboard
 				// if just activating the joystick, so make sure there's no fctn-arrow keys active
@@ -6344,39 +7143,82 @@ int CheckJoysticks(Word ad, int col) {
 			}
 		}
 
+		// TODO: this is where we actually extract the data we actually care about...
 		if (ad == 3)
 		{	
-			if ((key[KEYS[joykey][col][0]])||(joyFire))	// button reads normally
+			if (joyFire)	// button reads normally
 			{
 				ret=0;
 			}
 		}
 		else
 		{
-			if (key[KEYS[joykey][col][ad-3]])		// stick return (*not* inverted. Duh)
-			{	
-				ret=0;
-			}
-			if (ret) {
-				switch (ad-3) {						// Check real joystick
+			switch (ad-3) {						// Check real joystick
 				case 1: if (joyX ==-4) ret=0; break;
 				case 2: if (joyX == 4) ret=0; break;
 				case 3: if (joyY ==-4) ret=0; break;
 				case 4: if (joyY == 4) ret=0; break;
-				}
 			}
 		}
 	}
 	return ret;
 }
 
+#if 0
+// ** BIG TODO - 9901 CRU IMPROVEMENTS **
+CRU Read test (Using Mizapf's XB test to read the first 32 bits)
+
+CALL INIT
+CALL LOAD(12288,4,224,131,196,2,1,27,10,6,1,22,254,4,204,2,1,50,200,52,49,2,44,0,32,52,49,4,91)
+CALL LOAD(-31804,48,0)
+CALL PEEK(13000,A,B,C,D)
+PRINT A;B;C;D
+
+
+BIT	HW	C99	Purpose						Status
+-------------------						----------------------
+0	0	0	9901 Control				Implemented
+1	1	1	External INT1				Partially implemented
+2	0	0	VDP sync					Implemented
+3	1	0	Clock, keyboard enter, fire	Implemented, but wrong?
+4	1	0	Keyboard l, left			Implemented, but wrong?
+5	1	1	Keyboard p, right			Implemented
+6	1	1	keyboard 0, down			Implemented
+7	1	1	keyboard shift, up			Implemented
+8	1	1	keyboard space				Implemented
+9	1	0	keyboard q					Implemented, but wrong?
+10	1	1	keyboard l					Implemented
+11	0	1	unused						Implemented as loopback, but wrong?
+12	1	1	reserved					Implemented as loopback -- pulled HIGH on hardware
+13	0	1	unused						Implemented as loopback, but wrong?
+14	0	1	unused						Implemented as loopback, but wrong?
+15	1	1	unused						Implemented as loopback
+16	0	0	reserved					Implemented as loopback
+17	0	0	reserved					Implemented as loopback - checked on the 99/4 but seems not wired up
+18	0	0	keyboard select bit 2		Implemented as loopback
+19	0	0	keyboard select bit 1		Implemented as loopback
+20	0	0	keyboard select bit 0		Implemented as loopback
+21	1	0	alpha lock					Implemented, but wrong?
+22	1	0	CS1 control					Hard coded to return 1, so why is it 0?
+23	1	0	CS2 control					Hard coded to return 1, so why is it 0?
+24	0	0	Audio gate					Hard coded to return 1, so why is it 0?
+25	0	0	Tape out					Implemented as loopback
+26	1	0	???							Skipped in E/A manual, but implemented as loopback, but wrong.
+27	0	0	Tape in						Implemented
+28	1	0	unused						Implemented as loopback, but wrong?
+29	1	0	unused						Implemented as loopback, but wrong?
+30	1	0	unused						Implemented as loopback, but wrong?
+31	1	0	unused						Implemented as loopback, but wrong?
+
+The loopback, but wrong ones may simply have never been written to, since I default all CRU to 1. Maybe these bits need to default to 0. We should properly characterize when we rewrite the 9901.
+#endif
 int rcru(Word ad)
 {
 	int ret,col;									// temp variables
 
 	if ((CRU[0]==1)&&(ad<16)&&(ad>0)) {				// read elapsed time from timer
 		if (ad == 15) {
-            // this reflects the state of the interrupt request PIN, so 
+			// this reflects the state of the interrupt request PIN, so 
             // it's a little more complex than just one interrupt. Technically, it's
             // ALL interrupts that run through the 9901, and is affected by the mask.
             // For now, we just have the VDP, eventually we'll have others.
@@ -6416,17 +7258,34 @@ int rcru(Word ad)
 
 			default:
 				// no other cards supported yet
+//                debug_write("Read unsupported CRU 0x%04X", ad);
 				return 1;	// "false"
 		}
-	}
+	} else if (ad >= 0x0400) {
+        // some add-on cards, no special read support here
+        return CRU[ad];
+    }
 
-	// The CRU bits >0000 through >001f are repeated through the whole 4k range!
+	// The CRU bits >0000 through >001f are repeated through the whole 1k range from 0000-0400!
 	ad=(ad&0x001f);										// get actual CRU line
 	ret=1;												// default return code (false)
 
 	// are we checking VDP interrupt?
     // it should reflect on bit 15 in clock mode, too, IF !INT2 is enabled in the mask (done above)
 	if (ad == 0x02) {		// that's the only int we have
+		// TODO: should I put this on clock mode bit 15? Who would do that?
+		if (statusUpdateRead) {
+			// new frame, first access since frame was reset by reading the status register, so remember when it was
+			statusUpdateRead = false;
+			statusReadLine = vdpscanline;
+			// calculate scanlines since interrupt pulse
+			if (vdpscanline > 192+27) {
+				statusReadCount = 262*statusFrameCount + (vdpscanline-192-27);
+			} else {
+				statusReadCount = 262*statusFrameCount + (vdpscanline+(262-(192+27)));
+			}
+		}
+			
 		if (VDPINT) {
 			return 0;		
 		} else {
@@ -6448,18 +7307,19 @@ int rcru(Word ad)
             return 1;   // this also preserves the Perfect Push 'tick' on audio gate
         }
     }
-    if ((ad >= 22) && (ad < 25)) {
-        // these are the cassette CRU output bits
-        return 1;
-    }
-
-    // Z80 hack - don't read anything else, then the TI will just spin on the title page
-    return 1;
+	// JasonACT says that returning a fixed value for this is wrong
+	// He insists that reading these bits when reading the keyboard, 
+	// as Robotron does, is not oddball behaviour and should be
+	// properly emulated. This one's for you buddy! ;)
+    //if ((ad >= 22) && (ad < 25)) {
+    //    // these are the cassette CRU output bits
+    //    return 1;
+    //}
 
 	// no other hardware devices at this time, check keyboard/joysticks
 
-	// keyboard reads as an array. Bits 24, 26 and 28 set the line to	
-	// scan (columns). Bits 6-14 are used for return. 0 means on.		
+	// keyboard reads as an array. Bit addresses hex 24, 26 and 28 set the line to	
+	// scan (columns). Bit addreses hex 6-14 are used for return. 0 means on.		
 	// The address was divided by 2 before being given to the routine	
 
 	// Some hacks here for 99/4 scanning
@@ -6503,48 +7363,57 @@ int rcru(Word ad)
 		ret = CheckJoysticks(ad, col);
 		if (1 == ret) {
 			// if nothing else matched, try the keyboard array
-			if (key[KEYS[keyboard][col][ad-3]])				// normal key
-			{	
-					ret=0;
+			if (key[KEYS[keyboard][col][ad-3]])	{			// normal key
+				ret=0;
 			}
 		}
 	}
 	if ((ad>=11)&&(ad<=31)) {
 		// this is an I/O pin - return whatever was last written
 		ret = CRU[ad];
-	}
+        //debug_write("Read CRU I/O 0x%04X (got %d)", ad, ret);
+    }
 
 	return(ret);
 }
 
 /////////////////////////////////////////////////////////////////////////
 // Write a line to the debug buffer displayed on the debug screen
+// We no longer display duplicated lines to the internal debug log.
+// The external debug log will see them though.
 /////////////////////////////////////////////////////////////////////////
 void debug_write(char *s, ...)
 {
 	char buf[1024];
+	static char lastbuf[1024] = "";
 
 	_vsnprintf(buf, 1023, s, (char*)((&s)+1));
 	buf[1023]='\0';
 
-	if (!quitflag) {
-		OutputDebugString(buf);
-		OutputDebugString("\n");
-	}
+	// let all lines reach the external debugger
+	OutputDebugString(buf);
+	OutputDebugString("\n");
 
+	// but skip duples to the internal log
+	if (0 == strcmp(buf, lastbuf)) {
+		return;
+	}
+	strcpy(lastbuf, buf);
+
+	// trim to the internal debug size
 	buf[DEBUGLEN-1]='\0';
 
-
+	// critical section needed to avoid conflict with the display code
 	EnterCriticalSection(&DebugCS);
 	
-	memcpy(&lines[0][0], &lines[1][0], 33*DEBUGLEN);				// scroll data
-	strncpy(&lines[33][0], buf, DEBUGLEN);							// copy in new line
-	memset(&lines[33][strlen(buf)], 0x20, DEBUGLEN-strlen(buf));	// clear rest of line
-	lines[33][DEBUGLEN-1]='\0';										// zero terminate
+	memcpy(&lines[0][0], &lines[1][0], (DEBUGLINES-1)*DEBUGLEN);			// scroll data
+	strncpy(&lines[DEBUGLINES-1][0], buf, DEBUGLEN);				        // copy in new line
+	memset(&lines[DEBUGLINES-1][strlen(buf)], 0x20, DEBUGLEN-strlen(buf));	// clear rest of line
+	lines[DEBUGLINES-1][DEBUGLEN-1]='\0';							        // zero terminate
 
 	LeaveCriticalSection(&DebugCS);
 
-	bDebugDirty=true;												// flag redraw
+	bDebugDirty=true;												        // flag redraw
 }
 
 // Simple thread that watches the event and clears the buffer, then
@@ -6593,7 +7462,7 @@ void __cdecl TimerThread(void *)
 {
 	MY_LARGE_INTEGER nStart, nEnd, nFreq, nAccum;
 	static unsigned long old_total_cycles=0;
-	static int oldSystemThrottle=0, oldCPUThrottle=0;
+	static int oldThrottleMode = THROTTLE_NONE;
 	static int nVDPFrames = 0;
 	bool bDrawDebug=false;
 	long nOldCyclesLeft = 0;
@@ -6616,9 +7485,8 @@ void __cdecl TimerThread(void *)
 	while (quitflag==0) {
 		// Check if the system speed has changed
 		// This is actually kind of lame - we should use a message or make the vars global
-		if ((CPUThrottle != oldCPUThrottle) || (SystemThrottle != oldSystemThrottle)) {
-			oldCPUThrottle=CPUThrottle;
-			oldSystemThrottle=SystemThrottle;
+		if (ThrottleMode != oldThrottleMode) {
+			oldThrottleMode = ThrottleMode;
 			old_total_cycles=total_cycles;
 			nAccum.QuadPart=0;
 		}
@@ -6633,8 +7501,16 @@ void __cdecl TimerThread(void *)
 
 		// process debugger, if active
 		processDbgPackets();
+
+		// handle breakpoint
+		if (max_cpf == 0) {
+			QueryPerformanceCounter((LARGE_INTEGER*)&nStart);
+			nAccum.QuadPart=0;
+			Sleep(10);
+			continue;
+		}
          
-		if ((PauseInactive)&&(myWnd != GetForegroundWindow())&&(dbgWnd != GetForegroundWindow())) {
+		if ((PauseInactive)&&(!WindowActive)) {
 			// Reduce CPU usage when inactive (hack)
 			Sleep(100);
 		} else {
@@ -6642,23 +7518,23 @@ void __cdecl TimerThread(void *)
 			// if hzRate==60, then it's 16666us per frame - .6. overall this runs a little slow, but it is within the 5% tolerance (99.996%)
 			// our actual speeds are 50hz and 62hz, 62hz is 99% of 62.6hz, calculated via the datasheet
 			// 62hz is 16129us per frame (fractional is .03, irrelevant here, so it works out nicer too)
-			switch (CPUThrottle) {
+			switch (ThrottleMode) {
 				default:
                     // TODO: using the old trick of triggering early (twice as often) helps, but still wrong
 					WaitForSingleObject(timer, 1000);	// this is 16.12, rounded to 16, so 99% of 99% is still 99% (99.2% of truth)
+					nVDPFrames = 0;
 					break;
-				case CPU_OVERDRIVE:
+				case THROTTLE_OVERDRIVE:
 					Sleep(1);	// minimal sleep for load's sake
+					// Do not set nVDPFrames to 0 here
 					break;
-				case CPU_MAXIMUM:
+				case THROTTLE_SYSTEMMAXIMUM:
 					// We do the exchange here since the loop below may not run
-					//InterlockedExchange((LONG*)&cycles_left, max_cpf*100);
+					InterlockedExchange((LONG*)&cycles_left, max_cpf*100);
+					nVDPFrames = 0;
 					break;
 			}
 
-			if (SystemThrottle == VDP_CPUSYNC) {
-				nVDPFrames=0;
-			}
 			if (FALSE == QueryPerformanceCounter((LARGE_INTEGER*)&nEnd)) {
 				debug_write("Failed to query performance counter, error 0x%08x", GetLastError());
 				MessageBox(myWnd, "Unable to run timer system.", "Classic99 Error", MB_ICONSTOP|MB_OK);
@@ -6667,6 +7543,7 @@ void __cdecl TimerThread(void *)
 			if (nEnd.QuadPart<nStart.QuadPart) {
 				// We wrapped around. This should be a once in a lifetime event, so rather
 				// than go nuts, just skip this frame
+				//debug_write("Timer wrapped around");
 				nStart.QuadPart=nEnd.QuadPart;
 				continue;
 			}
@@ -6676,8 +7553,10 @@ void __cdecl TimerThread(void *)
 			nAccum.QuadPart+=(((nEnd.QuadPart-nStart.QuadPart)*1000000i64)/nFreq.QuadPart);	
 			nStart.QuadPart=nEnd.QuadPart;					// don't lose any time
 			
-			// see function header comments for these numbers (62hz or 60hz : 50hz)
-			nFreq.QuadPart=(hzRate==HZ60) ? 16129i64/*16666i64*/ : 20000i64;
+			// convert nFreq into one frame of time
+			nFreq.QuadPart=(hzRate==HZ60) ? /*16129i64*/ 16666i64 : 20000i64;
+
+			unsigned long cycles_used = nOldCyclesLeft - cycles_left;
 
 			while (nAccum.QuadPart >= nFreq.QuadPart) {
 				nVDPFrames++;
@@ -6688,11 +7567,18 @@ void __cdecl TimerThread(void *)
 					// to prevent runaway, if the CPU is not executing for some reason, don't increment
 					// this handles the case where Windows is blocking the main thread (which doesn't happen anymore)
 					if ((nOldCyclesLeft != cycles_left) || (max_cpf == 1)) {
-						if (CPUThrottle==CPU_NORMAL) {			// don't increment cycles_left if running at infinite speed or paused
+						switch (ThrottleMode) {
+						case THROTTLE_SLOW:
+						case THROTTLE_NORMAL:
 							InterlockedExchangeAdd((LONG*)&cycles_left, max_cpf);
-						} else {
-							InterlockedExchange((LONG*)&cycles_left, max_cpf*50);
+							break;
+
+						case THROTTLE_OVERDRIVE:
+						case THROTTLE_SYSTEMMAXIMUM:
+							InterlockedExchange((LONG*)&cycles_left, max_cpf * cfg_overdrive);
+							break;
 						}
+
 						nOldCyclesLeft = cycles_left;
 					}
 				}
@@ -6701,11 +7587,13 @@ void __cdecl TimerThread(void *)
 					nAccum.QuadPart = 0;
 					InterlockedExchange((LONG*)&cycles_left, max_cpf);
 					nVDPFrames = 1;
+					debug_write("Too far behind, drop frames");
 				}
 			}
 			SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
 
 			if (total_cycles_looped) {
+				//debug_write("Total cycles looped"); - this does happen
 				total_cycles_looped=false;
 				old_total_cycles=0;		// mistiming, but survives the wrap.
 				// very very fast machines may someday break this loop
@@ -6715,10 +7603,10 @@ void __cdecl TimerThread(void *)
 			// if our timing is right this should always work out about right
 			SpeechBufferCopy();
 
-			// This set the VDP processing rate. If VDP overdrive is active,
-			// then we base it on the CPU cycles. If not, then we base it on
-			// real time.
-			if (SystemThrottle == VDP_CPUSYNC) {
+			// This set the VDP processing rate. This is based on CPU cycles except
+			// in overdrive, which tries to maintain approximately real time despite
+			// CPU cycle count.
+			if (ThrottleMode != THROTTLE_OVERDRIVE) {
 				// this side is used in normal mode
 				while (old_total_cycles+(hzRate==HZ50?DEFAULT_50HZ_CPF:DEFAULT_60HZ_CPF) <= total_cycles) {
 					Counting();					// update counters & VDP interrupt
@@ -6728,13 +7616,31 @@ void __cdecl TimerThread(void *)
 			} else {
 				// this side is used in overdrive
 				if (nVDPFrames > 0) {
+					static MY_LARGE_INTEGER last;
 					// run one frame every time we're able (and it's needed)
 					Counting();					// update counters & VDP interrupt
-					nVDPFrames--;
+					nVDPFrames=0;
 					bDrawDebug=true;
+
+#if 0
+					QueryPerformanceFrequency((LARGE_INTEGER*)&nFreq);
+					if ((nStart.QuadPart - last.QuadPart)*1000000i64/nFreq.QuadPart < 16000i64) {
+						debug_write("VDP Force frame after %I64d microseconds, %ld cycles used", (nStart.QuadPart - last.QuadPart)*1000000i64/nFreq.QuadPart, cycles_used);
+					}
+					last.QuadPart = nStart.QuadPart;
+#endif
+
 					vdpForceFrame();
+
 				}
 			}
+
+            // TODO: a hack of sorts, but DAC and sound update can end up running at different rates,
+            // leading to out of sync audio. So empty the dac buffer, no matter how much we used
+//            if (dac_pos < 100) {
+//                debug_write("dac_pos at %d", dac_pos);
+//                dac_pos = 0;
+//            }
 
 			if ((bDrawDebug)&&(dbgWnd)) {
 				if (max_cpf > 0) {
@@ -6754,7 +7660,6 @@ void __cdecl TimerThread(void *)
 ////////////////////////////////////////////////////////////////
 // Timer calls this function each tick
 ////////////////////////////////////////////////////////////////
-//extern SID *g_mySid;
 void Counting()
 {
 	ticks++;
@@ -6771,6 +7676,7 @@ void Counting()
 		UpdateSoundBuf(soundbuf, sound_update, &soundDat);
 	}
 	if (NULL != sidbuf) {
+        // Phoenix AY uses sidbuf...
 		UpdateSoundBuf(sidbuf, ay_update, &sidDat);
 	}
 
@@ -6780,7 +7686,7 @@ void Counting()
 // Debug step helpers
 void DoPause() {
 	if (0 != max_cpf) {
-		TriggerBreakPoint();
+		TriggerBreakPoint(true,false);
 	}
 }
 
@@ -6794,11 +7700,15 @@ void DoStep() {
 }
 
 void DoStepOver() {
+    // TODO: does not work with banks - convert breakpoint system to
+    // a standard and then this can be a "temporary" breakpoint that
+    // deletes itself once its hit.
 	if (0 == max_cpf) {
 		max_cpf=cfg_cpf;
 		SetWindowText(myWnd, szDefaultWindowText);
 		InterlockedExchange((LONG*)&cycles_left, max_cpf);
 		pCurrentCPU->SetReturnAddress(0);
+		bDebugAfterStep=true;
 		bStepOver=true;
 		nStepCount=1;
 		SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
@@ -6814,13 +7724,37 @@ void DoPlay() {
 		SetSoundVolumes();
 		UpdateMakeMenu(dbgWnd, 0);
 	}
-	PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 1);
+
+	// Passing '1' here tells the window handler not to change the
+	// speed again - otherwise we race with the message pump. This
+	// was causing breakpoints that were very close together to be
+	// lost. The '1' makes it a visual update only.
+	// TODO: this might be true anymore (or need to be?)
+	switch (ThrottleMode) {
+	default:
+	case THROTTLE_NORMAL:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_NORMAL, 1);
+		break;
+
+	case THROTTLE_SLOW:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUSLOW, 1);
+		break;
+
+	case THROTTLE_OVERDRIVE:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_CPUOVERDRIVE, 1);
+		break;
+
+	case THROTTLE_SYSTEMMAXIMUM:
+		PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 1);
+		break;
+	}
+
 	SetEvent(hWakeupEvent);		// wake up CPU if it's sleeping
 }
 
 void DoFastForward() {
 	DoPlay();		// wake up clean, then accelerate
-	PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 1);
+	PostMessage(myWnd, WM_COMMAND, ID_CPUTHROTTLING_SYSTEMMAXIMUM, 0);
 }
 
 void DoLoadInterrupt() {
@@ -6849,8 +7783,7 @@ void DoMemoryDump() {
 		if (NULL != fp) {
 			unsigned char buf[8192];
 			for (int idx=0; idx<65536; idx++) {
-                buf[idx%8192]=z80Read((void*)1, (Word)idx);
-				//buf[idx%8192]=ReadMemoryByte((Word)idx);
+				buf[idx%8192]=ReadMemoryByte((Word)idx, ACCESS_FREE);
 				if (idx%8192 == 8191) {
 					fwrite(buf, 1, 8192, fp);
 				}
@@ -6866,19 +7799,21 @@ void DoMemoryDump() {
 			}
 			fclose(fp);
 		}
-		fp=fopen("PHOENIXDUMP.BIN", "wb");
-		if (NULL != fp) {
-			fwrite(phoenixRAM, 1, 512*1024, fp);
-			fclose(fp);
-		}
 		debug_write("Dumped memory to MEMDUMP.BIN and VDPDUMP.BIN");
 	}
 }
 
-void TriggerBreakPoint(bool bForce) {
+void TriggerBreakPoint(bool bForce, bool openDebugger) {
 	if ((!pCurrentCPU->enableDebug)&&(!bForce)) {
 		return;
 	}
+
+    if (NULL != fpDisasm) {
+        if ((disasmLogType == 0) || (pCurrentCPU->GetPC() > 0x2000)) {
+            fprintf(fpDisasm, "**** Breakpoint triggered\n");
+        }
+    }
+
 	SetWindowText(myWnd, "Classic99 - Breakpoint. F1 - Continue, F2 - Step, F3 - Step Over");
 	max_cpf=0;
 	MuteAudio();
@@ -6886,6 +7821,44 @@ void TriggerBreakPoint(bool bForce) {
 	UpdateMakeMenu(dbgWnd, 1);
 	draw_debug();
 	redraw_needed = REDRAW_LINES;
+
+    // dump the cycle counting file if it's got anything in it
+    for (int idx=0; idx<0x10000; idx+=2) {
+        if (cycleCounter[idx]) {
+            FILE *fp=fopen("CycleCounts.txt", "w");
+            if (NULL != fp) {
+                bool blank=false;
+                for (int i2=idx; i2<0x10000; ) {
+                    if (cycleCounter[i2]) {
+			            char buf[1024];
+                        blank=true;
+			            sprintf(buf, "%04X ", i2);
+			            int tmp = Dasm9900(&buf[5], i2, 0);   // TODO: can't help the bank right now
+			            fprintf(fp, "(%d) %-33s %d cycles\n", 0, buf, cycleCounter[i2]);
+                        i2+=tmp;
+                    } else {
+                        if (blank) {
+                            fprintf(fp, "(...)\n");
+                            blank=false;
+                        }
+                        i2+=2;
+                    }
+                }
+                fclose(fp);
+                debug_write("Wrote CycleCounts.txt for timed segment");
+                memset(cycleCounter, 0, sizeof(cycleCounter));
+            }
+            break;
+        }
+    }
+
+	// finally, open the debugger if it's not open (unless we are told not to!)
+	if ((openDebugger) && (NULL == dbgWnd)) {
+		// Send so that we wait for the reply
+	    SendMessage(myWnd, WM_COMMAND, ID_EDIT_DEBUGGER, 0);
+		bDebugDirty=true;
+		SetEvent(hDebugWindowUpdateEvent);
+	}
 }
 
 void memrnd(void *pRnd, int nCnt) {
@@ -6921,9 +7894,6 @@ void UpdateHeatGROM(int Address) {
 	// this helps with Windows liking upside down bitmaps
 	Address=(Address&0xff) | (0xff00-(Address&0xff00));
 	nHeatMap[Address]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
-	nHeatMap[Address+1]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
-	nHeatMap[Address+2]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
-	nHeatMap[Address+3]|=0xff00;		// if we assume 0RGB format, this is max green (no matter what it was before)
 }
 
 void UpdateHeatmap(int Address) {
@@ -7015,3 +7985,39 @@ void UpdateHeatmap(int Address) {
 	}
 }
 
+// set the window style to alter the menu and title bar settings
+// title is only hidden in full screen mode
+void SetMenuMode(bool showTitle, bool showMenu) {
+    DWORD dwRemove = WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+    DWORD dwStyle = ::GetWindowLong(myWnd, GWL_STYLE);
+    bool changed = false;
+
+    // Hide the menu bar, change styles and position and redraw
+    //::LockWindowUpdate(myWnd); // prevent intermediate redrawing
+    if (showMenu) {
+        if (::GetMenu(myWnd) == NULL) {
+            ::SetMenu(myWnd, myMenu);
+            changed = true;
+        }
+    } else {
+        if (::GetMenu(myWnd) != NULL) {
+            ::SetMenu(myWnd, NULL);
+            changed = true;
+        }
+    }
+    if (showTitle) {
+        if ((dwStyle & dwRemove) == 0) {
+            ::SetWindowLong(myWnd, GWL_STYLE, dwStyle | dwRemove);
+            changed = true;
+        }
+    } else {
+        if ((dwStyle & dwRemove) != 0) {
+            ::SetWindowLong(myWnd, GWL_STYLE, dwStyle & ~dwRemove);
+            changed = true;
+        }
+    }
+    //::LockWindowUpdate(NULL); // allow redrawing
+    if (changed) {
+        ::SetWindowPos(myWnd, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
+    }
+}

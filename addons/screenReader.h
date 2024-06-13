@@ -1,5 +1,7 @@
+#pragma once
+
 //
-// (C) 2011 Mike Brent aka Tursi aka HarmlessLion.com
+// (C) 2022 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
 // express or implied is provided.
 //
@@ -35,36 +37,19 @@
 //
 // http://harmlesslion.com - visit the web page for contact info
 //
+///////////////////////////////////////////////////////
+// Classic99 SAPI Screen Reader
+// M.Brent
+///////////////////////////////////////////////////////
 
-// for the save cart functions
-struct options {
-	options() {
-		StartHigh = EndHigh = 0;
-        StartMid = EndMid = 0;
-		StartLow = EndLow = 0;
-		StartVDP = EndVDP = 0;
-		Boot = 0;
-		Name[0] = '\0';
-		FileName[0]='\0';
-		bEA = bCharSet = bCharA1 = bKeyboard = bGROM8K = bDisableF4 = bVDPRegs = bInvert = false;
-		FirstGROM = 0;
-	};
+namespace ScreenReader {
 
-	int StartHigh, EndHigh;
-    int StartMid, EndMid;
-	int StartLow, EndLow;
-	int StartVDP, EndVDP;
-	int Boot;
-	char Name[256];
-	char FileName[256];
-	bool bEA, bCharSet, bCharA1, bKeyboard, bGROM8K;
-	bool bDisableF4, bVDPRegs, bInvert;
-	int FirstGROM;
-};
+    bool initScreenReader();
+    void CheckUpdateSpeechOutput();
+    void ReadScreenOnce();
+    void SetContinuousRead(bool cont);
+    bool GetContinuousRead();
+    void ShutUp();
+    void ClearHistory();
 
-INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-void DoMakeDlg(HWND hwnd);
-void DoMakeEA5(HWND hwnd, struct options opt);
-void DoMakeCopyCart(HWND hwnd, struct options opt);
-void DoMakeGromCart(HWND hwnd, struct options opt);
-void DoMakeBasicCart(HWND hwnd, struct options opt);
+}

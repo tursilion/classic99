@@ -1,3 +1,14 @@
+// TODO: add a block of startup code that sets the workspace pointer,
+// because I just spent far too long troubleshooting it. It can
+// just copy a trampoline to scratchpad with the workspace and a
+// jump.. it's only 4 bytes. ;) (Some programs never set it!)
+
+// TODO2: TI BASIC carts only store the boot code in the second page,
+// and then assume an inverted order when they jump from trampoline
+// back to the code. Since we now default to non-inverted, we need
+// to patch the code that calls the trampoline to set the other
+// return bank (in R3, I believe).
+
 //
 // (C) 2011 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
@@ -42,7 +53,7 @@
 //*****************************************************
 
 #define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 
 #include <stdio.h>
 #include <windows.h>
@@ -51,6 +62,7 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <atlstr.h>
+#include <stdexcept>
 
 #include "..\resource.h"
 #include "tiemul.h"
@@ -58,6 +70,7 @@
 #include "ams.h"
 #include "..\addons\makecart.h"
 #include "..\disk\diskclass.h"
+#include "..\disk\FiadDisk.h"
 
 // debugger
 extern bool gDisableDebugKeys;
@@ -179,9 +192,9 @@ unsigned char *SimpleLZ77(unsigned char *pIn) {
 
 
 // Saves CPU RAM (and optionally VDP RAM) in E/A#5 PROGRAM image format (TIFILES only)
-// Takes the current PC as the load point, and saves all RAM specified as chained
-// files. If the current PC is past the beginning of memory (ie: memory starts at
-// >A000 but PC is at >A100), then the area before the PC is loaded separately.
+// Takes opt.Boot as the load/start point, and saves all RAM specified as chained
+// files. If the opt.Boot is past the beginning of memory (ie: memory starts at
+// >A000 but opt.Boot is at >A100), then the area before the PC is loaded separately.
 // It should be warned that this must be breakpointed at the true entry to the program,
 // since no registers or workspace information will be preserved. If VDP is saved,
 // it should be warned that VDP is not auto-loaded and that the program will need to
@@ -310,6 +323,7 @@ public:
 
 	void Go() {
 		//	IDC_CHKHIGHRAM		check
+        //  IDC_CHKCARTMEM      check
 		//	IDC_CHKLOWRAM		check
 		//	IDC_CHKVDPRAM		check (save only)
 		//	IDC_BOOT			text (boot address)
@@ -323,7 +337,7 @@ public:
 
 		// Now from the beginning of that block to the PC, if any
 		if (opt.Boot != 0) {
-			if (opt.Boot < 0xA000) {
+			if (opt.Boot < 0x4000) {
 				// boot in LOW ram
 				// Our first block to save is from the PC to the end 
 				if (!DoOneLoop(opt.Boot, opt.EndLow, (opt.StartLow != opt.Boot) || (opt.EndHigh != 0))) {
@@ -331,10 +345,44 @@ public:
 				}
 				// Next, if needed, from the start of the block to the PC
 				if (opt.Boot != opt.StartLow) {
-					if (!DoOneLoop(opt.StartLow, opt.Boot-1, (opt.EndHigh != 0))) {
+					if (!DoOneLoop(opt.StartLow, opt.Boot-1, (opt.EndHigh != 0)||(opt.EndMid != 0))) {
 						goto error;
 					}
 				}
+                // then the cart mem, if any
+   				if (opt.EndMid) {
+					if (!DoOneLoop(opt.StartMid, opt.EndMid, (opt.EndHigh != 0))) {
+						goto error;
+					}
+				}
+
+				// now the high block, if any
+				if (opt.EndHigh) {
+					// there are never 'more' even if we do VDP, since the VDP can't be auto-loaded
+					if (!DoOneLoop(opt.StartHigh, opt.EndHigh, false)) {
+						goto error;
+					}
+				}
+            } else if (opt.Boot < 0xA000) {
+                // boot in CART mem
+				// Our first block to save is from the PC to the end 
+				if (!DoOneLoop(opt.Boot, opt.EndMid, (opt.StartMid != opt.Boot) || (opt.EndHigh != 0) || (opt.EndLow != 0))) {
+					goto error;
+				}
+				// Next, if needed, from the start of the block to the PC
+				if (opt.Boot != opt.StartMid) {
+					if (!DoOneLoop(opt.StartMid, opt.Boot-1, (opt.EndHigh != 0)||(opt.EndLow != 0))) {
+						goto error;
+					}
+				}
+
+                // then the low mem, if any
+   				if (opt.EndLow) {
+					if (!DoOneLoop(opt.StartLow, opt.EndLow, (opt.EndHigh != 0))) {
+						goto error;
+					}
+				}
+
 				// now the high block, if any
 				if (opt.EndHigh) {
 					// there are never 'more' even if we do VDP, since the VDP can't be auto-loaded
@@ -354,7 +402,7 @@ public:
 						goto error;
 					}
 				}
-				// now the high block, if any
+				// now the low block, if any
 				if (opt.EndLow) {
 					// there are never 'more' even if we do VDP, since the VDP can't be auto-loaded
 					if (!DoOneLoop(opt.StartLow, opt.EndLow, false)) {
@@ -387,6 +435,231 @@ private:
 	struct options opt;
 };
 
+
+// Saves CPU RAM (and optionally VDP RAM) in E/A#3 UNCOMPRESSED image format (TIFILES only)
+// Normally not autostarting, but an autostart entry is added if opt.Boot is non-zero.
+// The user should be able to select high mem (>A000->FFFF) and low mem (>2000->3FFF)
+// This mostly exists for MiniMemory which doesn't have PROGRAM image load.
+// We can lean on the FIAD object for the file creation, since record-based files
+// can be a bit of a pain...
+class MakeEA3Class {
+public:
+	MakeEA3Class(HWND in_hwnd, struct options in_opt) {
+		hwnd = in_hwnd;
+		opt = in_opt;
+	}
+
+    ~MakeEA3Class() {
+        if (NULL != fi.pData) {
+            free(fi.pData);
+            fi.pData = NULL;
+        }
+    }
+
+    // sz must be at least 81 chars and have room left to finish the string!
+    void finishLine(char *sz) {
+        char buf[256];
+        int chk = 0;
+
+        // create checksum (2s complement, includes checksum tag!)
+        strcat(sz, "7");
+        char *p = sz;
+        while (*p) {
+            chk += *(p++);
+        }
+        chk = 0x10000 - chk;
+        sprintf(buf, "%04X", chk);
+        strcat(sz, buf);
+
+        // end the record
+        strcat(sz, "F");
+
+        // pad out to 76 chars
+        while (strlen(sz) < 76) strcat(sz, " ");
+
+        // add the line number - we should be 80 chars!
+        sprintf(buf, "%04d", nLine++);
+        strcat(sz, buf);
+
+        // copy the string to VDP
+        memcpy(&VDP[fi.DataBuffer], sz, 80);
+
+        // and give it to the disk driver, which updates our buffers
+        dsk.Write(&fi);
+    }
+
+	// this function takes raw PC pointers and saves it out with a simplified
+	// TIFILES program header. (p1->p2 inclusive). No check for ref/def overwrite.
+    // Lines are DF80 uncompressed mode (for XB)
+    // Used tags:
+    // 00000________    - module ID (8 spaces)
+    // 9xxxx            - Absolute load address
+    // Bxxxx            - Absolute data
+    // 7xxxx            - record checksum
+    // F                - end of record
+    // The line is then padded to 80 chars ending with a line number in decimal
+    // ie: 00000Clasic99A0000B0000A0002A0004B0000B0001B0000A000AA000CA000E7F38BF       0001
+    // At the end:
+    // 1xxxx            - autostart address, IF opt.Boot is set
+    // :Classic99 object dump - mark end of file
+	bool SaveOneEA3(unsigned char *p1, unsigned char *p2, int adr) {
+        // we're going to (very carefully!) hack this through the disk system
+        // build strings up to char 60 (we can step over it cause we have till 80)
+        static int lastAdr = 0;     // last address we processed
+
+        char outsz[81];             // buffer to build the line into
+        unsigned char *pWork = p1;  // working pointer
+
+        if (bFirst) {
+            strcpy(outsz,"00000        ");      // initial tag for line 1 only
+            lastAdr = 0;            // reset, new save
+            nLine = 1;              // reset, new save
+            bFirst = false;
+        }
+
+        while (pWork <= p2) {
+            if (strlen(outsz) < 60) {
+                char buf[32];
+
+                if (adr != lastAdr) {
+                    sprintf(buf, "9%04X", adr);
+                    strcat(outsz, buf);
+                }
+
+                // in case the address was added
+                if (strlen(outsz) < 60) {
+                    int word = (*(pWork++))<<8;
+                    word |= *(pWork++);
+                    adr += 2;
+                    lastAdr=adr;
+                    sprintf(buf, "B%04X", word);
+                    strcat(outsz, buf);
+                }
+            } else {
+                finishLine(outsz);
+                outsz[0]='\0';
+            }
+        }
+       
+        return true;
+	}
+
+	// loops for CPU data
+	bool DoOneLoop(int nStart, int nEnd) {
+		int nCnt = 0;
+		unsigned char buf[32768];		// for CPU memory copies, since it could come from AMS or otherwise (someday?)
+
+		for (int ad = nStart; ad <= nEnd; ad++) {
+			buf[nCnt++] = GetSafeCpuByte(ad, 0);
+		}
+		// time to write the block
+		if (!SaveOneEA3(&buf[0], &buf[nCnt-1], nStart)) {
+			return false;
+		}
+		return true;
+	}
+
+    // don't exit early - we have to restore VRAM!
+	void Go() {
+		//	IDC_CHKHIGHRAM		check
+        //  IDC_CHKCARTMEM      check
+		//	IDC_CHKLOWRAM		check
+		//	IDC_BOOT			text (boot address)
+		//	IDC_CHKEA			check (e/a utilities)
+		//	IDC_CHKCHARSET		check (load charset) (save through VDP only)
+		//	IDC_CHKCHARA1		check (use CHARA1) (save through VDP only)
+        char backup[256];
+
+        try {
+            // backup the VRAM we're using to interact with the disk system
+            memcpy(backup, &VDP[fi.DataBuffer], 255);
+		
+            // set up just enough disk interface to work
+            fi.bDirty = true;
+            fi.bFree = false;
+            fi.bOpen = false;
+            fi.CharCount = 0;
+            fi.csName = opt.FileName;
+            fi.csOptions = "";
+            fi.FileType = 0;    // display/fixed
+            fi.ImageType = IMAGE_TIFILES;
+            fi.LastError = 0;
+            fi.nCurrentRecord = 0;
+            fi.nDrive = -1;     // this will crash if we call a function that needs it!!
+            fi.nIndex = -1;
+            fi.nLocalData = 0;
+            fi.RecordLength = 80;
+            fi.RecordNumber = 0;
+            fi.RecordsPerSector = 256/80;   // should be 4
+            fi.ScreenOffset = 0;
+            fi.Status = 0;
+            // data that may change
+            fi.BytesInLastSector = 0;
+            fi.DataBuffer = 0;      // VDP 0
+		    fi.nDataSize = (100) * (fi.RecordLength + 2);
+		    fi.pData = (unsigned char*)malloc(fi.nDataSize);
+            fi.LengthSectors = 0;
+            fi.NumberRecords = 0;
+
+		    // Now from the beginning of that block to the PC, if any
+            bFirst = true;
+			// now the low block, if any
+			if (opt.EndLow) {
+				if (!DoOneLoop(opt.StartLow, opt.EndLow)) {
+    				throw std::invalid_argument("Save block failed");
+				}
+			}
+            // now the cart block, if any
+			if (opt.EndMid) {
+				if (!DoOneLoop(opt.StartMid, opt.EndMid)) {
+    				throw std::invalid_argument("Save block failed");
+				}
+			}
+			// now the high block, if any
+			if (opt.EndHigh) {
+				if (!DoOneLoop(opt.StartHigh, opt.EndHigh)) {
+    				throw std::invalid_argument("Save block failed");
+				}
+			}
+
+            // now the autostart tag, if defined
+            if (opt.Boot) {
+                char buf[81];
+                sprintf(buf, "1%04X", opt.Boot);
+                finishLine(buf);
+            }
+
+            // and lastly, the end of file tag
+            // this will add a checksum, but that's ok
+            {
+                char buf[81];
+                strcpy(buf, ":Classic99 File Dump - ");
+                finishLine(buf);
+            }
+
+            // now the file is stored in our file object, we just need to ask
+            // fiadDisk to write it out
+            dsk.Flush(&fi);
+
+        }
+        catch(std::invalid_argument &) {
+    		MessageBox(hwnd, "An error occurred writing E/A#3 files, see debug for details.", "Error occurred.", MB_OK | MB_ICONERROR);
+        }
+
+        // then restore VRAM
+        memcpy(&VDP[fi.DataBuffer], backup, 255);
+
+		return;
+	}
+
+private:
+	HWND hwnd;
+	struct options opt;
+    FiadDisk dsk;               // temporary disk object for write
+    FileInfo fi;
+    bool bFirst;
+    int nLine;
+};
 
 
 // Same as for EA#5, except that this version copies the data and writes the startup
@@ -1010,6 +1283,7 @@ const unsigned char Make379Copy::cpyVDPRegs[] = {
 
 // The same as CopyCart, but this one stores its data in GROM. Straight up replacement
 // of my old MakeCart program, should support all listed options.
+// Now also lets you save cart space for Supercart/minimem programs
 class MakeGromCopy {
 public:
 	static const unsigned char hdr[54];
@@ -1097,6 +1371,7 @@ public:
 	void Go() {
 		// Options supported:
 		// StartHigh, EndHigh;
+		// StartMid, EndMid;
 		// StartLow, EndLow;
 		// StartVDP, EndVDP;
 		// Boot;
@@ -1177,6 +1452,9 @@ public:
 		}
 		if (opt.EndHigh != 0) {
 			CopyGromMemory(opt.StartHigh, opt.EndHigh, false);
+		}
+		if (opt.EndMid != 0) {
+			CopyGromMemory(opt.StartMid, opt.EndMid, false);
 		}
 		if (opt.EndLow != 0) {
 			CopyGromMemory(opt.StartLow, opt.EndLow, false);
@@ -1325,6 +1603,7 @@ const unsigned char MakeGromCopy::Finish[] = {
 // an arbitrary PC. The header.bin code will need to be updated with this new
 // assumption. This always saves all 16k of VRAM and prepends the loader, both
 // banks should include startup code to jump to the right bank and start copying.
+// TODO: opt.bCharA1 needs to overwrite the character set if selected, I meant for it
 class MakeBasicCopy {
 public:
 	MakeBasicCopy(HWND in_hwnd, struct options in_opt) {
@@ -1482,8 +1761,8 @@ public:
     		fwrite(buf1, 1, 8192, fp);
 	    	fwrite(buf2, 1, 8192, fp);
         } else {
-    		fwrite(buf1, 1, 8192, fp);
-	    	fwrite(buf2, 1, 8192, fp);
+    		fwrite(buf2, 1, 8192, fp);
+	    	fwrite(buf1, 1, 8192, fp);
         }
 		fclose(fp);
 	}
@@ -1506,7 +1785,7 @@ public:
 		//  data range is stored in HighStart to HighEnd
 		//  (but is expected to be >6000 to >7FFF). No other
 		//  options are valid.
-		char buf[8192];
+		unsigned char buf[8192];
 
 		FILE *fp=fopen(opt.FileName, "wb");
 		if (NULL == fp) {
@@ -1520,7 +1799,7 @@ public:
 		for (Word idx = opt.StartHigh; idx<=opt.EndHigh; idx++) {
 			int pos = idx - opt.StartHigh;
 			if (pos >= 8192) break;
-			buf[pos] = ReadMemoryByte(idx, 0);
+			buf[pos] = ReadMemoryByte(idx, ACCESS_FREE);
 		}
 		fwrite(buf, 1, 8192, fp);
 		fclose(fp);
@@ -1537,6 +1816,10 @@ void SetDefaultEnables(HWND hwnd) {
 	EnableDlgItem(hwnd, IDC_CHKHIGHRAM, TRUE);
 	EnableDlgItem(hwnd, IDC_HIGHSTART, FALSE);
 	EnableDlgItem(hwnd, IDC_HIGHEND, FALSE);
+	SendDlgItemMessage(hwnd, IDC_CHKCARTMEM, BM_SETCHECK, BST_UNCHECKED, 0);
+	EnableDlgItem(hwnd, IDC_CHKCARTMEM, FALSE);
+	EnableDlgItem(hwnd, IDC_MIDSTART, FALSE);
+	EnableDlgItem(hwnd, IDC_MIDEND, FALSE);
 	SendDlgItemMessage(hwnd, IDC_CHKLOWRAM, BM_SETCHECK, BST_UNCHECKED, 0);
 	EnableDlgItem(hwnd, IDC_CHKLOWRAM, TRUE);
 	EnableDlgItem(hwnd, IDC_LOWSTART, FALSE);
@@ -1571,6 +1854,10 @@ void DisableAll(HWND hwnd) {
 	EnableDlgItem(hwnd, IDC_CHKHIGHRAM, FALSE);
 	EnableDlgItem(hwnd, IDC_HIGHSTART, FALSE);
 	EnableDlgItem(hwnd, IDC_HIGHEND, FALSE);
+	SendDlgItemMessage(hwnd, IDC_CHKCARTMEM, BM_SETCHECK, BST_UNCHECKED, 0);
+	EnableDlgItem(hwnd, IDC_CHKCARTMEM, FALSE);
+	EnableDlgItem(hwnd, IDC_MIDSTART, FALSE);
+	EnableDlgItem(hwnd, IDC_MIDEND, FALSE);
 	SendDlgItemMessage(hwnd, IDC_CHKLOWRAM, BM_SETCHECK, BST_UNCHECKED, 0);
 	EnableDlgItem(hwnd, IDC_CHKLOWRAM, FALSE);
 	EnableDlgItem(hwnd, IDC_LOWSTART, FALSE);
@@ -1626,8 +1913,7 @@ bool LooksLikeC99(int ad) {
 	return false;
 }
 
-BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	static bool bWasBasic = FALSE;
+INT_PTR CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	char buf[256];
 
     switch (uMsg) 
@@ -1659,7 +1945,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						}
 						break;
 
-					case IDC_MODIFIEDLOW:
+                    case IDC_MODIFIEDLOW:
 						if (BST_CHECKED == SendDlgItemMessage(hwnd, IDC_CHKLOWRAM, BM_GETCHECK, 0, 0)) {
 							int nFirst=0x2000, nLast=0x2000;
 							for (int i = 0x2000; i <= 0x3fff; i++) {
@@ -1742,7 +2028,40 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								}
 							}
 
-							if (BST_CHECKED == SendDlgItemMessage(hwnd, IDC_CHKLOWRAM, BM_GETCHECK, 0, 0)) {
+							if (BST_CHECKED == SendDlgItemMessage(hwnd, IDC_CHKCARTMEM, BM_GETCHECK, 0, 0)) {
+								SendDlgItemMessage(hwnd, IDC_MIDSTART, WM_GETTEXT, 256, (LPARAM)buf);
+								x = 0;
+								sscanf(buf, "%x", &x);
+								if ((x<0x4000)||(x>0x7fff)) {
+									MessageBox(hwnd, "Cart mem addresses must be in the range 4000-7FFF", "Out of Range", MB_OK | MB_ICONSTOP);
+									break;
+								}
+								if (x&0x01) {
+									MessageBox(hwnd, "Cart mem start addresses must be even", "Out of Range", MB_OK | MB_ICONSTOP);
+									break;
+								}
+								opt.StartMid = x;
+
+								SendDlgItemMessage(hwnd, IDC_MIDEND, WM_GETTEXT, 256, (LPARAM)buf);
+								x = 0;
+								sscanf(buf, "%x", &x);
+								if ((x<0x4000)||(x>0x7fff)) {
+									MessageBox(hwnd, "Cart mem addresses must be in the range 4000-7FFF", "Out of Range", MB_OK | MB_ICONSTOP);
+									break;
+								}
+								if (!(x&0x01)) {
+									MessageBox(hwnd, "Cart mem end addresses must be odd", "Out of Range", MB_OK | MB_ICONSTOP);
+									break;
+								}
+								opt.EndMid = x;
+
+								if (opt.EndMid < opt.StartMid) {
+									MessageBox(hwnd, "Cart mem addresses must be specified as low to high", "Bad Order", MB_OK | MB_ICONSTOP);
+									break;
+								}
+							}
+
+                            if (BST_CHECKED == SendDlgItemMessage(hwnd, IDC_CHKLOWRAM, BM_GETCHECK, 0, 0)) {
 								SendDlgItemMessage(hwnd, IDC_LOWSTART, WM_GETTEXT, 256, (LPARAM)buf);
 								x = 0;
 								sscanf(buf, "%x", &x);
@@ -1809,7 +2128,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								opt.EndHigh = 0x7FFF;
 							}
 
-							if ((opt.EndHigh == 0) && (opt.EndLow == 0) && (opt.EndVDP == 0)) {
+							if ((opt.EndHigh == 0) && (opt.EndMid ==0) && (opt.EndLow == 0) && (opt.EndVDP == 0)) {
 								MessageBox(hwnd, "No memory ranges selected for saving.", "Inconsistency", MB_OK | MB_ICONSTOP);
 								break;
 							}
@@ -1821,7 +2140,14 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							if ((opt.StartHigh!=0)&&(x>=opt.StartHigh)&&(x<=opt.EndHigh)) {
 								opt.Boot = x;
 							}
+							if ((opt.StartMid!=0)&&(x>=opt.StartMid)&&(x<=opt.EndMid)) {
+								opt.Boot = x;
+							}
 							if ((opt.StartLow!=0)&&(x>=opt.StartLow)&&(x<=opt.EndLow)) {
+								opt.Boot = x;
+							}
+							if (x == 0x0070) {
+								// start in GPL, ie for TI BASIC
 								opt.Boot = x;
 							}
 							if (opt.Boot == 0) {
@@ -1833,17 +2159,20 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 								} else if (nOption == 3) {
 									// TI BASIC has a fixed boot address
 									opt.Boot = x;
-								} else if (nOption == 4) {
+								} else if ((x==0) && ((nOption == 4)||(nOption == 5))) {
 									// cartridge ROMs have their own header, user is responsible for this being right
-								} else {
-									MessageBox(hwnd, "Boot address must be in either the high or low memory range.", "Out of Range", MB_OK | MB_ICONSTOP);
+                                    // EA#3 doesn't have to specify a boot address
+                                } else {
+									MessageBox(hwnd, "Boot address must be in one of the saved memory ranges.", "Out of Range", MB_OK | MB_ICONSTOP);
 									break;
 								}
 							}
-
+                            if (nOption == 5) {
+                                // EA#3: nothing here either - boot address is legal but may be disabled
+							}
 							buf[0]='\0';
 							// only E/A and cart rom don't need a cartridge name
-							if ((0 != nOption) && (4 != nOption)) {
+							if ((0 != nOption) && (4 != nOption) && (5 != nOption)) {
 								SendDlgItemMessage(hwnd, IDC_NAME, WM_GETTEXT, 256, (LPARAM)buf);
 								buf[255]='\0';
 								if ((strlen(buf) < 1) || (strlen(buf) > 20)) {
@@ -1976,6 +2305,13 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 									}
 									break;
 
+								case 5:		// E/A #3
+									{
+										MakeEA3Class cEA3(hwnd, opt);;
+										cEA3.Go();
+									}
+									break;
+
 								default:
 									MessageBox(hwnd, "Memory save type not selected.", "Out of Range", MB_OK | MB_ICONSTOP);
 									break;
@@ -2067,7 +2403,17 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						}
 						break;
 
-					case IDC_CHKLOWRAM:
+					case IDC_CHKCARTMEM:
+						if (BST_CHECKED == SendDlgItemMessage(hwnd, LOWORD(wParam), BM_GETCHECK, 0, 0)) {
+							EnableDlgItem(hwnd, IDC_MIDSTART, TRUE);
+							EnableDlgItem(hwnd, IDC_MIDEND, TRUE);
+						} else {
+							EnableDlgItem(hwnd, IDC_MIDSTART, FALSE);
+							EnableDlgItem(hwnd, IDC_MIDEND, FALSE);
+						}
+						break;
+
+                    case IDC_CHKLOWRAM:
 						if (BST_CHECKED == SendDlgItemMessage(hwnd, LOWORD(wParam), BM_GETCHECK, 0, 0)) {
 							EnableDlgItem(hwnd, IDC_LOWSTART, TRUE);
 							EnableDlgItem(hwnd, IDC_LOWEND, TRUE);
@@ -2264,12 +2610,11 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 					int nIdx = SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_GETCURSEL, 0, 0);
 					switch (nIdx) {
-						case 0:		// enable/disable for E/A
-							if (bWasBasic) {
-								bWasBasic = FALSE;
-								SetDefaultEnables(hwnd);
-							}
-							EnableDlgItem(hwnd, IDC_VDPREGS, FALSE);
+						case 0:		// enable/disable for E/A#5
+							SetDefaultEnables(hwnd);
+
+                            EnableDlgItem(hwnd, IDC_CHKCARTMEM, TRUE);
+                            EnableDlgItem(hwnd, IDC_VDPREGS, FALSE);
 							EnableDlgItem(hwnd, IDC_NAME, FALSE);
 							EnableDlgItem(hwnd, IDC_KEYBOARD, FALSE);
 							EnableDlgItem(hwnd, IDC_GROM8K, FALSE);
@@ -2280,11 +2625,9 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							break;
 
 						case 1:		// enable/disable for 379
-							if (bWasBasic) {
-								bWasBasic = FALSE;
-								SetDefaultEnables(hwnd);
-							}
-							EnableDlgItem(hwnd, IDC_VDPREGS, TRUE);
+							SetDefaultEnables(hwnd);
+
+                            EnableDlgItem(hwnd, IDC_VDPREGS, TRUE);
 							EnableDlgItem(hwnd, IDC_NAME, TRUE);
 							EnableDlgItem(hwnd, IDC_KEYBOARD, TRUE);
 							EnableDlgItem(hwnd, IDC_GROM8K, FALSE);
@@ -2296,11 +2639,10 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							break;
 
 						case 2:		// enable/disable for GROM
-							if (bWasBasic) {
-								bWasBasic = FALSE;
-								SetDefaultEnables(hwnd);
-							}
-							EnableDlgItem(hwnd, IDC_VDPREGS, TRUE);
+							SetDefaultEnables(hwnd);
+
+                            EnableDlgItem(hwnd, IDC_CHKCARTMEM, TRUE);
+                            EnableDlgItem(hwnd, IDC_VDPREGS, TRUE);
 							EnableDlgItem(hwnd, IDC_NAME, TRUE);
 							EnableDlgItem(hwnd, IDC_KEYBOARD, TRUE);
 							EnableDlgItem(hwnd, IDC_GROM8K, TRUE);
@@ -2314,7 +2656,6 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 						case 3:		// enable/disable for BASIC 379
 							{
 								DisableAll(hwnd);
-								bWasBasic = TRUE;
 								EnableDlgItem(hwnd, IDC_NAME, TRUE);
 								EnableDlgItem(hwnd, IDC_CHKCHARA1, TRUE);
 								EnableDlgItem(hwnd, IDC_DISABLEF4, TRUE);
@@ -2344,7 +2685,6 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							break;
 
 						case 4:		// raw cart rom dump (nothing set up automatically for you)
-							bWasBasic = TRUE;		// makes others re-call SetDefaultEnables ;)
 							SetDefaultEnables(hwnd);
 
 							EnableDlgItem(hwnd, IDC_CHKHIGHRAM, FALSE);
@@ -2360,6 +2700,24 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 							EnableDlgItem(hwnd, IDC_MODIFIEDVRAM, FALSE);
 							break;
 
+						case 5:		// enable/disable for E/A#3
+							SetDefaultEnables(hwnd);
+
+                            // disable autoboot by default
+                            SendDlgItemMessage(hwnd, IDC_BOOT, WM_SETTEXT, 0, (LPARAM)"0");
+
+	                        EnableDlgItem(hwnd, IDC_CHKEA, FALSE);
+	                        EnableDlgItem(hwnd, IDC_CHKCHARSET, FALSE);
+							EnableDlgItem(hwnd, IDC_CHKVDPRAM, FALSE);
+							EnableDlgItem(hwnd, IDC_VDPREGS, FALSE);
+							EnableDlgItem(hwnd, IDC_NAME, FALSE);
+							EnableDlgItem(hwnd, IDC_KEYBOARD, FALSE);
+							EnableDlgItem(hwnd, IDC_GROM8K, FALSE);
+							EnableDlgItem(hwnd, IDC_DISABLEF4, FALSE);
+							EnableDlgItem(hwnd, IDC_LSTFIRSTGROM, FALSE);
+							EnableDlgItem(hwnd, IDC_BTNREADDEFS, TRUE);
+							EnableDlgItem(hwnd, IDC_INVERTBANKS, FALSE);
+							break;
 					}
 				}
 			}
@@ -2367,8 +2725,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 		case WM_INITDIALOG:
 			SetDefaultEnables(hwnd);
-			bWasBasic = FALSE;
-			gDisableDebugKeys = true;		// don't allow global debug keys in emu (override scroll lock)
+			gDisableDebugKeys = true;		// don't allow global debug keys in emu
 
 			sprintf(buf, "%04X", pCurrentCPU->GetPC());
 			SendDlgItemMessage(hwnd, IDC_BOOT, WM_SETTEXT, 0, (LPARAM)buf);
@@ -2379,6 +2736,7 @@ BOOL CALLBACK CartDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"GROM Copy");
 			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"TI BASIC Restore");
 			SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"ROM Cart dump");
+            SendDlgItemMessage(hwnd, IDC_LSTSAVETYPE, CB_ADDSTRING, 0, (LPARAM)"E/A #3");
 
 			SendDlgItemMessage(hwnd, IDC_LSTFIRSTGROM, CB_ADDSTRING, 0, (LPARAM)"0 (Console)");
 			SendDlgItemMessage(hwnd, IDC_LSTFIRSTGROM, CB_ADDSTRING, 0, (LPARAM)"1 (TI BASIC)");

@@ -66,15 +66,15 @@ HWND hBugWnd = NULL;
 
 extern HWND myWnd;
 extern int nCurrentDSR;
-extern Byte rcpubyte(Word x,bool rmw);
-extern Word romword(Word x, bool rmw);
+extern Byte rcpubyte(Word x,READACCESSTYPE rmw);
+extern Word romword(Word x, READACCESSTYPE rmw);
 extern void wcpubyte(Word x, Byte c);
 extern void wcru(Word ad, int bt);
 extern int rcru(Word ad);
 extern void DoPlay();
 extern void DoPause();
 
-BOOL CALLBACK Bug99Proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK Bug99Proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 void InitBug99() {
 	if (NULL == hBugWnd) {
@@ -84,7 +84,7 @@ void InitBug99() {
 
 // this many messages from Bug99 without changing state probably
 // means we need to go back to the default command mode (slave does this too, but uses time)
-BOOL CALLBACK Bug99Proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK Bug99Proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	int nResult = 0;
 
 	// nothing fancy here

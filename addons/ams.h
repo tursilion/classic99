@@ -77,11 +77,12 @@ void EnableMapperRegisters(bool enable);
 bool MapperRegistersEnabled();
 
 /* Read/Write a value to the mapper register */
-void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte);
+void WriteMapperRegisterByte(Byte reg, Byte value, bool highByte, bool force);
 Byte ReadMapperRegisterByte(Byte reg, bool highByte);
 
 /* Read/Write a single byte to AMS/SAMS memory */
-Byte ReadMemoryByte(Word address, bool bTrueAccess = true);
+Byte ReadRawAMS(int address);
+Byte ReadMemoryByte(Word address, READACCESSTYPE rmw = ACCESS_READ);
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
 
 /* Read/Write a block of data to AMS/SAMS memory */

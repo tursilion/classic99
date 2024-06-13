@@ -91,13 +91,13 @@ public:		// type protection later. Make work today.
 	/////////////////////////////////////////////////////////////////////
 	virtual Byte RCPUBYTE(Word src);
 	virtual void WCPUBYTE(Word dest, Byte c);
-	virtual Word ROMWORD(Word src, bool rmw);
+	virtual Word ROMWORD(Word src, READACCESSTYPE rmw);
 	virtual void WRWORD(Word dest, Word val);
 
 	virtual Word GetSafeWord(int x, int bank);
 	virtual Byte GetSafeByte(int x, int bank);
 
-	virtual	void TriggerInterrupt(Word vector);
+	virtual	void TriggerInterrupt(Word vector, Byte level);
 
 	void post_inc(int nWhich);
 
@@ -232,6 +232,14 @@ public:		// type protection later. Make work today.
 	// not an opcode - illegal opcode handler
 	void op_bad();
 
+	// debug only opcodes, enabled with enableDebugOpcodes
+	void op_norm();
+	void op_ovrd();
+	void op_smax();
+	void op_brk();
+	void op_dbg();
+	void op_quit();
+
 	// F18 specific versions of opcodes (here to make the function pointers work better)
 	void op_idleF18();
 	void op_callF18();
@@ -249,7 +257,7 @@ public:		// type protection later. Make work today.
 	////////////////////////////////////////////////////////////////////////
 	// Fill the CPU Opcode Address table
 	////////////////////////////////////////////////////////////////////////
-	void buildcpu();
+	virtual void buildcpu();
 	void opcode0(Word in);
 	void opcode02(Word in);
 	void opcode03(Word in);
@@ -270,15 +278,16 @@ class GPUF18A:public CPU9900 {
 public:		// type protection later. Make work today.
 	GPUF18A();
 	void reset() override;
+	void buildcpu() override;
 
 	/////////////////////////////////////////////////////////////////////
 	// Wrapper functions for memory access
 	/////////////////////////////////////////////////////////////////////
 	Byte RCPUBYTE(Word src) override;
 	void WCPUBYTE(Word dest, Byte c) override;
-	Word ROMWORD(Word src, bool rmw) override;
+	Word ROMWORD(Word src, READACCESSTYPE rmw) override;
 	void WRWORD(Word dest, Word val) override;
-	void TriggerInterrupt(Word vector) override;
+	void TriggerInterrupt(Word vector, Byte level) override;
 	
 	Word GetSafeWord(int x, int bank) override;
 	Byte GetSafeByte(int x, int bank) override;

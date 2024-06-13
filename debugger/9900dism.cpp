@@ -22,10 +22,108 @@
 // Modified by Tursi for Classic99 
 #include <stdio.h>
 #include <windows.h>
+#include <map>
+#include <string>
 
 #include "tiemul.h"
 #include "cpu9900.h"
 #include "..\addons\ams.h"
+
+// config value for the Classic99 debug opcodes
+extern int enableDebugOpcodes;
+
+// internal symbol table
+std::map<int,std::string> Symbols;
+
+// parse a symbol table - we recognize two forms
+// ONE: from WinAsm99 (and presumably TI Editor/Assembler)
+//		Starting with "------ Symbol Listing ------"
+//		One symbol per line consisting of 6 characters, a 3 character type, colon, and 4 digit address
+//		A WinAsm99 extension adds the full label name after this - use that if present
+//		We only import "ABS" type and we ignore values of 15 or less (These are usually registers)
+//
+// TWO: From GCC map file
+//		A line has 16 spaces followed by 0x and 12 zeros (for TI)
+//		Next are 4 bytes of address, then 16 more spaces, then the label
+//		We ignore the header lines.
+void ImportMapFile(const char *fn) {
+	FILE *fp;
+
+	Symbols.clear();
+
+	fp = NULL;
+	fopen_s(&fp, fn, "r");
+	if (NULL == fp) {
+		debug_write("Failed to open map file.");
+		return;
+	}
+	// we won't even track type, we'll just check if a line is something we think we recognize...
+	while (!feof(fp)) {
+		char buf[255];
+		memset(buf, 0, sizeof(buf));
+		if (NULL == fgets(buf, sizeof(buf), fp)) break;
+		// check WinAsm list file
+		if (0 == strncmp(&buf[7], " ABS:", 5)) {
+			// looks like it
+			int adr;
+			std::string str;
+
+			if (1 == sscanf(&buf[12],"%X",&adr)) {
+				// gonna call that good
+				if (strlen(buf) > 16) {
+					// grab the extended name
+					str = &buf[17];
+					while ((!str.empty()) && (str.back() < ' ')) {
+						str = str.substr(0, str.length()-1);
+					}
+					if ((!str.empty())&&(!isalpha(str[0]))) {
+						str.clear();
+					}
+				}
+				if (str.empty()) {
+					// grab the EA name
+					buf[7]='\0';
+					str = &buf[1];
+					if ((!str.empty())&&(!isalpha(str[0]))) {
+						str.clear();
+					}
+				}
+				// filter out register equates
+				if (adr < 16) str.clear();
+
+				if (!str.empty()) {
+					Symbols.emplace(std::make_pair(adr, str));
+					debug_write("SYMBOL: %s - %04X", str.c_str(), adr);
+				}
+			}
+		} else if (0 == strncmp(buf, "                0x000000000000", 30)) {
+			// might be a GCC map line
+			int adr;
+			std::string str;
+
+			if (1 == sscanf(&buf[30],"%X",&adr)) {
+				// gonna call that good
+				str = &buf[50];
+				while ((!str.empty()) && (str.back() < ' ')) {
+					str = str.substr(0, str.length()-1);
+				}
+				// filter out register equates
+				if (adr < 16) str.clear();
+				// filter out informational tags
+				if (str.substr(0,9) == "PROVIDE (") str.clear();
+				if (str.substr(0,6) == ". = 0x") str.clear();
+				if (str.substr(0,8) == "_end = .") str.clear();
+
+				if (!str.empty()) {
+					Symbols.emplace(std::make_pair(adr, str));
+					debug_write("SYMBOL: %s - %04X", str.c_str(), adr);
+				}
+			}
+		}
+	}
+	fclose(fp);
+	debug_write("Read %d symbols.", Symbols.size());
+}
 
 // Although no longer used by the disassembler -- the debugger still uses these "safe" functions.
 Word GetSafeCpuWord(int x, int bank) {
@@ -40,13 +138,13 @@ Byte GetSafeCpuByte(int x, int bank) {
 	switch (x & 0xe000) {
 	case 0x8000:
 		if ((x & 0xfc00)==0x8000) {						// scratchpad RAM - 256 bytes repeating.
-			return ReadMemoryByte(x|0x0300, false);		// I map it all to >83xx
+			return ReadMemoryByte(x|0x0300, ACCESS_FREE);		// I map it all to >83xx
 		}
 		break;
 	
 	case 0x4000:										// DSR ROM (with bank switching and CRU)
 		if (ROMMAP[x]) {
-			return ReadMemoryByte(x, false);
+			return ReadMemoryByte(x, ACCESS_FREE);
 		}
 		
 		if (-1 == nCurrentDSR) {
@@ -70,12 +168,12 @@ Byte GetSafeCpuByte(int x, int bank) {
             }
 			return(CPU2[(bank<<13)+(x-0x6000)]);		// cartridge bank 2
 		} else {
-			return ReadMemoryByte(x, false);			// cartridge bank 1
+			return ReadMemoryByte(x, ACCESS_FREE);			// cartridge bank 1
 		}
 		break;
 	}
 
-	return ReadMemoryByte(x, false);
+	return ReadMemoryByte(x, ACCESS_FREE);
 }
 
 extern CPU9900 * volatile pCurrentCPU;
@@ -107,6 +205,8 @@ enum opcodes {
 	_limi,	_stst,	_stwp,	_rtwp,	_idle,	_rset,	_ckof,	_ckon,	_lrex,	_ill,
 	// additional opcodes for the F18A (mb)
 	_spi_en, _spi_ds, _spi_out, _spi_in, _pix,	_call,  _ret,   _push,  _pop,   _slc,
+	// debugger opcodes
+	_c99_norm, _c99_ovrd, _c99_smax, _c99_brk, _c99_quit, _c99_dbg,
 };
 
 
@@ -121,6 +221,7 @@ static const char *token[]=
 	"limi",	"stst",	"stwp",	"rtwp",	"idle",	"rset",	"ckof",	"ckon",	"lrex", "ill",
 	// F18A
 	"spie", "spid", "spio", "spii", "pix",  "call", "ret",  "push", "pop",  "slc",
+	"c99norm","c99ovrd","c99smax","c99brk","c99dbg"
 };
 
 
@@ -200,12 +301,32 @@ static const enum opcodes ops6to10[64]=
 	_ill,	_ill,	_idle,	_ill,	_rtwp,	_spi_en,_spi_ds,_ill	/*11000-11111*/
 };
 
-
 static int myPC;
+
+// look up an address in the symbol map - not thread or multi-call safe! only one return per statement.
+const char *adr2string(int base) {
+	static char ret[128];
+	std::string str;
+
+	auto fnd = Symbols.find(base);
+	if (fnd == Symbols.end()) {
+		str.clear();
+	} else {
+		str = fnd->second;
+	}
+
+	if (!str.empty()) {
+		snprintf(ret, sizeof(ret), "[%s]", str.c_str());
+	} else {
+		ret[0] = '\0';
+	}
+
+	return ret;
+}
 
 static char *print_arg (int mode, int arg, int bank)
 {
-	static char temp[20];
+	static char temp[128];
 	int	base;
 
 	switch (mode)
@@ -219,9 +340,9 @@ static char *print_arg (int mode, int arg, int bank)
 		case 0x2:	/* symbolic|indexed */
 			base = RDWORD(myPC, bank); myPC+=2;
 			if (arg) 	/* indexed */
-				sprintf (temp, "@>%04x(R%d)", base, arg);
+				sprintf (temp, "@>%04x%s(R%d)", base, adr2string(base), arg);
 			else		/* symbolic (direct) */
-				sprintf (temp, "@>%04x", base);
+				sprintf (temp, "@>%04x%s", base, adr2string(base));
 			break;
 		case 0x3:	/* workspace register indirect auto increment */
 			sprintf (temp, "*R%d+", arg);
@@ -249,7 +370,40 @@ int Dasm9900 (char *buffer, int pc, int bank)
 		offset=0;
 	}
 
-	if ((opc = ops0to3[BITS_0to3+offset]) != _ill)
+	// classic99 opcodes have no addressing modes per sae
+	if ((enableDebugOpcodes) && (OP >= 0x0110) && (OP <= 0x0114)) {
+		// debugger opcode
+		switch (OP) {
+			case 0x0110: sprintf(buffer, "c99_norm"); break;
+			case 0x0111: sprintf(buffer, "c99_ovrd"); break;
+			case 0x0112: sprintf(buffer, "c99_smax"); break;
+			case 0x0113: sprintf(buffer, "c99_brk");  break;
+			case 0x0114: sprintf(buffer, "c99_quit");  break;
+			case 0x0120:
+			case 0x0121:
+			case 0x0122:
+			case 0x0123:
+			case 0x0124:
+			case 0x0125:
+			case 0x0126:
+			case 0x0127:
+			case 0x0128:
+			case 0x0129:
+			case 0x012a:
+			case 0x012b:
+			case 0x012c:
+			case 0x012d:
+			case 0x012e:
+			case 0x012f:
+			{
+				// dbg sequence is 012r,1001,adr
+				int jmp = RDWORD(myPC, bank); myPC += 2;
+				int adr = RDWORD(myPC, bank); myPC += 2;
+				sprintf(buffer, "c99_dbg(%d) >%04x,R%d", jmp - 0x1000, adr, OP&0xf);
+			}
+			break;
+		}
+	} else if ((opc = ops0to3[BITS_0to3+offset]) != _ill)
 	{
 		smode = OPBITS(10,11);
 		sarg = OPBITS(12,15);
@@ -334,7 +488,7 @@ int Dasm9900 (char *buffer, int pc, int bank)
 				darg = OPBITS(12,15);
 				sarg = RDWORD(myPC, bank); myPC+=2;
 
-				sprintf (buffer, "%-4s R%d,>%04x", token[opc], darg, sarg);
+				sprintf (buffer, "%-4s R%d,>%04x%s", token[opc], darg, sarg, adr2string(sarg));
 				break;
 			case _lwpi: case _limi:
 				sarg = RDWORD(myPC, bank); myPC+=2;
@@ -352,7 +506,7 @@ int Dasm9900 (char *buffer, int pc, int bank)
 		}
 	}
 	else
-		sprintf (buffer, "data >%04x", OP);
+		sprintf (buffer, "data >%04x%s", OP, adr2string(OP));
 
 	return myPC - pc;
 }

@@ -108,6 +108,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <OmitFramePointers>true</OmitFramePointers>
       <WholeProgramOptimization>true</WholeProgramOptimization>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -163,6 +164,7 @@
       <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <OpenMPSupport>false</OpenMPSupport>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -217,6 +219,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="addons\loadsave_brk.cpp" />
+    <ClCompile Include="addons\screenReader.cpp" />
     <ClCompile Include="addons\SDCard.cpp" />
     <ClCompile Include="addons\ubergrom.cpp" />
     <ClCompile Include="console\ay8912.cpp" />
@@ -294,8 +297,10 @@
     <ClCompile Include="ubercombined.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="addons\diff.h" />
     <ClInclude Include="addons\F18A.h" />
     <ClInclude Include="addons\loadsave_brk.h" />
+    <ClInclude Include="addons\screenReader.h" />
     <ClInclude Include="addons\SDCard.h" />
     <ClInclude Include="addons\ubergrom.h" />
     <ClInclude Include="console\cpu9900.h" />

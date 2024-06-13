@@ -36,6 +36,8 @@
 // http://harmlesslion.com - visit the web page for contact info
 //
 
+#include <dsound.h>
+
 typedef unsigned __int8 UINT8;
 typedef unsigned __int8 Byte;
 typedef unsigned __int16 Word;

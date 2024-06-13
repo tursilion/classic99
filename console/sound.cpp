@@ -1,3 +1,26 @@
+/*
+From Matt - check this decrement:
+[2:15 PM] dnotq: The counters don't consider the 0-count as it's own state.  It was very interesting that I literally took the AY up-counters, changed them to count down (changed ++ to -), and changed the reset when count >= period condition to load-period when count = 0, and they just worked.
+[2:16 PM] dnotq: It took me a while to realize this, since when you mentioned 0-count is maximum period, that threw me for a bit.
+[2:17 PM] tursilion: yeah, I said that. But I think the SN was the first and everyone else cloned them ;)
+[2:17 PM] dnotq: But the "compare-to-0 and load" is done during the period of the count.  Easier to show than to explain in English.
+[2:18 PM] dnotq: It was just neat to see the same mechanism work in both directions.  Everyone else is loading the count - 1 and crap like that into their counters, or making special cases for the 0 count, etc.
+[2:19 PM] tursilion: huh, weird. I don't understand your "during the period of the count" bit, as you implied ;)
+[2:21 PM] dnotq: It means that the reset-and-count happens in the same time period as a single count.  So when you hit zero, the period is loaded, then decremented immediately.  So the counter being "zero" is never try for a full count period.
+[2:21 PM] dnotq: This is what allows a count of 1 to actually cut the frequency in half.
+[2:22 PM] dnotq: If zero was true for a full count cycle, a count of one would be: 1, 0 (toggle), 1, 0 (toggle).  And that is actually a divide by 2.
+[2:26 PM] dnotq: It is done in the real IC via the asynchronous nature of the transistors, and the way any signal transition can be a clock, set, or reset signal.  But I reproduced the functionality in synchronous HDL and the counters just work as they should.  No special tests, edge cases, loading or comparing period-1, etc.
+[2:27 PM] tursilion: ah, I see. That makes sense :) I should check if Classic99 does that right
+*/
+
+// Real TI testing on wait states:
+// I got times of 6.96, 7.36 and 9.36 us of active time on the sound chip WE pin. 
+// Semi-random, though 7.36 was notably less common. Need to check the waveforms but
+// that'll largely correspond to the hold time from the sound chip plus the multiplexer.
+// That does mean the hold time in cycles might not be fixed? A cycle is 0.3uS, so that's
+// 20.88 cycles, 22.08 cycles, and 28.08 cycles. I'm using a fixed 28 cycles in TIEMUL.H,
+// so that matches earlier observations, except I didn't notice how much it varied.
+
 // Testing on a real TI:
 // The sound chip itself outputs an always positive sound wave peaking roughly at 2.8v.
 // Output values are roughly 1v peak-to-peak (I measured 0 attenuation at roughly 720mV)
@@ -134,11 +157,18 @@ void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol);       // to reduce up/down
 
 // hack for now - a little DAC buffer for cassette ticks and CPU modulation
 // fixed size for now
+extern bool enableBackgroundHum;
+extern double CRU_TOGGLES;
 extern double nDACLevel;
 unsigned char dac_buffer[1024*1024];
 int dac_pos = 0;
 double dacupdatedistance = 0.0;
 double dacramp = 0.0;       // a little slider to ramp in the DAC volume so it doesn't click so loudly at reset
+
+// more hack for speech to use the sound jitter buffer
+extern INT16 SpeechTmp[SPEECHRATE*2];				// two seconds worth of buffer
+extern int nSpeechTmpPos;
+extern CRITICAL_SECTION csSpeechBuf;
 
 // external debug helper
 void debug_write(char *s, ...);
@@ -165,7 +195,6 @@ CRITICAL_SECTION csAudioBuf;
 
 int nClock = 3579545;					// NTSC, PAL may be at 3546893? - this is divided by 16 to tick
 int nCounter[4]= {0,0,0,1};				// 10 bit countdown timer
-double nOutput[4]={1.0,1.0,1.0,1.0};	// output scale
 int nNoisePos=1;						// whether noise is positive or negative (white noise only)
 unsigned short LFSR=0x4000;				// noise shifter (only 15 bit)
 int nRegister[4]={0,0,0,0};				// frequency registers
@@ -173,7 +202,6 @@ int nVolume[4]={0,0,0,0};				// volume attenuation
 double nFade[4]={1.0,1.0,1.0,1.0};		// emulates the voltage drift back to 0 with FADECLKTICK (TODO: what does this mean with a non-zero center?)
 										// we should test this against an external chip with a clean circuit.
 int max_volume;
-bool noiseTriggered = false;			// this is only used by the log, and only it resets it
 
 // audio
 int AudioSampleRate=22050;				// in hz
@@ -186,6 +214,7 @@ unsigned int CalculatedAudioBufferSize=22080*2;	// round audiosample rate up to 
 // This matches what MAME uses (although MAME shifts the other way ;) )
 int nTappedBits=0x0003;
 
+double nOutput[4]={1.0,1.0,1.0,1.0};	// output scale
 // logarithmic scale (linear isn't right!)
 // the SMS Power example, (I convert below to percentages)
 int sms_volume_table[16]={
@@ -193,6 +222,79 @@ int sms_volume_table[16]={
     5193,  4125,  3277,  2603,  2067,  1642,  1304,     0
 };
 double nVolumeTable[16];
+
+// audio per-frame logging (sound chip only)
+// uses vgmcomp2 PSG per-channel format
+FILE *fp1 = NULL;
+FILE *fp2 = NULL;
+FILE *fp3 = NULL;
+FILE *fp4 = NULL;
+unsigned int noiseFlags = 0;
+const unsigned int NOISE_FLAG_RETRIGGER = 0x00010000;
+const unsigned int NOISE_FLAG_PERIODIC = 0x00100000;
+const unsigned int NOISE_FLAG_CHAN3 = 0x01000000;
+
+void closeAudioLogFiles() {
+	if (NULL != fp1) fclose(fp1);
+	if (NULL != fp2) fclose(fp2);
+	if (NULL != fp3) fclose(fp3);
+	if (NULL != fp4) fclose(fp4);
+	fp1 = NULL;
+	fp2 = NULL;
+	fp3 = NULL;
+	fp4 = NULL;
+}
+
+bool openAudioLogFiles() {
+	// ensure we are creating new files across the board
+	closeAudioLogFiles();
+
+	// todo: support 50hz
+	fp1 = fopen("classic99_ton00.60hz", "w");
+	if (NULL == fp1) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();	// for consistency, but doesn't do anything here... ;)
+		return false;
+	}
+	fp2 = fopen("classic99_ton01.60hz", "w");
+	if (NULL == fp2) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();
+		return false;
+	}
+	fp3 = fopen("classic99_ton02.60hz", "w");
+	if (NULL == fp3) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();
+		return false;
+	}
+	fp4 = fopen("classic99_noi04.60hz", "w");
+	if (NULL == fp4) {
+		MessageBox(myWnd, "Failed to create output file for log.", "Audio log failed", MB_OK|MB_ICONSTOP);
+		closeAudioLogFiles();
+		return false;
+	}
+	return true;
+}
+
+void writeAudioLogState() {
+	// nVolumeTable is a floating representation of the volume, should work well enough
+	// But, because of floats and mappings, might not map 100% back and forth
+	// That's fine for my purposes.
+	if (NULL != fp1) {
+		fprintf(fp1, "0x%08X,0x%02X\n", nRegister[0], (int)(255*nVolumeTable[nVolume[0]]));
+	}
+	if (NULL != fp2) {
+		fprintf(fp2, "0x%08X,0x%02X\n", nRegister[1], (int)(255*nVolumeTable[nVolume[1]]));
+	}
+	if (NULL != fp3) {
+		fprintf(fp3, "0x%08X,0x%02X\n", nRegister[2], (int)(255*nVolumeTable[nVolume[2]]));
+	}
+	if (NULL != fp4) {
+		fprintf(fp4, "0x%08X,0x%02X\n", nRegister[3]|noiseFlags, (int)(255*nVolumeTable[nVolume[3]]));
+		noiseFlags &= ~(NOISE_FLAG_RETRIGGER);
+	}
+}
 
 // return 1 or 0 depending on odd parity of set bits
 // function by Dave aka finaldave. Input value should
@@ -245,19 +347,33 @@ void setfreq(int chan, int freq) {
 		// limit noise 
 		freq&=0x07;
 		nRegister[3]=freq;
-		noiseTriggered = true;
+
+		// TODO: note: there's a small chance of race on these flags
+		// Oh well.
+		noiseFlags |= NOISE_FLAG_RETRIGGER;
 
 		// reset shift register
 		LFSR=0x4000;	//	(15 bit)
 		switch (nRegister[3]&0x03) {
 			// these values work but check the datasheet dividers
-			case 0: nCounter[3]=0x10; break;
-			case 1: nCounter[3]=0x20; break;
-			case 2: nCounter[3]=0x40; break;
+			case 0: nCounter[3]=0x10; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
+			case 1: nCounter[3]=0x20; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
+			case 2: nCounter[3]=0x40; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
 			// even when the count is zero, the noise shift still counts
 			// down, so counting down from 0 is the same as wrapping up to 0x400
-			case 3: nCounter[3]=(nRegister[2]?nRegister[2]:0x400); break;		// is never zero!
+			case 3: nCounter[3]=(nRegister[2]?nRegister[2]:0x400); 
+					noiseFlags |= NOISE_FLAG_CHAN3;
+					break;		// is never zero!
 		}
+
+		// check periodic
+		if (nRegister[3]&0x04) {
+			// white noise - but the flag is inverted
+			noiseFlags &= ~(NOISE_FLAG_PERIODIC);
+		} else {
+			noiseFlags |= NOISE_FLAG_PERIODIC;
+		}
+
 	} else {
 		// limit freq
 		freq&=0x3ff;
@@ -275,9 +391,12 @@ void setvol(int chan, int vol) {
 	nVolume[chan]=vol&0xf;
 }
 
+// this #if is here for the Apple2 experiment... use #if 1 for the TI code
+#if 1
 // fill the output audio buffer with signed 16-bit values
 // nAudioIn contains a fixed value to add to all samples (used to mix in the casette audio)
 // (this emu doesn't run speech through there, though, speech gets its own buffer for now)
+// TODO: nAudioIn is not used here anymore, can be removed
 void sound_update(short *buf, double nAudioIn, int nSamples) {
 	// nClock is the input clock frequency, which runs through a divide by 16 counter
 	// The frequency does not divide exactly by 16
@@ -288,6 +407,8 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	int nClocksPerSample = (int)(nTimePerSample / nTimePerClock + 0.5);		// +0.5 to round up if needed
 	int newdacpos = 0;
 	int inSamples = nSamples;
+	double nSpeechOut = 0;
+	double nSpeechCnt = (double)SPEECHRATE / (double)AudioSampleRate;		// ratio of speech samples to output samples
 
 	while (nSamples) {
 		// emulate drift to zero
@@ -312,7 +433,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
             // So maybe we can't say with certainty which chip is in which machine?
             // Myths and legends:
             // - SN76489 grows volume from 2.5v down to 0 (matches my old scopes of the 494), but SN76489A grows volume from 0 up.
-            // - SN76496 is the same as the SN7689A but adds the Audio In pin (all TI used chips have this)
+            // - SN76496 is the same as the SN7689A but adds the Audio In pin (all TI used chips have this, even the older ones)
             // So right now, I believe there are two main versions, differing largely by the behaviour of count 0x001:
             // Original (high frequency): TMS9919, SN94624, SN76494?
             // New (flat line): SN76489, SN76489A, SN76496
@@ -327,7 +448,6 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 			// then mute it (we'll do that with the nFade value.) 
 			// Noises can't get higher than audible frequencies (even with high user defined rates),
 			// so we don't need to worry about them.
-            // TODO: Because of this, I don't need to currently emulate the Coleco's flat line on 0x001, but I will later
 			if ((nRegister[idx] != 0) && (nRegister[idx] <= (int)(111860.0/(double)(AudioSampleRate/2)))) {
 				// this would be too high a frequency, so we'll merge it into the DAC channel (elsewhere)
 				// and kill this channel. The reason is that the high frequency ends up
@@ -413,13 +533,18 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		output = nOutput[0]*nVolumeTable[nVolume[0]]*nFade[0] +
 				nOutput[1]*nVolumeTable[nVolume[1]]*nFade[1] +
 				nOutput[2]*nVolumeTable[nVolume[2]]*nFade[2] +
-				nOutput[3]*nVolumeTable[nVolume[3]]*nFade[3]
-				+ ((dac_buffer[newdacpos++] / 255.0)*dacramp);
-		// output is now between 0.0 and 5.0, may be positive or negative
-		output/=5.0;	// you aren't supposed to do this when mixing. Sorry. :)
+				nOutput[3]*nVolumeTable[nVolume[3]]*nFade[3] +
+				((dac_buffer[newdacpos++] / 255.0)*dacramp) +
+				(SpeechTmp[(int)nSpeechOut] / 32767.0);
+		// output is now between 0.0 and 6.0, may be positive or negative
+		output/=6.0;	// you aren't supposed to do this when mixing. Sorry. :)
 		if (newdacpos >= dac_pos) {
 			// not enough DAC samples!
 			newdacpos--;
+		}
+		nSpeechOut += nSpeechCnt;
+		while ((int)nSpeechOut >= nSpeechTmpPos) {
+			nSpeechOut--;
 		}
 
 		short nSample=(short)((double)0x7fff*output); 
@@ -435,6 +560,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 
 	}
 	// roll the dac output buffer
+	EnterCriticalSection(&csAudioBuf);
 	if (inSamples < dac_pos) {
 		memmove(dac_buffer, &dac_buffer[newdacpos], dac_pos-newdacpos);
 		dac_pos-=newdacpos;
@@ -445,15 +571,38 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	} else {
 		dac_pos = 0;
 	}
+	LeaveCriticalSection(&csAudioBuf);
+	// same with speech
+	EnterCriticalSection(&csSpeechBuf);
+	if ((int)nSpeechOut < nSpeechTmpPos) {
+		memmove(SpeechTmp, &SpeechTmp[(int)nSpeechOut], (nSpeechTmpPos-(int)nSpeechOut)*2);
+		nSpeechTmpPos -= (int)nSpeechOut;
+	} else {
+		nSpeechTmpPos = 0;
+	}
+	LeaveCriticalSection(&csSpeechBuf);
 }
 
-#if 0
+#else
 // Apple testing...
-//unsigned char nOutput[4]={1,1,1,1};		// output scale
-//unsigned char sms_volume_table[16] = {
-   //31, 25, 20, 16, 13, 10,  8,  6,
-    //5,  4,  3,  3,  2,  2,  1,  0
- //};
+// Overall, I think this is fairly decent. Yeah, it gets crappy with really
+// complex music, but I don't know how much we can expect out of the 1-bit speaker.
+// It's good enough that I almost shipped a release of Classic99 with it turned on ;)
+unsigned char nOutputApp[4]={1,1,1,1};		// output scale
+
+#if 0
+unsigned char app_volume_table[16] = {
+   31, 25, 20, 16, 13, 10,  8,  6,
+   5,  4,  3,  3,  2,  2,  1,  0
+}; 
+#else
+// ignore volume - better this way
+// still not 100% sure the cutoff is in the right place, but seems okay
+unsigned char app_volume_table[16] = {
+   31, 31, 31, 31, 31, 31, 31, 31,
+   31, 31, 31, 31, 31,  0,  0,  0
+}; 
+#endif
 void sound_update(short *buf, double nAudioIn, int nSamples) {
 	// nClock is the input clock frequency, which runs through a divide by 16 counter
 	// The frequency does not divide exactly by 16
@@ -468,6 +617,16 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	static unsigned char noisedir=1;
 
 	while (nSamples) {
+        /**/
+        bool signchanged = false;   // only used in one output mode idea, which does not work
+        int loudest = 15;
+        for (int idx=0; idx<4; ++idx) {
+            if (nVolume[idx] < loudest) loudest=nVolume[idx];
+        }
+        loudest*=2;
+        if (loudest > 14) loudest=14;
+        /**/
+
 		// tone channels
 		for (idx=0; idx<3; idx++) {
 			// on the TI/Coleco, a freq of 0 is really 0x400,
@@ -475,13 +634,20 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 			nCounter[idx]-=nClocksPerSample;
 			while (nCounter[idx] <= 0) {
 				nCounter[idx]+=(nRegister[idx]?nRegister[idx]:0x400);
-				nOutput[idx]=!nOutput[idx];
+				nOutputApp[idx]=!nOutputApp[idx];
+                if (nVolume[idx] <= loudest) {
+                    signchanged = true;
+                }
 			}
 		}
 
 		// noise channel 
 		nCounter[3]-=nClocksPerSample;
 		while (nCounter[3] <= 0) {
+            if (nVolume[3] < loudest) {
+                signchanged = true;
+            }
+
 			switch (nRegister[3]&0x03) {
 				case 0: nCounter[3]+=0x10; break;
 				case 1: nCounter[3]+=0x20; break;
@@ -504,24 +670,24 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 						in = 0x4000;
 					}
 					if (LFSR&0x01) {
-						nOutput[3]=1;
+						nOutputApp[3]=1;
 					} else {
-						if (nOutput[3]) {
+						if (nOutputApp[3]) {
 							noisedir=!noisedir;
 						}
-						nOutput[3]=0;
+						nOutputApp[3]=0;
 					}
 				} else {
 					// periodic noise - tap bit 0 (again, BBC Micro)
 					// Compared against TI samples, this looks right
 					if (LFSR&0x0001) {
 						in=0x4000;	// (15 bit shift)
-						nOutput[3]=1;
+						nOutputApp[3]=1;
 					} else {
-						if (nOutput[3]) {
+						if (nOutputApp[3]) {
 							noisedir=!noisedir;
 						}
-						nOutput[3]=0;
+						nOutputApp[3]=0;
 					}
 				}
 				LFSR>>=1;
@@ -533,44 +699,133 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		nSamples--;
 
 		// Calculate this tick
-		idx = 0;
-		if (nOutput[0]) {
-			idx+=sms_volume_table[nVolume[0]];
+		int cnt = 0;
+		if (nOutputApp[0]) {
+			cnt+=app_volume_table[nVolume[0]];
 		} else {
-			idx-=sms_volume_table[nVolume[0]];
+			cnt-=app_volume_table[nVolume[0]];
 		}
-		if (nOutput[1]) {
-			idx+=sms_volume_table[nVolume[1]];
-		} else {
-			idx-=sms_volume_table[nVolume[1]];
-		}
-		if (nOutput[2]) {
-			idx+=sms_volume_table[nVolume[2]];
-		} else {
-			idx-=sms_volume_table[nVolume[2]];
-		}
-		if (nOutput[3]) {
+        if (nRegister[1]!=nRegister[0]) {
+            // don't add if the frequency was already playing on an earlier channel
+		    if (nOutputApp[1]) {
+			    cnt+=app_volume_table[nVolume[1]];
+		    } else {
+			    cnt-=app_volume_table[nVolume[1]];
+		    }
+        }
+        if ((nRegister[2]!=nRegister[0])&&(nRegister[2]!=nRegister[1])) {
+            // don't add if the frequency was already playing on an earlier channel
+		    if (nOutputApp[2]) {
+			    cnt+=app_volume_table[nVolume[2]];
+		    } else {
+			    cnt-=app_volume_table[nVolume[2]];
+		    }
+        }
+		if (nOutputApp[3]) {
 			if (noisedir) {
-				idx+=sms_volume_table[nVolume[3]];
+				cnt+=app_volume_table[nVolume[3]];
 			} else {
-				idx-=sms_volume_table[nVolume[3]];
+				cnt-=app_volume_table[nVolume[3]];
 			}
 		}
 		// now, we have in idx a value from -64 to +64
+static int sampleCnt = 0;
+
+        // These are both awful on complex sounds and both
+        // work pretty well on simple ones (including chords)
 #if 0
 		// we are only concerned with its sign
 		// if the sign of the output has changed, 'tick' the speaker
+        // very noisey - basically the cassette without a dead zone
 		if (oldout != (idx&0x80)) {
 			oldout = idx&0x80;
 //			idx=SPKR;
+            olddelta = oldout;
 		}
-#else
+#elif 1
 		// if the sign of the output delta has changed, 'tick' the speaker
-		if (((idx-oldout)&0x80) != olddelta) {
-			olddelta=(idx-oldout)&0x80;
-		}
-		oldout = idx;
+        // require a minimum delta before we react - this helps a bit
+
+        // This sounds the cleanest of them so far, but it does not cope well
+        // when the same frequency is played on multiple channels, adds noise.
+        // But it handles chords the best
+
+        idx = (unsigned char)(cnt&0xff);
+        int delta = idx-oldout;
+        if (delta < 0) delta=-delta;
+        if (delta > 8) {
+		    if (((idx-oldout)&0x80) != olddelta) {
+			    olddelta=(idx-oldout)&0x80;
+		    }
+		    oldout = idx;
+        }
+#elif 0
+        // how about delta with a drift to zero?
+        // this works, but not sure if it's better than
+        // the other delta. It still sometimes drops voices.
+       
+        int delta = cnt-sampleCnt;
+        if (delta < 0) {
+            delta=-delta;
+            sampleCnt--;
+        } else if (delta > 0) {
+            sampleCnt++;
+        }
+        if (delta > 8) {
+            // ticking instead of setting makes the sound very muddied and wrong
+		    oldout = (unsigned char)cnt;
+        }
+#elif 0
+        // try to copy the cassette circuit which looks at zero crossings with a ~10% dead zone
+        
+        // tick for change - this is better then the delta was...
+        // need to tick on every change else the frequency is wrong
+        // We need the dead zone else it's pretty awful sounding
+        // (Actually with the correct scaling this is really bad... muffled)
+#define DEADZONE 4
+        if (cnt > DEADZONE) {
+            if (olddelta < 0) {
+                oldout = ~oldout;
+                olddelta = 1;
+            }
+        } else if (cnt < -DEADZONE) {
+            if (olddelta >= 0) {
+                oldout = ~oldout;
+                olddelta = -1;
+            }
+        }
+#elif 0
+        // if /any/ channel transitioned, then tick
+        // this does NOT work, sounds more like a modem than harmony...
+        if (signchanged) {
+            if (oldout&0x80) {
+                oldout = 0;
+            } else {
+                oldout = 0x80;
+            }
+	    }
+#else
+        // play out the four voices statically with arpeggio
+        // I doubt the Apple can do that much...
+        // 800 at 44100 samples/second is about 55hz cycling
+        // frankly this isn't too bad... it sounds the most
+        // correct, but the stuttering is kind of annoying
+#define TONELEN 800
+        switch (((++sampleCnt)/TONELEN)%4) {
+        case 0: if ((nOutputApp[0])&&(nVolume[0] < 12)) oldout=0x80; else oldout=0x00; break;
+        case 1: if ((nOutputApp[1])&&(nVolume[1] < 12)) oldout=0x80; else oldout=0x00; break;
+        case 2: if ((nOutputApp[2])&&(nVolume[2] < 12)) oldout=0x80; else oldout=0x00; break;
+        case 3:
+		    if ((nOutputApp[3])&&(nVolume[3] < 12)) {
+			    if (noisedir) {
+				    oldout=0x80;
+			    } else {
+			        oldout=0;
+			    }
+		    }
+        }
 #endif
+
 		double output = (oldout&0x80)?0.5:-0.5;
 
 		short nSample=(short)((double)0x7fff*output); 
@@ -578,6 +833,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	}
 
 }
+
 #endif
 
 
@@ -653,10 +909,9 @@ void rampVolume(LPDIRECTSOUNDBUFFER ds, long newVol) {
 
 void resetDAC() { 
 	// empty the buffer and reset the pointers
-    // TODO: added the mutes, but still some clicks, reset is worst (cause buffer isn't being filled?)
     MuteAudio();
 	EnterCriticalSection(&csAudioBuf);
-		memset(&dac_buffer[0], 0x00, sizeof(dac_buffer));
+		memset(&dac_buffer[0], (unsigned char)(nDACLevel*255), sizeof(dac_buffer));
 		dac_pos=0;
 		dacupdatedistance=0.0;
         dacramp=0.0;
@@ -684,18 +939,28 @@ void updateDACBuffer(int nCPUCycles) {
 	int distance = (int)dacupdatedistance;
 	dacupdatedistance -= distance;
 	if (dac_pos + distance >= sizeof(dac_buffer)) {
-		debug_write("DAC Buffer overflow...");
+        if (ThrottleMode == THROTTLE_NORMAL) {
+    		debug_write("DAC Buffer overflow...");
+        }
 		dac_pos=0;
 		return;
 	}
 	int average = 1;
 	double value = nDACLevel;
 
+	// emulate noise
+	if (enableBackgroundHum) {
+		if (VDPS&VDPS_INT) value += 0.05;	// interrupt line (TODO: this is the internal bit, need to account for the mask)
+		value += CRU_TOGGLES;
+	}
+	CRU_TOGGLES = 0;
+
 	for (int idx=0; idx<3; idx++) {
 		// A little check for eliminate high frequency tones
 		// If the frequency is greater than 1/2 the sample rate, it's DAC.
 		// Noises can't get higher than audible frequencies (even with high user defined rates),
 		// so we don't need to worry about them.
+        // because of this, I don't need to currently emulate the Coleco's flat line on 0x001, but I will later
 		if ((nRegister[idx] != 0) && (nRegister[idx] <= (int)(111860.0/(double)(AudioSampleRate/2)))) {
 			// this would be too high a frequency, so we'll merge it into the DAC channel
 			// and kill this channel. The reason is that the high frequency ends up
@@ -743,7 +1008,7 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 		// this more likely means we actually fell behind!
 		if (pDat->nMinJitterFrames < 10) {
 #ifdef _DEBUG
-//			debug_write("Fell behind, increasing minimum jitter to %d", pDat->nMinJitterFrames);
+			debug_write("Fell behind, increasing minimum jitter to %d", pDat->nMinJitterFrames);
 #endif
 			pDat->nMinJitterFrames++;
 		} 
@@ -760,18 +1025,18 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	if ((nWriteAhead < 1) && (pDat->nJitterFrames < 15)) {
 		pDat->nJitterFrames++;
 #ifdef _DEBUG
-//		debug_write("Grow jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
+		debug_write("Grow jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
 #endif
 	} else if ((nWriteAhead > pDat->nJitterFrames+1) && (pDat->nJitterFrames > pDat->nMinJitterFrames)) {
 		// maybe we can shrink the buffer?
 		pDat->nJitterFrames--;
 #ifdef _DEBUG
-//		debug_write("Shrink jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
+		debug_write("Shrink jitter buffer to %d frames (writeahead %d)", pDat->nJitterFrames, nWriteAhead);
 #endif
 	} else if ((nWriteAhead > pDat->nMinJitterFrames/2+1) && (pDat->nMinJitterFrames > 2)) {
 		pDat->nMinJitterFrames--;
 #ifdef _DEBUG
-//		debug_write("Shrink min jitter frames to %d (writeahead %d)", pDat->nMinJitterFrames, nWriteAhead);
+		debug_write("Shrink min jitter frames to %d (writeahead %d)", pDat->nMinJitterFrames, nWriteAhead);
 #endif
 	}
 
@@ -789,6 +1054,7 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	// as noted, the goal is to get it on a per-scanline basis
 	while (nWriteAhead < pDat->nJitterFrames) {
 		if (SUCCEEDED(soundbuf->Lock(pDat->nLastWrite, CalculatedAudioBufferSize/(hzRate), (void**)&ptr1, &len1, (void**)&ptr2, &len2, 0))) {
+			// TODO: nDACLevel is not used here anymore, can be removed
 			if (len1 > 0) {
 				sound_update(ptr1, nDACLevel, len1/2);		// divide by 2 for 16 bit samples
 			}

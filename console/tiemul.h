@@ -1,5 +1,5 @@
 //
-// (C) 2004 Mike Brent aka Tursi aka HarmlessLion.com
+// (C) 2019 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
 // express or implied is provided.
 //
@@ -43,26 +43,26 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.007"
+#define VERSION "QI399.072"
 #define DEBUGLEN 120
+#define DEBUGLINES 40
 
 typedef unsigned __int8 UINT8;
 typedef unsigned __int8 Byte;
 typedef unsigned __int16 Word;
 typedef unsigned __int32 DWord;
 
-// 3MHz seems to be correct via measurement
-// But 5% slack is allowed. Raising it a bit so the /62 works out even
-#define CLOCK_MHZ 3000056
+// 3MHz seems to be correct via measurement - 5% slack is allowed per datasheet
+#define CLOCK_MHZ 3000000
 // note these actual timings as calculated from the VDP datasheet
-// TODO: try to measure on a real TI.
-// calculated it as 62.6
-#define HZ60 62
+// calculated it as 62.6 - but a long term interrupt count test gave 59.9
+// so back to 60
+#define HZ60 60
 // calculate it as 50.23
 #define HZ50 50
 #define DEFAULT_60HZ_CPF (CLOCK_MHZ/HZ60)
 #define DEFAULT_50HZ_CPF (CLOCK_MHZ/HZ50)
-#define SLOW_CPF (1)
+#define SLOW_CPF (10)
 #define SPEECHRATE 8000	
 #define SPEECHBUFFER 16000
 #define MAX_BREAKPOINTS 10
@@ -111,7 +111,25 @@ enum {
 	BREAK_RUN_TIMER,
 	BREAK_DISK_LOG,
 	BREAK_DISK_PORTLOG,
-	BREAK_EQUALS_PORT,
+	BREAK_EQUALS_PORT
+};
+
+// reserved calibration data - you can hack the INI for better control
+// cause for now I'm not putting this into the options panel.
+class joyStruct {
+public:
+	joyStruct();
+	void reset();
+	void changeMode(int n);
+
+	unsigned int mode;		// joystick mode - 0=keyboard, 1-16 = PC joystick 1-16
+	unsigned int Xaxis;		// axis number for X (0=X, 1=Y, 2=Z, 3=R, 4=U, 5=V, 6=POV)
+	unsigned int Yaxis;		// same, but for Y
+	unsigned int btnMask;	// hex mask for buttons - 32-bit! Defaults to all.
+	unsigned int minXDead;	// minimum X value before -X is detected (default 0x4000)
+	unsigned int maxXDead;	// maximum X value before +X is detected (default 0xC000)
+	unsigned int minYDead;	// minimum Y value before -Y is detected (default 0x4000)
+	unsigned int maxYDead;	// maximum X value before +Y is detected (default 0xC000)
 };
 
 #define BlitEvent Video_hdl[0]
@@ -139,6 +157,7 @@ enum {
 #define TYPE_NONE		' '
 #define TYPE_UNSET		0
 
+// these structs are manually copied into the cartpack project
 struct IMG {
 	DWORD dwImg;			// resource ID, NULL for disk type
 	int  nLoadAddr;
@@ -202,15 +221,14 @@ extern int hzRate;									// flag for 50 or 60hz
 extern int Recording;								// Flag for AVI recording
 extern int RecordFrame;								// Current frame recorded (currently we only write 1/4 of the frames)
 extern int MaintainAspect;							// Flag for Aspect ratio
-extern int StretchMode;								// Setting for video stretching
+extern int StretchMode;								// Setting for video stretching (STRETCH_xxx)
 extern int bUse5SpriteLimit;						// whether the sprite flicker is on
 extern Byte VDP[128*1024];							// Video RAM
 extern int bF18AActive;
 extern int bF18Enabled;
 extern HANDLE Video_hdl[2];							// Handles for Display/Blit events
-extern unsigned int *framedata;					// The actual pixel data
+extern unsigned int *framedata;						// The actual pixel data
 extern unsigned int *framedata2;					// Filtered frame data
-extern int FullScreenMode;							// Current full screen mode
 extern int FilterMode;								// Current filter mode
 extern int nDefaultScreenScale;						// default screen scaling multiplier
 extern int nXSize, nYSize;							// custom sizing
@@ -254,10 +272,10 @@ void memrnd(void *pRnd, int nCnt);
 
 extern int PauseInactive;							// what to do when the window is inactive
 extern int SpeechEnabled;							// whether or not speech is enabled
-extern volatile int CPUThrottle;					// Whether or not the CPU is throttled
-extern volatile int SystemThrottle;					// Whether or not the VDP is throttled
+extern volatile int ThrottleMode;					// system throttling mode
+extern int Fast16BitRam;
 
-extern char lines[34][DEBUGLEN];					// debug lines
+extern char lines[DEBUGLINES][DEBUGLEN];			// debug lines
 extern bool bDebugDirty;
 
 extern char *PasteString;							// Used for Edit->Paste
@@ -278,6 +296,12 @@ struct _break {
 	int Mask;		// optional mask to filter against (specify in braces) A mask of 0 is 0xffff
 };
 
+enum READACCESSTYPE {
+    ACCESS_READ = 0,    // normal read
+    ACCESS_RMW,         // read-before-write access, do not breakpoint
+    ACCESS_FREE         // internal access, do not count or breakpoint
+};
+
 // Function prototypes
 bool CheckRange(int nBreak, int x);
 
@@ -291,7 +315,7 @@ void SetupSams(int sams_mode, int sams_size);
 
 int getCharsPerLine();
 char VDPGetChar(int x, int y, int width, int height);
-CString captureScreen(int offsetByte);
+CString captureScreen(int offsetByte, char illegalByte);
 void GetTVValues(double *hue, double *sat, double *cont, double *bright, double *sharp);
 void SetTVValues(double hue, double sat, double cont, double bright, double sharp);
 void VDPmain(void);
@@ -315,20 +339,20 @@ void debug_write(char *s, ...);
 void doBlit(void);
 void RenderFont(void);
 void DrawSprites(int scanline);
-void SetupDirectDraw(int fullscreen);
+void SetupDirectDraw(bool fullscreen);
 void takedownDirectDraw();
 int ResizeBackBuffer(int w, int h);
 void UpdateHeatVDP(int Address);
 void UpdateHeatGROM(int Address);
 void UpdateHeatmap(int Address);
 
-LONG FAR PASCAL myproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK KBMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK HeatMapProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK TVBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK GramBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 void LaunchDebugWindow();
 void pixel(int x, int y, int col);
 void pixel80(int x, int y, int col);
@@ -342,7 +366,7 @@ void startvdp(void);
 void startsound(void);
 void warn(char[]);
 void fail(char[]);
-Word romword(Word, bool rmw=false);
+Word romword(Word, READACCESSTYPE rmw=ACCESS_READ);
 void wrword(Word,Word);
 void __cdecl emulti(void*);
 void readroms(void);
@@ -358,10 +382,10 @@ void opcode07(Word);
 void opcode1(Word);
 void opcode2(Word);
 void opcode3(Word);
-Byte rcpubyte(Word,bool rmw=false);
+Byte rcpubyte(Word,READACCESSTYPE rmw=ACCESS_READ);
 void wcpubyte(Word,Byte);
 void increment_vdpadd();
-Byte rvdpbyte(Word,bool);
+Byte rvdpbyte(Word,READACCESSTYPE);
 void wvdpbyte(Word,Byte);
 void pset(int dx, int dy, int c, int a, int l);
 Byte rspeechbyte(Word);
@@ -369,7 +393,7 @@ void wspeechbyte(Word, Byte);
 void SpeechUpdate(int nSamples);
 void wVDPreg(Byte,Byte);
 void wsndbyte(Byte);
-Byte rgrmbyte(Word,bool);
+Byte rgrmbyte(Word,READACCESSTYPE);
 void wgrmbyte(Word,Byte);
 Byte rpcodebyte(Word);
 void wpcodebyte(Word,Byte);
@@ -462,7 +486,7 @@ void DoPlay();
 void DoFastForward();
 void DoMemoryDump();
 void DoLoadInterrupt();
-void TriggerBreakPoint(bool bForce = false);
+void TriggerBreakPoint(bool bForce = false, bool openDebugger = true);
 
 int nodot(void);
 Byte GetSafeCpuByte(int x, int bank);
@@ -488,10 +512,15 @@ void Counting();
 void __cdecl SpeechBufThread(void *);
 void WindowThread();
 
-// 0 and 1 match the old values, although overdrive will be
-// slower than the old maximum (but use far less host CPU)
-#define CPU_OVERDRIVE 0
-#define CPU_NORMAL 1
-#define CPU_MAXIMUM 2
-#define VDP_CPUSYNC 0
-#define VDP_REALTIME 1
+// replaces the old dual throttle
+#define THROTTLE_NONE 9999
+#define THROTTLE_SLOW -1
+#define THROTTLE_NORMAL 0
+#define THROTTLE_OVERDRIVE 1
+#define THROTTLE_SYSTEMMAXIMUM 2
+
+// settings for StretchMode - do NOT change these indexes, they are used in the menus
+#define STRETCH_NONE 0
+#define STRETCH_DIB 1
+#define STRETCH_DX 2
+#define STRETCH_FULL 3

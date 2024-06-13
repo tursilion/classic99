@@ -56,6 +56,7 @@ typedef struct s_FILEINFO FileInfo;
 typedef struct s_FILEINFO {
 	s_FILEINFO();
 	// DO NOT ADD A DESTRUCTOR WITHOUT REWORKING THE FIAD DIRECTORY CACHE
+    // TODO: why not? What needs reworking? Is that an old comment?
 
 	void CopyFileInfo(FileInfo *p, bool bJustPAB);
 	void SplitOptionsFromName();
@@ -78,6 +79,8 @@ typedef struct s_FILEINFO {
 	int ScreenOffset;
 	int nDrive;
 	CString csName;		// this is the important one, we match on this
+    unsigned char *initData;    // used only by RAM-based input like the web system, cleared by buffer
+    int initDataSize;
 	
 	// internal data
 	int nIndex;			// never meant to change, just for debug
@@ -88,6 +91,7 @@ typedef struct s_FILEINFO {
 	int nCurrentRecord;
 	int nDataSize;
 	int ImageType;		// varies per driver
+	int HeaderSize;		// varies per driver, only meant for FiadDisk
 	int nLocalData;		// 32-bits for the driver to use as it likes
 	CString csOptions;	// options string is always before the filename as "?x." - x may be longer though
 	unsigned char *pData;
@@ -99,7 +103,7 @@ typedef struct s_FILEINFO {
 	// The buffer usually contains a little padding at the end
 	// and may be extended dynamically, so should not be used
 	// by multiple threads. nDataSize contains the size of the buffer.
-	// Not used by LOAD and SAVE operations, only OPEN files.
+	// Not used by LOAD and SAVE operations, only OPEN files (except in the SBR_FILEOUT opcode...)
 } FileInfo;
 
 // file types
@@ -110,8 +114,8 @@ enum {
 	IMAGE_TEXT,			// Windows Text file
 	IMAGE_IMG,			// Windows Image file (ie: any headerless file)
 	IMAGE_SECTORDSK,	// File on a sector dump (V9T9) disk image
-	IMAGE_TRACKDSK,		// File on a track dump (PC99) disk image
-	IMAGE_OMNIFLOP		// File on a physical floppy accessed via OmniFlop/TI99-PC
+	IMAGE_TRACKDSK,		// File on a track dump (PC99) disk image (TODO: not used, used SECTORDSK)
+	IMAGE_OMNIFLOP		// File on a physical floppy accessed via OmniFlop/TI99-PC (TODO: probably never)
 };
 
 // PAB error codes
@@ -166,7 +170,8 @@ enum {
 #define OP_SCRATCH		8
 #define OP_STATUS		9
 
-// SBR opcodes
+// SBR opcodes - note: there is some assumption these do not overlap the File operation codes
+// Not that we can change them, since they are pre-defined by TI ;)
 #define SBR_SECTOR		0x10
 #define SBR_FORMAT		0x11
 #define SBR_PROTECT		0x12
@@ -191,14 +196,12 @@ enum {
 	DISK_SECTOR,	// Sector based (V9T9 or PC99) format disk image
 	DISK_TICC,		// TI Controller Card
 //	DISK_CCCC,		// CorComp Controller Card (might just hack the TI controller for larger disks?)
-//	DISK_OMNI,		// Omniflop (TI99-PC) based physical disk -- OR, make this an option to the above four formats
 	
 	DISK_CLIPBOARD,	// Windows Clipboard access - it should be safe to let Clipboard float at the end as it's never saved
 	DISK_CLOCK,		// same with the clock
+    DISK_TIPIWEB,   // and TIPI
 };
 extern const char *szDiskTypes[];
-// Note on disk sectors -- most likely TICC and CCCC can just be derived from the SECTOR
-// mechanism.. and OMNI can potentially be an option on it. 
 
 // Option parameters (text version is pszOptionNames)
 enum {
@@ -216,7 +219,7 @@ enum {
 	OPT_FIAD_ENABLELONGFILENAMES,
 	OPT_FIAD_ALLOWMORE127FILES,
 
-	OPT_IMAGE_USEV9T9DSSD,	// reverse sector order for side 2
+	OPT_IMAGE_USEV9T9DSSD,	// reverse sector order for side 2 -- deprecated
 
 	OPT_DISK_AUTOMAPDSK1,	// scan for DSK1 strings while loading, and patch them on the fly
 	OPT_DISK_WRITEPROTECT,	// disallow writes to the disk

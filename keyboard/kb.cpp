@@ -69,6 +69,13 @@ unsigned char nLastRow=-1, nLastCol=-1;
 extern int fJoystickActiveOnKeys;
 extern int CtrlAltReset;
 extern int gDontInvertCapsLock;
+extern int enableSpeedKeys;
+extern int enableEscape;
+extern int enableAltF4;
+extern int enableF10Menu;
+extern bool mouseCaptured;
+extern HWND myWnd;
+extern const char *szDefaultWindowText;
 extern volatile HWND dbgWnd;
 
 enum LASTMETA {
@@ -264,23 +271,73 @@ void decode(unsigned char sc)
 			case VK_F11:
 			case VK_F12:
 				// ignore the rest
+				is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
 				return;
 		}
 	}
+    // also skip some of the keys we use for Windows hot keys
+    if (GetAsyncKeyState(VK_CONTROL)&0x8000) {
+        // control is down
+        switch (sc) {
+        case VK_F1:		// ctrl+F1 - edit->paste
+        case VK_F2:		// ctrl+F2 - edit->copy screen
+		case VK_F4:		// ctrl+F4 - read screen
+		case VK_F9:		// ctrl+F9 - toggle continuous screen reader
+		case VK_F10:	// ctrl+F10 - stop talking
+        case VK_HOME:	// ctrl+HOME - edit->debugger
+			is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
+            return;
+        }
+    }
+    if (enableSpeedKeys) {
+		// disable the speed keys in that case too
+		switch (sc) {
+			case VK_F6:		// CPU normal
+			case VK_F7:		// CPU Overdrive
+			case VK_F8:		// System Maximum
+			case VK_F11:	// Turbo toggle (normal/maximum)
+				is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
+				return;
+		}
+	}
+	if (enableAltF4) {
+		if ((GetAsyncKeyState(VK_MENU) & 0x8000) && (sc == VK_F4)) {
+			is_up = 0;	// ignore it
+			return;
+		}
+	}
+	if (enableF10Menu) {
+		if (sc == VK_F10) {
+			is_up = 0;	// ignore it
+			return;
+		}
+	}
 
-	// TODO: would be fun to have a debug vis of the Classic99 keyboard state
-	// This would help track down a bug -- when using ESDX and Q to fire in Parsec,
-	// the ship stops moving while Q is held, but resumes on release. Using
-	// period to fire, this doesn't happen, and it's reported tha this does not
-	// happen on a real TI. It happens whether the PS/2 keyboard emulation is enabled
-	// or not, and yet Windows appears to be getting the correct keypresses.
-	// What's going on here?
+	// check for escape disabling mouse capture before we check if escape is otherwise disabled
+	if (sc == VK_ESCAPE) {
+		if (mouseCaptured) {
+			ReleaseCapture();
+            PostMessage(myWnd, WM_USER, 1, 1);  // request window thread to show real cursor
+			ClipCursor(NULL);	// free movement
+			ShowCursor(TRUE);	// show mouse
+			mouseCaptured = false;
+		}
+		SetWindowText(myWnd, szDefaultWindowText);
+	} 
+
+	if (!enableEscape) {
+		// disable escape if told to
+		if (sc == VK_ESCAPE) {
+			is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
+			return;
+		}
+	}
 
 	// Handle translation to US PS/2 keyboard raw scancodes
 	if ((sc != 0xe0) && (sc != 0xf0) && (NULL == pCheat)) {
 		// not extended or release, so convert from windows VK to set two US scancode
 		// with a little luck, doing it this way will let Windows take care of the
-		// scancode remapping on different keyboards! (But, it didn't).
+		// scancode remapping on different keyboards! (TODO: But, it didn't).
 		sc=VK2ScanCode[sc];
 		if (0 == sc) {
 			// was not a supported code, just ignore it
@@ -307,6 +364,7 @@ void decode(unsigned char sc)
 	if (CtrlAltReset) {
 		if (sc == 0x55) {		// '='
 			if ((bLastFctn)&&(!bLastCtrl)) {
+				is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
 				return;
 			}
 		}
@@ -317,6 +375,7 @@ void decode(unsigned char sc)
 		if (sc != 0xf0) {
 			ignorecount--;
 		}
+		is_up = 0;	// we're ignoring the whole thing, so assume the up event is complete
 		return;
 	}
 
@@ -369,7 +428,7 @@ void decode(unsigned char sc)
 
 		default:	// any other key
 dodefault:
-			// certain keys are remapped for numlock and scroll lock
+			// certain keys are remapped for numlock (but not scroll lock in Classic99)
 			if (!numlock) {
 				sc=remapnumlock(sc);
 			}
@@ -406,7 +465,7 @@ dodefault:
 					pDat=scan2ti994aextend[sc];
 				} else if ((bLastShift)||(lockedshiftstate)) {
 					pDat=scan2ti994ashift[sc];
-					lockedshiftstate=1;
+					lockedshiftstate=sc;
 				} else {
 					pDat=scan2ti994aflat[sc];
 				}
@@ -418,13 +477,23 @@ dodefault:
 				} else {
 					nThisChar=sc;
 				}
-					
+
 				// Up codes don't autorepeat, so don't check them
 				if ((is_up)||(nThisChar != nLastChar)) {
 					signed char row1,col1=-1;
 					signed char row2,col2=-1;
 					
-					nLastChar=nThisChar;
+                    if (!is_up) {
+					    nLastChar=nThisChar;
+                    } else if (nLastChar == nThisChar) {
+                        // was the last key, release it
+                        // otherwise the user is probably holding two keys
+                        nLastChar = 0x00ff;
+                        // if it matches the lock scan code, release lock
+                        if (lockedshiftstate == sc) {
+                            lockedshiftstate = 0;
+                        }
+                    }
 
 					row1=*(pDat);
 					if (-1 != row1) {
@@ -551,10 +620,9 @@ dodefault:
 						abortCheat=0;
 					}
 				}
-			}
-			if (is_up) {
-				lockedshiftstate=0;
-				nLastChar=0x00ff;	// clear last char - now that we've released we can press again ;)
+
+//                debug_write("up:%d this:%3d last:%3d fctn:%3d", is_up, nThisChar, nLastChar, fctnrefcount);
+
 			}
 			isextended=0;
 			is_up=0;
@@ -587,6 +655,8 @@ unsigned char remapnumlock(unsigned char in) {
 	return in;
 }
 
+#if 0
+// not used in Classic99
 // when scroll lock is on, we remap the arrow keys to ESDX
 unsigned char remapscrolllock(unsigned char in) {
 	if (isextended) {
@@ -607,6 +677,7 @@ unsigned char remapscrolllock(unsigned char in) {
 	}
 	return in;
 }
+#endif
 
 // Please do not remove
 void InjectCheatKey() {

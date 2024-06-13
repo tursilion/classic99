@@ -149,10 +149,10 @@ BEGIN
             MENUITEM "Open DSK9",                   ID_DSK9_OPENDSK9
         END
         MENUITEM "Corrupt DSK RAM",             ID_DISK_CORRUPTDSKRAM
-        POPUP "SD Card"
+        POPUP "Tape"
         BEGIN
-            MENUITEM "Load SD",                     ID_TAPE_LOADTAPE
-            MENUITEM "Eject SD",                    ID_TAPE_STOPTAPE
+            MENUITEM "Load/Rewind Tape",            ID_TAPE_LOADTAPE
+            MENUITEM "Stop Tape",                   ID_TAPE_STOPTAPE
             MENUITEM "Play Tape",                   ID_TAPE_PLAYTAPE
         END
     END
@@ -165,6 +165,7 @@ BEGIN
             MENUITEM "CPU Overdrive",               ID_CPUTHROTTLING_CPUOVERDRIVE
             MENUITEM "System Maximum",              ID_CPUTHROTTLING_SYSTEMMAXIMUM
             MENUITEM "CPU Slow",                    ID_CPUTHROTTLING_CPUSLOW
+            MENUITEM "16-bit RAM",                  ID_CPUTHROTTLING_16
         END
         MENUITEM "Ctrl+Alt+= To Reset",         ID_OPTIONS_CTRL_RESET
         MENUITEM "Invert Caps Lock",            ID_OPTIONS_INVERTCAPSLOCK
@@ -172,7 +173,12 @@ BEGIN
         MENUITEM "Audio...",                    ID_OPTIONS_AUDIO
         MENUITEM "GRAM...",                     ID_OPTIONS_GRAM
         MENUITEM "Options...",                  ID_OPTIONS_OPTIONS
-        MENUITEM "Log SN PSG",                  ID_OPTIONS_LOGSNPSG
+        POPUP "Screen Reader"
+        BEGIN
+            MENUITEM "Continuous (Ctrl+F9)",        ID_SCREENREADER_CONTINUOUS
+            MENUITEM "Read Once (Ctrl-F4)",         ID_SCREENREADER_READONCE
+            MENUITEM "Stop Talking (Ctrl-F10)",     ID_SCREENREADER_STOPTALKING
+        END
     END
     POPUP "Video"
     BEGIN
@@ -188,6 +194,7 @@ BEGIN
         END
         MENUITEM "50hz (60hz if Off)",          ID_VIDEO_50HZ
         MENUITEM "Show FPS",                    ID_VIDEO_SHOWFPS
+        MENUITEM "Show Keyboard Debug",         ID_VIDEO_SHOWKEYBOARDDEBUG
         MENUITEM "Enable 80 Column Hack",       ID_VIDEO_ENABLE80COLUMNHACK
         MENUITEM "Enable F18A GPU (Incomplete!)", ID_VIDEO_ENABLEF18A
         MENUITEM "Interleave GPU",              ID_VIDEO_INTERLEAVEGPU
@@ -209,17 +216,7 @@ BEGIN
             MENUITEM "None",                        ID_VIDEO_STRETCHMODE_NONE
             MENUITEM "DIB",                         ID_VIDEO_STRETCHMODE_DIB
             MENUITEM "DX",                          ID_VIDEO_STRETCHMODE_DX
-            POPUP "DX Full"
-            BEGIN
-                MENUITEM "320x240x8",                   ID_VIDEO_STRETCHMODE_DXFULL_320X240X8
-                MENUITEM "640x480x8",                   ID_VIDEO_STRETCHMODE_DXFULL_640X480X8
-                MENUITEM "640x480x16",                  ID_VIDEO_STRETCHMODE_DXFULL_640X480X16
-                MENUITEM "640x480x32",                  ID_DXFULL_640X480X32
-                MENUITEM "800x600x16",                  ID_VIDEO_STRETCHMODE_DXFULL_800X600X16
-                MENUITEM "800x600x32",                  ID_DXFULL_800X600X32
-                MENUITEM "1024x768x16",                 ID_DXFULL_1024X768X16
-                MENUITEM "1024x768x32",                 ID_DXFULL_1024X768X32
-            END
+            MENUITEM "DX Fullscreen",               ID_STRETCHMODE_DXFULLSCREEN
         END
         POPUP "Filter Mode"
         BEGIN
@@ -247,6 +244,7 @@ BEGIN
     BEGIN
         MENUITEM "&Load Breakpoints",           ID_FILE_LOADBRK
         MENUITEM "&Save Breakpoints",           ID_FILE_SAVEBRK
+        MENUITEM "&Read Map File",              ID_FILE_READMAPFILE
         MENUITEM SEPARATOR
         MENUITEM "&Close",                      ID_FILE_CLOSE40101
     END
@@ -255,12 +253,16 @@ BEGIN
         MENUITEM "&Freeze",                     ID_VIEW_FREEZE
         MENUITEM "&Redraw",                     ID_VIEW_REDRAW
         MENUITEM "&Clear",                      ID_VIEW_CLEAR
-        MENUITEM "ASCII Add Screen Offset for BASIC", ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC
+        MENUITEM "ASCII Add &Screen Offset for BASIC", ID_VIEW_HEXVIEWADDSCREENOFFSETFORBASIC
+        MENUITEM "Log &Disasm to Disk",         ID_VIEW_LOGDISASMTODISK
+        MENUITEM "Copy &Left Pane to Clipboard", ID_VIEW_COPYLEFTPANETOCLIPBOARD
+        MENUITEM "Copy &Right Pane to Clipboard", ID_VIEW_COPYRIGHTPANETOCLIPBOARD
     END
     POPUP "&Debug"
     BEGIN
         MENUITEM "Detect &Uninitialized Memory", ID_DEBUG_DETECTUNINITMEM
         MENUITEM "&Reset Uninitialized Memory Tracking", ID_DEBUG_RESETUNINITMEM
+        MENUITEM "Reset &Timer Statistics",     ID_DEBUG_RESETTIMERSTATISTICS
         MENUITEM SEPARATOR
         MENUITEM "&Normal Speed",               ID_DEBUG_NORMALSPEED
         MENUITEM "&High Speed (F11)",           ID_DEBUG_HIGHSPEED
@@ -272,6 +274,8 @@ BEGIN
         MENUITEM "&VDP Chars (F9)",             ID_DEBUG_VDPCHARS
         MENUITEM "&Dump RAM (F10)",             ID_DEBUG_DUMPRAM
         MENUITEM "Trigger &Load Interrupt (F12)", ID_DEBUG_LOADINT
+        MENUITEM SEPARATOR
+        MENUITEM "Log Audio",                   ID_DEBUG_LOGAUDIO
         MENUITEM SEPARATOR
         MENUITEM "Break on Illegal Opcode",     ID_DEBUG_BREAKONILLEGALOPCODE
         MENUITEM "Break on Disk Corrupt",       ID_DEBUG_BREAKONDISKCORRUPT
@@ -312,89 +316,7 @@ IDR_CON22G2             ROMS                    "roms\\CON22G2.GRM"
 
 IDR_CON22R0             ROMS                    "roms\\con22r0.rom"
 
-IDR_MINIMEMG            ROMS                    "roms\\MiniMemG.Bin"
-
-IDR_MINIMEMC            ROMS                    "roms\\MiniMemC.Bin"
-
 IDR_SPCHROM             ROMS                    "roms\\SPCHROM.BIN"
-
-IDR_DEMOG               ROMS                    "roms\\DEMOG.BIN"
-
-IDR_DIAGNOSG            ROMS                    "roms\\DiagnosG.Bin"
-
-IDR_LOGOG               ROMS                    "roms\\LOGOG.BIN"
-
-IDR_LOGOC               ROMS                    "roms\\LOGOC.BIN"
-
-IDR_ALPINERG            ROMS                    "roms\\ALPINERG.BIN"
-
-IDR_ALPINERC            ROMS                    "roms\\ALPINERC.BIN"
-
-IDR_AMAZEG              ROMS                    "roms\\AMAZEG.BIN"
-
-IDR_MUNCHMNG            ROMS                    "roms\\MunchMnG.Bin"
-
-IDR_MUNCHMNC            ROMS                    "roms\\MunchMnC.Bin"
-
-IDR_PARSECC             ROMS                    "roms\\PARSECC.BIN"
-
-IDR_PARSECG             ROMS                    "roms\\PARSECG.BIN"
-
-IDR_SSALOAD             ROMS                    "roms\\SSALOAD.BIN"
-
-IDR_SSARAM              ROMS                    "roms\\ssaram.bin"
-
-IDR_TIINVADG            ROMS                    "roms\\TI-InvaG.Bin"
-
-IDR_TIINVADC            ROMS                    "roms\\TI-InvaC.Bin"
-
-IDR_TOMBCITG            ROMS                    "roms\\TOMBCITG.BIN"
-
-IDR_TOMBCITC            ROMS                    "roms\\TOMBCITC.BIN"
-
-IDR_WUMPUSG             ROMS                    "roms\\WUMPUSG.BIN"
-
-IDR_TIEXTC              ROMS                    "roms\\TIEXTC.BIN"
-
-IDR_TIEXTD              ROMS                    "roms\\TIEXTD.BIN"
-
-IDR_TIEXTG              ROMS                    "roms\\TIEXTG.BIN"
-
-IDR_DEMQ                ROMS                    "roms\\DEMQ"
-
-IDR_TIEAG               ROMS                    "roms\\TIEAG.BIN"
-
-IDR_TE2G                ROMS                    "roms\\TE-IIG.BIN"
-
-IDR_TE2C                ROMS                    "roms\\TE-IIC.BIN"
-
-IDR_BLACKJACK           ROMS                    "roms\\BlakjakG.Bin"
-
-IDR_CARWARS             ROMS                    "roms\\CarWarsG.Bin"
-
-IDR_CHISHOLMG           ROMS                    "roms\\ChishlmG.Bin"
-
-IDR_CHISHOLMC           ROMS                    "roms\\ChishlmC.Bin"
-
-IDR_FOOTBALLG           ROMS                    "roms\\FootbalG.Bin"
-
-IDR_HOMEG               ROMS                    "roms\\HomFDecG.Bin"
-
-IDR_HUSTLEG             ROMS                    "roms\\HustleG.Bin"
-
-IDR_MINDG               ROMS                    "roms\\MinChalG.Bin"
-
-IDR_CHESSG              ROMS                    "roms\\V-CHESSG.BIN"
-
-IDR_CHESSC              ROMS                    "roms\\V-CHESSC.BIN"
-
-IDR_PCODEC              ROMS                    "roms\\PCardC.ROM"
-
-IDR_PCODED              ROMS                    "roms\\PCardD.ROM"
-
-IDR_TUNDOOMG            ROMS                    "roms\\TunDoomG.Bin"
-
-IDR_PGROM               ROMS                    "roms\\p1f00g_0000_f800.GRM"
 
 IDR_RS232               ROMS                    "roms\\RS232.Bin"
 
@@ -406,75 +328,15 @@ IDR_CON4G2              ROMS                    "roms\\CON4G2.GRM"
 
 IDR_CON4R0              ROMS                    "roms\\CON4R0.ROM"
 
-IDR_EPSGMODG            ROMS                    "roms\\EPSGMODG.BIN"
-
-IDR_TIPLAYERC           ROMS                    "roms\\TIPlayerC.BIN"
-
-IDR_TIMUSIF             ROMS                    "roms\\mm2\\timusif"
-
-IDR_DUMMYG              ROMS                    "roms\\mm2\\DummyG.bin"
-
-IDR_TIMM2PICC           ROMS                    "roms\\mm2\\TIMM2PIC_C"
-
-IDR_TIMM2PICP           ROMS                    "roms\\mm2\\TIMM2PIC_P"
-
-IDR_TIMUSIC             ROMS                    "roms\\mm2\\timusic"
-
-IDR_TIMUSID             ROMS                    "roms\\mm2\\timusid"
-
-IDR_TIMUSIE             ROMS                    "roms\\mm2\\timusie"
-
-IDR_TIWORKSHOP          ROMS                    "roms\\tiworkshop379.bin"
-
 IDR_CHARA1              ROMS                    "roms\\chara1"
-
-IDR_EAUTILS             ROMS                    "roms\\EA_Utils.bin"
 
 IDR_BASICHDR            ROMS                    "roms\\BASIC_ROM_header.bin"
 
-IDR_TURBOFORTHD         ROMS                    "roms\\TurboForthD.BIN"
-
-IDR_TURBOFORTHC         ROMS                    "roms\\TurboForthC.BIN"
-
-IDR_RXBC                ROMS                    "roms\\RXBC.Bin"
-
-IDR_RXBD                ROMS                    "roms\\RXBD.Bin"
-
-IDR_RXBG                ROMS                    "roms\\RXBG.Bin"
-
 IDR_TIDISK              ROMS                    "roms\\DISK.BIN"
 
-IDR_XB27EEPROM          ROMS                    "roms\\XB27_EEPROM_060315.bin"
+IDR_PGROM               ROMS                    "roms\\p1f00g_0000_f800.GRM"
 
-IDR_XB27GROM            ROMS                    "roms\\XB27_GROM_060315.bin"
-
-IDR_XB27ROM             ROMS                    "roms\\XB27_ROM_060315.bin"
-
-IDR_FBFORTH             ROMS                    "roms\\fbForth200_9.bin"
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// DISKFILES
-//
-
-IDR_ASSM1               DISKFILES               "roms\\ASSM1.bin"
-
-IDR_ASSM2               DISKFILES               "roms\\ASSM2.bin"
-
-IDR_EDIT1               DISKFILES               "roms\\EDIT1.BIN"
-
-IDR_ACERC               DISKFILES               "roms\\ACERC.bin"
-
-IDR_ACERP               DISKFILES               "roms\\ACERP.bin"
-
-IDR_SSD                 DISKFILES               "roms\\SSD.BIN"
-
-IDR_SSE                 DISKFILES               "roms\\SSE.BIN"
-
-IDR_PENNIES             DISKFILES               "roms\\PENNIES"
-
-IDR_QUEST               DISKFILES               "roms\\QUEST"
+IDR_EAUTILS             ROMS                    "roms\\EA_Utils.bin"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -482,7 +344,7 @@ IDR_QUEST               DISKFILES               "roms\\QUEST"
 // Dialog
 //
 
-IDD_AUDIO DIALOGEX 0, 0, 315, 108
+IDD_AUDIO DIALOGEX 0, 0, 315, 135
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Audio Settings"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
@@ -491,14 +353,15 @@ BEGIN
     CONTROL         "22050 Hz",IDC_22KHZ,"Button",BS_AUTORADIOBUTTON,134,22,47,10
     CONTROL         "44100 Hz",IDC_44KHZ,"Button",BS_AUTORADIOBUTTON,216,22,47,10
     CONTROL         "",IDC_SLDVOL,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,18,60,279,18
-    PUSHBUTTON      "&Defaults",IDC_DEFAULT,7,87,50,14
-    DEFPUSHBUTTON   "OK",IDOK,199,87,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,258,87,50,14
+    PUSHBUTTON      "&Defaults",IDC_DEFAULT,7,114,50,14
+    DEFPUSHBUTTON   "OK",IDOK,199,114,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,258,114,50,14
     GROUPBOX        "Volume",IDC_STATIC,7,44,301,42
     GROUPBOX        "Sample Rate",IDC_STATIC,7,7,301,35
+    CONTROL         "Background Noise",IDC_CHKNOISE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,23,95,72,10
 END
 
-IDD_OPTIONS DIALOGEX 0, 0, 365, 255
+IDD_OPTIONS DIALOGEX 0, 0, 365, 260
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Classic99 Configuration"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
@@ -512,12 +375,6 @@ BEGIN
     CONTROL         "Slow Down Keyboard when unthrottled (for use with BASIC and XB  - TI-99/4A only)",IDC_CHKSLOWKEY,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,126,280,10
     CONTROL         "Enable Joysticks",IDC_CHKJOYST,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,174,69,10
-    CONTROL         "PC Keyboard",IDC_JOY1KEY,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,61,188,57,10
-    CONTROL         "PC Joystick 1",IDC_JOY1JOY1,"Button",BS_AUTORADIOBUTTON,138,188,59,10
-    CONTROL         "PC Joystick 2",IDC_JOY1JOY2,"Button",BS_AUTORADIOBUTTON,217,188,59,10
-    CONTROL         "PC Keyboard",IDC_JOY2KEY,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,61,202,57,10
-    CONTROL         "PC Joystick 1",IDC_JOY2JOY1,"Button",BS_AUTORADIOBUTTON,138,202,59,10
-    CONTROL         "PC Joystick 2",IDC_JOY2JOY2,"Button",BS_AUTORADIOBUTTON,217,202,59,10
     LTEXT           "AVI Filename",IDC_STATIC,14,19,42,8
     LTEXT           "CPU Tuning: ",IDC_STATIC,14,58,44,8
     GROUPBOX        "Performance",IDC_STATIC,7,37,291,122
@@ -533,11 +390,16 @@ BEGIN
     CONTROL         "CPU Overdrive",IDC_UNTHROTTLECPU,"Button",BS_AUTORADIOBUTTON,90,142,63,10
     CONTROL         "System Maximum",IDC_UNTHROTTLEALL,"Button",BS_AUTORADIOBUTTON,188,142,70,10
     GROUPBOX        "SAMS Support",IDC_STATIC,7,93,290,26
-    CONTROL         "None",IDC_AMS_0K,"Button",BS_AUTORADIOBUTTON | WS_GROUP,26,104,33,10
+    CONTROL         "None",IDC_AMS_0K,"Button",BS_AUTORADIOBUTTON | WS_DISABLED | WS_GROUP,26,104,33,10
     CONTROL         "128k",IDC_AMS_128K,"Button",BS_AUTORADIOBUTTON | WS_DISABLED,79,104,32,10
     CONTROL         "256k",IDC_AMS_256K,"Button",BS_AUTORADIOBUTTON | WS_DISABLED,131,104,32,10
     CONTROL         "512k",IDC_AMS_512K,"Button",BS_AUTORADIOBUTTON | WS_DISABLED,183,104,32,10
-    CONTROL         "1024k",IDC_AMS_1024K,"Button",BS_AUTORADIOBUTTON,235,104,36,10
+    CONTROL         "1024k",IDC_AMS_1024K,"Button",BS_AUTORADIOBUTTON | WS_DISABLED,235,104,36,10
+    COMBOBOX        IDC_JOY1LIST,52,188,180,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_JOY2LIST,52,201,180,47,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Enable Windows Keys",IDC_STATIC,7,224,290,29
+    CONTROL         "Alt-F4 Close",IDC_CHKALTF4,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,33,237,52,10
+    CONTROL         "F10 Menu",IDC_CHKF10,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,98,237,45,10
 END
 
 IDD_KBMAP DIALOG 0, 0, 303, 142
@@ -570,50 +432,54 @@ BEGIN
     CONTROL         "Scanlines Enabled",IDC_SCANLINES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,29,189,75,10
 END
 
-IDD_DEBUG DIALOGEX 0, 0, 442, 293
+IDD_DEBUG DIALOGEX 0, 0, 501, 352
 STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Classic99 Debugger"
 MENU IDR_MENU2
 FONT 9, "Fixedsys", 400, 0, 0x0
 BEGIN
-    EDITTEXT        IDC_ADDRESS,266,265,62,14,ES_AUTOHSCROLL | ES_WANTRETURN | WS_GROUP
-    DEFPUSHBUTTON   "Apply",IDC_APPLY,335,265,25,14
-    PUSHBUTTON      "&Prev",IDC_PREV,367,265,25,14
-    PUSHBUTTON      "&Next",IDC_NEXT,399,265,25,14
-    EDITTEXT        IDC_MAINEDIT,7,7,203,279,ES_MULTILINE | ES_READONLY | WS_HSCROLL
-    EDITTEXT        IDC_SECONDEDIT,214,7,130,244,ES_MULTILINE | ES_READONLY
-    COMBOBOX        IDC_COMBO1,349,21,86,69,CBS_SIMPLE | CBS_SORT | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "&Add",IDC_ADDBREAK,352,93,25,14
-    PUSHBUTTON      "&?",IDC_BREAKHELP,382,93,14,14
-    PUSHBUTTON      "&Remove",IDC_REMOVEBREAK,400,93,32,14
-    CONTROL         "D&ebug",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,228,253,37,10
-    CONTROL         "&Disasm",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,273,253,38,10
-    CONTROL         "&CPU",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON,319,253,29,10
-    CONTROL         "&VDP",IDC_RADIO4,"Button",BS_AUTORADIOBUTTON,356,253,29,10
-    CONTROL         "&PortIO",IDC_RADIO5,"Button",BS_AUTORADIOBUTTON,393,253,36,10
-    PUSHBUTTON      "Edit",IDC_EDITMEM,225,265,34,14,WS_DISABLED
-    LTEXT           "Breakpoints",IDC_STATIC,373,12,38,8
-    GROUPBOX        "",IDC_STATIC,214,248,221,36
-    CONTROL         "Debug CPU",IDC_BREAKCPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,114,52,10
-    CONTROL         "Debug GPU",IDC_BREAKGPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,356,129,52,10
+    EDITTEXT        IDC_ADDRESS,266,324,62,14,ES_AUTOHSCROLL | ES_WANTRETURN | WS_GROUP
+    DEFPUSHBUTTON   "Apply",IDC_APPLY,335,324,25,14
+    PUSHBUTTON      "&Prev",IDC_PREV,367,324,25,14
+    PUSHBUTTON      "&Next",IDC_NEXT,399,324,25,14
+    EDITTEXT        IDC_MAINEDIT,7,7,203,338,ES_MULTILINE | ES_READONLY | WS_HSCROLL
+    EDITTEXT        IDC_SECONDEDIT,214,7,173,298,ES_MULTILINE | ES_READONLY
+    COMBOBOX        IDC_COMBO1,402,24,86,69,CBS_SIMPLE | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "&Add",IDC_ADDBREAK,404,92,25,14
+    PUSHBUTTON      "&?",IDC_BREAKHELP,434,92,14,14
+    PUSHBUTTON      "&Remove",IDC_REMOVEBREAK,452,92,32,14
+    CONTROL         "Debug CPU",IDC_BREAKCPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,402,114,52,10
+    CONTROL         "Debug GPU",IDC_BREAKGPU,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,402,129,52,10
+    CONTROL         "Ignore console hits",IDC_IGNORECONSOLE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,402,145,92,10
+    CONTROL         "D&ebug",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,216,312,37,10
+    CONTROL         "&Disasm",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,256,312,38,10
+    CONTROL         "&CPU",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON,297,312,29,10
+    CONTROL         "&AMS",IDC_RADIO6,"Button",BS_AUTORADIOBUTTON,329,312,29,10
+    CONTROL         "&VDP",IDC_RADIO4,"Button",BS_AUTORADIOBUTTON,361,312,29,10
+    CONTROL         "&GROM",IDC_RADIO5,"Button",BS_AUTORADIOBUTTON,393,312,36,10
+    PUSHBUTTON      "Edit",IDC_EDITMEM,225,324,34,14,WS_DISABLED
+    LTEXT           "Breakpoints",IDC_STATIC,426,12,38,8
+    GROUPBOX        "",IDC_STATIC,214,305,280,36
 END
 
-IDD_BRKHLP DIALOGEX 0, 0, 327, 234
+IDD_BRKHLP DIALOGEX 0, 0, 327, 279
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Breakpoint Syntax"
 FONT 9, "Courier New", 400, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "Close",IDOK,135,213,50,14
-    LTEXT           "M0000=FF   - break when the CPU memory byte at 0000 equals FF\r\nW0000=FFFF - break when the CPU memory word at 0000 equals FFFF\r\nV0000=FF   - break when the VDP memory byte at 0000 equals FF",IDC_STATIC,7,104,312,27
-    LTEXT           "*0000      - break when address 0000 is accessed (read or write)\r\n>0000      - break when address 0000 is written to\r\n>V0000     - break when VDP address 0000 is written to\r\n>G0000     - break when GROM address 0000 is written to",IDC_STATIC,7,19,312,33
-    LTEXT           "U0=FF      - break when VDP register 0 equals FF\r\nR0=FFFF    - break when Register 0 equals FFFF\r\nI0=FF      - break when I/O Port 0 writes FF",IDC_STATIC,7,78,312,24
-    LTEXT           "T(0000-0001) Performs cycle counting between address 0000 and 0001 (PC)",IDC_STATIC,7,159,285,8
-    LTEXT           "Note that all breakpoint addresses, except the CPU and VDP registers, may\r\nbe specified as a range in the same syntax as the cycle counting timer",IDC_STATIC,7,187,312,19
-    LTEXT           "<0000      - break when address 0000 is read from (including by PC!)\r\n<V0000     - break when VDP address 0000 is read from \r\n<G0000     - break when GROM address 0000 is read from",IDC_STATIC,7,52,312,25
+    DEFPUSHBUTTON   "Close",IDOK,135,258,50,14
+    LTEXT           "M0000=FF   - break when the CPU memory byte at 0000 equals FF\r\nW0000=FFFF - break when the CPU memory word at 0000 equals FFFF\r\nV0000=FF   - break when the VDP memory byte at 0000 equals FF",IDC_STATIC,7,143,312,25
+    LTEXT           "*0000      - break when address 0000 is accessed (read or write)\r\n>0000      - break when address 0000 is written to\r\n>V0000     - break when VDP address 0000 is written to",IDC_STATIC,7,19,312,33
+    LTEXT           "U0=FF      - break when VDP register 0 equals FF\r\nR0=FFFF    - break when Register 0 equals FFFF\r\nST=FFFF    - break when status register equals FFFF\r\nWP=FFFF    - break when workspace pointer equals FFFF",IDC_STATIC,7,103,312,35
+    LTEXT           "T(0000-0001) Performs cycle counting between address 0000 and 0001 (PC)",IDC_STATIC,7,206,285,8
+    LTEXT           "Note that all breakpoint addresses, except the CPU and VDP registers, may\r\nbe specified as a range in the same syntax as the cycle counting timer",IDC_STATIC,7,233,312,19
+    LTEXT           "<0000      - break when address 0000 is read from (including by PC!)\r\n<V0000     - break when VDP address 0000 is read from \r\n<G0000     - break when GROM address 0000 is read from\r\n<X00000    - break when AMS (eXtended) address 00000 is read from",IDC_STATIC,7,65,312,31
     LTEXT           "0000       - break when the PC is 0000",IDC_STATIC,7,7,153,8
-    LTEXT           "Cartridge ROM addresses may be appended with :00 to indicate a specific bank",IDC_STATIC,7,135,305,8
-    LTEXT           "All compare operations may include {0000} after the address to indicate a mask",IDC_STATIC,7,147,313,8
-    LTEXT           "L0000=#    - Log address to disk file # (1-9) (range okay) (P to monitor port)",IDC_STATIC,7,173,312,10
+    LTEXT           "Cartridge ROM addresses may be appended with :00 to indicate a specific bank",IDC_STATIC,7,182,305,8
+    LTEXT           "All compare operations may include {0000} after the address to indicate a mask",IDC_STATIC,7,193,313,8
+    LTEXT           "L0000=#    - Log address to disk file # (1-9) (range okay)",IDC_STATIC,7,220,312,10
+    LTEXT           ">G0000     - break when GROM address 0000 is written to\r\n>X00000    - break when AMS (eXtended) address 00000 is written to",IDC_STATIC,7,44,312,14
+    LTEXT           "X00000=FF  - break when the AMS (eXtended) memory byte at 00000 equals FF",IDC_STATIC,7,168,309,11
 END
 
 IDD_HEATMAP DIALOGEX 0, 0, 168, 186
@@ -632,7 +498,7 @@ FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
 END
 
-IDD_CARTDLG DIALOGEX 0, 0, 168, 237
+IDD_CARTDLG DIALOGEX 0, 0, 168, 249
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Save Memory"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
@@ -641,38 +507,42 @@ BEGIN
     CONTROL         "High RAM",IDC_CHKHIGHRAM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,24,47,10
     EDITTEXT        IDC_HIGHSTART,59,22,40,14,ES_AUTOHSCROLL
     EDITTEXT        IDC_HIGHEND,107,22,40,14,ES_AUTOHSCROLL
-    CONTROL         "Low RAM",IDC_CHKLOWRAM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,40,45,10
-    EDITTEXT        IDC_LOWSTART,59,38,40,14,ES_AUTOHSCROLL
-    EDITTEXT        IDC_LOWEND,107,38,40,14,ES_AUTOHSCROLL
-    CONTROL         "VDP RAM",IDC_CHKVDPRAM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,56,45,10
-    EDITTEXT        IDC_VDPSTART,59,54,40,14,ES_AUTOHSCROLL
-    EDITTEXT        IDC_VDPEND,107,54,40,14,ES_AUTOHSCROLL
-    EDITTEXT        IDC_BOOT,59,71,40,14,ES_AUTOHSCROLL
-    EDITTEXT        IDC_NAME,59,88,102,14,ES_AUTOHSCROLL
+    CONTROL         "Low RAM",IDC_CHKLOWRAM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,54,45,10
+    EDITTEXT        IDC_LOWSTART,59,52,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_LOWEND,107,52,40,14,ES_AUTOHSCROLL
+    CONTROL         "VDP RAM",IDC_CHKVDPRAM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,70,45,10
+    EDITTEXT        IDC_VDPSTART,59,68,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_VDPEND,107,68,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_BOOT,59,85,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_NAME,59,102,102,14,ES_AUTOHSCROLL
     CONTROL         "Include E/A Utilities (will offer to load)",IDC_CHKEA,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,105,136,10
-    CONTROL         "Load Character Set",IDC_CHKCHARSET,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,118,78,10
-    CONTROL         "use CHARA1",IDC_CHKCHARA1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,98,118,57,10
-    CONTROL         "Initialize Keyboard (Recommended)",IDC_KEYBOARD,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,131,134,10
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,119,136,10
+    CONTROL         "Load Character Set",IDC_CHKCHARSET,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,132,78,10
+    CONTROL         "use CHARA1",IDC_CHKCHARA1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,98,132,57,10
+    CONTROL         "Initialize Keyboard (Recommended)",IDC_KEYBOARD,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,145,134,10
     CONTROL         "Use 8K GROMS (incompatible with real!)",IDC_GROM8K,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,157,143,10
-    COMBOBOX        IDC_LSTFIRSTGROM,66,200,95,61,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    DEFPUSHBUTTON   "Build",IDC_BUILD,7,216,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,111,216,50,14
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,171,143,10
+    COMBOBOX        IDC_LSTFIRSTGROM,66,214,95,61,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "Build",IDC_BUILD,7,228,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,111,228,50,14
     LTEXT           "to",IDC_STATIC,100,25,8,8
     LTEXT           "Save Type:",IDC_STATIC,7,8,38,8
-    LTEXT           "to",IDC_STATIC,100,41,8,8
-    LTEXT           "to",IDC_STATIC,100,57,8,8
-    LTEXT           "Start Address",IDC_STATIC,7,73,45,8
-    LTEXT           "Cartridge Name",IDC_STATIC,7,90,51,8
-    LTEXT           "Starting GROM #",IDC_STATIC,7,202,56,8
-    CONTROL         "Disable FCTN-4 (Break)",IDC_DISABLEF4,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,170,90,10
-    PUSHBUTTON      "Read Defs",IDC_BTNREADDEFS,111,71,50,14
+    LTEXT           "to",IDC_STATIC,100,55,8,8
+    LTEXT           "to",IDC_STATIC,100,71,8,8
+    LTEXT           "Start Address",IDC_STATIC,7,87,45,8
+    LTEXT           "Cartridge Name",IDC_STATIC,7,104,51,8
+    LTEXT           "Starting GROM #",IDC_STATIC,7,216,56,8
+    CONTROL         "Disable FCTN-4 (Break)",IDC_DISABLEF4,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,184,90,10
+    PUSHBUTTON      "Read Defs",IDC_BTNREADDEFS,111,85,50,14
     PUSHBUTTON      "M",IDC_MODIFIEDHIGH,147,22,14,14
-    PUSHBUTTON      "M",IDC_MODIFIEDLOW,147,38,14,14
-    PUSHBUTTON      "M",IDC_MODIFIEDVRAM,147,54,14,14
-    CONTROL         "Restore VDP Registers",IDC_VDPREGS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,144,134,10
-    CONTROL         "Use Inverted Bank Order",IDC_INVERTBANKS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,183,94,10
+    PUSHBUTTON      "M",IDC_MODIFIEDLOW,147,52,14,14
+    PUSHBUTTON      "M",IDC_MODIFIEDVRAM,147,68,14,14
+    CONTROL         "Restore VDP Registers",IDC_VDPREGS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,158,134,10
+    CONTROL         "Use Inverted Bank Order",IDC_INVERTBANKS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,197,94,10
+    CONTROL         "Cart Mem",IDC_CHKCARTMEM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,39,47,10
+    EDITTEXT        IDC_MIDSTART,59,37,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_MIDEND,107,37,40,14,ES_AUTOHSCROLL
+    LTEXT           "to",IDC_STATIC,100,40,8,8
 END
 
 IDD_DISKCFG DIALOGEX 0, 0, 317, 238
@@ -702,12 +572,10 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,67,115,10
     CONTROL         "Read Windows files without ext. as Text",IDC_FIAD_READTEXTWITHOUTEXT,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,93,145,10
-    CONTROL         "Read Windows files without ext. as DF128",IDC_FIAD_ALLOWNOHEADERASDF128,
+    CONTROL         "Do not write or require headers for DF128",IDC_FIAD_ALLOWNOHEADERASDF128,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,106,151,10
     CONTROL         "Write TIFILES headers",IDC_FIAD_WRITETIFILES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,41,88,10
     GROUPBOX        "Image Options",IDC_STATIC,7,136,302,36
-    CONTROL         "Use V9T9 Reverse DSSD Layout",IDC_IMAGE_USEV9T9DSSD,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,151,118,10
     CONTROL         "Dir: Enable Long Filenames",IDC_FIAD_ENABLELONGFILENAMES,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,119,101,10
     CONTROL         "Dir: Allow more than 127 files",IDC_FIAD_ALLOWMORE127FILES,
@@ -715,7 +583,7 @@ BEGIN
     GROUPBOX        "Global Options",IDC_STATIC,7,174,302,40
     CONTROL         "Automap DSK1",IDC_DISK_AUTOMAPDSK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,192,63,10
     CONTROL         "Write Protect",IDC_DISK_WRITEPROTECT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,152,192,59,10
-    COMBOBOX        IDC_PATH,160,7,132,63,CBS_DROPDOWN | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_PATH,160,7,132,63,CBS_DROPDOWN | CBS_AUTOHSCROLL | CBS_SORT | WS_VSCROLL | WS_TABSTOP
 END
 
 IDD_OPTGRAM DIALOGEX 0, 0, 198, 110
@@ -751,7 +619,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 308
         TOPMARGIN, 7
-        BOTTOMMARGIN, 101
+        BOTTOMMARGIN, 128
     END
 
     IDD_OPTIONS, DIALOG
@@ -759,7 +627,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 358
         TOPMARGIN, 7
-        BOTTOMMARGIN, 248
+        BOTTOMMARGIN, 253
     END
 
     IDD_KBMAP, DIALOG
@@ -781,9 +649,9 @@ BEGIN
     IDD_DEBUG, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 435
+        RIGHTMARGIN, 494
         TOPMARGIN, 7
-        BOTTOMMARGIN, 286
+        BOTTOMMARGIN, 345
     END
 
     IDD_BRKHLP, DIALOG
@@ -791,7 +659,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 319
         TOPMARGIN, 7
-        BOTTOMMARGIN, 227
+        BOTTOMMARGIN, 272
     END
 
     IDD_HEATMAP, DIALOG
@@ -815,7 +683,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 161
         TOPMARGIN, 7
-        BOTTOMMARGIN, 230
+        BOTTOMMARGIN, 242
     END
 
     IDD_DISKCFG, DIALOG
@@ -888,6 +756,16 @@ BEGIN
 END
 
 IDD_BRKHLP AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_OPTIONS AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_AUDIO AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

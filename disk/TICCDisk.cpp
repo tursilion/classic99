@@ -213,6 +213,30 @@ void WriteTICCRegister(int address, int val) {
 	}
 }
 
+// make sure it's 90k or 180k only
+bool checkTIDiskSize(TICCDisk *disk, int nDrive) {
+	// open the file to check size
+	FileInfo lclFile;
+	lclFile.nDrive=nDrive;
+	CString csPath = disk->BuildFilename(&lclFile);
+	FILE *fp = fopen(csPath, "rb");
+	if (NULL == fp) {
+		debug_write("Can't open %s for size check.", (LPCSTR)csPath);
+        return false;
+	}
+    fseek(fp, 0, SEEK_END);
+    int len = ftell(fp);
+    fclose(fp);
+
+	if ((len != 90*1024) && (len != 260240) &&   // SSSD size
+        (len != 180*1024) ) {                    // DSSD size - TODO: PC99? In all my disks I only have SSSD and DSDD
+        debug_write("%d bytes is not a valid size for a TICC disk, only 90k and 180k allowed!", len);
+        return false;
+    }
+
+    return true;
+}
+
 void HandleTICCSector() {
 	// find the right instance and invoke it to get the sector in memory, then skip over the code
 	
@@ -226,19 +250,23 @@ void HandleTICCSector() {
 	// todo: would be nice to be able to map other than 1-3
 	if ((nDrive > 0) && (nDrive <= 3) && (pDriveType[nDrive]!=NULL) && (DISK_TICC == pDriveType[nDrive]->GetDiskType())) {
 		TICCDisk *disk = (TICCDisk*)pDriveType[nDrive];
-		if (rcpubyte(0x834d)) {
-			disk->readsectorwrap();
-		} else {
-			disk->writesectorwrap();
-		}
-		pCurrentCPU->SetPC(0x4676);		// return from read or write (write normally goes through read to verify)
+
+        if (checkTIDiskSize(disk, nDrive)) {
+		    if (rcpubyte(0x834d)) {
+			    disk->readsectorwrap();
+		    } else {
+			    disk->writesectorwrap();
+		    }
+    	    pCurrentCPU->SetPC(0x4676);		// return from read or write (write normally goes through read to verify)
+        } else {
+            debug_write("DSK%d failed size check for readable TICC Disk! (180k maximum!)", nDrive);
+		    pCurrentCPU->SetPC(0x42a0);			// error 31 (not found)
+	    }
 	} else {
-		debug_write("DSK%d not a valid TICC Disk! (1-3 only for now!)");
+		debug_write("DSK%d not a valid TICC Disk! (1-3 only for now!)", nDrive);
 		pCurrentCPU->SetPC(0x42a0);			// error 31 (not found)
 	}
 }
-
-// TODO - write sector can come later
 
 // constructor
 TICCDisk::TICCDisk() {
@@ -359,9 +387,9 @@ void TICCDisk::readsectorwrap() {
 
 	FileInfo lclFile;
 
-	lclFile.nDrive=rcpubyte(0x834c);
-	lclFile.DataBuffer = romword(0x834e);	// address in VDP of data buffer
-	lclFile.RecordNumber = romword(0x834a);	// sector index
+	lclFile.nDrive=rcpubyte(0x834c, ACCESS_FREE);
+	lclFile.DataBuffer = romword(0x834e, ACCESS_FREE);	// address in VDP of data buffer
+	lclFile.RecordNumber = romword(0x834a, ACCESS_FREE);	// sector index
 
 	// This may get spammy...
 	debug_write("Sector read: TICC drive %d, sector %d, VDP >%04X", lclFile.nDrive, lclFile.RecordNumber, lclFile.DataBuffer);
@@ -389,9 +417,9 @@ void TICCDisk::writesectorwrap() {
 
 	FileInfo lclFile;
 
-	lclFile.nDrive=rcpubyte(0x834c);
-	lclFile.DataBuffer = romword(0x834e);	// address in VDP of data buffer
-	lclFile.RecordNumber = romword(0x834a);	// sector index
+	lclFile.nDrive=rcpubyte(0x834c, ACCESS_FREE);
+	lclFile.DataBuffer = romword(0x834e, ACCESS_FREE);	// address in VDP of data buffer
+	lclFile.RecordNumber = romword(0x834a, ACCESS_FREE);	// sector index
 
 	// This may get spammy...
 	debug_write("Sector write: TICC drive %d, sector %d, VDP >%04X", lclFile.nDrive, lclFile.RecordNumber, lclFile.DataBuffer);

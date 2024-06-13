@@ -45,12 +45,6 @@
 #include "diskclass.h"
 #include "fiaddisk.h"
 
-// on the day this changes (for instance, we support
-// direct access to RAW files, etc), add a headersize
-// variable to FileInfo and make sure the detection code
-// updates it, then use that instead.
-#define HEADERSIZE 128
-
 //********************************************************
 // FiadDisk
 //********************************************************
@@ -247,6 +241,13 @@ FILE *FiadDisk::fopen(const char *szFile, char *szMode) {
 		}
 		p++;
 	}
+
+    // last check before the open, disallow moving up a folder... (AFTER all translations)
+    if (strstr(szLocalName, "..")) {
+        debug_write("Refusing to open file with previous folder path: %s", szLocalName);
+        return NULL;
+    }
+    // and now go for it
 	errno_t err=fopen_s(&pTmp, szLocalName, szMode); 
 	if (err != 0) pTmp=NULL; 
 
@@ -267,6 +268,12 @@ FILE *FiadDisk::fopen(const char *szFile, char *szMode) {
 				bTry=true;
 			}
 			if (bTry) {
+                // last check before the open, disallow moving up a folder... (AFTER all translations)
+                if (strstr(szLocalName, "..")) {
+                    debug_write("Refusing to open file with previous folder path: %s", szLocalName);
+                    return NULL;
+                }
+                // and now go for it
 				errno_t err=fopen_s(&pTmp, szLocalName, szMode); 
 				if (err != 0) pTmp=NULL; 
 			}
@@ -526,214 +533,228 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 	nReadLen=fread(buf, 1, 512, fp);			// it's legal to read less!
 	fclose(fp);
 	
-	// check for TIFILES, if supported
-	// the first characters would be a length and then "TIFILES" if it's a TIFILES file
-	if ((0==_strnicmp((char*)buf, "\x07TIFILES", 8)) || (pFile->csOptions.Find('T')!=-1)) {
-		if (bReadTIFiles) {
-			debug_write("Detected %s as a TIFILES file", (LPCSTR)csFileName);
-			pFile->ImageType = IMAGE_TIFILES;
-			// fill in the information 
-			pFile->LengthSectors=(buf[8]<<8)|buf[9];
-			pFile->FileType=buf[10];
-			pFile->RecordsPerSector=buf[11];
-			pFile->BytesInLastSector=buf[12];
-			pFile->RecordLength=buf[13];
-			pFile->NumberRecords=(buf[15]<<8)|buf[14];		// NOTE: swapped on disk!
-			// translate FileType to Status
-			pFile->Status = 0;
-			if (pFile->FileType & TIFILES_VARIABLE) pFile->Status|=FLAG_VARIABLE;
-			if (pFile->FileType & TIFILES_INTERNAL) pFile->Status|=FLAG_INTERNAL;
-			// do some fixup of the NumberRecords field
-			// If it's variable or fixed, we should easily determine if the value is byteswapped
-			if (pFile->FileType & TIFILES_VARIABLE) {
-				// must match the number of sectors
-				if (pFile->NumberRecords != pFile->LengthSectors) {
-					// check for byte swap (better debugging)
-					if (((buf[14]<<8)|(buf[15])) == pFile->LengthSectors) {
-						debug_write("Var File had Number Records byte-swapped - will fix - recommend re-saving file");
-						pFile->NumberRecords = pFile->LengthSectors;
-					} else {
-						debug_write("Warning: Number Records doesn't match sector length on variable file.");
+	// skip the header detection if ?X is specified
+	if (pFile->csOptions.Find('X') == -1) {
+		// check for TIFILES, if supported
+		// the first characters would be a length and then "TIFILES" if it's a TIFILES file
+		if ((0==_strnicmp((char*)buf, "\x07TIFILES", 8)) || (pFile->csOptions.Find('T')!=-1)) {
+			if (bReadTIFiles) {
+				debug_write("Detected %s as a TIFILES file", (LPCSTR)csFileName);
+				pFile->ImageType = IMAGE_TIFILES;
+				pFile->HeaderSize = 128;
+				// fill in the information 
+				pFile->LengthSectors=(buf[8]<<8)|buf[9];
+				pFile->FileType=buf[10];
+				pFile->RecordsPerSector=buf[11];
+				pFile->BytesInLastSector=buf[12];
+				pFile->RecordLength=buf[13];
+				pFile->NumberRecords=(buf[15]<<8)|buf[14];		// NOTE: swapped on disk!
+				// translate FileType to Status
+				pFile->Status = 0;
+				if (pFile->FileType & TIFILES_VARIABLE) pFile->Status|=FLAG_VARIABLE;
+				if (pFile->FileType & TIFILES_INTERNAL) pFile->Status|=FLAG_INTERNAL;
+				// do some fixup of the NumberRecords field
+				// If it's variable or fixed, we should easily determine if the value is byteswapped
+				if (pFile->FileType & TIFILES_VARIABLE) {
+					// must match the number of sectors
+					if (pFile->NumberRecords != pFile->LengthSectors) {
+						// check for byte swap (better debugging)
+						// TODO: option to breakpoint on these warnings - sometimes they scroll off too quickly
+						// Or maybe warnings should have their own output window? That would be handy!
+						if (((buf[14]<<8)|(buf[15])) == pFile->LengthSectors) {
+							debug_write("Warning: Var File had Number Records byte-swapped - will fix - recommend re-saving file");
+							pFile->NumberRecords = pFile->LengthSectors;
+						} else {
+							debug_write("Warning: Number Records doesn't match sector length on variable file.");
+						}
 					}
-				}
-			} else {
-				// is an actual record count, but we can use LengthSectors and RecordsPerSector to
-				// see if it was byte swapped. We don't bother with using BytesInLastSector to get the actual count
-				if (pFile->NumberRecords > (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
-					if (((buf[14]<<8)|(buf[15])) <= (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
-						debug_write("Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
-						pFile->NumberRecords = ((buf[14]<<8)|(buf[15]));
-					}
-				}
-			}
-			return;
-		} else {
-			debug_write("%s looks like TIFILES, but TIFILES reading is disabled.", (LPCSTR)csFileName);
-		}
-	}
-
-	// Check for V9T9 format, if supported
-	// the first characters should match the filename if this
-	// is really a v9t9 file. To improve handling of filename munging,
-	// we'll only check alphabetic characters.
-	int idx=0;
-	// a little parsing helps with stripping subdirectories
-	CString csTmpName = pFile->csName;
-	idx = csTmpName.ReverseFind('\\');
-	if (idx != -1) {
-		csTmpName = csTmpName.Mid(idx+1);
-	}
-	idx=0;
-	if (csTmpName.GetLength() <= 10) {
-		// maximum length of a V9T9 filename is 10 chars
-		while ((idx<10) && (*(buf+idx)!=' ')) {
-			if (idx >= csTmpName.GetLength()) {
-				// disk is longer than CString
-				idx=99;
-				break;
-			}
-			if ((isalnum(*(buf+idx))) || (isalnum(csTmpName[idx]))) {
-				if (toupper(*(buf+idx))!=toupper(csTmpName[idx])) {
-					idx=99;
-					break;
-				}
-			}
-			idx++;
-		}
-		// verify length on exit
-		if (csTmpName.GetLength() > idx) {
-			// CString is longer than disk
-			idx=99;
-		}
-	} else {
-		idx=99;		// failure flag
-	}
-	if ((idx != 99) || (pFile->csOptions.Find('V')!=-1)) {
-		if (bReadV9T9) {
-			debug_write("Detected %s as a V9T9 file", (LPCSTR)csFileName);
-			pFile->ImageType = IMAGE_V9T9;
-			// fill in the information 
-			pFile->LengthSectors=(buf[14]<<8)|buf[15];
-			pFile->FileType=buf[12];
-			pFile->RecordsPerSector=buf[13];
-			pFile->BytesInLastSector=buf[16];
-			pFile->RecordLength=buf[17];
-			pFile->NumberRecords=(buf[19]<<8)|buf[18];		// Note: byte-swapped on disk!
-			// translate FileType to Status
-			pFile->Status = 0;
-			if (pFile->FileType & TIFILES_VARIABLE) pFile->Status|=FLAG_VARIABLE;
-			if (pFile->FileType & TIFILES_INTERNAL) pFile->Status|=FLAG_INTERNAL;
-			// do some fixup of the NumberRecords field (less likely here)
-			// If it's variable or fixed, we should easily determine if the value is byteswapped
-			if (pFile->FileType & TIFILES_VARIABLE) {
-				// must match the number of sectors
-				if (pFile->NumberRecords != pFile->LengthSectors) {
-					// check for byte swap (better debugging)
-					if (((buf[18]<<8)|(buf[19])) == pFile->LengthSectors) {
-						debug_write("Var File had Number Records byte-swapped - will fix - recommend re-saving file");
-						pFile->NumberRecords = pFile->LengthSectors;
-					} else {
-						debug_write("Warning: Number Records doesn't match sector length on variable file.");
-					}
-				}
-			} else {
-				// is an actual record count, but we can use LengthSectors and RecordsPerSector to
-				// see if it was byte swapped. We don't bother with using BytesInLastSector to get the actual count
-				if (pFile->NumberRecords > (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
-					if (((buf[18]<<8)|(buf[19])) <= (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
-						debug_write("Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
-						pFile->NumberRecords = ((buf[18]<<8)|(buf[19]));
-					}
-				}
-			}
-			return;
-		} else {
-			debug_write("%s looks like V9T9, but V9T9 reading is disabled.", (LPCSTR)csFileName);
-		}
-	}
-
-	// check for Windows text - unlike the old Classic99, we'll just work with
-	// a list of extensions, anything in that list is assumed to be valid. We
-	// only analyze the file to determine record length now
-	// TODO: For now, the extensions are hard-coded, since they don't work
-	// well with the numeric configuration system:
-	// TXT - text (duh)
-	// OBJ - Object file (assumed from Win994a Asm)
-	// COB - Compressed object file (assumed from Win994a Asm)
-	// One goal is that in the future Classic99 will be able to extract parts of files and thus do more
-	// Perhaps for that we can implement file system filters - they take in the
-	// filename and the FileInfo object for the open, and extract appropriate data
-	if ((csFileName.Right(4).CompareNoCase(".TXT") == 0) || 
-	(csFileName.Right(4).CompareNoCase(".OBJ") == 0) || 
-	(csFileName.Right(4).CompareNoCase(".COB") == 0) ||
-	((bAllowTxtWithoutExtension)&&(-1 == csFileName.Find('.'))) ||
-	(pFile->csOptions.Find('W')!=-1)  ) {
-		if (bReadTxtAsDV) {
-			debug_write("Detected %s as a Host TEXT file", (LPCSTR)csFileName);
-			pFile->ImageType = IMAGE_TEXT;
-			// in an open call, STATUS will contain what is wanted,
-			// but in others it may not. In that case it may often appear as fixed
-			// We can check record length - if it's 0, return DV80 (normal TI text),
-			// assuming DV is allowed, else DF80. Otherwise, just allow whatever
-			// the user was requesting
-			if (pFile->RecordLength == 0) {
-				// assume we should fill it in
-				pFile->RecordLength = 80;		// even if it's not really, this is ok
-			}
-
-			// allow most user fields, but make sure it's at least display
-			pFile->FileType &= ~TIFILES_INTERNAL;
-			pFile->Status &= ~FLAG_INTERNAL;
-
-			if (!(pFile->Status & FLAG_VARIABLE)) {
-				// add variable flag if variable is allowed at all (default)
-				// exception: OBJ and COB will be fixed.
-				// need a way to configure this
-				if ((csFileName.Right(4).CompareNoCase(".OBJ") == 0) || 
-					(csFileName.Right(4).CompareNoCase(".COB") == 0)) {
-						// do no such thing
 				} else {
-					pFile->FileType |= TIFILES_VARIABLE;
-					pFile->Status |= FLAG_VARIABLE;
-				}
-			}
-
-			// calculate some of the other fields
-			{
-				FILE *fp;
-				char buf[128];
-
-				fp=fopen(csFileName, "r");		// text mode!
-				if (NULL != fp) {
-					pFile->LengthSectors=_filelength(_fileno(fp))/256+1;
-					pFile->NumberRecords = pFile->LengthSectors;
-					pFile->RecordsPerSector = 256  / (pFile->RecordLength + ((pFile->Status & FLAG_VARIABLE) ? 1 : 0) );
-					pFile->BytesInLastSector = _filelength(_fileno(fp))%256;	// this is somewhat imaginary
-					// need to count the number of records (line endings)
-					pFile->NumberRecords = 1;	// counts last line
-					while (!feof(fp)) {
-						memset(buf, 0, 128);
-						fread(buf, 1, 128, fp);
-						for (int idx=0; idx<128; idx++) {
-							if (buf[idx] == 0x0a) {
-								pFile->NumberRecords++;
-							}
+					// is an actual record count, but we can use LengthSectors and RecordsPerSector to
+					// see if it was byte swapped. We don't bother with using BytesInLastSector to get the actual count
+					if (pFile->NumberRecords > (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
+						if (((buf[14]<<8)|(buf[15])) <= (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
+							debug_write("Warning: Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
+							pFile->NumberRecords = ((buf[14]<<8)|(buf[15]));
 						}
 					}
 				}
-				fclose(fp);
+				return;
+			} else {
+				debug_write("%s looks like TIFILES, but TIFILES reading is disabled.", (LPCSTR)csFileName);
 			}
-			return;
-		} else {
-			debug_write("%s looks like text, but text is disabled.", (LPCSTR)csFileName);
 		}
+
+		// Check for V9T9 format, if supported
+		// the first characters should match the filename if this
+		// is really a v9t9 file. To improve handling of filename munging,
+		// we'll only check alphabetic characters.
+		int idx=0;
+		// a little parsing helps with stripping subdirectories
+		CString csTmpName = pFile->csName;
+		idx = csTmpName.ReverseFind('\\');
+		if (idx != -1) {
+			csTmpName = csTmpName.Mid(idx+1);
+		}
+		idx=0;
+		if (csTmpName.GetLength() <= 10) {
+			// maximum length of a V9T9 filename is 10 chars
+			while ((idx<10) && (*(buf+idx)!=' ')) {
+				if (idx >= csTmpName.GetLength()) {
+					// disk is longer than CString
+					idx=99;
+					break;
+				}
+				if ((isalnum(*(buf+idx))) || (isalnum(csTmpName[idx]))) {
+					if (toupper(*(buf+idx))!=toupper(csTmpName[idx])) {
+						idx=99;
+						break;
+					}
+				}
+				idx++;
+			}
+			// verify length on exit
+			if (csTmpName.GetLength() > idx) {
+				// CString is longer than disk
+				idx=99;
+			}
+		} else {
+			idx=99;		// failure flag
+		}
+		if ((idx != 99) || (pFile->csOptions.Find('V')!=-1)) {
+			if (bReadV9T9) {
+				debug_write("Detected %s as a V9T9 file", (LPCSTR)csFileName);
+				pFile->ImageType = IMAGE_V9T9;
+				pFile->HeaderSize = 128;
+				// fill in the information 
+				pFile->LengthSectors=(buf[14]<<8)|buf[15];
+				pFile->FileType=buf[12];
+				pFile->RecordsPerSector=buf[13];
+				pFile->BytesInLastSector=buf[16];
+				pFile->RecordLength=buf[17];
+				pFile->NumberRecords=(buf[19]<<8)|buf[18];		// Note: byte-swapped on disk!
+				// translate FileType to Status
+				pFile->Status = 0;
+				if (pFile->FileType & TIFILES_VARIABLE) pFile->Status|=FLAG_VARIABLE;
+				if (pFile->FileType & TIFILES_INTERNAL) pFile->Status|=FLAG_INTERNAL;
+				// do some fixup of the NumberRecords field (less likely here)
+				// If it's variable or fixed, we should easily determine if the value is byteswapped
+				if (pFile->FileType & TIFILES_VARIABLE) {
+					// must match the number of sectors
+					if (pFile->NumberRecords != pFile->LengthSectors) {
+						// check for byte swap (better debugging)
+						if (((buf[18]<<8)|(buf[19])) == pFile->LengthSectors) {
+							debug_write("Warning: Var File had Number Records byte-swapped - will fix - recommend re-saving file");
+							pFile->NumberRecords = pFile->LengthSectors;
+						} else {
+							debug_write("Warning: Number Records doesn't match sector length on variable file.");
+						}
+					}
+				} else {
+					// is an actual record count, but we can use LengthSectors and RecordsPerSector to
+					// see if it was byte swapped. We don't bother with using BytesInLastSector to get the actual count
+					if (pFile->NumberRecords > (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
+						if (((buf[18]<<8)|(buf[19])) <= (pFile->LengthSectors+1)*pFile->RecordsPerSector) {
+							debug_write("Warning: Fix File had Number Records byte-swapped - will fix - recommend re-saving file");
+							pFile->NumberRecords = ((buf[18]<<8)|(buf[19]));
+						}
+					}
+				}
+				return;
+			} else {
+				debug_write("%s looks like V9T9, but V9T9 reading is disabled.", (LPCSTR)csFileName);
+			}
+		}
+
+		// check for Windows text - unlike the old Classic99, we'll just work with
+		// a list of extensions, anything in that list is assumed to be valid. We
+		// only analyze the file to determine record length now
+		// TODO: For now, the extensions are hard-coded, since they don't work
+		// well with the numeric configuration system:
+		// TXT - text (duh)
+		// OBJ - Object file (assumed from Win994a Asm)
+		// COB - Compressed object file (assumed from Win994a Asm)
+		// One goal is that in the future Classic99 will be able to extract parts of files and thus do more
+		// Perhaps for that we can implement file system filters - they take in the
+		// filename and the FileInfo object for the open, and extract appropriate data
+		debug_write("Filename test against %s", (LPCSTR)pFile->csName);
+		if ((pFile->csName.Right(4).CompareNoCase(".TXT") == 0) || 
+		(pFile->csName.Right(4).CompareNoCase(".OBJ") == 0) || 
+		(pFile->csName.Right(4).CompareNoCase(".COB") == 0) ||
+		((bAllowTxtWithoutExtension)&&(-1 == pFile->csName.Find('.'))) ||
+		(pFile->csOptions.Find('W')!=-1)  ) {
+			if (bReadTxtAsDV) {
+				debug_write("Detected %s as a Host TEXT file", (LPCSTR)csFileName);
+				pFile->ImageType = IMAGE_TEXT;
+				pFile->HeaderSize = 0;
+				// in an open call, STATUS will contain what is wanted,
+				// but in others it may not. In that case it may often appear as fixed
+				// We can check record length - if it's 0, return DV80 (normal TI text),
+				// assuming DV is allowed, else DF80. Otherwise, just allow whatever
+				// the user was requesting
+				if (pFile->RecordLength == 0) {
+					// assume we should fill it in
+					pFile->RecordLength = 80;		// even if it's not really, this is ok
+				}
+
+				// allow most user fields, but make sure it's at least display and not program
+				pFile->FileType &= ~(TIFILES_INTERNAL|TIFILES_PROGRAM);
+				pFile->Status &= ~FLAG_INTERNAL;
+
+				if (!(pFile->Status & FLAG_VARIABLE)) {
+					// add variable flag if variable is allowed at all (default)
+					// exception: OBJ and COB will be fixed.
+					// need a way to configure this
+					if ((csFileName.Right(4).CompareNoCase(".OBJ") == 0) || 
+						(csFileName.Right(4).CompareNoCase(".COB") == 0)) {
+							// do no such thing
+					} else {
+						pFile->FileType |= TIFILES_VARIABLE;
+						pFile->Status |= FLAG_VARIABLE;
+					}
+				}
+
+				// calculate some of the other fields
+				{
+					FILE *fp;
+					unsigned char buf[128];
+
+					fp=fopen(csFileName, "r");		// text mode!
+					if (NULL != fp) {
+						pFile->LengthSectors=_filelength(_fileno(fp))/256+1;
+						pFile->NumberRecords = pFile->LengthSectors;
+						pFile->RecordsPerSector = 256  / (pFile->RecordLength + ((pFile->Status & FLAG_VARIABLE) ? 1 : 0) );
+						pFile->BytesInLastSector = _filelength(_fileno(fp))%256;	// this is somewhat imaginary
+						// need to count the number of records (line endings)
+						pFile->NumberRecords = 1;	// counts last line
+						while (!feof(fp)) {
+							memset(buf, 0, 128);
+							fread(buf, 1, 128, fp);
+							for (int idx=0; idx<128; idx++) {
+								if (buf[idx] == 0x0a) {
+									pFile->NumberRecords++;
+								}
+							}
+						}
+					}
+					fclose(fp);
+				}
+				return;
+			} else {
+				debug_write("%s looks like text, but text is disabled.", (LPCSTR)csFileName);
+			}
+		}
+
+	} else {
+		debug_write("Skipping header detection due to ?X option");
 	}
 
 	// check for image filetype. Any file with NO extension is ok. 
 	// These would always be DF128. 
-	if ((csFileName.Find('.')==-1) && (bAllowNoHeaderAsDF128)) {
+	if (((pFile->csName.Find('.')==-1) && (bAllowNoHeaderAsDF128)) ||
+	     (pFile->csOptions.Find('X')!=-1)) {
 		debug_write("Detected %s as a PC (headerless) file - read as DF128.", (LPCSTR)csFileName);
 		pFile->ImageType = IMAGE_IMG;
+		pFile->HeaderSize = 0;
 		// in an open call, STATUS will contain what is wanted,
 		// but in others it may not. In that case it may often appear as fixed
 		// We can check record length - if it's 0, return DF128
@@ -742,7 +763,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 			pFile->RecordLength = 128;
 		}
 
-		pFile->FileType &= ~(TIFILES_INTERNAL | TIFILES_VARIABLE);		// display/fixed format
+		pFile->FileType &= ~(TIFILES_INTERNAL | TIFILES_VARIABLE | TIFILES_PROGRAM);		// display/fixed format
 		pFile->Status &= ~(FLAG_INTERNAL | FLAG_VARIABLE);
 
 		// fill in some of the other fields
@@ -766,7 +787,6 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 	// no other match, just return default
 	debug_write("%s could not be identified.", (LPCSTR)csFileName);
 }
-
 
 // Read the file into the disk buffer
 // This function's job is to read the file into individual records
@@ -821,6 +841,12 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 	unsigned char *pData;
 	char tmpbuf[256];
 
+	// check the new headersize is fixed in all codepaths
+	if (pFile->HeaderSize == -1) {
+		debug_write("Internal error - header not detected before buffer.");
+		return false;
+	}
+
 	// Fixed records are obvious. Variable length records are prefixed
 	// with a byte that indicates how many bytes are in this record. It's
 	// all padded to 256 byte blocks. If it won't fit, the space in the
@@ -859,13 +885,13 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 
 	idx=0;							// count up the records read
 	nSector=256;					// bytes left in this sector
-	fseek(fp, HEADERSIZE, SEEK_SET);// skip the header
+	fseek(fp, pFile->HeaderSize, SEEK_SET);// skip the header
 	pData = pFile->pData;
 
 	// we need to let the embedded code decide the terminating rule
 	for (;;) {
 		if (feof(fp)) {
-			debug_write("Premature EOF - truncating read.");
+			debug_write("Premature EOF - truncating read at record %d.", idx);
 			pFile->NumberRecords = idx;
 			break;
 		}
@@ -874,7 +900,7 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 			// read a variable record
 			int nLen=fgetc(fp);
 			if (EOF == nLen) {
-				debug_write("Corrupt file - truncating read.");
+				debug_write("Corrupt file - truncating read at record %d.", idx);
 				pFile->NumberRecords = idx;
 				break;
 			}
@@ -922,7 +948,7 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 				// we got some data, read it in and count off the record
 				// verify it (don't get screwed up by a bad file)
 				if (nLen > pFile->RecordLength) {
-					debug_write("Potentially corrupt file - skipping end of record.");
+					debug_write("Potentially corrupt file - skipping end of record %d.", idx);
 					
 					// store length data
 					*(unsigned short*)pData = pFile->RecordLength;
@@ -1185,6 +1211,8 @@ bool FiadDisk::BufferImgFile(FileInfo *pFile) {
 
 // retrieve the disk name from a FIAD folder - in this case
 // we just match on the last part of the path (folder name)
+// It actually works to allow more than 10 characters, but
+// for compatibility I will restrict to the first 10.
 CString FiadDisk::GetDiskName() {
 	CString csDiskName=GetPath();
 	csDiskName.TrimRight('\\');
@@ -1192,11 +1220,13 @@ CString FiadDisk::GetDiskName() {
 	if (p != -1) {
 		csDiskName = csDiskName.Mid(p+1);
 	}
+    csDiskName = csDiskName.Left(10);
 
 	return csDiskName;
 }
 
 // Write the disk buffer out to the file, with appropriate modes and headers
+// Warning: used by Makecart EA#3, don't access nDrive or nIndex members
 bool FiadDisk::Flush(FileInfo *pFile) {
 	// first make sure this is an open file!
 	if (!pFile->bDirty) {
@@ -1275,7 +1305,8 @@ bool FiadDisk::FlushWindowsText(FileInfo *pFile) {
 	return true;
 }
 
-// write out the file as a FIAD, including appropriate header
+// write out the file as a FIAD, including appropriate header (unless IMAGE_IMG type)
+// Warning: used by Makecart EA#3, don't access nDrive or nIndex members
 bool FiadDisk::FlushFiad(FileInfo *pFile) {
 	// make sure there's anything to flush here
 	if (!pFile->bDirty) {
@@ -1283,7 +1314,7 @@ bool FiadDisk::FlushFiad(FileInfo *pFile) {
 		return true;
 	}
 
-	CString csFileName = BuildFilename(pFile);
+	CString csFileName = BuildFilename(pFile);  // handles the -1 drive for makecart
 	FILE *fp = fopen(csFileName, "wb");
 	if (NULL == fp) {
 		debug_write("Unable to write file %s", (LPCSTR)csFileName);
@@ -1291,10 +1322,19 @@ bool FiadDisk::FlushFiad(FileInfo *pFile) {
 		return false;
 	}
 
-	// we can't write the header till we are done writing the file,
+	// we can't write the real header till we are done writing the file,
 	// sadly. This could screw up software that tries to read the
 	// file information before the file is closed, but tough. We
-	// don't need to support that.
+	// don't need to support that. But we write a dummy header to
+	// get the header information into pFile.
+	WriteFileHeader(pFile, fp);
+
+	// check the new headersize is fixed in all codepaths
+	if (pFile->HeaderSize == -1) {
+		debug_write("Internal error - header not detected before FlushFiad.");
+		return false;
+	}
+
 	unsigned char *pData = pFile->pData;
 	if (NULL == pData) {
 		// not really a big deal when the file is first created
@@ -1305,9 +1345,8 @@ bool FiadDisk::FlushFiad(FileInfo *pFile) {
 		int nSector;
 
 		// seek past the (currently empty) header
-		fseek(fp, HEADERSIZE, SEEK_SET);
-
-		pFile->LengthSectors = 1;		// at least one so far
+		fseek(fp, pFile->HeaderSize, SEEK_SET);
+		pFile->LengthSectors = pFile->HeaderSize > 0 ? 1 : 0;	// at least one so far
 
 		nSector=256;
 		for (int idx=0; idx<pFile->NumberRecords; idx++) {
@@ -1380,11 +1419,24 @@ bool FiadDisk::FlushFiad(FileInfo *pFile) {
 		}
 	}
 
-	// write the header before we are done
+	// re-write the header before we are done
 	WriteFileHeader(pFile, fp);
 
 	fclose(fp);
-	debug_write("Flushed %s (%d records) as %s FIAD", (LPCSTR)csFileName, pFile->NumberRecords, pFile->ImageType == IMAGE_V9T9?"V9T9":"TIFILES");
+	switch (pFile->ImageType) {
+		case IMAGE_TIFILES:
+			debug_write("Flushed %s (%d records) as TIFILES FIAD", (LPCSTR)csFileName, pFile->NumberRecords);
+			break;
+		case IMAGE_V9T9:
+			debug_write("Flushed %s (%d records) as V9T9 FIAD", (LPCSTR)csFileName, pFile->NumberRecords);
+			break;
+		case IMAGE_IMG:
+			debug_write("Flushed %s (%d records) as raw headerless (PC)", (LPCSTR)csFileName, pFile->NumberRecords);
+			break;
+		default:
+			debug_write("Flushed %s (%d records) as ??unknown??", (LPCSTR)csFileName, pFile->NumberRecords);
+			break;
+	}
 	pFile->bDirty = false;
 
 	return true;
@@ -1402,20 +1454,43 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 
 	// check the output type - this has no effect on the override
 	if (IMAGE_UNKNOWN == pFile->ImageType) {
-		if (bWriteV9T9) {
-			pFile->ImageType = IMAGE_V9T9;
-		} else {
-			pFile->ImageType = IMAGE_TIFILES;
+		// first check if it's going to be a headerless DF128
+		if (bAllowNoHeaderAsDF128) {
+			if (((pFile->FileType & (TIFILES_INTERNAL|TIFILES_VARIABLE)) == 0) &&
+				(pFile->RecordLength == 128)) {
+				// write without a header
+				debug_write("Writing DF128 as headerless raw file.");
+				pFile->ImageType = IMAGE_IMG;
+			}
+		}
+		// if we didn't set it above, choose the correct default
+		if (IMAGE_UNKNOWN == pFile->ImageType) {
+			if (bWriteV9T9) {
+				pFile->ImageType = IMAGE_V9T9;
+			} else {
+				pFile->ImageType = IMAGE_TIFILES;
+			}
 		}
 	}
 	// check override
-	if (pFile->csOptions.Find('V') != -1) {
+	if (pFile->csOptions.Find('X') != -1) {
+		debug_write("Forcing write as headerless raw file.");
+		pFile->ImageType = IMAGE_IMG;
+	} else if (pFile->csOptions.Find('V') != -1) {
 		pFile->ImageType = IMAGE_V9T9;
 	} else if (pFile->csOptions.Find('T') != -1) {
 		pFile->ImageType = IMAGE_TIFILES;
 	}
 
 	fseek(fp, 0, SEEK_SET);
+
+	if (pFile->ImageType == IMAGE_IMG) {
+		pFile->HeaderSize = 0;
+		return;
+	}
+
+	// both the other headers are 128
+	pFile->HeaderSize = 128;
 	
 	// some fixups -- I'm not 100% sure I trust all this, but Fred did
 	// more work on it than I have. Till I have my real TI set up again
@@ -1440,7 +1515,7 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 			// not include the header sector).
 			tmpInfo.NumberRecords = tmpInfo.LengthSectors;
 		} else {
-			// Fred says EOF offset should be zero on fixed files, so do that
+			// Fred and Theirry say EOF offset should be zero on fixed files, so do that
 			tmpInfo.BytesInLastSector=0;
 		}
 	}
@@ -1507,11 +1582,13 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 		// 
 		// 0x1E-0x21 - Creation Time
 		// 0x22-0x25 - Update time
-		//			Timestamps are 16 bit words formatted as hhhh.hmmm.mmms.ssss, yyyy.yyyM.MMMd.dddd. Resolution is 2 seconds, year of 70 means 1970.
+		//			Timestamps are 16 bit words formatted as hhhh.hmmm.mmms.ssss, yyyy.yyyM.MMMd.dddd. 
+        //          Resolution is 2 seconds, year of 70 means 1970.
 		//			I am not completely adverse to the timestamp fields, although they are an extension from
 		//			later systems like the Geneve which actually had a clock. However, the TI Disk Controller
 		//			didn't support them and as a result, very little software ever reads it. I'm slightly biased
 		//			against adding them because software doesn't expect them to be there.
+        //          Could add them as an option in the future...?
 		//
 		// There, now they are documented. ;)
 #endif
@@ -1662,11 +1739,10 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 		// - The number of sectors on disk (minus 2 for the VIB and FDIR)
 		// - The number of free sectors on disk.
 		memset(pData, 0, pFile->RecordLength+2);
-		csTmp = pDriveType[pFile->nDrive]->GetPath();
 
 		// DiskName - first 10 bytes - we provide the local path (last 10 chars of it)
 		pStart=pData;
-		csTmp = csTmp.Right(10);
+		csTmp = GetDiskName();
 		*(unsigned short*)pData = (unsigned short)pFile->RecordLength;						// record length (2 bytes)
 		pData+=2;
 		*(pData++) = csTmp.GetLength();														// string length (strange, not very fixed length. My bug? TODO: probably this should always be 10 chars long)
@@ -1855,15 +1931,21 @@ bool FiadDisk::Load(FileInfo *pFile) {
 	// I am leaving this comment here, but hacks might not be
 	// needed anymore now that the headers are properly tested.
 
+	// check the new headersize is fixed in all codepaths
+	if (pFile->HeaderSize == -1) {
+		debug_write("Internal error - header not detected before PROGRAM LOAD.");
+		return false;
+	}
+
 	// It's good, so we try to open it now
 	fp=fopen(csFileName, "rb");
-	fseek(fp, HEADERSIZE, SEEK_SET);	// we know it has a fixed size header since that's all we support
+	fseek(fp, pFile->HeaderSize, SEEK_SET);
 	read_bytes = fread(&VDP[pFile->DataBuffer], 1, min(pFile->RecordNumber, nDetectedLength), fp);
 	debug_write("loading 0x%X bytes", read_bytes);	// do we need to give this value to the user?
 	fclose(fp);										// all done
 		
 	// handle DSK1 automapping (AutomapDSK checks whether it's enabled)
-	AutomapDSK(&VDP[pFile->DataBuffer], min(pFile->RecordNumber, nDetectedLength), pFile->nDrive, false);
+	AutomapDSK(&VDP[pFile->DataBuffer], read_bytes, pFile->nDrive, false);
 		
 	// update heatmap
 	for (int idx=0; idx<read_bytes; idx++) {
@@ -1940,7 +2022,7 @@ bool FiadDisk::Save(FileInfo *pFile) {
 // Read the volume information block (sector 0)
 bool FiadDisk::ReadVIB(FileInfo *pFile) {
 	unsigned char *p;
-	CString csPath = pDriveType[pFile->nDrive]->GetPath();
+	CString csPath = pDriveType[pFile->nDrive]->GetDiskName();
 
 	// DiskName - first 10 bytes - we provide the local path (last 10 chars of it)
 	while (csPath.GetLength() < 10) {
@@ -2176,6 +2258,7 @@ bool FiadDisk::ReadSector(FileInfo *pFile) {
 // They are the same as in a PAB.
 // FileType, RecordsPerSector, BytesInLastSector, RecordLength, NumberRecords
 // On return, LengthSectors must contain the actual number of sectors read,
+// TODO: the mixing of pFile and lclFile is confusing and errorprone.
 bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 	FILE *fp;
 	FileInfo lclFile;
@@ -2193,6 +2276,7 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 		pFile->BytesInLastSector = lclFile.BytesInLastSector;
 		pFile->RecordLength = lclFile.RecordLength;
 		pFile->NumberRecords = lclFile.NumberRecords;
+        pFile->HeaderSize = lclFile.HeaderSize;
 
 		debug_write("Information request on file %s (Type >%02x, %d Sectors, Records Per Sector %d, EOF Offset %d, Record Length %d, Number Records %d)", 
 			pFile->csName, pFile->FileType, pFile->LengthSectors, pFile->RecordsPerSector, pFile->BytesInLastSector, pFile->RecordLength, pFile->NumberRecords);
@@ -2225,9 +2309,16 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 		pFile->LastError = ERR_FILEERROR;
 		return false;
 	}
+    pFile->HeaderSize = lclFile.HeaderSize;
+
+	// check the new headersize is fixed in all codepaths
+	if (pFile->HeaderSize == -1) {
+		debug_write("Internal error - header not detected before Read File Sectors.");
+		return false;
+	}
 
 	fp=fopen(csFilename, "rb");
-	fseek(fp, pFile->RecordNumber*256+HEADERSIZE, SEEK_SET);
+	fseek(fp, pFile->RecordNumber*256+pFile->HeaderSize, SEEK_SET);
 	int readcnt = fread(&VDP[pFile->DataBuffer], 1, pFile->LengthSectors*256, fp);
 	pFile->LengthSectors = (readcnt+255)/256;
 	fclose(fp);
@@ -2252,9 +2343,9 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 // FileType, RecordsPerSector, BytesInLastSector, RecordLength, NumberRecords
 // On return, LengthSectors must contain the actual number of sectors written,
 // leave as 0 if 0 was originally specified.
+// TODO: the mixing of pFile and lclFile is confusing and errorprone.
 bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	FILE *fp;
-	FileInfo lclFile;
 	CString csFilename = BuildFilename(pFile);
 
 	if (pFile->LengthSectors == 0) {
@@ -2265,16 +2356,32 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 			pFile->LastError = ERR_DEVICEERROR;
 			return false;
 		}
+		
+		// this will help determine the correct type
+		WriteFileHeader(pFile, fp);
+
+		// TODO: might rethink this in the future - it MIGHT be okay for IMAGE_IMG?
+		if ((IMAGE_TIFILES != pFile->ImageType) && (IMAGE_V9T9 != pFile->ImageType)) {
+			debug_write("Only TIFILES or V9T9 supported for sector write (hdr) on %s", csFilename);
+			pFile->LastError = ERR_FILEERROR;
+			return false;
+		}
+
 		if (pFile->RecordNumber != 0) {
 			// write out this many sectors
-			char buf[256];
+			unsigned char buf[256];
 			memset(buf, 0, sizeof(buf));
 
-			fseek(fp, (pFile->RecordNumber-1)*256+HEADERSIZE, SEEK_SET);
+			// check the new headersize is fixed in all codepaths
+			if (pFile->HeaderSize == -1) {
+				debug_write("Internal error - header not detected before WriteFileSectors.");
+				return false;
+			}
+
+			fseek(fp, (pFile->RecordNumber-1)*256+pFile->HeaderSize, SEEK_SET);
 			fwrite(buf, 256, 1, fp);
 		}
 
-		WriteFileHeader(pFile, fp);
 		fclose(fp);
 
 		debug_write("Low-level created file %s (Type >%02x, Records Per Sector %d, EOF Offset %d, Record Length %d, Number Records %d, Record # %d)", 
@@ -2297,6 +2404,7 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	debug_write("Writing drive %d file %s sector %d-%d from VDP %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->DataBuffer);
 
 	// verify the file exists and get its current data
+	FileInfo lclFile;
 	DetectImageType(&lclFile, csFilename);
 	if (IMAGE_UNKNOWN == lclFile.ImageType) {
 		debug_write("Can't get file type of %s", csFilename);
@@ -2304,10 +2412,11 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 		return false;
 	}
 	if ((IMAGE_TIFILES != lclFile.ImageType) && (IMAGE_V9T9 != lclFile.ImageType)) {
-		debug_write("Only TIFILES or V9T9 supported for sector write on %s", csFilename);
+		debug_write("Only TIFILES or V9T9 supported for sector write (data) on %s", csFilename);
 		pFile->LastError = ERR_FILEERROR;
 		return false;
 	}
+    pFile->HeaderSize = lclFile.HeaderSize;
 
 	// Write the requested sectors to the file (r+ is read and write of existing file)
 	fp=fopen(csFilename, "r+b");
@@ -2317,8 +2426,14 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 		return false;
 	}
 
+	// check the new headersize is fixed in all codepaths
+	if (pFile->HeaderSize == -1) {
+		debug_write("Internal error - header not detected before WriteFileSectors.");
+		return false;
+	}
+
 	// This seek is good even past EOF
-	fseek(fp, pFile->RecordNumber*256+HEADERSIZE, SEEK_SET);
+	fseek(fp, pFile->RecordNumber*256+pFile->HeaderSize, SEEK_SET);
 
 	// Write the sectors
 	pFile->LengthSectors = fwrite(&VDP[pFile->DataBuffer], 256, pFile->LengthSectors, fp);
@@ -2333,7 +2448,7 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	// Use this to fix up the header (file size) with actual information
 	// just length in sectors, the rest should be correct
 	fseek(fp, 0, SEEK_END);
-	lclFile.LengthSectors = (ftell(fp) - HEADERSIZE + 255) / 256;
+	lclFile.LengthSectors = (ftell(fp) - pFile->HeaderSize + 255) / 256;
 	WriteFileHeader(&lclFile, fp);
 
 	// all done
@@ -2345,14 +2460,21 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 // and VARIABLE or FIXED. Static buffer, not thread safe
 const char* FiadDisk::GetAttributes(int nType) {
 	// this is a hacky way to allow up to 3 calls on a single line ;) not thread-safe though!
-	static char szBuf[3][3];
+	static char szBuf[3][4];
 	static int cnt=0;
 
 	if (++cnt == 3) cnt=0;
 
-	szBuf[cnt][0]=(nType&TIFILES_INTERNAL) ? 'I' : 'D';
-	szBuf[cnt][1]=(nType&TIFILES_VARIABLE) ? 'V' : 'F';
-	szBuf[cnt][2]='\0';
+    if (nType&TIFILES_PROGRAM) {
+        szBuf[cnt][0]='P';
+        szBuf[cnt][1]='R';
+        szBuf[cnt][2]='G';
+	    szBuf[cnt][3]='\0';
+    } else {
+	    szBuf[cnt][0]=(nType&TIFILES_INTERNAL) ? 'I' : 'D';
+	    szBuf[cnt][1]=(nType&TIFILES_VARIABLE) ? 'V' : 'F';
+	    szBuf[cnt][2]='\0';
+    }
 
 	return szBuf[cnt];
 }
