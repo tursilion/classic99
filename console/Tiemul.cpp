@@ -922,7 +922,8 @@ void z80Write(void*, zuint16 adr, zuint8 data) {
 // Other RAM is then tested as normal for SGM space.
 
 bool z80JoystickMode = true;
-
+int CheckJoysticks(Word ad, int col, int &joyX, int &joyY, int &joyFire);
+static int joyX, joyY, joyFire;
 // skipSideEffects is non-zero if we should not trigger side effects
 zuint8 z80In(void*skipSideEffects, zuint16 port) {
     port&=0xff;
@@ -1069,13 +1070,13 @@ zuint8 z80In(void*skipSideEffects, zuint16 port) {
 			    // keypad or stick?
 			    if (z80JoystickMode) {
 				    // TODO: also no roller controller
-				    // read stick
+				    // read stick - this will fall back for us - though have only one fire button for now
 				    zuint8 ret = 0xff;
-				    if (key[VK_TAB]) ret &= ~0x40;	// fire 1
-				    if (key[VK_LEFT]) ret &= ~0x08;
-				    if (key[VK_RIGHT]) ret &=~0x02;
-				    if (key[VK_UP]) ret &= ~0x01;
-				    if (key[VK_DOWN]) ret &= ~0x04;
+				    if (joyFire) ret &= ~0x40;	// fire 1
+				    if (joyX < 0) ret &= ~0x08; // left
+				    if (joyX > 0) ret &=~0x02;  // right
+				    if (joyY > 0) ret &= ~0x01; // up
+				    if (joyY < 0) ret &= ~0x04; // down
 				    return ret;
 			    } else {
 				    // read keypad - returns values
@@ -1299,6 +1300,9 @@ void z80Out(void*, zuint16 port, zuint8 val) {
 	    case 0xc0:  // set joystick mode
             z80JoystickMode=true; 
             //debug_write("JOY: Joystick mode set by PC %04X",  myZ80.state.pc);
+            // update the joystick cache
+            CheckJoysticks(0, 0, joyX, joyY, joyFire);  // column is 4 for joystick 1, 0 for joystick 2
+
             break;	// todo should be some bounce time and roller side effect
 	
 	    case 0xe0:  // write to Coleco sound chip
@@ -6962,8 +6966,7 @@ void wcru(Word ad, int bt)
 //////////////////////////////////////////////////////////////////
 // Read a bit from CRU
 //////////////////////////////////////////////////////////////////
-int CheckJoysticks(Word ad, int col) {
-	int joyX, joyY, joyFire;
+int CheckJoysticks(Word ad, int col, int &joyX, int &joyY, int &joyFire) {
 	int joy1col, joy2col;
 	int ret=1;
 
@@ -7344,7 +7347,8 @@ int rcru(Word ad)
 			}
 
 			// else, try joysticks
-			return CheckJoysticks(ad, col);
+            int joyX, joyY, joyFire;
+			return CheckJoysticks(ad, col, joyX, joyY, joyFire);
 		}
 
 		// not PS/2, use the old method
@@ -7360,7 +7364,8 @@ int rcru(Word ad)
 		}
 
 		// Either joysticks or keyboard - try joysticks first
-		ret = CheckJoysticks(ad, col);
+        int joyX, joyY, joyFire;
+		ret = CheckJoysticks(ad, col, joyX, joyY, joyFire);
 		if (1 == ret) {
 			// if nothing else matched, try the keyboard array
 			if (key[KEYS[keyboard][col][ad-3]])	{			// normal key
