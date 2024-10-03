@@ -1855,8 +1855,7 @@ void CPU9900::op_stcr()
 
     AddCycleCount(42);  // base value
 
-    // TODO: E/A says the source address is always even - check if that is true even
-    // on a byte transfer?
+    // Source address is even if a word transfer, byte address if 1-8 bits.
 
     FormatIV;
     if (D==0) D=16;
@@ -1875,7 +1874,7 @@ void CPU9900::op_stcr()
 
     if (D<9) 
     {
-        // TODO: E/A says the entire word is zeroed if not read, does that include bytes?
+        // E/A says the entire word is zeroed if not read (if 16 bit), entire byte if 8-bit
         WCPUBYTE(S,(Byte)(x1&0xff));  // Read source, write source
     }
     else 
@@ -1896,6 +1895,7 @@ void CPU9900::op_stcr()
 
     // TODO: the data manual says this return is not true - test
     // whether a word load affects the other status bits
+    // (it seems to, only OP cares if it's a byte)
     //if (D>8) return;
 
     reset_LGT_AGT_EQ;

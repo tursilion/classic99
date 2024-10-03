@@ -515,7 +515,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 					} else {
 						nOutput[3]=0.0;
 					}
-				}
+                }
 				LFSR>>=1;
 				LFSR|=in;
 			}

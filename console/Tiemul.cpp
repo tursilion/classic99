@@ -1546,7 +1546,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Print some initial debug
 	debug_write("---");
-	debug_write("Classic99 version %s (C)2002-2019 M.Brent", VERSION);
+	debug_write("Classic99 version %s (C)2002-2024 M.Brent", VERSION);
 	debug_write("ROM files included under license from Texas Instruments");
 
 	// copy out the command line
@@ -5028,6 +5028,7 @@ void wvdpbyte(Word x, Byte c)
 	
 	if (x<0x8c00 || (x&1)) 
 	{
+        debug_write("INVALID VDP WRITE IGNORED TO ADDRESS >%04X (PC >%04X)", x, pCurrentCPU->GetPC());
 		return;							/* not going to write at that block */
 	}
 
@@ -5230,6 +5231,7 @@ void wvdpbyte(Word x, Byte c)
 	else
 	{	/* write data */
 		// TODO: cold reset incompletely resets the F18 state - after TI Scramble runs we see a sprite on the master title page
+
 		// Added by RasmusM
 		// Write data to F18A palette registers
 		if (bF18AActive && bF18ADataPortMode) {
@@ -5402,7 +5404,6 @@ void wVDPreg(Byte r, Byte v)
 ////////////////////////////////////////////////////////////////
 void wsndbyte(Byte c)
 {
-	unsigned int x, idx;								// temp variable
 	static int oldFreq[3]={0,0,0};						// tone generator frequencies
 
 	if (NULL == lpds) return;
@@ -5448,37 +5449,39 @@ void wsndbyte(Byte c)
 		break;
 
 	case 0xe0:
-		x=(c&0x07);										// Noise - get type
-		setfreq(3, c&0x07);
+		setfreq(3, c&0x07);                             // Noise - get type
 		break;
 
-//	case 0x80:											// Voice 1 frequency
-//	case 0xa0:											// Voice 2 frequency
-//	case 0xc0:											// Voice 3 frequency
-	default:											// Any other byte
-		int nChan=(latch_byte&0x60)>>5;
-		if (c&0x80) {
-			// latch write - least significant bits of a tone register
-			// (definately not noise, noise was broken out earlier)
-			oldFreq[nChan]&=0xfff0;
-			oldFreq[nChan]|=c&0x0f;
-		} else {
-			// latch clear - data to whatever is latched
-			// TODO: re-verify this on hardware, it doesn't agree with the SMS Power doc
-			// as far as the volume and noise goes!
-			if (latch_byte&0x10) {
-				// volume register
-				setvol(nChan, c&0x0f);
-			} else if (nChan==3) {
-				// noise register
-				setfreq(3, c&0x07);
-			} else {
-				// tone generator - most significant bits
-				oldFreq[nChan]&=0xf;
-				oldFreq[nChan]|=(c&0x3f)<<4;
-			}
-		}
+	case 0x80:											// Voice 1 frequency
+	case 0xa0:											// Voice 2 frequency
+	case 0xc0:											// Voice 3 frequency
+    {
+        int nChan=(latch_byte&0x60)>>5;     // was just set above
+        oldFreq[nChan]&=0xfff0;
+        oldFreq[nChan]|=c&0x0f;
 		setfreq(nChan, oldFreq[nChan]);
+    }
+		break;
+        
+	default:											// Any other byte (ie: 0x80 not set)
+    {
+		int nChan=(latch_byte&0x60)>>5;
+        // latch clear - data to whatever is latched
+        // TODO: re-verify this on hardware, it doesn't agree with the SMS Power doc
+        // as far as the volume and noise goes!
+        if (latch_byte&0x10) {
+            // volume register
+            setvol(nChan, c&0x0f);
+        } else if (nChan==3) {
+            // noise register
+            setfreq(3, c&0x07);
+        } else {
+            // tone generator - most significant bits
+            oldFreq[nChan]&=0xf;
+            oldFreq[nChan]|=(c&0x3f)<<4;
+            setfreq(nChan, oldFreq[nChan]);
+        }
+    }
 		break;
 	}
 }
