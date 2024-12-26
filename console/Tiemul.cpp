@@ -89,6 +89,8 @@
 ////////////////////////////////////////////
 // Includes
 ////////////////////////////////////////////
+#include <InitGuid.h>
+#include <CGuid.h>
 #include <WinSock2.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -2329,7 +2329,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 
 INT_PTR CALLBACK AudioBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	static int nRate=22050;
+	static int nRate=44100;
 //	static int nLocalSidEnable = false;
 
     switch (uMsg) 

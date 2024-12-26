@@ -81,6 +81,8 @@ The reset also changes VR54 and VR55, but they are *not* loaded to the GPU PC (p
 
 #include <stdio.h>
 #include <windows.h>
+#include <InitGuid.h>
+#include <CGuid.h>
 #include <ddraw.h>
 #include <commctrl.h>
 #include <commdlg.h>

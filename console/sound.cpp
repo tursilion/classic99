@@ -1,4 +1,5 @@
 /*
+/*
 From Matt - check this decrement:
 [2:15 PM] dnotq: The counters don't consider the 0-count as it's own state.  It was very interesting that I literally took the AY up-counters, changed them to count down (changed ++ to -), and changed the reset when count >= period condition to load-period when count = 0, and they just worked.
 [2:16 PM] dnotq: It took me a while to realize this, since when you mentioned 0-count is maximum period, that threw me for a bit.
@@ -140,6 +141,8 @@ From Matt - check this decrement:
 //
 
 #include <windows.h>
+#include <InitGuid.h>
+#include <CGuid.h>
 #include <dsound.h>
 #include <stdio.h>
 #include "sound.h"
@@ -148,8 +151,9 @@ From Matt - check this decrement:
 // some Classic99 stuff
 extern LPDIRECTSOUNDBUFFER soundbuf;						// sound chip audio buffer
 extern LPDIRECTSOUNDBUFFER sidbuf;							// sid blaster audio buffer
-extern LPDIRECTSOUNDBUFFER speechbuf;						// speech audio buffer
-extern int hzRate;		// 50 or 60 fps (HZ50 or HZ60)
+extern LPDIRECTSOUNDBUFFER speechbuf;						// speech audio buffer (doesn't need a mid-frame buffer)
+// these buffers don't need to be this large, but it doesn't cost much. There is room for a full second at 44khz
+extern int hzRate;		// 50 or 60 fps (HZ50 or HZ60) 
 extern int Recording;
 extern int max_cpf;
 extern void WriteAudioFrame(void *pData, int nLen);
@@ -204,8 +208,8 @@ double nFade[4]={1.0,1.0,1.0,1.0};		// emulates the voltage drift back to 0 with
 int max_volume;
 
 // audio
-int AudioSampleRate=22050;				// in hz
-unsigned int CalculatedAudioBufferSize=22080*2;	// round audiosample rate up to a multiple of 60 (later hzRate is used)
+int AudioSampleRate=44100;				// in hz
+unsigned int CalculatedAudioBufferSize=44100*2;	// expected to be a multiple of 60 (later hzRate is used)
 
 // The tapped bits are XORd together for the white noise
 // generator feedback.
@@ -354,17 +358,6 @@ void setfreq(int chan, int freq) {
 
 		// reset shift register
 		LFSR=0x4000;	//	(15 bit)
-		switch (nRegister[3]&0x03) {
-			// these values work but check the datasheet dividers
-			case 0: nCounter[3]=0x10; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
-			case 1: nCounter[3]=0x20; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
-			case 2: nCounter[3]=0x40; noiseFlags &= ~(NOISE_FLAG_CHAN3); break;
-			// even when the count is zero, the noise shift still counts
-			// down, so counting down from 0 is the same as wrapping up to 0x400
-			case 3: nCounter[3]=(nRegister[2]?nRegister[2]:0x400); 
-					noiseFlags |= NOISE_FLAG_CHAN3;
-					break;		// is never zero!
-		}
 
 		// check periodic
 		if (nRegister[3]&0x04) {
@@ -410,6 +403,18 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 	double nSpeechOut = 0;
 	double nSpeechCnt = (double)SPEECHRATE / (double)AudioSampleRate;		// ratio of speech samples to output samples
 
+    // Calculate the noise counter outside the loop
+    int noiseClk;
+	switch (nRegister[3]&0x03) {
+		case 0: noiseClk=0x10; break;
+		case 1: noiseClk=0x20; break;
+		case 2: noiseClk=0x40; break;
+		// even when the count is zero, the noise shift still counts
+		// down, so counting down from 0 is the same as wrapping up to 0x400
+		// same is with the tone above :)
+		case 3: noiseClk=(nRegister[2]?nRegister[2]:0x400); break;		// is never zero!
+	}
+
 	while (nSamples) {
 		// emulate drift to zero
 		for (int idx=0; idx<4; idx++) {
@@ -438,7 +443,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
             // Original (high frequency): TMS9919, SN94624, SN76494?
             // New (flat line): SN76489, SN76489A, SN76496
 			nCounter[idx]-=nClocksPerSample;
-			while (nCounter[idx] <= 0) {    // TODO: should be able to do this without a loop, it would be faster (well, in the rare cases it needs to loop)!
+			while (nCounter[idx] <= 0) {    // TODO: should be able to do this without a loop? it would be faster (well, in the rare cases it needs to loop)!
 				nCounter[idx]+=(nRegister[idx]?nRegister[idx]:0x400);
 				nOutput[idx]*=-1.0;
 				nFade[idx]=1.0;
@@ -462,15 +467,7 @@ void sound_update(short *buf, double nAudioIn, int nSamples) {
 		// noise channel 
 		nCounter[3]-=nClocksPerSample;
 		while (nCounter[3] <= 0) {
-			switch (nRegister[3]&0x03) {
-				case 0: nCounter[3]+=0x10; break;
-				case 1: nCounter[3]+=0x20; break;
-				case 2: nCounter[3]+=0x40; break;
-				// even when the count is zero, the noise shift still counts
-				// down, so counting down from 0 is the same as wrapping up to 0x400
-				// same is with the tone above :)
-				case 3: nCounter[3]+=(nRegister[2]?nRegister[2]:0x400); break;		// is never zero!
-			}
+            nCounter[3] += noiseClk;
 			nNoisePos*=-1;
 			double nOldOut=nOutput[3];
 			// Shift register is only kicked when the 
@@ -993,7 +990,7 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	if (pDat->nLastWrite == 0xffffffff) {
 		pDat->nLastWrite=iWrite;
 	}
-	
+
 	// arbitrary - try to use a dynamic jitter buffer
 	int nWriteAhead;
 	if (pDat->nLastWrite<iRead) {
@@ -1051,14 +1048,14 @@ void UpdateSoundBuf(LPDIRECTSOUNDBUFFER soundbuf, void (*sound_update)(short *,d
 	// doing it all right here limits the CPU's ability to interact
 	// but luckily we should NORMALLY only do one frame at a time
 	// as noted, the goal is to get it on a per-scanline basis
-	while (nWriteAhead < pDat->nJitterFrames) {
+    while (nWriteAhead < pDat->nJitterFrames) {
 		if (SUCCEEDED(soundbuf->Lock(pDat->nLastWrite, CalculatedAudioBufferSize/(hzRate), (void**)&ptr1, &len1, (void**)&ptr2, &len2, 0))) {
 			// TODO: nDACLevel is not used here anymore, can be removed
 			if (len1 > 0) {
-				sound_update(ptr1, nDACLevel, len1/2);		// divide by 2 for 16 bit samples
+                sound_update(ptr1, nDACLevel, len1 / 2);          // divide by 2 for 16 bit samples
 			}
 			if (len2 > 0) {
-				sound_update(ptr2, nDACLevel, len2/2);		// divide by 2 for 16 bit samples
+                sound_update(ptr2, nDACLevel, len2 / 2);          // divide by 2 for 16 bit samples
 			}
 
 			if ((Recording)&&(pRecordBuffer)) {
