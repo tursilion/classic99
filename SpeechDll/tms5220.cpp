@@ -627,7 +627,7 @@ uint8_t tms5220_device::new_int_read()
 
      tms5220_device::data_write -- handle a write to the TMS5220
 
-// Tursi change - return false if byte can't be accepted due to full FIFO, else return true
+// Tursi change - return false if byte can't be accepted due to full FIFO or active speak, else return true
 ***********************************************************************************************/
 bool tms5220_device::data_write(int data)
 {
@@ -682,9 +682,17 @@ bool tms5220_device::data_write(int data)
 			return false;
 		}
 	}
-	else //(! m_DDIS)
-		// R Nabet : we parse commands at once.  It is necessary for such commands as read.
-		process_command(data);
+    else {
+        //(! m_DDIS)
+        // R Nabet : we parse commands at once.  It is necessary for such commands as read.
+        // Tursi: HOWEVER, the synth will hold not READY for any write while a command is executing.
+        // In our case, only SPEAK really matters, so we'll do the same return FALSE for Classic99
+        // if we are currently speaking.
+        if (talk_status()) {
+            return false;
+        }
+        process_command(data);
+    }
 
 	return true;
 }
