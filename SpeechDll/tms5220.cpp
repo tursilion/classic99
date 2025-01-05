@@ -931,14 +931,14 @@ void tms5220_device::tryCommand() {
         case 0x10:
         case 0x30:
         case 0x40:  // address register commands - need to block during speech
-            if (!m_SPEN) {
+            if (!talk_status()) {
                 process_command(commandBuffer);
                 hasCommand = false;
             }
             break;
 
         case 0x50:  // speak - is NOP if already speaking
-            if (!m_SPEN) {
+            if (!talk_status()) {
                 process_command(commandBuffer);
             }
             // always clear it
@@ -1398,7 +1398,7 @@ void tms5220_device::process_command(unsigned char cmd)
 	{
 	case 0x10 : /* read byte */
 		LOGMASKED(LOG_COMMAND_VERBOSE, "Read Byte command received\n");
-		if (!talk_status()) /* TALKST must be clear for RDBY */
+		//if (!talk_status()) /* TALKST must be clear for RDBY */ (moved to tryCommand)
 		{
 			if (m_schedule_dummy_read)
 			{
@@ -1409,9 +1409,10 @@ void tms5220_device::process_command(unsigned char cmd)
 			if (m_speechrom)
 				m_read_byte_register = m_speechrom->read(8);    /* read one byte from speech ROM... */
 			m_RDB_flag = true;
-		}
-		else
-			LOGMASKED(LOG_COMMAND_VERBOSE, "Read Byte command received during TALK state, ignoring!\n");
+        }
+        // else {
+        //    LOGMASKED(LOG_COMMAND_VERBOSE, "Read Byte command received during TALK state, ignoring!\n");
+        //}
 		break;
 
 	case 0x00: case 0x20: /* set rate (tms5220c and cd2501ecd only), otherwise NOP */
@@ -1419,13 +1420,13 @@ void tms5220_device::process_command(unsigned char cmd)
 		{
 			LOGMASKED(LOG_COMMAND_VERBOSE, "Set Rate (or NOP) command received\n");
 			m_c_variant_rate = cmd&0x0F;
-		}
-		else
-			LOGMASKED(LOG_COMMAND_VERBOSE, "NOP command received\n");
+        } else {
+            LOGMASKED(LOG_COMMAND_VERBOSE, "NOP command received\n");
+        }
 		break;
 
 	case 0x30 : /* read and branch */
-		if (!talk_status()) /* TALKST must be clear for RB */
+		//if (!talk_status()) /* TALKST must be clear for RB */ // moved to tryCommand
 		{
 			LOGMASKED(LOG_COMMAND_VERBOSE, "Read and Branch command received\n");
 			m_RDB_flag = false;
@@ -1435,8 +1436,8 @@ void tms5220_device::process_command(unsigned char cmd)
 		break;
 
 	case 0x40 : /* load address */
-		LOGMASKED(LOG_COMMAND_VERBOSE, "Load Address command received\n");
-		if (!talk_status()) /* TALKST must be clear for LA */
+        LOGMASKED(LOG_COMMAND_VERBOSE, "Load Address command received\n");
+		//if (!talk_status()) /* TALKST must be clear for LA */     // moved to tryCommand
 		{
 			/* tms5220 data sheet says that if we load only one 4-bit nibble, it won't work.
 			   This code does not care about this. */
@@ -1444,11 +1445,11 @@ void tms5220_device::process_command(unsigned char cmd)
 				m_speechrom->load_address(cmd & 0x0f);
 			m_schedule_dummy_read = true;
 		}
-		else
-			LOGMASKED(LOG_COMMAND_VERBOSE, "Load Address command received during TALK state, ignoring!\n");
+		//else
+		//	LOGMASKED(LOG_COMMAND_VERBOSE, "Load Address command received during TALK state, ignoring!\n");
 		break;
 
-	case 0x50 : /* speak */
+    case 0x50: /* speak */
 		LOGMASKED(LOG_COMMAND_VERBOSE, "Speak (VSM) command received\n");
 		if (m_schedule_dummy_read)
 		{
