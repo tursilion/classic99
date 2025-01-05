@@ -71,6 +71,7 @@ public:
 	uint8_t status_read(bool clear_int);
 	bool data_write(int data);
 	void process(int16_t *buffer, unsigned int size);
+    void tryCommand();  // new method by Tursi to implement the command buffer
 
 protected:
 	tms5220_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int variant);
@@ -124,6 +125,10 @@ private:
 	void printbits(long data, int num);
 
 	// internal state
+
+    // command buffer
+    int commandBuffer = 0x00;
+    bool hasCommand = false;
 
 	/* coefficient tables */
 	const int m_variant;                /* Variant of the 5xxx - see tms5110r.h */

@@ -2215,3 +2215,13 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 - add debug pin warning to debug log in the 9901 emulation (Classic99 does not support 9901 hardware interrupts)
 - don't spam the same debug statement repeatedly to the log (note: no timeout. If you NEED to see a repeated statement, force another one inbetween. For instance, press Control to get the speech clear debug)
 - also note the external debugger (debugview) is NOT filtered this way, so that you have best visibility there
+
+-----------------------------------------------
+29 Dec 2024
+
+- Silent update - patched speech synth to halt if you try to write during speech generation
+
+-----------------------------------------------
+1 Jan 2025
+
+Added an 'a' to the download version. Updated the speech synth with new knowledge about when it halts the CPU - command register added with processing distinct from CPU interface. Seems to match all tests I tried.

@@ -1,5 +1,18 @@
 // Ported to Classic99 by Tursi - blame him
 
+// Tursi: After testing, and reviewing results against the 5220 datasheet, this is the expected operation:
+//
+// - The Speech Synth has a command buffer that all CPU writes go into, except during SPEAK EXT
+// - On a write, the synth goes NOT READY until the data is transferred into the command buffer
+// - Reads do not block.They come from the status or data register.The data register MAY contain stale data if a command has not executed.
+//   - Probably, not extensively tested.
+//   - The 5220 datasheet explicitly says that it DOES block on a data read if the transfer is not complete.This is NOT the same thing.The "RDB Flag" can not be set until the command execution starts, so while the command is waiting in the command register, the transfer has not yet started.
+//   - Reads might need more testing, but this seems logical.
+// - Commands are executed as soon as possible, after which the command buffer is emptied.
+// - A write when the command buffer is NOT empty is blocked with NOT READY
+// - Commands that require the speech ROM address counter can not execute during SPEAK
+// - During SPEAK EXT, all writes go to the FIFO instead.A write with a full FIFO is blocked until space is available.
+
 // license:BSD-3-Clause
 // copyright-holders:Frank Palazzolo, Aaron Giles, Jonathan Gevaryahu, Raphael Nabet, Couriersud, Michael Zapf
 /**********************************************************************************************
@@ -627,7 +640,11 @@ uint8_t tms5220_device::new_int_read()
 
      tms5220_device::data_write -- handle a write to the TMS5220
 
-// Tursi change - return false if byte can't be accepted due to full FIFO or active speak, else return true
+// Tursi change - return false if byte can't be accepted due to active command
+//
+// My commands execute immediately if they can, but check the up to date MAME source
+// for some measured durations for RESET, SPEAK, SPEAK EXT.
+
 ***********************************************************************************************/
 bool tms5220_device::data_write(int data)
 {
@@ -684,14 +701,17 @@ bool tms5220_device::data_write(int data)
 	}
     else {
         //(! m_DDIS)
-        // R Nabet : we parse commands at once.  It is necessary for such commands as read.
-        // Tursi: HOWEVER, the synth will hold not READY for any write while a command is executing.
-        // In our case, only SPEAK really matters, so we'll do the same return FALSE for Classic99
-        // if we are currently speaking.
-        if (talk_status()) {
+
+        // see if we can flush the previous command first (since process may not be called often enough)
+        tryCommand();
+
+        // we need to load the commandBuffer if possible, else return false
+        // actual work done in process()
+        if (hasCommand) {
             return false;
         }
-        process_command(data);
+        hasCommand = true;
+        commandBuffer = data;
     }
 
 	return true;
@@ -837,6 +857,9 @@ void tms5220_device::perform_dummy_read()
 
 uint8_t tms5220_device::status_read(bool clear_int)
 {
+    // check the command buffer in case we can update a status or data reg
+    tryCommand();
+
 	if (m_RDB_flag)
 	{   /* if last command was read, return data register */
 		m_RDB_flag = false;
@@ -895,6 +918,42 @@ bool tms5220_device::int_read()
 }
 
 
+// TURSI: handle the command buffer from process() and from data_write() and status_read()
+void tms5220_device::tryCommand() {
+    if (hasCommand) {
+        // should only be possible in not speak external mode
+        switch (commandBuffer & 0x70) {
+        case 0x00:
+        case 0x20:  // nops
+            hasCommand = false;
+            break;
+
+        case 0x10:
+        case 0x30:
+        case 0x40:  // address register commands - need to block during speech
+            if (!m_SPEN) {
+                process_command(commandBuffer);
+                hasCommand = false;
+            }
+            break;
+
+        case 0x50:  // speak - is NOP if already speaking
+            if (!m_SPEN) {
+                process_command(commandBuffer);
+            }
+            // always clear it
+            hasCommand = false;
+            break;
+
+        case 0x60:  // speak ext
+        case 0x70:  // reset - both take effect immediately
+            process_command(commandBuffer);
+            hasCommand = false;
+            break;
+        }
+    }
+}
+
 /**********************************************************************************************
 
      tms5220_process -- fill the buffer with a specific number of samples
@@ -906,6 +965,9 @@ void tms5220_device::process(int16_t *buffer, unsigned int size)
 	int buf_count = 0;
 	int i, bitout;
 	int32_t this_sample;
+
+    // before we get too deep into this, process any pending command if we can
+    tryCommand();
 
 	LOGMASKED(LOG_GENERAL, "process called with size of %d; IP=%d, PC=%d, subcycle=%d, m_SPEN=%d, m_TALK=%d, m_TALKD=%d\n", size, m_IP, m_PC, m_subcycle, m_SPEN, m_TALK, m_TALKD);
 
@@ -1696,6 +1758,8 @@ void tms5220_device::device_start(speechrom_device *pRom)
 
 void tms5220_device::device_reset()
 {
+    hasCommand = false; // TURSI command buffer addition
+
 	m_digital_select = FORCE_DIGITAL; // assume analog output
 	/* initialize the FIFO */
 	std::fill(std::begin(m_fifo), std::end(m_fifo), 0);
@@ -2015,8 +2079,6 @@ void tms5220_device::data_w(uint8_t data)
 			LOGMASKED(LOG_RS_WS, "tms5220_data_w: data written outside ws, status: %02x!\n", m_rs_ws);
 	}
 }
-
-
 
 /**********************************************************************************************
 

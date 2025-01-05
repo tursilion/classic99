@@ -26,7 +26,7 @@ BOOL APIENTRY DllMain( HANDLE hModule,
 					 )
 {
 	if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
-		OutputDebugString("SpeechDLL for Classic99 version 2.0\n");
+		OutputDebugString("SpeechDLL for Classic99 version 2.1\n");
 		OutputDebugString("BSD-3-Clause by Frank Palazzolo, Aaron Giles, Jonathan Gevaryahu, Raphael Nabet, Couriersud\n");
 		OutputDebugString("Michael Zapf, ported to Classic99 by Tursi\n");
 	}
@@ -68,6 +68,7 @@ void SpeechStop() {
 	}
 }
 
+// TODO: always ends immediately, we could block for however long a ROM access takes
 unsigned char SpeechRead() {
 	if (NULL != pChip) {
 		// don't clear interrupt, I don't think it's wired up...
