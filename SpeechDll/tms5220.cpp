@@ -4,9 +4,12 @@
 //
 // - The Speech Synth has a command buffer that all CPU writes go into, except during SPEAK EXT
 // - On a write, the synth goes NOT READY until the data is transferred into the command buffer
-// - Reads do not block.They come from the status or data register.The data register MAY contain stale data if a command has not executed.
+// - Reads do not block.They come from the status or data register. 
+//   - If a read command has not yet executed (ie: during SPEAK), you will still get the status register
 //   - Probably, not extensively tested.
-//   - The 5220 datasheet explicitly says that it DOES block on a data read if the transfer is not complete.This is NOT the same thing.The "RDB Flag" can not be set until the command execution starts, so while the command is waiting in the command register, the transfer has not yet started.
+//   - The 5220 datasheet explicitly says that it DOES block on a data read if the transfer is not 
+//     complete.This is NOT the same thing.The "RDB Flag" can not be set until the command execution 
+//     starts, so while the command is waiting in the command register, the transfer has not yet started.
 //   - Reads might need more testing, but this seems logical.
 // - Commands are executed as soon as possible, after which the command buffer is emptied.
 // - A write when the command buffer is NOT empty is blocked with NOT READY
