@@ -2225,3 +2225,9 @@ it to me and I can probably fix it - but the most common cause is renaming V9T9 
 1 Jan 2025
 
 Added an 'a' to the download version. Updated the speech synth with new knowledge about when it halts the CPU - command register added with processing distinct from CPU interface. Seems to match all tests I tried.
+
+-----------------------------------------------
+13 Jan 2025
+
+Minor fix to the speech DLL that was causing the first byte of external speech to be discarded. In most cases this didn't matter, but it broke the Bert and Ernie demo for sure.
+

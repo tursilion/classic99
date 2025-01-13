@@ -15,6 +15,10 @@
 // - A write when the command buffer is NOT empty is blocked with NOT READY
 // - Commands that require the speech ROM address counter can not execute during SPEAK
 // - During SPEAK EXT, all writes go to the FIFO instead.A write with a full FIFO is blocked until space is available.
+// - Regarding timing, it is important to honor the delay after a write recommended by TI,
+//   EVEN IF THE WRITE WAS A NOP, otherwise you may lose the next write. That is, if you
+//   write NOP, LOAD ADDRESS back to back without delay, the LOAD ADDRESS may be lost.
+//   Timing is not attempted to be emulated in this core.
 
 // license:BSD-3-Clause
 // copyright-holders:Frank Palazzolo, Aaron Giles, Jonathan Gevaryahu, Raphael Nabet, Couriersud, Michael Zapf
@@ -654,6 +658,11 @@ bool tms5220_device::data_write(int data)
 	bool old_buffer_low = m_buffer_low;
 	LOGMASKED(LOG_DUMP_INPUT_DATA, "%c", data);
 
+    // see if we can flush the previous command first (since process may not be called often enough)
+    tryCommand();
+
+    LOGMASKED(LOG_FIFO, "got %02X with m_DDIS=%d\n", data, m_DDIS);
+
 	if (m_DDIS) // If we're in speak external mode
 	{
 		// add this byte to the FIFO
@@ -705,9 +714,6 @@ bool tms5220_device::data_write(int data)
     else {
         //(! m_DDIS)
 
-        // see if we can flush the previous command first (since process may not be called often enough)
-        tryCommand();
-
         // we need to load the commandBuffer if possible, else return false
         // actual work done in process()
         if (hasCommand) {
@@ -715,6 +721,7 @@ bool tms5220_device::data_write(int data)
         }
         hasCommand = true;
         commandBuffer = data;
+        LOGMASKED(LOG_FIFO, "Load command buffer with 0x%02X\n", data);
     }
 
 	return true;
@@ -865,15 +872,18 @@ uint8_t tms5220_device::status_read(bool clear_int)
 
 	if (m_RDB_flag)
 	{   /* if last command was read, return data register */
+        LOGMASKED(LOG_PIN_READS, "Read Speech Data\n");
+
 		m_RDB_flag = false;
 		return(m_read_byte_register);
 	}
 	else
 	{   /* read status */
 		/* clear the interrupt pin on status read */
-		if (clear_int)
-			set_interrupt_state(0);
-		LOGMASKED(LOG_PIN_READS, "Status read: TS=%d BL=%d BE=%d\n", talk_status(), m_buffer_low, m_buffer_empty);
+        if (clear_int) {
+            set_interrupt_state(0);
+        }
+        LOGMASKED(LOG_PIN_READS, "Status read: TS=%d BL=%d BE=%d\n", talk_status(), m_buffer_low, m_buffer_empty);
 		return (talk_status() << 7) | (m_buffer_low << 6) | (m_buffer_empty << 5);// | (m_write_latch & 0x1f); // low 5 bits are open bus, so use the m_write_latch value.
 	}
 }
@@ -928,6 +938,7 @@ void tms5220_device::tryCommand() {
         switch (commandBuffer & 0x70) {
         case 0x00:
         case 0x20:  // nops
+            LOGMASKED(LOG_FIFO, "tryCommand - got nop %02X\n", commandBuffer);
             hasCommand = false;
             break;
 
@@ -935,12 +946,14 @@ void tms5220_device::tryCommand() {
         case 0x30:
         case 0x40:  // address register commands - need to block during speech
             if (!talk_status()) {
+                LOGMASKED(LOG_FIFO, "tryCommand - got address command %02X\n", commandBuffer);
                 process_command(commandBuffer);
                 hasCommand = false;
             }
             break;
 
         case 0x50:  // speak - is NOP if already speaking
+            LOGMASKED(LOG_FIFO, "tryCommand - got speak %02X (talk_status %d)\n", commandBuffer, talk_status());
             if (!talk_status()) {
                 process_command(commandBuffer);
             }
@@ -950,6 +963,7 @@ void tms5220_device::tryCommand() {
 
         case 0x60:  // speak ext
         case 0x70:  // reset - both take effect immediately
+            LOGMASKED(LOG_FIFO, "tryCommand - got speak external %02X\n", commandBuffer);
             process_command(commandBuffer);
             hasCommand = false;
             break;
@@ -972,7 +986,7 @@ void tms5220_device::process(int16_t *buffer, unsigned int size)
     // before we get too deep into this, process any pending command if we can
     tryCommand();
 
-	LOGMASKED(LOG_GENERAL, "process called with size of %d; IP=%d, PC=%d, subcycle=%d, m_SPEN=%d, m_TALK=%d, m_TALKD=%d\n", size, m_IP, m_PC, m_subcycle, m_SPEN, m_TALK, m_TALKD);
+	//LOGMASKED(LOG_GENERAL, "process called with size of %d; IP=%d, PC=%d, subcycle=%d, m_SPEN=%d, m_TALK=%d, m_TALKD=%d\n", size, m_IP, m_PC, m_subcycle, m_SPEN, m_TALK, m_TALKD);
 
 	/* loop until the buffer is full or we've stopped speaking */
 	while (size > 0)
@@ -1762,6 +1776,8 @@ void tms5220_device::device_start(speechrom_device *pRom)
 
 void tms5220_device::device_reset()
 {
+    LOGMASKED(LOG_FIFO, "Device reset\n");
+
     hasCommand = false; // TURSI command buffer addition
 
 	m_digital_select = FORCE_DIGITAL; // assume analog output

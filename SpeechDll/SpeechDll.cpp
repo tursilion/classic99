@@ -26,7 +26,7 @@ BOOL APIENTRY DllMain( HANDLE hModule,
 					 )
 {
 	if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
-		OutputDebugString("SpeechDLL for Classic99 version 2.1\n");
+		OutputDebugString("SpeechDLL for Classic99 version 2.2\n");
 		OutputDebugString("BSD-3-Clause by Frank Palazzolo, Aaron Giles, Jonathan Gevaryahu, Raphael Nabet, Couriersud\n");
 		OutputDebugString("Michael Zapf, ported to Classic99 by Tursi\n");
 	}
@@ -36,6 +36,8 @@ BOOL APIENTRY DllMain( HANDLE hModule,
 void SpeechInit(unsigned char *pROM, int nRomLen, int nBufferLen, int nEmulationRate) {
 	machine_config x;
 	const int clock = 640000;	// rate for 8Khz output
+
+    OutputDebugString("Speech Init\n");
 
 	if (NULL == pChip) {
 		pChip=new tms5200_device(x, NULL, NULL, clock);	// rate for 8Khz output
@@ -62,6 +64,7 @@ void SpeechInit(unsigned char *pROM, int nRomLen, int nBufferLen, int nEmulation
 }
 
 void SpeechStop() {
+    OutputDebugString("Speech stop\n");
 	if (NULL != pChip) {
 		delete pChip;
 		pChip=NULL;

@@ -13,7 +13,7 @@
 #define fatalerror debug_write
 
 #ifdef VERBOSE_DEBUG
-#define LOGMASKED(x,...) debug_write(__VA_ARGS__)
+#define LOGMASKED(x,...) if (((x)&(LOG_PARSE_FRAME_DUMP_BIN|LOG_PARSE_FRAME_DUMP_HEX|LOG_CLIP|LOG_LATTICE|LOG_GENERATION|LOG_GENERATION_VERBOSE|LOG_DUMP_INPUT_DATA))==0) debug_write(__FUNCTION__ ": " __VA_ARGS__)
 #else
 #define LOGMASKED(x,...)
 #endif
