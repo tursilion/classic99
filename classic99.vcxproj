@@ -922,6 +922,7 @@
     <ClCompile Include="addons\mpd.cpp" />
     <ClCompile Include="debugger\dbghook.cpp" />
     <ClCompile Include="disk\cf7Disk.cpp" />
+    <ClCompile Include="disk\ramdisk.cpp" />
     <ClCompile Include="disk\TICCDisk.cpp" />
     <ClCompile Include="disk\tipiDisk.cpp" />
     <ClCompile Include="keyboard\kb.cpp" />
@@ -1002,6 +1003,7 @@
     <ClInclude Include="console\tiemul.h" />
     <ClInclude Include="debugger\dbghook.h" />
     <ClInclude Include="disk\cf7Disk.h" />
+    <ClInclude Include="disk\ramdisk.h" />
     <ClInclude Include="disk\TICCDisk.h" />
     <ClInclude Include="disk\tipiDisk.h" />
     <ClInclude Include="resource.h" />

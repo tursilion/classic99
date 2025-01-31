@@ -64,7 +64,7 @@
 
 // CRU device map
 // >0000	Console / SID Blaster
-// >1000	CF7
+// >1000	CF7 / RAMdisk
 // >1100	Classic99 DSR / TI DSR
 // >1200	TIPI Sim
 // >1300	RS232/PIO
@@ -118,6 +118,7 @@
 #include "..\disk\TICCDisk.h"
 #include "..\disk\cf7Disk.h"
 #include "..\disk\tipiDisk.h"
+#include "..\disk\ramdisk.h"
 #include "sound.h"
 #include "..\debugger\bug99.h"
 #include "..\addons\mpd.h"
@@ -229,6 +230,8 @@ int filesTopOfVram = 0x3fff;
 CString csCf7Bios = "";                     // not sure if I can include the CF7 BIOS, so not a top level feature yet
 CString csCf7Disk = ".\\cf7Disk.img";
 int nCf7DiskSize = 128*1024*1024;
+CString csRamDisk = "";
+int nRamDiskSize = 0;
 
 // Must remain compatible with LARGE_INTEGER - just here
 // to make QuadPart unsigned ;)
@@ -691,6 +694,15 @@ void ReadConfig() {
         }
         nCf7DiskSize = GetPrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
     }
+    // do similar for RAMdisk
+    {
+        char buf[1024];
+        GetPrivateProfileString("Ramdisk", "Disk", "", buf, sizeof(buf), INIFILE);
+        if (buf[0] != '\0') {
+            csRamDisk = buf;
+        }
+        nRamDiskSize = GetPrivateProfileInt("Ramdisk", "Size", nRamDiskSize, INIFILE);
+    }
 
 	// NOTE: emulation\enableAltF4 is down under the video block, due to needing to set different defaults
 	// Filename used to write recorded video
@@ -1057,6 +1069,9 @@ void SaveConfig() {
     WritePrivateProfileString("CF7", "BIOS", csCf7Bios, INIFILE);
     WritePrivateProfileString("CF7", "Disk", csCf7Disk, INIFILE);
     WritePrivateProfileInt("CF7", "Size", nCf7DiskSize, INIFILE);
+
+    WritePrivateProfileString("Ramdisk", "Disk", csRamDisk, INIFILE);
+    WritePrivateProfileInt("Ramdisk", "Size", nRamDiskSize, INIFILE);
 
 	WritePrivateProfileString(	"emulation",	"AVIFilename",			AVIFileName,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"throttlemode",			ThrottleMode,				INIFILE);
@@ -3070,6 +3085,28 @@ void readroms() {
             debug_write("Failed to read CF7 BIOS '%s'", csCf7Bios.GetString());
         }
     }
+    if (csRamDisk.GetLength() > 0) {
+        if (csCf7Bios.GetLength() > 0) {
+            // A real RAMdisk can live anyway, but for now Classic99 will restrict it to >1000
+            debug_write("Can not enable RAMdisk if CF7 is active - disable CF7.");
+        } else {
+            // the actual bios is read from the file
+            // the default handling should work for it...? Kinda hacky still...
+            // we don't NEED a RAMdisk, so this will stay unofficial hack like CF7
+            FILE* fp = fopen(csRamDisk, "rb");
+            if (NULL == fp) {
+                // no RAMdisk file yet
+                memset(DSR[0], 0, 8192);
+            } else {
+                // first 8k is the disk BIOS (okay if it's not loaded yet)
+                fread(DSR[0], 1, 8192, fp);
+                fclose(fp);
+                // TODO: we could replace the TI handling per disk, but I don't think we need to...
+                // We could read the ROS settings if we wanted to...
+                debug_write("WARNING: RAMdisk will override Classic99 disk configuration");
+            }
+        }
+    }
 
 	// load the appropriate system ROMs - each system is a cart structure that contains MAXROMSPERCART ROMs
 	for (idx=0; idx<MAXROMSPERCART; idx++) {
@@ -4351,6 +4388,11 @@ Byte rcpubyte(Word x,READACCESSTYPE rmw) {
                 return read_cf7(x);
             }
 
+            // Ramdisk
+            if ((nCurrentDSR == 0x00) && (csRamDisk.GetLength() > 0)) {
+                return read_ramdisk(x);
+            }
+
             // just access memory
 			if (nDSRBank[nCurrentDSR]) {
 				return DSR[nCurrentDSR][x-0x2000];	// page 1: -0x4000 for base, +0x2000 for second page
@@ -4614,6 +4656,9 @@ void wcpubyte(Word x, Byte c)
                 // CF7, if it's loaded
                 if (csCf7Bios.GetLength() > 0) {
                     write_cf7(x, c);
+                } else if (csRamDisk.GetLength() > 0) {
+                    // Ramdisk, if it's loaded
+                    return write_ramdisk(x, c);
                 }
                 break;
 
@@ -5205,9 +5250,7 @@ void wvdpbyte(Word x, Byte c)
 					wVDPreg((Byte)(nReg),(Byte)(nData));
 				} else {
 					if (nReg&0xf8) {
-						// todo: why am I doing this ignore?
 						debug_write("Warning: writing >%02X to VDP register >%X ignored (PC=>%04X)", nData, nReg, pCPU->GetPC());
-						return;
 					}
 					// verified correct against real hardware - register is masked to 3 bits
 					nReg &= 0x07;
@@ -6028,6 +6071,12 @@ void wcru(Word ad, int bt)
 				// there may also be device-dependent behaviour! Don't exit.
 			}
 			switch (ad&0xff00) {
+            case 0x1000:    // RAMdisk, if active
+                if (csRamDisk.GetLength() > 0) {
+                    return WriteRamdiskCRU((ad & 0xff) >> 1, bt);
+                }
+                break;
+
 			case 0x1300:	// RS232/PIO card
 				WriteRS232CRU((ad&0xff)>>1, bt);
 				break;
@@ -6072,7 +6121,12 @@ void wcru(Word ad, int bt)
 			}
 			// else, it's device dependent
 			switch (ad&0xff00) {
-			case 0x1300:	// RS232/PIO card
+            case 0x1000:    // RAMdisk, if active
+                if (csRamDisk.GetLength() > 0) {
+                    return WriteRamdiskCRU((ad & 0xff) >> 1, bt);
+                }
+                break;
+            case 0x1300:	// RS232/PIO card
 				WriteRS232CRU((ad&0xff)>>1, bt);
 				break;
 
@@ -6632,6 +6686,11 @@ int rcru(Word ad)
 		ad<<=1;		// puts it back into a familiar space - wasteful but easier to deal with
 
 		switch (ad&0xff00) {
+            case 0x1000:    // RAMdisk, if active
+                if (csRamDisk.GetLength() > 0) {
+                    return ReadRamdiskCRU((ad & 0xff) >> 1);
+                }
+                return 1;
 			case 0x1100:	// disk controller
 				if (nDSRBank[1] != 0) {
 					// TICC paged in 

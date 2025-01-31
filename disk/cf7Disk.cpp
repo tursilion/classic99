@@ -83,7 +83,7 @@
 
 #include <atlstr.h>
 #include <errno.h>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "diskclass.h"
 #include "cf7Disk.h"
 
@@ -93,24 +93,24 @@ extern int nCf7DiskSize;
 
 // where we store a read sector
 // and what position we are at in reading it
-unsigned char sector[512];
-int secpos = 512;
-int writecnt = 512;
+static unsigned char sector[512];
+static int secpos = 512;
+static int writecnt = 512;
 
 // various variables to track
-int features = 0;
-int dataReg = 0;
-int errorReg = 0;       // TOOD: error emulation is minimal
-int secCount = 0;
-int secNum = 0;
-int cylLow = 0;
-int cylHigh = 0;
-int cardHead = 0;
-int status = 0;
+static int features = 0;
+static int dataReg = 0;
+static int errorReg = 0;       // TOOD: error emulation is minimal
+static int secCount = 0;
+static int secNum = 0;
+static int cylLow = 0;
+static int cylHigh = 0;
+static int cardHead = 0;
+static int status = 0;
 
 // modes we track
-bool is8Bit = false;    // whether 8 bit or 16 bit mode - defaults to 16
-bool isReset = false;
+static bool is8Bit = false;    // whether 8 bit or 16 bit mode - defaults to 16
+static bool isReset = false;
 
 // Status register
 #define SBUSY 0x80
@@ -141,7 +141,7 @@ bool isReset = false;
 
 // based on the SanDisk manual information
 // must be less than 512 bytes!
-const unsigned char identity[] = {
+static const unsigned char identity[] = {
     0x84,0x8a,  // disk information bits
     0,99,       // number cylinders
     0,0,        // reserved
@@ -238,7 +238,7 @@ const unsigned char identity[] = {
 
 // open the CF7 disk file and move the file pointer to the right place
 // note we always assume LBA
-FILE *prepareDisk(const char *pMode) {
+static FILE *prepareDisk(const char *pMode) {
     // check the flags in drive/head
     if ((cardHead & FLG_ALWAYS) != FLG_ALWAYS) {
         debug_write("CF7 %s: Mandatory bits 0xA0 are not set in drive/head register", pMode);
@@ -283,7 +283,7 @@ FILE *prepareDisk(const char *pMode) {
 }
 
 // read a sector from the ondisk image
-void readSector() {
+static void readSector() {
     FILE *fp = prepareDisk("read");
     if (NULL == fp) {
         return;
@@ -296,7 +296,7 @@ void readSector() {
 }
 
 // load identity data into the buffer
-void readIdentity() {
+static void readIdentity() {
     memset(sector, 0, sizeof(sector));
     memcpy(sector, identity, sizeof(identity));
     int sectors = nCf7DiskSize/512;
@@ -325,7 +325,7 @@ void readIdentity() {
 }
 
 // write a sector to the ondisk image
-void writeSector() {
+static void writeSector() {
     FILE *fp = prepareDisk("write");
     if (NULL == fp) {
         return;
@@ -540,7 +540,7 @@ void write_cf7(Word adr, Byte c) {
 }
 
 //********************************************************
-// ClipboardDisk
+// Cf7Disk
 //********************************************************
 
 // constructor

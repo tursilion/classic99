@@ -2368,7 +2368,8 @@ void DrawSprites(int scanline)
 		}
 	}
 	
-	if (bUse5SpriteLimit) {
+    // we have to do the work, flicker or no, because F18A still sets 5S normally
+	{
 		// go through the sprite table and check if any scanlines are obliterated by 4-per-line
 		i3=8;							// number of sprite scanlines
 		if (VDPREG[1] & 0x2) {			// TODO: Handle F18A ECM where sprites are doubled individually
@@ -2394,12 +2395,17 @@ void DrawSprites(int scanline)
 			for (i2=0; i2<i3; i2++,t++) {
 				if ((t>=0) && (t<=191)) {
 					nLines[t]++;
-					if (nLines[t]>=max) {
-						if (t == scanline) {
-							if (b5OnLine == -1) b5OnLine=i1;
-						}
-						bSkipScanLine[i1][i2]=1;
-					}
+                    if (bUse5SpriteLimit) {
+                        if (nLines[t] >= max) {
+                            bSkipScanLine[i1][i2] = 1;
+                        }
+                    }
+                    // Fix: F18A still counts 4 for the 5S flag, but may display more
+                    if (nLines[t] > 4) {
+                        if (t == scanline) {
+                            if (b5OnLine == -1) b5OnLine = i1;
+                        }
+                    }
 				}
 			}
 		}

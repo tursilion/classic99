@@ -103,6 +103,9 @@
     <ClCompile Include="addons\screenReader.cpp">
       <Filter>addons</Filter>
     </ClCompile>
+    <ClCompile Include="disk\ramdisk.cpp">
+      <Filter>disk</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -186,6 +189,9 @@
     </ClInclude>
     <ClInclude Include="addons\diff.h">
       <Filter>addons</Filter>
+    </ClInclude>
+    <ClInclude Include="disk\ramdisk.h">
+      <Filter>disk</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
