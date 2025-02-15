@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.31313.79
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35527.113 d17.12
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FilterDLL", "FilterDLL\FilterDLL.vcxproj", "{B6CF0840-1A67-4FE0-B5B1-49C96502B9C4}"
 EndProject
@@ -53,7 +53,8 @@ Global
 		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Debug|x64.ActiveCfg = Debug|Win32
 		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Release|Win32.ActiveCfg = Release|Win32
 		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Release|Win32.Build.0 = Release|Win32
-		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Release|x64.ActiveCfg = Release|Win32
+		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Release|x64.ActiveCfg = Release|x64
+		{D3B0018A-E990-4B0C-A29C-9AECEDE70F6A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

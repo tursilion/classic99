@@ -2231,3 +2231,27 @@ Added an 'a' to the download version. Updated the speech synth with new knowledg
 
 Minor fix to the speech DLL that was causing the first byte of external speech to be discarded. In most cases this didn't matter, but it broke the Bert and Ernie demo for sure.
 
+-----------------------------------------------
+15 Feb 2025
+
+- fix some new compiler complaints
+- debugger shows all 32MB of AMS (so much for a temp hack ;) )
+- Drag-and-drop carts remember their 'auto' status on cold reset, allowing carts made larger during development to correctly reload
+- more debug about how Classic99 auto-detects the cart type
+- make sure to always check for PC99 cartridge file types
+- Horizon RAMdisk support (unsupported, so not in manual)
+
+The main crux of this update is the AMS debugger fix, and the fix for cold reset loading larger carts than the first time you loaded them. If you aren't a developer, you might not need this version.
+
+Important note: If you update, you MUST update the cartpack.dll as well. An internal structure had to change and the old one won't be compatible. Probably. I won't fix it if it breaks, just update. ;)
+
+The Horizon RAMDisk support works, but because it subverts the disk system I don't intend to provide support. This means "if it works, great, if it doesn't, you have my sympathy."
+
+To enable it, just add the following section to your classic99.ini:
+
+    [ramdisk]
+    disk=D:\classic99\ramdisk.bin
+    size=1048576
+    
+That will give you a 1MB RAMdisk, which is file backed. You will have to load the ROS and everything as per normal. Up to 16MB is allowed, but CFG gets really slow. ;) It's a full emulation of the hardware and should be suitable for testing, but there is no debug support. All data including the ROS is stored in that disk file, so you could use that for debug. RAMBO is not supported and probably won't be.
+
