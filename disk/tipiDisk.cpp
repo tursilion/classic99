@@ -117,9 +117,9 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "diskclass.h"
-#include "cpu9900.h"
+#include "..\console\cpu9900.h"
 #include "tipiDisk.h"
 
 extern CPU9900 * volatile pCurrentCPU;

@@ -54,7 +54,7 @@
 
 #include <windows.h>
 #include <stdio.h>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "..\resource.h"
 #include "..\addons\rs232_pio.h"
 

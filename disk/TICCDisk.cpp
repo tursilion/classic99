@@ -41,7 +41,7 @@
 #include <io.h>
 #include <atlstr.h>
 #include <time.h>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "diskclass.h"
 #include "imagedisk.h"
 #include "TICCDisk.h"

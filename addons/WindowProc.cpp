@@ -60,8 +60,8 @@
 #include <shellapi.h>
 
 #include "..\resource.h"
-#include "tiemul.h"
-#include "cpu9900.h"
+#include "..\console\tiemul.h"
+#include "..\console\cpu9900.h"
 #include "..\addons\makecart.h"
 #include "..\addons\screenReader.h"
 #include "..\keyboard\kb.h"
@@ -3655,9 +3655,12 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									// it is a number, not a register
 									x+=(LINES_TO_STEP*8);
 
-                                    if ((nMemType == MEMAMS)||(nMemType == MEMGROM)) {
-                                        // TODO: just assumes 1MB, GROM assumes 16 bases
+                                    if (nMemType == MEMGROM) {
+                                        // TODO: GROM assumes 16 bases
                                         x &= 0xfffff;
+                                    } else if (nMemType == MEMAMS) {
+                                        // TODO: AMS assumes 32MB
+                                        x &= 0x1ffffff;
                                     } else {
 									    if (nMemType == MEMVDP) {
 										    if (bF18Enabled) {
@@ -3717,9 +3720,12 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									// it is a number, not a register
 									x-=(LINES_TO_STEP*8);
 
-                                    if ((nMemType == MEMAMS)||(nMemType == MEMGROM)) {
-                                        // TODO: just assumes 1MB, GROM assumes 16 bases
+                                    if (nMemType == MEMGROM) {
+                                        // TODO: GROM assumes 16 bases
                                         x &= 0xfffff;
+                                    } else if (nMemType == MEMAMS) {
+                                        // TODO: AMS assumes 32MB
+                                        x &= 0x1ffffff;
                                     } else {
 									    if (x < 0) {
 										    if (nMemType == MEMVDP) {
@@ -3935,7 +3941,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									}
 									break;
                                 case MEMAMS:        // AMS
-                                    x&=0xfffff;
+                                    x&=0x1ffffff;
 									if ((bIsReg) && (x > 15)) {
 										MessageBox(hwnd, "Out of range for AMS registers", "Classic99 Debugger", MB_ICONSTOP);
 										ok=IDNO;
@@ -4040,7 +4046,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
     										    WriteRawAMS(x, y);
 
                                                 ++x;
-                                                if (x > 0xffff) {
+                                                if (x > 0x1ffffff) {
                                                     // no wraparound
                                                     break;
                                                 }
@@ -4648,13 +4654,13 @@ void DebugUpdateThread(void*) {
 							if (1 != sscanf(buf3, "%X", &tmpPC)) {
 								tmpPC=0;
 							}
-							tmpPC&=0xfffff; // todo: 1MB assumption
+							tmpPC&=0x1ffffff; // todo: 32MB assumption
 							for (idx2=0; idx2<34; idx2++) {
 								sprintf(buf1, "%04X: ", tmpPC);
 								strcpy(buf3, "");
 								for (idx=0; idx<8; idx++) {
 									c=ReadRawAMS(tmpPC++);
-									tmpPC&=0xfffff;
+									tmpPC&=0x1ffffff;
 									sprintf(buf2, "%02X ", c);
 									strcat(buf1, buf2);
 									if ((c>=32)&&(c<=126)) {

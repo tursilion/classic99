@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.072"
+#define VERSION "QI399.073"
 #define DEBUGLEN 120
 #define DEBUGLINES 40
 
@@ -166,6 +166,7 @@ struct IMG {
 	int  nLoadAddr;
 	int  nLength;
 	char nType;
+    char nOriginalType;     // used to make auto load work repeatedly, won't matter anywhere else
 	int  nBank;
 	char szFileName[1024];	// filename if on disk, only if dwImg is NULL
 };

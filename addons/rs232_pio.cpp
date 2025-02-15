@@ -65,7 +65,7 @@
 // The test code I have also put a '4' after the color change reliably, may have to ignore that?
 
 #include <windows.h>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "rs232_pio.h"
 
 // CRU system talks 

@@ -7,7 +7,7 @@
 #include <memory.h>
 #include <windows.h>
 
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "ams.h"
 
 // temporary hack - might be right, needs testing

@@ -86,7 +86,7 @@
 
 #include <WinSock2.h>
 #include <Windows.h>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 
 static SOCKET sock;
 

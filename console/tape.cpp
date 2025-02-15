@@ -40,7 +40,7 @@
 
 #include <Windows.h>
 #include <stdio.h>
-#include <tiemul.h>
+#include "..\console\tiemul.h"
 
 // quick and dirty tape support
 // load only for the moment... if it works we can talk about adding save...

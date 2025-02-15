@@ -50,7 +50,7 @@
 #include <math.h>
 #include <atlstr.h>
 #include "..\resource.h"
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "ubergrom.h"
 
 // TODO: does not support the recovery program right now

@@ -25,8 +25,8 @@
 #include <map>
 #include <string>
 
-#include "tiemul.h"
-#include "cpu9900.h"
+#include "..\console\tiemul.h"
+#include "..\console\cpu9900.h"
 #include "..\addons\ams.h"
 
 // config value for the Classic99 debug opcodes

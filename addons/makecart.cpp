@@ -65,8 +65,8 @@
 #include <stdexcept>
 
 #include "..\resource.h"
-#include "tiemul.h"
-#include "cpu9900.h"
+#include "..\console\tiemul.h"
+#include "..\console\cpu9900.h"
 #include "ams.h"
 #include "..\addons\makecart.h"
 #include "..\disk\diskclass.h"

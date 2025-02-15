@@ -52,7 +52,7 @@
 #include <math.h>
 #include <atlstr.h>
 #include "..\resource.h"
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "mpd.h"
 
 // some real-time measurement stuff to simulate the Hz timer

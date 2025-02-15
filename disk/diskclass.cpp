@@ -71,7 +71,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <atlstr.h>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "diskclass.h"
 
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);

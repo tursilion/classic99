@@ -473,12 +473,12 @@ void joyStruct::changeMode(int n) {
 
 // ROMs to always load
 struct IMG AlwaysLoad[] = {
-    {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0},
-	{	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
-    {   IDR_TIPISIM,    0x1200, 0x0110, TYPE_DSR    , 0},
-//	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0},
-	{	IDR_SPCHROM,	0x0000,	0x8000,	TYPE_SPEECH	, 0},
-	{	IDR_PGROM,		0x0000, 0xF800, TYPE_PCODEG , 0},
+    {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0, 0},
+    {	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
+    {   IDR_TIPISIM,    0x1200, 0x0110, TYPE_DSR    , 0, 0},
+//	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0, 0},
+    {	IDR_SPCHROM,	0x0000,	0x8000,	TYPE_SPEECH	, 0, 0},
+    {	IDR_PGROM,		0x0000, 0xF800, TYPE_PCODEG , 0, 0},
 };
 
 // Actual cartridge definitions (broken into categories)
@@ -490,10 +490,10 @@ struct CARTS Systems[] = {
 	{	
 		"TI-99/4",	
 		{	
-			{	IDR_CON4R0,		0x0000, 0x2000,	TYPE_ROM	, -1},
-			{	IDR_CON4G0,		0x0000, 0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON4G1,		0x2000,	0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON4G2,		0x4000,	0x2000,	TYPE_GROM	, -1},
+			{	IDR_CON4R0,		0x0000, 0x2000,	TYPE_ROM	, 0 , -1},
+			{	IDR_CON4G0,		0x0000, 0x2000,	TYPE_GROM	, 0 , -1},
+			{	IDR_CON4G1,		0x2000,	0x2000,	TYPE_GROM	, 0 , -1},
+			{	IDR_CON4G2,		0x4000,	0x2000,	TYPE_GROM	, 0 , -1},
 		},
 		NULL,
 		NULL,
@@ -503,8 +503,8 @@ struct CARTS Systems[] = {
 	{	
 		"TI-99/4A",	
 		{	
-			{	IDR_994AGROM,	0x0000, 0x6000,	TYPE_GROM	, -1},
-			{	IDR_994AROM,	0x0000,	0x2000,	TYPE_ROM	, -1},
+			{	IDR_994AGROM,	0x0000, 0x6000,	TYPE_GROM	, 0, -1},
+			{	IDR_994AROM,	0x0000,	0x2000,	TYPE_ROM	, 0, -1},
 		},
 		NULL,
 		NULL,
@@ -514,10 +514,10 @@ struct CARTS Systems[] = {
 	{	
 		"TI-99/4A V2.2",
 		{
-			{	IDR_CON22R0,	0x0000, 0x2000,	TYPE_ROM	, -1},
-			{	IDR_CON22G0,	0x0000,	0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON22G1,	0x2000,	0x2000,	TYPE_GROM	, -1},
-			{	IDR_CON22G2,	0x4000,	0x2000,	TYPE_GROM	, -1},
+			{	IDR_CON22R0,	0x0000, 0x2000,	TYPE_ROM	, 0, -1},
+			{	IDR_CON22G0,	0x0000,	0x2000,	TYPE_GROM	, 0, -1},
+			{	IDR_CON22G1,	0x2000,	0x2000,	TYPE_GROM	, 0, -1},
+			{	IDR_CON22G2,	0x4000,	0x2000,	TYPE_GROM	, 0, -1},
 		},
 		NULL,
 		NULL,
@@ -2368,6 +2368,13 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 
 	pData=NULL;
 
+    // if the original type was auto, then restore that
+    if (pImg->nOriginalType == TYPE_AUTO) {
+        pImg->nType = TYPE_AUTO;
+    }
+    // and back up the current type (even if we just changed it)
+    pImg->nOriginalType = pImg->nType;
+
 	int nLen=pImg->nLength;
 
 	if (pImg->nType == TYPE_AUTO) {
@@ -2376,7 +2383,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 		if ((NULL == pPos) || (pPos == pImg->szFileName)) {
             // there's no extension at all. Since the advent of the FinalROM, this has become
             // a defacto standard of non-inverted ROM cartridge, so it's time to get with the times!
-			debug_write("No extension for filename '%s', assuming non-inverted ROM.", pImg->szFileName);
+			debug_write("No extension for filename '%s', assuming non-inverted 378 ROM.", pImg->szFileName);
 			nLen = -1;		// flag to fill in after loading
 			pImg->nType = TYPE_378;
 			pImg->nLoadAddr = 0x0000;
@@ -2386,30 +2393,36 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 			pPos--;
 			switch (*pPos) {
 				case 'C':
+                    debug_write("Filename specifies 'C' type - 8k cartridge ROM");
 					pImg->nType = TYPE_ROM;
 					break;
 
 				case 'D':
-					pImg->nType = TYPE_XB;
+                    debug_write("Filename specifies 'D' type - 8k XB Bank 2 ROM");
+                    pImg->nType = TYPE_XB;
 					break;
 
 				case 'G':
-					pImg->nType = TYPE_GROM;
+                    debug_write("Filename specifies 'G' type - cartridge GROM");
+                    pImg->nType = TYPE_GROM;
 					break;
 
 				case '3':
 				case '9':
-					pImg->nType = TYPE_379;
+                    debug_write("Filename specifies '9' (or '3') type - inverted 379 ROM");
+                    pImg->nType = TYPE_379;
 					pImg->nLoadAddr = 0x0000;
 					break;
 
 				case '8':
-					pImg->nType = TYPE_378;
+                    debug_write("Filename specifies '8' type - non-inverted 378 ROM");
+                    pImg->nType = TYPE_378;
 					pImg->nLoadAddr = 0x0000;
 					break;
 
 				case 'N':
-					pImg->nType = TYPE_NVRAM;
+                    debug_write("Filename specifies 'N' type - non-volatile 4k MiniMem RAM");
+                    pImg->nType = TYPE_NVRAM;
 					pImg->nLoadAddr = 0x7000;		// assuming minimem, if not you need an INI
 					pImg->nLength = nLen = 0x1000;	// in case it's not loaded
 					break;
@@ -2419,7 +2432,6 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					return;
 			}
 		}
-		// not auto anymore! (this may cause small issues with ROMs that change size, AUTO should not be used for development)
 	}
 
 	if ((TYPE_KEYS != pImg->nType) && (TYPE_OTHER != pImg->nType)) {
@@ -2493,14 +2505,13 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 						memmove(DiskFile, &DiskFile[6], nRealLen);
 					} 
 				}
-			} else {
-				// regardless of the filetype, check for PC99 naming PHMxxxx.GRM, and remove its header
-				if ((nRealLen > 6) && (strstr(pImg->szFileName,"PHM")) && (strstr(pImg->szFileName,".GRM"))) {
-					if ((DiskFile[0]==0x00) || (DiskFile[0]==0xff)) {	// a flag byte?
-						debug_write("PC99 filename? Removing header from %s", pImg->szFileName);
-						nRealLen-=6;
-						memmove(DiskFile, &DiskFile[6], nRealLen);
-					}
+			}
+			// regardless of the filetype, check for PC99 naming PHMxxxx.GRM, and remove its header
+			if ((nRealLen > 6) && (strstr(pImg->szFileName,"PHM")) && (strstr(pImg->szFileName,".GRM"))) {
+				if ((DiskFile[0]==0x00) || (DiskFile[0]==0xff)) {	// a flag byte?
+					debug_write("PC99 filename? Removing header from %s", pImg->szFileName);
+					nRealLen-=6;
+					memmove(DiskFile, &DiskFile[6], nRealLen);
 				}
 			}
 

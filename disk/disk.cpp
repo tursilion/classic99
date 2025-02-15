@@ -92,8 +92,8 @@
 #include <atlstr.h>
 #include <FCNTL.H>
 #include <io.h>
-#include "tiemul.h"
-#include "cpu9900.h"
+#include "..\console\tiemul.h"
+#include "..\console\cpu9900.h"
 #include "diskclass.h"
 #include "fiaddisk.h"
 #include "ImageDisk.h"

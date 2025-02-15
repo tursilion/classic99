@@ -47,7 +47,7 @@
 #include <stdio.h>
 #include <windows.h>
 #include <vector>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "F18A.h"
 
 // This exists mostly to be able to test the F18A updater.

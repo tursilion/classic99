@@ -50,7 +50,7 @@ extern CComModule _Module;
 #include <queue>
 #include <vector>
 #include <string>
-#include "tiemul.h"
+#include "..\console\tiemul.h"
 #include "screenReader.h"
 
 #include "diff.h"
