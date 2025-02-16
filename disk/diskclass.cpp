@@ -274,11 +274,14 @@ bool BaseDisk::SetFiles(int n) {
 	return true; 
 }
 
-bool BaseDisk::CheckOpenFiles() {
+bool BaseDisk::CheckOpenFiles(bool ignoreInput) {
 	for (int idx=0; idx<MAX_FILES; idx++) {
 		if (m_sFiles[idx].bOpen == true) {
-			return true;
-		}
+            if (((m_sFiles[idx].Status & FLAG_MODEMASK) == FLAG_INPUT) && (ignoreInput)) {
+                continue;
+            }
+            return true;
+        }
 	}
 
 	return false;

@@ -51,7 +51,7 @@ public:
 //	virtual void SetPath(const char *pszPath);			// base class ok
 	virtual const char *GetPath();
 	virtual int  GetDiskType() { return DISK_FIAD; }	// return the disk type
-//	virtual bool CheckOpenFiles();						// base class ok
+//	virtual bool CheckOpenFiles(bool ignoreInput);		// base class ok
 //	virtual void CloseAllFiles();						// base class ok
 	virtual void SetOption(int nOption, int nValue);
 	virtual bool GetOption(int nOption, int &nValue);

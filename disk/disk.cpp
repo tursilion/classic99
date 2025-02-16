@@ -656,7 +656,11 @@ void do_dsrlnk(char *forceDevice) {
 				}
 
 				// a little more info just for opens
-				debug_write("PAB requested file type is %c%c%d", (pWorkFile->Status&FLAG_INTERNAL)?'I':'D', (pWorkFile->Status&FLAG_VARIABLE)?'V':'F', pWorkFile->RecordLength);
+				debug_write("Mode %s, PAB requested file type is %c%c%d", 
+                    ((pWorkFile->Status& FLAG_MODEMASK) == FLAG_UPDATE)?"UPDATE":
+                        ((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT)?"OUTPUT":
+                        ((pWorkFile->Status & FLAG_MODEMASK) == FLAG_INPUT)?"INPUT":"APPEND",
+                    (pWorkFile->Status&FLAG_INTERNAL)?'I':'D', (pWorkFile->Status&FLAG_VARIABLE)?'V':'F', pWorkFile->RecordLength);
 				pNewFile = pDriveType[nDrive]->Open(pWorkFile);
 				if ((NULL == pNewFile) /*|| (!pNewFile->bOpen)*/) {
 					// the bOpen check is to make STATUS able to use Open to check PROGRAM files

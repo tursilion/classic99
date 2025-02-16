@@ -68,7 +68,7 @@ public:
 	void writesectorwrap();
 
 // Seems to me I should find a way to hook these in...?
-//	virtual bool CheckOpenFiles();						// base class ok
+//	virtual bool CheckOpenFiles(bool ignoreInput);		// base class ok
 //	virtual void CloseAllFiles();						// base class ok
 };
 

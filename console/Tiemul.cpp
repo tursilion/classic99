@@ -1808,6 +1808,17 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Fail is the full exit
 	debug_write("Shutting down");
+
+    // close anything we still have open
+    for (int idx = 0; idx < MAX_DRIVES; idx++) {
+        if (NULL != pDriveType[idx]) {
+            if (pDriveType[idx]->CheckOpenFiles(false)) {
+                debug_write("Force closing files on %s", pDriveType[idx]->GetDiskTypeAsString());
+                pDriveType[idx]->CloseAllFiles();
+            }
+        }
+    }
+
 	fail("Normal Termination");
 	CloseHandle(hWakeupEvent);
 

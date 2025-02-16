@@ -49,7 +49,7 @@ public:
 	// emulation functions
 //	virtual void SetPath(const char *pszPath);			// base class ok
 	virtual int  GetDiskType() { return DISK_CLOCK; }	// return the disk type
-//	virtual bool CheckOpenFiles();						// base class ok
+//	virtual bool CheckOpenFiles(bool ignoreInput);		// base class ok
 //	virtual void CloseAllFiles();						// base class ok
 //	virtual void SetOption(int nOption, int nValue);	// no options
 //	virtual bool GetOption(int nOption, int &nValue);

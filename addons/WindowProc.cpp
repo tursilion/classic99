@@ -256,9 +256,10 @@ bool VerifyOpenFiles(HWND hwnd) {
 
     bool isOpen = false;
 
+    // check if we should warn - we only warn if the file is open for anything other than INPUT
 	for (int idx=0; idx<MAX_DRIVES; idx++) {
 		if (NULL != pDriveType[idx]) {
-			if (pDriveType[idx]->CheckOpenFiles()) {
+			if (pDriveType[idx]->CheckOpenFiles(true)) {
                 isOpen = true;
             }
 		}
@@ -273,7 +274,8 @@ bool VerifyOpenFiles(HWND hwnd) {
 
 	for (int idx=0; idx<MAX_DRIVES; idx++) {
 		if (NULL != pDriveType[idx]) {
-			if (pDriveType[idx]->CheckOpenFiles()) {
+			if (pDriveType[idx]->CheckOpenFiles(false)) {
+                debug_write("Force closing files on %s", pDriveType[idx]->GetDiskTypeAsString());
 				pDriveType[idx]->CloseAllFiles();
 			}
 		}

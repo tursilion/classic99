@@ -958,7 +958,11 @@ bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile)) {
                 }
 
 				// a little more info just for opens
-				debug_write("PAB requested file type is %c%c%d", (pWorkFile->Status&FLAG_INTERNAL)?'I':'D', (pWorkFile->Status&FLAG_VARIABLE)?'V':'F', pWorkFile->RecordLength);
+                debug_write("Mode %s, PAB requested file type is %c%c%d",
+                    ((pWorkFile->Status & FLAG_MODEMASK) == FLAG_UPDATE) ? "UPDATE" :
+                    ((pWorkFile->Status & FLAG_MODEMASK) == FLAG_OUTPUT) ? "OUTPUT" :
+                    ((pWorkFile->Status & FLAG_MODEMASK) == FLAG_INPUT) ? "INPUT" : "APPEND",
+                    (pWorkFile->Status & FLAG_INTERNAL) ? 'I' : 'D', (pWorkFile->Status & FLAG_VARIABLE) ? 'V' : 'F', pWorkFile->RecordLength);
 
                 // now the open
                 pNewFile = tipiDsk.Open(pWorkFile);

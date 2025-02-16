@@ -254,7 +254,7 @@ public:
 	virtual const char *GetPath() { return m_csPath; }
 	virtual int  GetDiskType() = 0;										// return the disk type (must override)
 	virtual const char *GetDiskTypeAsString() { return szDiskTypes[GetDiskType()]; };
-	virtual bool CheckOpenFiles();
+	virtual bool CheckOpenFiles(bool ignoreInput);
 	virtual void CloseAllFiles();
 	virtual void SetOption(int nOption, int nValue);
 	virtual bool GetOption(int nOption, int &nValue);

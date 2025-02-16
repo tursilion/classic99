@@ -2255,3 +2255,6 @@ To enable it, just add the following section to your classic99.ini:
     
 That will give you a 1MB RAMdisk, which is file backed. You will have to load the ROS and everything as per normal. Up to 16MB is allowed, but CFG gets really slow. ;) It's a full emulation of the hardware and should be suitable for testing, but there is no debug support. All data including the ROS is stored in that disk file, so you could use that for debug. RAMBO is not supported and probably won't be.
 
+('a' release, same day)
+
+- Do not bother to warn about open files if the open files are INPUT mode only (MENU opening CLOCK on RAMdisk was bad for this)
