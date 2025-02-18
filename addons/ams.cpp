@@ -265,11 +265,11 @@ Byte ReadMapperRegisterByte(Byte reg, bool highByte)
 
 // raw access to the array for the debugger
 Byte ReadRawAMS(int address) {
-    address &= 0xfffff;     // TODO: assumes 1MB limit
+    address &= 0x1ffffff;     // TODO: assumes 32MB limit
     return systemMemory[address];
 }
 void WriteRawAMS(int address, int value) {
-    address &= 0xfffff;     // TODO: assumes 1MB limit
+    address &= 0x1ffffff;     // TODO: assumes 32MB limit
     systemMemory[address] = value&0xff;
 }
 

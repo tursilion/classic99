@@ -2388,6 +2388,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 
 	int nLen=pImg->nLength;
 
+    // kind of duplicated code - see OpenUserCart
 	if (pImg->nType == TYPE_AUTO) {
 		// figure out what it should be by filename, and flag the length to be filled in
 		char *pPos = strrchr(pImg->szFileName, '.');
@@ -2439,9 +2440,11 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 					break;
 
 				default:
-					debug_write("AUTO type not supported for filename '%s' (unrecognized type)", pImg->szFileName);
-					return;
-			}
+					debug_write("No AUTO character recognized, assuming non-inverted 378 ROM for filename '%s' (unrecognized type)", pImg->szFileName);
+                    pImg->nType = TYPE_378;
+                    pImg->nLoadAddr = 0x0000;
+                    break;
+            }
 		}
 	}
 

@@ -2258,3 +2258,10 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 ('a' release, same day)
 
 - Do not bother to warn about open files if the open files are INPUT mode only (MENU opening CLOCK on RAMdisk was bad for this)
+
+-----------------------------------------------
+
+17 Feb 2025
+
+- fix for the cartridge reload, it wasn't working in all cases (or maybe in any cases...)
+- fix for the AMS debugger extension, it could still only read/write 1MB while pretending to show all 32MB

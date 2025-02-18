@@ -414,6 +414,12 @@ void OpenUserCart(OPENFILENAME &ofn) {
 				FILE *fp=fopen(ofn.lpstrFile, "rb");
 				if (NULL != fp) {
 					fseek(fp, 0, SEEK_END);
+                    // except for PART types, which we aren't going to rescan at load,
+                    // we can set TYPE_AUTO here to make it redetect the type/size at load time
+                    // This might be obsolete, being in two places... see LoadOneImg
+                    if (pPartIdx == NULL) {
+                        Users[nUsr].Img[nCnt].nOriginalType = TYPE_AUTO;    // setting auto will let it redetect size in the LoadOneImg
+                    }
 					Users[nUsr].Img[nCnt].dwImg=NULL;
 					Users[nUsr].Img[nCnt].nLength=ftell(fp);
                     // And it gets better /still/, FinalGROM users are now using "C.BIN" to
@@ -425,12 +431,16 @@ void OpenUserCart(OPENFILENAME &ofn) {
                         // at least we can assume it's non-inverted. Thank you for small favors.
                         debug_write("Cartridge image is improperly named - C.BIN images max 8k. Treating as type 8.");
                         Users[nUsr].Img[nCnt].nType = TYPE_378;
+                        debug_write("Resize will not be available.");
+                        Users[nUsr].Img[nCnt].nOriginalType = 0;
                     }
                     // might as well check the opposite, since the no-extension case could happen
                     if ((Users[nUsr].Img[nCnt].nType == TYPE_378) && (Users[nUsr].Img[nCnt].nLength <= 8192)) {
                         // can't bank less than 8k
                         debug_write("Cartridge image is improperly named - not banked. Treating as type C.");
                         Users[nUsr].Img[nCnt].nType = TYPE_ROM;
+                        debug_write("Resize will not be available.");
+                        Users[nUsr].Img[nCnt].nOriginalType = 0;
                     }
 					if ((Users[nUsr].Img[nCnt].nType==TYPE_378)||(Users[nUsr].Img[nCnt].nType==TYPE_379)||(Users[nUsr].Img[nCnt].nType==TYPE_MBX)) {
 						Users[nUsr].Img[nCnt].nLoadAddr=0x0000;

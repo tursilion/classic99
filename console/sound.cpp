@@ -597,7 +597,7 @@ unsigned char app_volume_table[16] = {
 // still not 100% sure the cutoff is in the right place, but seems okay
 unsigned char app_volume_table[16] = {
    31, 31, 31, 31, 31, 31, 31, 31,
-   31, 31, 31, 31, 31,  0,  0,  0
+   31, 31, 31, 31, 0, 0, 0, 0
 }; 
 #endif
 void sound_update(short *buf, double nAudioIn, int nSamples) {
@@ -740,6 +740,7 @@ static int sampleCnt = 0;
             olddelta = oldout;
 		}
 #elif 1
+        //-- this one --
 		// if the sign of the output delta has changed, 'tick' the speaker
         // require a minimum delta before we react - this helps a bit
 
@@ -807,7 +808,9 @@ static int sampleCnt = 0;
         // 800 at 44100 samples/second is about 55hz cycling
         // frankly this isn't too bad... it sounds the most
         // correct, but the stuttering is kind of annoying
-#define TONELEN 800
+        // It's better at 400 (110hz), but again, can it be achieved?
+        // the delta technique above still sounds better
+#define TONELEN 400
         switch (((++sampleCnt)/TONELEN)%4) {
         case 0: if ((nOutputApp[0])&&(nVolume[0] < 12)) oldout=0x80; else oldout=0x00; break;
         case 1: if ((nOutputApp[1])&&(nVolume[1] < 12)) oldout=0x80; else oldout=0x00; break;
