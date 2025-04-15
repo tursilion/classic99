@@ -43,7 +43,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.074"
+#define VERSION "QI399.075"
 #define DEBUGLEN 120
 #define DEBUGLINES 40
 
@@ -58,7 +58,7 @@ typedef unsigned __int32 DWord;
 // calculated it as 62.6 - but a long term interrupt count test gave 59.9
 // so back to 60
 #define HZ60 60
-// calculate it as 50.23
+// calculated it as 50.23
 #define HZ50 50
 #define DEFAULT_60HZ_CPF (CLOCK_MHZ/HZ60)
 #define DEFAULT_50HZ_CPF (CLOCK_MHZ/HZ50)

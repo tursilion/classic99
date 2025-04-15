@@ -4900,6 +4900,7 @@ int GetRealVDP() {
 
 	// The 9938 and 9958 don't honor this bit, they always assume 128k (which we don't emulate, but we can at least do 16k like the F18A)
 	// note that the 128k hack actually does support 128k now... as needed. So if bEnable128k is on, we take VDPREG[14]&0x07 for the next 3 bits.
+	// (VDPREG[1]&0x80) is the 16k mode bit. Technically the F18A should ignore it too.
 	if ((bEnable80Columns) || (VDPREG[1]&0x80)) {
 		// 16k mode - address is 7 bits + 7 bits, so use it raw
 		// xx65 4321 0654 3210
@@ -4907,7 +4908,7 @@ int GetRealVDP() {
 		RealVDP = VDPADD;	// & 0x3FFF;
 
 		if (bEnable128k) {
-			RealVDP|=VDPREG[14]<<14;
+			RealVDP|=(VDPREG[14]&0x07)<<14;
 		}
 		
 	} else {
@@ -5276,6 +5277,10 @@ void wvdpbyte(Word x, Byte c)
 				} else {
 					if (nReg&0xf8) {
 						debug_write("Warning: writing >%02X to VDP register >%X ignored (PC=>%04X)", nData, nReg, pCPU->GetPC());
+						if (bEnable80Columns) {
+							// TODO: why do I need this? Does the F18A ignore regs 8-F when locked? Test case is TurboForth 80 column.
+							return;
+						}
 					}
 					// verified correct against real hardware - register is masked to 3 bits
 					nReg &= 0x07;
