@@ -2265,3 +2265,11 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 
 - fix for the cartridge reload, it wasn't working in all cases (or maybe in any cases...)
 - fix for the AMS debugger extension, it could still only read/write 1MB while pretending to show all 32MB
+
+-----------------------------------------------
+
+15 Apr 2025
+
+- fix for 80 column mode
+- add support for reading xa99 listing symbol tables in debugger
+

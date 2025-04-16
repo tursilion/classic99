@@ -119,6 +119,44 @@ void ImportMapFile(const char *fn) {
 					debug_write("SYMBOL: %s - %04X", str.c_str(), adr);
 				}
 			}
+		} else if ((buf[0]==' ') && (buf[1]==' ') && (buf[3]==' ')) {
+			// might be an xa99 symbol table line
+			int adr;
+			std::string str;
+			if (isalpha(buf[4])) {
+				// probably good enough. There are potential symbols at: 4, 22, 40, and 58. 
+				// 2 characters back from there is a potential tag:
+				//  space   No special meaning
+				//	'     Symbol is relocatable                 NO
+				//	+     Symbol has an absolute address        YES
+				//	D     Symbol is in the XDEF list            ? - maybe yeah, maybe no, can be relocatable
+				//	U     Symbol is undefined                   NO
+				//	E     Symbol is in the XREF list            NO
+				//	X     Symbol is an defined extended operation (DXOP)    ? - maybe yeah, maybe no, can be relocatable
+				for (int p=4; p<=58; p+=18) {
+					char tag = buf[p-2];
+					if (NULL != strchr(" +DX", tag)) {	// allowed tags
+						buf[p+12]='\0';
+						if (strlen(&buf[p]) >= 12) { 
+							buf[p+7]='\0';
+							str = &buf[p];
+							while ((!str.empty()) && (str.back() < ' ')) {
+								str = str.substr(0, str.length()-1);
+							}
+							if (1 == sscanf(&buf[p+8], "%X", &adr)) {
+								// filter out register equates
+								if (adr < 16) str.clear();
+							} else {
+								str.clear();
+							}
+							if (!str.empty()) {
+								Symbols.emplace(std::make_pair(adr, str));
+								debug_write("SYMBOL: %s - %04X", str.c_str(), adr);
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 	fclose(fp);
