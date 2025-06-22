@@ -1,0 +1,21 @@
+
+          COPY                                                 PAGE C10
+          ------------------------------------------------------------- 
+
+          Description Addendum PLEASE NOTE:
+          The COPY command copies the lines in reverse order
+          If the copying process is halted due to insufficient
+          memory space, any unoccupied lines will be at the
+          beginning of the block.
+ 
+          Commands
+ 
+          Lines 100 to 150 are copied to| >COPY 100-150,9000,5
+          line 9000 and incremented by 5|
+                                        |
+          Line 10 is copied to line 25  | >COPY 10-10,25
+                                        |
+          Line 5 to last line are copied| >COPY 5-,99
+          to 99 and incremented by 10   |
+          (Default).                    |   
+                 

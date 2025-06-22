@@ -1,0 +1,36 @@
+          XB             Device Service Routine (DSR)          PAGE  X1
+          -------------------------------------------------------------
+ 
+          Format         RUN "XB"
+ 
+                         DELETE "XB"
+ 
+                         CALL CAT("XB")
+ 
+                         OLD XB
+ 
+                         SAVE XB         -(Must have a program within
+                                         -memory to work at all)
+ 
+                         CALL XB
+ 
+          Description
+ 
+          The XB DSR (Device Service Routine) allows access to the
+          RXB title screen. The access will work only if the DSR is
+          in the GPLDSR or LINK DSR. In other words, a DSR that
+          acknowledges any type of DSR in RAM, ROM, GROM, GRAM,
+          or VDP. Most DSR's only accept DSK or PIO. Others like the
+          SAVE or LIST commands will only work with a program in the
+          memory first. Still others like CALL LOAD("XB") must have the
+          CALL INIT command used first.
+           From EA option 5 you may type XB then enter, or from EA
+          option 3 type XB then enter, then enter again. If the EA
+          option 1 (edit), then 4 (print) type XB. From TI BASIC
+          use OLD XB or DELETE "XB".
+           Keep in mind that if it does not work, the problem is the
+          DSR your using. Almost all DSR's today only acknowledge the
+          ROM or RAM DSR's. As the XB DSR is in GROM/GRAM it seems a
+          bit short sighted on the part of most programmers to use
+          cut down versions of a DSR. Please discourage this as it is
+          a disservice to us all.

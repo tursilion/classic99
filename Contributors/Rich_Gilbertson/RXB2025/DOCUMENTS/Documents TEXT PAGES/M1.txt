@@ -1,0 +1,35 @@
+          MAGNIFY        subprogram                            PAGE  M1
+          -------------------------------------------------------------
+ 
+          Format         CALL MAGNIFY(magnification-factor[,...})
+
+
+          Description
+ 
+          See EXTENDED BASIC MANUAL PAGE 118 for more data. A added
+          feature to MAGNIFY is using a comma more switching of the
+          sprite can be done, like instantly enlarge and reduce a
+          sprite for a shadow effect in XB.
+ 
+          Programs
+          * See EXTENDED BASIC MANUAL.
+ 
+          The program to the right will | >100 CALL CLEAR :: X=190
+          will set up 3 sprites to be on| >110 CALL SPRITE(#1,65,2,9,X,
+          the same vertical plane.      |  20,0,#2,66,2,9,X,30,0,#3,67,
+                                        |  2,9,X,-20,0)
+          MAGNIFY enlage and reduce it. | >120 CALL MAGNIFY(1,2,1)
+          This is a delay loop.         | >140 FOR D=1 TO 2000::NEXT D
+          STOP turns off sprite motion. | >150 GOTO 120 
+                                        |
+          Clear screen and set up the   | >100 CALL CLEAR
+          Loop to create sprites.       | >110 FOR L=1 TO 28::CALL SPRI
+                                        |  TE(#L,L+65,2,L,L,-L,L) ::
+                                        |  NEXT L
+          Use MAGNIFY for effects.      | >120 CALL MAGNIFY(3,4,3,4)::
+                                        |  GOTO 120
+ 
+          Options
+ 
+          While characters 144 to 159 are being used, you cannot use
+          sprites. 

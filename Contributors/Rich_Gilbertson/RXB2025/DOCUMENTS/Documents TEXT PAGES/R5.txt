@@ -1,0 +1,32 @@
+          ROLLDOWN       command or subprogram                 PAGE  R5
+          -------------------------------------------------------------
+ 
+          Format         CALL ROLLDOWN
+
+                         CALL ROLLDOWN(repetition)
+ 
+ 
+          Description
+ 
+          ROLLDOWN scrolls screen to the down so repetition will
+          repeat the scroll number of times to down. 
+          Repetition can be 1 to 65535 max. ROLLDOWN runs from ROM.
+ 
+          Programs
+ 
+          Roll screen down 2 times      | >CALL ROLDOWN(2)
+                                        |
+          Prints line                   | >100 PRINT "SCREEN PRINT"
+          Roll screen down              | >110 CALL ROLLDOWN
+          Repeat the program            | >100 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" SCROLL DOWN"
+          Print X$                      | >110 PRINT X$
+          Roll down 9 times use X$      | >120 CALL ROLLDOWN(9)
+          Repeat the program            | >130 GOTO 100
+
+          
+          Options
+          New features allow for some special that can take the place
+          of some routines that are slower in XB.
+           

@@ -1,0 +1,41 @@
+          PRAM           subprogram                            PAGE P10
+          -------------------------------------------------------------
+
+          Format         CALL PRAM(start-RAM-address,end-RAM-address)
+
+          Description
+ 
+          The PRAM command changes the location of the Start and End 
+          of XB RAM program space. Normally XB RAM is start address 
+          is >FFE7 and end address is >A040 in hex so the PRAM command
+          allows changing this location to as low as 1 byte of XB RAM 
+          PROGRAM SPACE.
+          Any location from >A000 to >FFFF is a valid change in PRAM.
+          This command has no effect on Lower 8K Assembly RAM.
+          Use of PRAM is for control of XB RAM space and XB programs 
+          can reside anywhere in the upper 24K RAM locations. Combined
+          with PSAVE and PLOAD assembly can be utilized in upper 24K.
+
+          Programs
+          
+          This line is comment.         | >100 ! CALL PRAM(start-addres
+                                        |  s,end-address) 12K size       
+          Clear screen.                 | >110 CALL CLEAR
+          Show size, delay, clear screen| >120 SIZE::CALL KEY("",5,K,S)
+          Display it.                   | >130 PRINT "CALL PRAM(-25,-24
+                                        |  576)":">E000->B000 =12K RAM"        
+          Change locations to start XB  | >140 CALL KEY("",5,K,S)::CALL
+          to >E000 and end XB to >B000  |  PRAM(-8192,-20480)
+                                        |
+          This defauts to what ever the | >CALL PRAM(0,0)
+          previous values were same as  | >SIZE
+          nothing was called            |
+                                        |
+          Change locations to start XB  | >CALL PRAM(-12288,-16384)
+          to >C000 and end to >D000     | >SIZE
+                                        |  
+          Change locations to start XB  | >CALL PRAM(-8192,-12288)
+          to >E000 and end XB to >E000  | >SIZE
+                                        | 
+
+

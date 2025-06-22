@@ -1,0 +1,45 @@
+          MOVE           command                               PAGE  M6
+          -------------------------------------------------------------
+ 
+          Format      MOVE start line-end line,new start line,increment
+ 
+          Description
+ 
+          The MOVE command is used to move a program line or block of
+          program lines to another location in the program. The block
+          of lines to be moved is defined by start line number and
+          end line number. If either of these numbers are omitted, the
+          defaults are the first program line and the last program line.
+          However, at least one number and a dash must be entered (both
+          cannot be omitted), and there must be at least one valid 
+          program line between start line number and end line number. 
+          To move one both the start line number and end line number 
+          are the same. If any of the above conditions are not met, a 
+          Bad Line Number Error will be reported. The new start line 
+          number defines the new line number of the first line in the 
+          moved segment. When the block is moved it will be moved. If 
+          not, a Bad Line Number Error message is reported. This 
+          problem can be corrected by using a smaller increment, or
+          by using RES to open up space for the segment. A Bad Line
+          Number Error also results if the renumbering process would
+          result in a line number higher than 32767. Although moving 
+          lines within the program does not increase the size of the  
+          program, this command does require 4 bytes of the program 
+          space for line moved. This memory use is temporary, but it 
+          must be available in order to move the block. If sufficient
+          memory is not available a Memory Full Error results and no
+          lines are moved. This problem can usually be worked around 
+          by moving the block a few lines at a time.Before the block 
+          of lines is moved any open files are closed and any 
+          variables are lost.
+ 
+          Commands
+ 
+          Move lines 100 thru 180 to    | >MOVE 100-180,1000,5
+          line 1000, increment by 5.    |
+          Moves lines 40 thru last line | >MOVE 40-,120,
+          to line 120, increment by 10. |
+          Moves line 150 to line 110    | >MOVE 150-150,1110
+          This line moves first program | >MOVE -800,32220,2
+          line thru line 800 to line    |
+          32220, and increment by 2.    |

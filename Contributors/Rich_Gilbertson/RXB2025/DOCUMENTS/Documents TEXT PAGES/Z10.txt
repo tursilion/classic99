@@ -1,0 +1,41 @@
+                                                                PAGE 10
+
+       SIZE REPORT CHANGE
+       ----------------------------------------------------------------
+       RXB has a major change to SIZE routine not just adding CALL SIZE
+       but the report itself is extensivily more useful.
+       >SIZE press enter
+       Screen advances and you see:
+
+         >SIZE
+         11840 Bytes of Stack Free
+         24488 Bytes of Program Free
+         8192 Bytes of Assembly Free
+         256  Pages 1024 K SAMS
+         2    Page = Address >2000
+         3    Page = Address >3000
+         10   Page = Address >A000
+         11   Page = Address >B000
+         12   Page = Address >C000
+         13   Page = Address >D000
+         14   Page = Address >E000
+         15   Page = Address >F000
+         >37D7 VDP Free Address 
+         >0958 VDP STACK Address
+         >FFE7 Program Free Address
+         >A040 Program End Address  
+         >2000 RAM Free Address
+         >4000 RAM End Address
+
+         >cursor flashing
+
+       As you can see much more information then you are used to
+       seeing about memory of XB and system. Note first off the 
+       display of Assembly Free memory and if you have a SAMS.
+       If you have a SAMS you also see the pages used and at the
+       address in Hex where it resides. Next is address of first
+       free VDP Address and below that you VDP Stack location. 
+       For XB itself you also see the XB program first free 
+       address and the End Address for XB program space. Lastly 
+       the first free RAM in Assembly lower 8k and last address
+       used by Assembly.

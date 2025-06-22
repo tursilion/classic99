@@ -1,0 +1,28 @@
+          BYE            command or subprogram                 PAGE  B4
+          -------------------------------------------------------------
+ 
+          Format         BYE
+ 
+                         CALL BYE   
+ 
+          Description 
+ 
+          The BYE command is the same as the BYE command in the
+          EXTENDED BASIC MANUAL page 54. The BYE command ends the
+          program and returns the system to a reset. BYE will close
+          all open files before exiting to a reset.
+ 
+          Command
+ 
+          May only be used from command | >BYE
+          mode.
+ 
+          Programs
+ 
+          May only be used in program   | >100 CALL BYE
+          mode.                         |
+                                        |
+          The INPUT asks for a Y to go  | >110 INPUT "END PROGRAM":A$
+          on, if not the loop forever.  | >120 IF A$<>"Y" THEN 110
+          Must be a Y so reset system.  | >130 CALL BYE
+                                        |

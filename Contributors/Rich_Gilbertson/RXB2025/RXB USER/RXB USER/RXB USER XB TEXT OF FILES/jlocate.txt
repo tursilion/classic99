@@ -1,0 +1,11 @@
+
+100 ! JOYLOCATE              JOYST + LOCATE + IF KEY GOTOLINE NUMBER
+110 ! As this does all this in asingle command should  be   used in place of normal XB  more compliated version
+120 CALL CLEAR
+130 CALL CHAR(143,"FFFFFFFFFFFFFFFF")
+140 CALL SPRITE(#1,143,2,9,190)
+150 CALL JOYLOCATE(1,X,Y,8,8,#1,R,C,K)GOTO 180
+160 PRINT X;Y;K;R;C
+170 GOTO 150
+180 PRINT X;Y;K;R;C;"FIRE"
+190 GOTO 150

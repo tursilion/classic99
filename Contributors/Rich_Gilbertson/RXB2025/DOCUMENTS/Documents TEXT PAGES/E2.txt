@@ -1,0 +1,18 @@
+          EA             subprogram                            PAGE  E2
+          -------------------------------------------------------------
+ 
+          Format         CALL EA
+ 
+          Description
+ 
+          The EA subprogram is used to switch to the Editor Assembler
+ 
+          Description Addendum
+ 
+          EA only works from EXTENDED BASIC, not BASIC.
+ 
+          Programs
+ 
+          The program at the right will | >100 CALL EA("DSK2.FW")
+          switch to Editor Assembler    |
+                                        |

@@ -1,0 +1,34 @@
+          ONKEY          subprogram                            PAGE  O3
+          -------------------------------------------------------------
+
+          Format         CALL ONKEY(string,key-unit,return-variable,
+                         status-variable) GOTO line-number[,...]
+
+                         CALL ONKEY(string-variable,key-unit,
+                         return-variable,status-variable) 
+                         GOTO line-number[,...]  
+
+          Description
+
+          ONKEY compares a string or string-variable characters one at  
+          a time to the key return-variable until a match is found. 
+          The string length may be longer then the number of GOTO
+          line-number list. But a error results if that key is pressed
+          as no line-number corresponds with the position of the key.
+          If the string length is less than the number of GOTO line-
+          numbers then the extra GOTO line-numbers are not used.
+          The position of the characters in the string correspond to
+          the GOTO line-number in the list. i.e. string "12345" 
+          GOTO 1,2,3,4,5 in the example:
+
+          CALL ONKEY("12345",0,K,S) GOTO 10,20,30,40,50
+          The key pressed like say 3 means line 30 will be used.
+
+          Another example: 
+          10 CALL ONKEY("Test",0,K,S) GOTO 22,29,34,41 :: GOTO 10
+          If T is pressed then 22 is used.
+          If e is pressed then 29 is used.
+          If s is pressed then 34 is used.
+          If t is pressed then 41 is used.
+
+          If no key pressed GOTO 10 to repeat line.

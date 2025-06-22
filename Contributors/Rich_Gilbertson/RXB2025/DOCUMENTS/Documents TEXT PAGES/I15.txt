@@ -1,0 +1,41 @@
+          ISRON           subprogram                           PAGE I15
+          -------------------------------------------------------------
+ 
+          Format          CALL ISRON(numeric-variable)
+ 
+ 
+          Description
+ 
+          The Interrupt Service Routine (ISR) is a routine that executes
+          during timed intervals. The operating system of the TI is set
+          up for these. Mouse or Screen dumps or Hot Key programs bring
+          to mind the common uses of a ISR hook. The ISRON routine in
+          RXB does as it suggests and turns the ISR hook on. But the
+          numeric-variable is used to load the address of where this
+          ISR hook came from. Of course ISROFF is the opposite and will
+          turn it back off. Extreme care must be used when turning on or
+          off the ISR. A PEEK at hex >83C4 (decimal -31804 and -31805)
+          will be 0 when there is no ISR. Otherwise any other value will
+          mean that a ISR is being used. ISRON runs from ROM.
+ 
+          Programs
+ 
+          This line peeks ISR hook.     | >100 CALL PEEK(-31804,I,J)
+          This checks if ISR is in use, | >110 IF I+J THEN CALL ISROFF(
+           and if not 0 turn off ISR.   |  ADDRESS1)
+          This line loads another file. | >120 CALL LOAD("DSK1.HOT")
+          This starts another ISR.      | >130 CALL LINK("START")
+          This turns off ISR.           | >140 CALL ISROFF(ADDRESS2)
+          This checks if old ISR is ok, | >150 IF I+J THEN CALL ISRON(A
+           if yes turn it on.           |  DDRESS1)
+            The program continues...    |
+                                        |
+          Safer way to check ISRHOOK    | >100 CALL PEEK(-31804,I,J)
+          Check if zero then no ISR ON  | >110 IF I+J THEN CALL ISRON(N)
+          if I+J<>0 then turn off ISR   |       
+          and put into variable N       |
+                                        |
+          The above program has ISR HOOK Address loaded from N.
+
+          Options:
+          See ISROFF, PRAM, CALL SIZE, INIT, LOAD and VDPSTACK.

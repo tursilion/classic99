@@ -1,0 +1,36 @@
+          HEX            subprogram                            PAGE  H2
+          -------------------------------------------------------------
+ 
+          Format         CALL HEX(string-variable,numeric-variable[,...
+                         ])
+ 
+                         CALL HEX(numeric-variable,string-variable[,...
+                         ])
+ 
+          Description
+ 
+          The HEX subprogram converts Decimal to Hexadecimal or from
+          Hexadecimal to Decimal. If a number or numeric-variable is
+          first, HEX will convert the Decimal floating point value
+          (Rounded off) to a four character sting and puts the string
+          into the string-variable. If a string or string-variable is
+          first, HEX will convert the String into a Decimal integer and
+          put it into the numeric-variable. A numeric-variable or
+          number ranges from -32768 to 32767 or the Hexadecimal
+          equivalent of >8000 to >7FFF. The > is not used in HEX.
+           When a string or string-variable is null (length of zero)
+          the numeric-variable will contain 0. The opposite is if a
+          number or numeric-variable is 0 then the string-variable will
+          contain a length of four and a value of >0000. Any time a
+          string-variable is second it will be cleared before being
+          assigned a new string value. All strings in HEX must be
+          right justified or are returned as right justified, thus each
+          string will be padded with zeros.
+           HEX will only use the first four characters of a string to
+          convert the value, it will ignore the rest of the string.
+           Errors will result if a string contains characters other
+          then 0-9 and A-F or a-f. Errors will result if a number is
+          less than -32768 or larger than 32767. HEX runs from ROM.
+           HEX subroutine in RXB is for Assembly mostly but is usefull
+          for new RXB routines like VDPSTACK or PRAM or EXECUTE.
+          HEX runs from ROM.

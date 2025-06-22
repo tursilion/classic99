@@ -1,0 +1,26 @@
+
+          POKER          subprogram                            PAGE  P8
+          -------------------------------------------------------------
+ 
+          Format         CALL POKER(vdp-number,numeric-variable[,...])
+ 
+                         CALL POKER(numeric-variable,number[,...])
+ 
+ 
+          Description
+ 
+          The POKER command writes to vdp register a byte value. Only
+          registers 0 to 63 are valid. The byte value ranges 0 to 255.
+          The number of Registers were increased to 63 VDP Registers
+          for use with F18 register set.
+ 
+          Programs
+ 
+          This sets TEXT mode.          | >100 CALL POKER(7,244,1,240)
+          This is a delay loop.         | >110 FOR L=1 TO 500 :: NEXT L
+          This sets MULTI COLOR mode    | >120 CALL POKER(1,232)
+          This is a delay loop.         | >130 FOR L=1 TO 500 :: NEXT L
+          This sets BIT MAP mode.       | >140 CALL POKER(0,2,1,2)
+          This is a delay loop.         | >150 FOR L=1 TO 500 :: NEXT L
+          This sets NORMAL XB mode.     | >160 CALL POKER(0,0)
+          This resets memory.           | >170 CALL NEW

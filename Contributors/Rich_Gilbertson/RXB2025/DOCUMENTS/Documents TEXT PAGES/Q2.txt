@@ -1,0 +1,18 @@
+          QUITON         subprogram                            PAGE  Q2
+          -------------------------------------------------------------
+ 
+          Format         CALL QUITON
+ 
+ 
+          Description
+ 
+          The QUITON command enables the QUIT KEY. The QUIT KEY is
+          already disabled upon entering RXB. QUITON makes the QUIT
+          once again functional. You may need to use this command
+          before running certain programs that use the QUIT key.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL QUITON
+          turn on the QUIT KEY.         |
+                                        |

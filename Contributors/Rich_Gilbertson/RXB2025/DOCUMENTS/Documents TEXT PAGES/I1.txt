@@ -1,0 +1,28 @@
+          INIT           subprogram                            PAGE  I1
+          -------------------------------------------------------------
+ 
+          Format         CALL INIT
+ 
+ 
+          Description
+ 
+          The INIT command is the same as the EXTENDED BASIC MANUAL
+          page 101. Originally INIT loaded more data then actually
+          existed, this has been fixed. The other correction is that
+          you no longer have to use INIT before LINK, or LOAD. They
+          will function if INIT has been called first or not. Unless
+          loading a program that needs the INIT first.
+
+          * NOTE *
+          RXB only loads up to >24F4 first open byte. Reasons 
+          unknown XB loads useless junk from >24EA to >25FF that
+          seems to be a programming error loading 277 useless
+          bytes. Thus normal XB over writes these 277 bytes.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL INIT
+          initialize the lower 8K by    |
+          loading support routines for  |
+          assembly.                     |
+                                        |

@@ -1,0 +1,16 @@
+          QUITOFF        subprogram                            PAGE  Q1
+          -------------------------------------------------------------
+ 
+          Format         CALL QUITOFF
+ 
+ 
+          Description
+ 
+          The QUITOFF command disables the QUIT KEY. The QUIT KEY is
+          already disabled upon entering RXB. See QUITON for more data.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL QUITOFF
+          turn off the QUIT KEY.        |
+                                        |

@@ -1,0 +1,32 @@
+          ROLLLEFT       command or subprogram                 PAGE  R6
+          -------------------------------------------------------------
+ 
+          Format         CALL ROLLLEFT
+
+                         CALL ROLLLEFT(repetition)
+ 
+ 
+          Description
+ 
+          ROLLLEFT scrolls screen to the left so repetition will
+          repeat the scroll number of times to left.
+          Repetition can be 1 to 65535 max. ROLLLEFT runs from ROM.
+
+          Programs
+ 
+          Roll screen left 2 times      | >CALL ROLLLEFT(2)
+                                        | 
+          Prints line                   | >100 PRINT "SCREEN PRINT"
+          Roll screen left              | >110 CALL ROLLLEFT
+          Repeat the program            | >120 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" SCROLL LEFT"
+          Print X$                      | >110 PRINT X$
+          Roll left 9 times use X$      | >120 CALL ROLLLEFT(9)
+          Repeat the program            | >130 GOTO 100
+
+          
+          Options
+          New features allow for some special that can take the place
+          of some routines that are slower in XB.
+           

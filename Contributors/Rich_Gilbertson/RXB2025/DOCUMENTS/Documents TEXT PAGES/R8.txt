@@ -1,0 +1,32 @@
+          ROLLUP         command or subprogram                 PAGE  R8
+          -------------------------------------------------------------
+ 
+          Format         CALL ROLLUP
+
+                         CALL ROLLUP(repetition)
+ 
+ 
+          Description
+ 
+          ROLLUP scrolls screen to the up so repetition will
+          repeat the scroll number of times to up.
+          Repetition can be 1 to 65535 max. ROLLUP runs from ROM.
+ 
+          Programs
+ 
+          Roll screen up 2 times        | >CALL ROLLUP(2)
+                                        |
+          Prints line                   | >100 PRINT "SCREEN PRINT"
+          Roll screen UP                | >110 CALL ROLLUP
+          Repeat the program            | >120 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" SCROLL UP"
+          Print X$                      | >110 PRINT X$
+          Roll up 9 times use X$        | >120 CALL ROLLUP(9)
+          Repeat the program            | >130 GOTO 100
+
+          
+          Options
+          New features allow for some special that can take the place
+          of some routines that are slower in XB.
+           

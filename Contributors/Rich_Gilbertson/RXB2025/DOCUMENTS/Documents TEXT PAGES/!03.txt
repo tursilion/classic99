@@ -1,0 +1,28 @@
+          *************************************************************
+          *                    TABLE OF CONTENTS                      *
+          *************************************************************
+
+
+          TITLE SCREEN of RXB     ( explanations )              PAGE  1
+
+          SPECIAL FEATURES OF RXB                               PAGE  2 
+
+          BATCH FILE SYSTEM                                     PAGE  3
+
+          INPUT/OUTPUT, REDO KEY, ACCESS DEVICE, ASSEMBLY       PAGE  4
+
+          EXECUTE ASSEMBLY, SAMS SUPPORT, RND COMMAND FUNCTION  PAGE  5
+
+          INTERUPT SERVICE ROUTINE, 4K LOADER/SAVER, SAVE IV254 PAGE  6
+
+          JOYMOTION and JOYLOCATE                               PAGE  7
+
+          PRAM the XB RAM MANAGER, VDP STACK MANAGER, FILES     PAGE  8
+
+          SIZE command change and explaination                  PAGE  9
+
+          RXB FIXES TO XB REQUESTED BY USERS                    PAGE 10
+
+          CALL subprogram list of format modified commands      PAGE 11
+
+          Pictures of screens                                   PAGE 12

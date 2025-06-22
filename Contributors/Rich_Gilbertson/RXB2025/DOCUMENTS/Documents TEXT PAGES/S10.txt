@@ -1,0 +1,39 @@
+          SCROLLUP       command or subprogram                 PAGE S10
+          -------------------------------------------------------------
+ 
+          Format         CALL SCROLLUP
+
+                         CALL SCROLLUP(repetition)
+
+                         CALL SCROLLUP(repetition,string)
+
+                         CALL SCROLLUP(repetition,string,tab)
+ 
+ 
+          Description
+ 
+          SCROLLUP scrolls screen up so repetition will repeat the 
+          scroll number of times to up, the string will only display
+          horizontally 32 characters of the string. SCROLLUP puts 
+          the string on screen and wraps to top if string is to long.
+          If the string is empty (null) it will just scroll the 
+          screen each line till end of string. Numbers or variables 
+          can be used instead of a string. SCROLLUP runs from ROM.
+           Repetition can be 1 to 65535 max.
+ 
+          Programs
+ 
+          Scroll up 2 times print PI    | >CALL SCROLLUP(2,PI)
+                                        |
+          Clear screen for demo         | >100 CALL CLEAR  
+          Prints line but screen off    | >110 PRINT "SCREEN PRINT"
+          Scroll screen UP              | >120 CALL SCROLLUP
+          Repeat the program            | >130 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" SCROLL UP"
+          Print X$                      | >110 PRINT X$
+          Scroll up 9 spaces use X$     | >120 CALL SCROLLUP(9,X$)
+          Repeat the program            | >130 GOTO 100
+
+
+           

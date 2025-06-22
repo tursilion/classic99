@@ -1,0 +1,25 @@
+          GCHAR          subprogram                            PAGE  G1
+          -------------------------------------------------------------
+ 
+          Format         CALL GCHAR(row,column,numeric-variable[,...])
+ 
+          Description
+ 
+           See EXTENDED BASIC MANUAL page 88 for more data. The only
+          change to GCHAR is the auto-repeat function.
+ 
+          Programs
+ 
+          This line stores the character| >100 CALL GCHAR(4,5,A,4,6,B)
+           at row 4 column 5 in A, then |
+           gets character at row 4      |
+           column 6 in B.               |
+          Gets row 9 column 3 in Q and  | >100 CALL GCHAR(9,3,Q,9,4,R)
+           row 9 column 4 in R.         |
+          Put R at row 9 column 3 and   | >110 CALL HCHAR(9,3,R,1,9,4,Q
+           Q at row 9 column 4          |  ,1)
+          Continue loop.                | >120 GOTO 100
+                                        |
+
+          Options
+          CALL GCHAR in RXB is much faster than normal XB now.

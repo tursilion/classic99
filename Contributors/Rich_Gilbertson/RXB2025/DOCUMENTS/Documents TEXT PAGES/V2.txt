@@ -1,0 +1,36 @@
+          VDPSTACK       subprogram                            PAGE  V2
+          -------------------------------------------------------------
+
+          Format         CALL VDPSTACK(numeric-variable)  
+
+
+          Description
+
+          The VDPSTACK subprogram allows change of location of the VDP
+          STACK in VDP RAM. Care must be taken to where you place the
+          stack after all any over write or change can crash XB.
+          Normal VDP stack location is 2392 in decimal >0958 in Hex.
+          Some XB programs like The Missing Link use 6176 or >1820 Hex.
+          Another location would be like 4096 which is >1000 in Hex.
+           Combine PRAM with VDPSTACK and Assemlby can be loaded into
+          any memory locations previously very hard to use. That 
+          required special loaders so now RXB has PLOAD and PSAVE to 
+          get around these problems of loading anywhere in 32K now.
+
+          Programs
+ 
+          This line clears screen.      | >100 CALL CLEAR
+          Set VDP STACK location.       | >110 CALL VDPSTACK(6176) 
+          Display it.                   | >120 PRINT ">1820 STACK LOCAT 
+                                        | ION"
+          Show results.                 | >130 CALL SIZE
+          Wait for key pressed.         | >140 CALL KEY("",0,S,S)
+          Set VDP STACK location.       | >150 CALL VDPSTACK(4096)
+          Display it.                   | >160 PRINT ">1000 STACK LOCAT
+                                        | ION"
+          Display it.                   | >170 CALL SIZE 
+                                        |
+
+          Options
+          See PRAM for similar change to RAM locations. Also see 
+          PLOAD and PSAVE for loading anywhere in 32K RAM.

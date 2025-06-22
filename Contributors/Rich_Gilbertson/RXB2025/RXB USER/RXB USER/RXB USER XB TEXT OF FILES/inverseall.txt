@@ -1,0 +1,5 @@
+
+10 ! RXB EXAMPLE            CALL INVERSE(ALL)
+100 CALL INVERSE(ALL)
+110 A=A+1 :: IF A<8 THEN 100
+120 ! Inverts all character definitions

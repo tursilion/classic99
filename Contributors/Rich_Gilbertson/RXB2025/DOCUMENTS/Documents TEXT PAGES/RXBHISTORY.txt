@@ -1,0 +1,89 @@
+                          HISTORY OF RXB
+
+ You can print out the manuals with any print file utility. Or just use
+the option PRINT FILE of REA. Files are not TI Writer Formatted files.
+ 
+ Version 1001 has a new subprogram called FILES and is like FILES of the
+Disk Controller but does a NEW before returning to XB edit mode. CALL XBPGM 
+now allows a comma then the number of files open. Version 1003 recieved a 
+RXB program called LOADER that creates RXB LOAD programs and will run EA3, 
+EA5, or XB and BASIC programs. USER is fixed so large size XB programs are 
+now allowed, previously only 2k programs worked. Any size is ok now.
+ 
+ Version 1004 has added CALL CHARSETALL for reseting character definitions 
+32 to 127. The ALL option has been added to CHAR, COLOR  and MOTION so that 
+many new graphics effects can be done. Some commands are now auto-repeating 
+such as GCHAR, HCHAR, VCHAR, LDIAG, and RDIAG. Lastly CAT will now accept 
+strings or numbers or even ASCII numbers. This one is almost smart, and 
+will allow up to 32 drives to be cataloged in one command.
+ 
+ Version 1005 fixed the CALL INIT as pointed out by Harry Wilhelm, he 
+informed me that the CALL KEY needed repair, so a GENEVE now has ROMs 
+for the BREAK KEY.
+ 
+ Version 1006 has added CALL POKER for changing all 7 VDP Registers. 
+( 9918 ) The AMS memory card is now supported with command CALLs like 
+AMSMAP, AMSPASS, AMSON, and AMSOFF. Also to handle interupts are CALLs 
+ISRON and ISROFF. PAUL SCHIPPNICK wrote the routines in assembly for 
+the AMS, I then used them differently to make RXB versions. Thanks Paul. 
+For RXB assembly support are CALLs AMSINIT which sets up the AMS for MAP 
+mode, and AMSBANK that will switch 4K banks in the lower and upper half 
+of the 8K assembly area.
+ 
+ Version 1007 has added BLOAD and BSAVE (binary load and save) for the 
+lower 8K to replace the slow speed of CALL LOAD and is more flexable 
+then hidden loaders. The KEY subprogram has a new feature of only 
+responding to string of keys. Files GENEVE and GENEVE1 are ROM 
+replacements for the GENEVE version of RXB, so if you have a GENEVE use 
+these ROMs instead to get a FCTN 4 (Break key).
+ 
+ Version 1008 has added BASIC device so at a device prompt XB, EA , and 
+BASIC all go to that module. The RXB title screen has an added feature 
+of DSK#.BATCH which runs DV80 control files. SIZE has been fixed to 
+report proper errors. SIZE now reports the number of K the AMS has and 
+the number of AMS BANKS available for lower 8K switching thru the 
+subprogram AMSBANK.
+ 
+ Version 1009 has added hard drive and floppy support routines. PROTECT 
+for unprotection or protection of files. RENAME to rename files or 
+directorys. FCOPY to copy files from drive to drive. MKDIR to create 
+directorys on hard drives or name disks. RMDIR to delete directorys 
+from hard drives. And for The Western Horizon SCSI controller there is 
+SCSI that gets the hard drive information from the drive itself. 
+The SCSI string contains vendor hard drive ID, name, type, version, 
+size of sectors, and number of sectors. CAT will catalog hard drives 
+now and report directorys.
+ 
+ Version 1010 has code clean up and new RXB programs. LOADER creates 
+a single LOAD program that can load 578 files. RXBDM is a disk/hard 
+manager that works with any type of DISK or HARD drive controller or 
+RAMDISK.
+ 
+ Version 1011 to 1015 received updates and the new command CUTDIR  
+which deletes directorys as RMDIR and also deletes all sub-directorys.
+ 
+ Version 2000 was to be the last update to RXB. It included document 
+updates and the new command SECTOR that can read up to 32 sectors into 
+the lower 8K.
+ 
+ Version 2001 is now the last update to RXB when I found some errors in 
+2000 and felt the need to repair them. So documents and files have been 
+rewritten. SECTOR now works with TI, CorComp, Myarc, PARCOM and SCSI 
+disk controllers.
+
+ Version 2002 added pressing 0 (ZERO) at title screen runs WSD1.LOAD from
+hard drive root directory. SIZE now reports the memory and pages used by
+AMS memory. 
+
+ Version 2011 added ONKEY & GOTO for key input with a GOTO. Updated REA
+as a standalone package and included package with RXB also.
+
+ Version 2012 was a total rewrite of RXB source GPL code to pour over all
+bugs that could be found and fixed. All RXB document rewritten and all the 
+program examples tested thoroughly. Updated XB example programs and added 
+many more. Release date to be before end of world 2012. (Joke)
+ 
+RXB was created in 1989 and has been my (mostly) sole project for over 20 years.
+
+
+

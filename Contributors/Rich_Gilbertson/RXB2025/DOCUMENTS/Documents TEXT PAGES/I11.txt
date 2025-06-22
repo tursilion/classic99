@@ -1,0 +1,44 @@
+          IO (CRU ACCESS)                                      PAGE I11
+          -------------------------------------------------------------
+ 
+          Programs
+ 
+          Line 100 clears screen.       | >100 CALL CLEAR
+          Line 110 explains program.    | >110 CALL HPUT(4,7,"This is a
+                                        |   demo of the",6,7,"CALL IO(3
+                                        |  ,8,2176,B)",8,7,"3 = TYPE(CR
+                                        |  U output)",10,7,"8 = NUMBER
+                                        |  OF BITS",12,7,"2176=address/
+                                        |  2")
+          Line 120 turn off card, show  | >120 CALL IO(3,8,2176,0):: FO
+          the present byte value being  |  R B=0 TO 255 :: CALL HPUT(14
+          sent.                         |  ,7,"B=byte (value "&STR$(B)&
+                                        |  ")")
+          Line 130 display block to get | >130 CALL HPUT(18,5,"********
+          attention.                    |  ******************",19,5,"WA
+                                        |  TCH THE DRIVE LIGHTS",20,5,"
+                                        |  **************************")
+          Line 140 send byte to card and| >140 CALL IO(3,8,2176,B):: NE
+          when done with loop, clear for|  XT B :: CALL HCHAR(14,24,32,
+          starting over program.        |  7):: GOTO 110
+                                        |
+          Line 100 explains program.    | >100 ! TURNS OFF/ON/OFF EACH
+                                        |  CARD FROM >1000 TO >1F00 BUT
+                                        |  WILL LOCKUP WITH CERTAIN
+                                        |  CARDS.
+          Line 110 cru address from     | >110 FOR CRU=2048 TO 3968 STE
+          >1000 to >1F00, turn off card,|  P 128::CALL IO(3,8,CRU,0,3,8
+          turn on card, delay for 2     | >,CRU,255)::FOR A=1 TO 200::N
+          seconds, turn off card, turn  |  EXT A::CALL IO(3,8,CRU,0)::N
+          off card. Loop end.           |  EXT CRU
+
+          Options
+           Some CRU address are used by the Operating System or XB and
+          any attempt to redefine them will create problems. Also some
+          of the address areas will return incorrect values as they
+          have changed since IO has accessed them, so take care.
+          Additionally some cards have the same problem, if the card
+          has a program that has a interrupt or CRU links turned on as
+          you access it, a complete lock up will result as a fight for
+          control ensues. So with that happy thought, a alternate way
+          is to use EXECUTE or LINK instead.

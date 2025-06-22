@@ -1,0 +1,38 @@
+          LOAD           command                               PAGE  L2
+          -------------------------------------------------------------
+ 
+          Format         CALL LOAD(address,value[,...])
+
+                         CALL LOAD("access-name"[,...])
+ 
+          Description
+ 
+          The LOAD subprogram is used along with INIT, LINK, and PEEK,
+          to access assembly language subprograms. The LOAD subprogram
+          loads an assembly language object file or direct data into 
+          the Memory Expansion for later execution using the LINK 
+          statement.
+
+          The LOAD subprogram can specify one or more files from which
+          to load object data or lists of direct load data, which
+          consists of an address followed by data bytes. The address 
+          and data bytes are seperated by commas. Direct load data 
+          must be seperated by file-field, which is a string expression
+          specifing a file from which to load assembly language object 
+          code. File-field may be a null string when it is used merely
+          to seperate direct load data fields. Use of LOAD subprogram 
+          wth incorrect values can cause the computer to cease to 
+          fuction and require turning it off and back on. 
+
+          Assembly language subprogram names (see LINK) are included 
+          in the file. 
+          
+          RXB does not check for Memory Expansion if address, values are 
+          loaded. EXAMPLE: CALL LOAD(-32000,15) {-32000 = >8300 hex}
+          This was a oversight by original XB teams. This change
+          allows a poke into memory with or without Memory Expansion.
+          If Object Code File is loaded a CALL INIT is still checked. 
+          
+ 
+
+ 

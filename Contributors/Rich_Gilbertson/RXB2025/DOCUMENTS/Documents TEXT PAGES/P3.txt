@@ -1,0 +1,27 @@
+          PEEKG          subprogram                            PAGE  P3
+          -------------------------------------------------------------
+ 
+          Format         CALL PEEKG(address,numeric-variable-list[,...])
+ 
+ 
+          Description
+ 
+          The PEEKG command reads data from GROM into the variable(s)
+          specified. It functions identical to the regular EXTENDED
+          BASIC PEEK command page 143. Except it reads from GROM/GRAM.
+          GROM or GRAM address above 32767 must be converted to a
+          negative number by subtracting 65536 from the desired
+          address. Use CALL HEX to do this.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL PEEKG(767,B)
+          read a byte from GROM.        |
+                                        |
+           Address loop counter         | >100 FOR D=-32768 TO 32767
+           PEEK Grom address value.     | >110 CALL PEEG(D,X)
+           Convert to HEX               | >120 CALL HEX(A,H$,X,B$)
+           Show address and value.      | >130 PRINT "Address:";H$,
+                                        |  D:"VALUE:";B$,X
+           Loop.                        | >140 NEXT D
+                                        | 

@@ -1,0 +1,32 @@
+          SAMS           subprogram                            PAGE  S2
+          -------------------------------------------------------------
+ 
+          Example is mixing commands:
+          100 CALL SAMS("ON","MAP",2,237,"OFF")
+          This turns on SAMS read/write Registers, turns on MAP mode, 
+          sets 4K page with page 237 than turns off SAMS read/write 
+          Registers. 
+
+
+          Programs
+ 
+          This turns on the SAMS mapper.| >110 CALL SAMS("ON")
+          This reads low half 8K page.  | >120 CALL PEEK(16388,L)
+          This reads high half 8K page. | >130 CALL PEEK(16390,H)
+          This shows pages used.        | >140 PRINT "LOW";L;"HIGH";H
+          This loads a assembly program.| >150 CALL LOAD("DSK1.CHAR")
+          This changes low/high 4K pages| >160 CALL SAMS(2,16,3,17)
+          This loads a assembly program.| >170 CALL LOAD("DSK1.DUMP")
+          This changes low/high back.   | >180 CALL SAMS(2,L,3,H)
+          This uses a routine in CHAR.  | >190 CALL LINK("CHAR")
+          This changes low/high again.  | >200 CALL SAMS(2,16,3,17)
+          This uses a routine in DUMP.  | >210 CALL LINK("DUMP")
+                                        |
+           The above example program shows one RXB program using two
+          assembly programs with links for both. Thus only 16K of the
+          SAMS was used. 1024K would be 120 assembly support programs
+          Compatibility of most software assured in RXB AMS support.
+
+          Options:
+          See ON, OFF, MAP and PASS pages in RXB Documents for more 
+          information on SAMS.

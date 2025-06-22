@@ -1,0 +1,22 @@
+
+          CLSALL         subprogram                            PAGE  C5
+          -------------------------------------------------------------
+ 
+          Format         CALL CLSALL
+ 
+          Description
+ 
+          The CLSALL command will find and close all open files.
+          This allows programmers to save time and program space.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL CLSALL
+          CLOSE all open files.         |
+                                        |
+          This opens the printer.       | >100 OPEN #9:"PIO",OUTPUT
+          This opens a disk file JUNK.  | >110 OPEN #2:"DSK1.JUNK",INPUT
+          This opens a RS232 port.      | >120 OPEN #4:"RS232",OUTPUT
+          This opens a disk file CRAP.  | >130 OPEN #7:"DSK2.CRAP",OUTPUT
+          This closes all files.        | >140 CALL CLSALL
+                                        |

@@ -1,0 +1,22 @@
+          DIR                                                  PAGE  D3
+          -------------------------------------------------------------
+          Programs
+ 
+          This line puts the pathname in| >100 A$="DSK.ADISKNAME"
+           the string A$                |
+          This line uses A$ for the name| >110 CALL DIR(A$)
+           of the device to catalog.    |
+                                        |
+          This line will catalog drive 4| >100 CALL DIR(N)
+           if N=4                       |
+                                        |
+          This line will catalog drive C| >100 CALL DIR(X)
+           if X=67  (ASCII 67 is C)     |
+                                        |
+          This line is path name.       | >10 V$="WDS1.VOLUME.SUB-DIR."
+          This line will catalog device | >20 CALL DIR(V$)
+           WDS1 for directory VOLUME and|
+           catalog SUB-DIR              |
+                                        |
+          This line catalogs drives 1   | >100 CALL DIR(1,2,3,"WDS1.")
+           then 2 then 3 then WDS1      |

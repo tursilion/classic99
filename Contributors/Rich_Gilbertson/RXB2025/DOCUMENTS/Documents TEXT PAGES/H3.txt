@@ -1,0 +1,40 @@
+          HEX                                                  PAGE  H3
+          -------------------------------------------------------------
+ 
+          Programs
+ 
+          From command mode.            |
+          Upper case                    | >CALL HEX("F",V)
+          or lower case                 | >CALL HEX("f",V)
+          will both return same result. | >PRINT V
+          V=15                          |
+                                        |
+          Line 100 sets address counter.| >100 FOR D=-32768 TO 32767
+          Line 110 converts it to HEX.  | >110 CALL HEX(D,H$)
+          Line 120 shows DEC to HEX.    | >120 PRINT D,H$
+          Line 130 continues loop count.| >130 NEXT D
+                                        |
+          Line 100 asks for HEX number. | >100 INPUT "HEX=":H$
+          Line 110 converts HEX to DEC. | >110 CALL HEX(H$,D)
+          Line 120 shows DEC equivalent.| >120 PRINT D: :
+          Line 130 starts program over. | >130 GOTO 100
+                                        |
+          Line 100 list of numbers.     | >100 DATA 200,124,97,249,140,
+          It takes 8 bytes to store any |  77,81,173,254,78,93,12,38,65
+          number in XB.                 |  ,55,6,0
+          Line 110 read list into N.    | >110 READ N
+          Line 120 convert to HEX.      | >120 CALL HEX(N,N$)
+          Line 130 Save into a string as| >130 S$=S$&SEG$(N$,2,2)
+          it takes 4 bytes per number.  |
+          Line 140 check for end of list| >140 IF N<>0 THEN 110
+          Line 150 show number of bytes | >150 PRINT "NORMAL:";8*16
+          used to store numbers.        |
+          Line 160 show number of bytes | >160 PRINT "USED:  ";LEN(S$)+
+          it would have used.           |  1 
+          Line 170 show number of bytes | >170 PRINT "SAVED  ";(8*16)-(      
+          it saved using string instead.|  LEN(S$)+1);"BYTES"
+                                        | 
+
+          Options:
+          See LOAD and EXECUTE for better utilitys for Assembly or
+          GPL access. Also useful as better then a calulator.     

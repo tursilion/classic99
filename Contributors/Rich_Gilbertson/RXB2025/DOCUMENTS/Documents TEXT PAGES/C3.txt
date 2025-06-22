@@ -1,0 +1,31 @@
+          CHARSET        subprogram                            PAGE  C3
+          -------------------------------------------------------------
+ 
+          Format         CALL CHARSET
+
+                         CALL CHARSET(ALL)
+ 
+          Description
+ 
+           The CHARSET command is just like the CHARSET command, but
+          it resets characters from 30 to 127. CHARSET thus resets 32 
+          to characters to 95 only. Exactly like CHARSET it also resets 
+          colors to original mode. CALL CHARSET(ALL) resets all the 
+          characters from 30 to 159 and all colors to original. This
+          is same as you would expect from TI Basic or RXB when not 
+          using SPRITES, or just the first few SPRITES. CHARSET runs 
+          from ROM.
+ 
+          Programs
+ 
+          This resets all characters and| >100 CALL CHARSET(ALL)
+           colors to original.          |
+          Set up a loop.                | >100 FOR X=30 to 127
+          Show characters on screen.    | >110 PRINT CHR$(X);
+          Set all colors the same.      | >120 CALL COLOR(ALL,14,10)
+          Set each character definition.| >130 CALL CHAR(X,"FF00FF00FF")
+          Continue loop.                | >140 NEXT X :: CALL BEEP
+          Press any key.                | >150 CALL KEY("",5,K,S)
+          Reset all characters.         | >160 CALL CHARSET(ALL)
+          Restart it.                   | >170 GOTO 100
+                                        | 

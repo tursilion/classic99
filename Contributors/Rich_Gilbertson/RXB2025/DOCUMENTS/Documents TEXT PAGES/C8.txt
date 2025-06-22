@@ -1,0 +1,47 @@
+          COLOR          subprogram                            PAGE  C8
+          -------------------------------------------------------------
+ 
+          Format       CALL COLOR(#sprite-number,foreground-color[,...])
+ 
+                       CALL COLOR(character-set,foreground-color,
+                       background-color[,...])
+ 
+                       CALL COLOR(ALL,foreground-color,background-color
+                       [,...])
+ 
+
+          Description
+ 
+           See EXTENDED BASIC MANUAL page 66, presently modifications
+          to the COLOR subprogram is ALL will change character sets
+          0 to 14 to the same foreground and background colors. 
+             
+                    SET NUMBER     CHARACTER CODES    
+                          0             30-31         
+                          1             32-39
+                          2             40-47  
+                          3             48-55   
+                          4             56-63 
+                          5             64-71 
+                          6             72-79
+                          7             80-87
+                          8             88-95
+                          9             96-103  
+                         10            104-111 
+                         11            112-119      
+                         12            120-127 
+                         13            128-135      
+                         14            136-143
+                         15            144-151   (RXB addition)
+                         16            152-159   (RXB addition)
+
+          Programs
+ 
+          All characters set foreground| >100 CALL COLOR(ALL,1,2,ALL,
+          transparent and background 1 | 2,1) :: GOTO 100
+          Swap characters set colors   | >100 CALL COLOR(S,3,5)
+                                       |
+               
+          Options
+ 
+          Characters 144 to 159 cannot be used with Sprites.

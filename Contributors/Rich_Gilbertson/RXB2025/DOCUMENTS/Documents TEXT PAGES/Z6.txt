@@ -1,0 +1,39 @@
+                                                                PAGE 6
+
+       INTERRUPT SERVICE ROUTINE CONTROL (ISROFF and ISRON)
+       ----------------------------------------------------------------
+       ISR (Interrupt Service Routine) like MOUSE or Screen dumps or any
+       special program like XB Packer use a ISR. The problem with these
+       programs is unless they are written to work with new devices, a
+       lock-up occurs. EXAMPLE: running a mouse routine and XB Packer.
+       They were never made to work together. RXB now has a handle on
+       this. CALL ISROFF turns off the interrupt and saves the address
+       for turning it back on. CALL ISRON restarts the interrupt. As
+       several pages of the AMS can be used with interrupts a whole
+       new world of programming is now possible.
+       NO ASSEMBLY IS USED OR CALL LINKs. Absolute compatibility.
+ 
+       4K PROGRAM IMAGE FILE LOADER AND SAVER (PLOAD and PSAVE)
+       ----------------------------------------------------------------
+       Hidden loaders were created to overcome the slow loading speed
+       of CALL LOAD. The disadvantage of a hidden loader is it can only
+       load one assembly support program at a time. PLOAD loads program
+       image files of 4K, and PLOAD can load as many times as needed
+       within one RXB program. PSAVE is the opposite and creates the 
+       program image files of the 4K anywhere in memory. Lastly loading
+       200K into the SAMS card is easy with PLOAD. A simple loop can 
+       load each SAMS 4K page with PLOAD. Each address boundry is in
+       PSAVE or PLOAD like SAMS uses boundry symbols upper case only.
+       i.e. 2 = >2000, 3 = >3000, A = >A000, B = >B000, C = >C000,
+       D = >D000, E = >E000 and F = >F000 
+      
+       SAVE FILES IN INTERNAL VARIABLE 254 OR PROGRAM IMAGE FORMAT
+       ----------------------------------------------------------------
+       RXB allows XB programs to load or be saved in two formats as
+       previously, but now RXB allows more control of this feature.
+       Normally XB will save files in Program Image format if these
+       programs are small enough to fit in VDP memory. If these XB
+       programs are larger then what will fit in VDP then XB programs
+       will be saved in Internal Variable 254 format. RXB has a added
+       feature added to save command. IV254 is the new feature. 
+       EXAMPLE: SAVE DSK3.TEST,IV254

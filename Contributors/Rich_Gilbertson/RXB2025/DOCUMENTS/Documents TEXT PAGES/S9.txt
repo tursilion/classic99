@@ -1,0 +1,41 @@
+          SCROLLRIGHT    command or subprogram                 PAGE  S9
+          -------------------------------------------------------------
+ 
+          Format         CALL SCROLLRIGHT
+
+                         CALL SCROLLRIGHT(repetition)
+
+                         CALLL SCROLLRIGHT(repetition,string)
+
+                         CALL SCROLLRIGHT(repetition,string,tab)
+ 
+ 
+          Description
+ 
+          SCROLLRIGHT scrolls screen to the right so repetition will
+          repeat the scroll number of times right, the string will 
+          only display vertically 24 characters of the string. 
+          SCROLLRIGHT unlike SCROLLLEFT puts the string on screen 
+          and does not wrap to other side if string is to long.
+          If the string is empty (null) it will just scroll the 
+          screen each line till end of string. Numbers or variables 
+          can used instead of a string. SCROLLRIGHT runs from ROM.
+           Repetition can be 1 to 65535 max.
+ 
+          Programs
+ 
+          Scrollright 2 times print PI  | >CALL SCROLLRIGHT(2,PI)
+                                        |
+          Clear screen for demo         | >100 CALL CLEAR  
+          Prints line but screen off    | >110 PRINT "SCREEN PRINT"
+          Scroll screen right           | >120 CALL SCROLLRIGHT
+          Repeat the program            | >130 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" SCROLL RIGHT"
+          Print X$                      | >110 PRINT X$
+          Scroll right 9 spaces use X$  | >120 CALL SCROLLRIGHT(9,X$)
+          Repeat the program            | >130 GOTO 100
+
+          
+
+           

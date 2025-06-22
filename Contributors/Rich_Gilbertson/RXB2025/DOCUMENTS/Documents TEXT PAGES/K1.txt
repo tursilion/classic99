@@ -1,0 +1,44 @@
+          KEY            subprogram                            PAGE  K1
+          -------------------------------------------------------------
+ 
+          Format         CALL KEY(key-unit,return-variable,
+                         status-variable[,...])
+ 
+                         CALL KEY(string,key-unit,return-variable,
+                         status-variable[,...])
+ 
+                         CALL KEY(string-variable,key-unit,return-
+                         variable,status-variable[,...])
+ 
+          Description
+ 
+          See EXTENDED BASIC MANUAL page 109
+          RXB has added auto repeat features.
+           Strings or string variables can now be added to KEY to lock
+          out any other keys. The strings can be empty or up to 255 in
+          length. The string function halts program execution unlike a
+          normal key routine similar to ACCEPT or INPUT do.
+ 
+          Programs
+ 
+          This line scans both joysticks| >100 CALL JOYST(1,X,Y,2,XX,YY)
+          This line scans both of the   | >110 CALL KEY(1,F,S,2,FF,SS)
+          fire buttons & split keyboard.|
+                                        |
+          Try this for fun.             | >CALL KEY(CHR$(2),0,K,S)
+           (HINT: FCTN 4)               |
+                                        |
+          Add this line to programs.    | >100 CALL KEY("YNyn",0,K,S)
+                                        |
+          Suspends program until key is | >100 CALL KEY("",0,K,S)
+          pressed. (any key)            |
+                                        |
+          Suspends program until ENTER  | >100 CALL KEY(CHR$(13),0,K,S)
+          is pressed.                   |
+                                        |
+          Suspends program until the    | >100 A$="123"
+          key from string A$ is used.   | >110 CALL KEY(A$,0,KV,STATUS)
+                                        |
+          Suspends program until YES is | >100 CALL KEY("Y",0,K1,S1,"E"
+          typed in.                     |  ,0,K2,S2,"S",0,K3,S3)
+                                        |

@@ -1,0 +1,31 @@
+
+          ALL          option for subprogram                   PAGE  A1
+          -------------------------------------------------------------
+ 
+          Format       CALL CHAR(ALL[,...])
+
+                       CALL CHARSET(ALL)
+
+                       CALL COINC(ALL,numeric-variable[,...])
+
+                       CALL COLOR(ALL,foreground-color,background-color
+                       [,...])
+
+                       CALL DELSPRITE(ALL[,...])
+
+                       CALL INVERSE(ALL[,...])
+
+                       CALL MOTION(ALL,row-velocity,column-velocity
+                       [,...])
+
+                       CALL RMOTION(ALL,[,...])
+ 
+          Description
+ 
+          The ALL command is used as a option in many subprograms.
+          Each option by ALL is slightly different so find the above
+          subprogram to find that use of the ALL option.
+ 
+          Programs
+ 
+          See each subprogram for examples of use of ALL.

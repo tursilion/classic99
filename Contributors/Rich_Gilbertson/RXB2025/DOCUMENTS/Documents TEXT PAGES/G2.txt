@@ -1,0 +1,18 @@
+          GO (MOTION)  option for subprogram                   PAGE  G2
+          -------------------------------------------------------------
+ 
+          Format       CALL MOTION(GO[,...])
+
+
+ 
+          Description
+ 
+          The GO command is a option in the MOTION subprogram.
+          GO does exactly what you would expect starts all sprite
+          motion by making them use previous sprite motion table.
+          MOTION runs from ROM.
+
+ 
+          Programs
+ 
+          See MOTION subprogram for examples of use of GO.

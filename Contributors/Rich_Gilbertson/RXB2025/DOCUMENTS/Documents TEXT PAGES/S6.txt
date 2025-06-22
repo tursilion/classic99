@@ -1,0 +1,34 @@
+          SCREEN         command or subprogram                 PAGE  S6
+          -------------------------------------------------------------
+ 
+          Format         CALL SCREEN(color-code[,...])
+ 
+                         CALL SCREEN("OFF"[,...])
+
+                         CALL SCREEN("ON"[,...])
+ 
+          Description
+ 
+          See EXTENDED BASIC MANUAL PAGE 165 for more data. 
+          RXB has added features of OFF and ON to the SCREEN
+          command. OFF turns off the screen display while the ON
+          turn the screen back on. Use of OFF command allows for
+          writing to screen happens but not visible to user.
+ 
+          Programs
+ 
+          Turn screen to white          | >100 CALL SCREEN(16)
+                                        | 
+          Turn off the screen display   | >100 CALL SCREEN("OFF")
+          Prints line but screen off    | >110 PRINT "THE SCREEN IS OFF"
+          Waits for any key             | >120 CALL KEY("",5,K,S)
+          This opens a RS232 port.      | >130 CALL SCREEN("ON")
+          Prints line but screen on     | >140 PRINT "NOW SCREEN ON" 
+          Waits for any key             | >150 CALL KEY("",5,K,S)
+          Special effect use of SCREEN  | >160 CALL SCREEN(0,2,0,2,0,2)
+          
+          Options
+          New features allow for some special effects like draw screen
+          while screen is off and then pop it to user. Or use of the 
+          comma to switch colors making some special effects.
+           

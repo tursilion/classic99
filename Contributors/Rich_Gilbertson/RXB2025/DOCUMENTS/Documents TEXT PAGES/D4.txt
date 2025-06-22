@@ -1,0 +1,39 @@
+          DELSPRITE      subprogram                            PAGE  D4
+          -------------------------------------------------------------
+ 
+          Format         CALL DELSPRITE(#sprite-number[,...])
+ 
+                         CALL DELSPRITE(ALL)
+ 
+          Description
+ 
+          The only thing added by RXB to DELSPRITE is the auto repeat.
+           See EXTENDED BASIC MANUAL page 80 for more data.
+          DELSPRITE runs from ROM to delete sprites.
+ 
+ 
+          Program
+ 
+          The program at the right will | >100 CALL CLEAR
+          set up 3 sprites on screen and| >110 CALL SPRITE(#1,65,7,99,9
+          start them moving.            |  9,0,10,#2,66,5,99,99,10,0,#3
+                                        |  ,67,2,1,2,-50,-50)
+          Deletes all sprites on screen | >120 CALL DELSPRITE(ALL)
+          Restart loop                  | >130 GOTO 110
+                                        |
+          The program at the right will | >100 CALL CLEAR
+          set up 3 sprites on screen and| >110 CALL SPRITE(#1,65,7,99,9
+          start them moving             |  9,0,10,#2,66,4,99,99,10,0,#3
+                                        |  ,67,2,1,2,-50,-50)
+          Loop delay                    | >130 FOR L=1 TO 1000::NEXT L
+          Randomly delete sprite        | >120 CALL DELSPRITE(#INT(RND*
+          of the 3 sprites on screen    |  3)+1)
+          Loop delay                    | >140 FOR L=1 TO 1000::NEXT L
+          Loop program                  | >150 GOTO 110
+             
+ 
+          Options
+ 
+          While characters 144 to 159 are being used, you cannot use
+          sprites. The DELSPRITE routine deletes all sprites or a 
+          chosen sprite.

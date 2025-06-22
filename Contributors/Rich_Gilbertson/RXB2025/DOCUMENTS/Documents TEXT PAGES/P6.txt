@@ -1,0 +1,24 @@
+          PLOAD             subprogram                         PAGE  P6
+          -------------------------------------------------------------
+
+          PLOAD is faster then CALL LOAD as it loads Program Image vs
+          LOAD which is stuck with slow uncompressed DF 80 files.
+
+
+          Options
+          SAMS users will find this a easy way to load RXB AMS support
+          into lower 8K.
+          EXAMPLE:
+                  >100 Z$="DSK1.PAGE" 
+                  >110 FOR L=0 TO 15 STEP 2
+                  >120 CALL SAMS(2,L,3,L+1)
+                  >130 CALL PLOAD(2,Z$&STR$(L),3,Z$&STR(L+1))
+                  >140 NEXT L
+                  >150 CALL XB("DSK1.MAINPROGRAM",1) 
+      
+           The above program would load RXB SAMS pages 0 to 15 into
+           SAMS memory from files named PAGE0 to PAGE15 on disk 1. 
+           Then would set CALL FILES 1 and RUN "DSK1.MAINPROGRAM" 
+           with 64K of Assembly support for RXB. (16x4K=64K)
+
+          See SAMS, ISROFF, ISRON, EXECUTE, and MOVES.

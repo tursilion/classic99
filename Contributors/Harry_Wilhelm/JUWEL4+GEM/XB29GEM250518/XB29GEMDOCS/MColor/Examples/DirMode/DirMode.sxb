@@ -1,0 +1,20 @@
+CALL LOAD("DSK4.MCOLOR.OBJ")
+CALL MCON
+RUN PRGRESTART
+
+PRGRESTART:
+CALL SCREEN(2)
+CALL MCOLOR(4,1)
+
+x=31 :: Y=23 :: C=11
+
+repeat
+  call joyst(1,jx,jy)
+  call key(1,k,s)
+  x=x+(jx/4)+(k=2)-(k=3)
+  y=y-(jy/4)+(k=5)-(k=0)
+  c=c-(k=18)
+  if k=16 then k=5
+  call putpix(y,x,c)
+until k=16
+end

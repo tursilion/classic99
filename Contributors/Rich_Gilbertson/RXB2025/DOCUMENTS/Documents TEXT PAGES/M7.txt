@@ -1,0 +1,42 @@
+          MOVES          subprogram                            PAGE  M7
+          -------------------------------------------------------------
+ 
+          Format         CALL MOVES(type$,bytes,string-variable,string-
+                         variable[,...])
+ 
+                         CALL MOVES(type$,bytes,from-address,to-address
+                         [,...])
+ 
+                         CALL MOVES(type$,bytes,from-address,string-
+                         variable[,...])
+ 
+                         CALL MOVES(type$,bytes,string-variable,to-
+                         address[,...])
+ 
+                         CALL MOVES(string-variable,number,string-
+                         variable,string-variable[,...])
+ 
+          Description
+ 
+          The MOVES subprogram moves (copies) FROM TO the amount of
+          bytes specified using the memory type string. MOVES does not
+          physically move memory but copies it. MOVES can RIPPLE a 
+          byte thru memory by the from-address being one byte less than
+          the to address. The type$ below specifies what type of memory
+          is being moved and to what other type of memory it is moved
+          into. The bytes are 255 maximum if being moved into a string-
+          variable. MOVES address range is from -32768 to 0 to 32767
+          As MOVES mostly works with string-variables see the Extended
+          Basic Manual page 41. MOVES will error out with * BAD VALUE 
+          IN ###* in a program if the string variable length exceeds
+          255, or if the number of bytes exceeds 255.
+ 
+                      type$                TYPE OF MEMORY
+                      ~~~~~                ~~~~~~~~~~~~~~~
+                       $   -------------   STRING-VARIABLE
+                       V   -------------   VDP ADDRESS
+                       R   -------------   RAM ADDRESS
+                       G   -------------   GRAM ADDRESS
+          *NOTE: upper case only for type as lower case are ignored.       
+
+           VDP address are from 0 to 16384 (>0 to >3FFF)

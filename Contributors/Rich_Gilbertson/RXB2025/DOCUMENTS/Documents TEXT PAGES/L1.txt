@@ -1,0 +1,32 @@
+          LIST           command                               PAGE  L1
+          -------------------------------------------------------------
+ 
+          Format         LIST
+ 
+                         LIST "device name"
+ 
+                         LIST "device name":line length:start line-
+                         end line
+ 
+          Description
+ 
+          The LIST command is the same as per Extended Basic Manual
+          page 114. The LIST routine has been modified to allow the
+          line length to be output to a device. The line length can 
+          only be used if a device is specified. A colon (:) must 
+          follow the line length. If not included in the LIST 
+          command, the line length is set to the default of the 
+          specified output device.
+          The line length can range from 1 to 255. If the length
+          specified is outside this range, a Bad Line Number Error is
+          reported.
+ 
+          Command
+ 
+          This line outputs to a device.| >LIST "PIO":80:100-120
+                                        |
+          This line outupts to a device.| >LIST "RS232.BA=1200":132: 
+                                        |
+          This a dummy line.            | >100 ! TEST OF LIST
+          Another dummy line.           | >110 ! TEST OF LIST
+                                        |

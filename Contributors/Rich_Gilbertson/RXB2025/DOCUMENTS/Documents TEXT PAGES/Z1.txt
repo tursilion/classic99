@@ -1,0 +1,42 @@
+                                                               PAGE   1
+
+        This is a copy of the RXB title screen:
+ 
+ 
+ 
+                             
+                        
+ 
+ 
+                               *******************
+                               * VERSION =  2025 *
+                               *******************
+                               *      R X B      *
+                               *                 *
+                               *     creator     *
+                               *                 *
+                               * Rich Gilbertson *
+                               *******************
+ 
+                        >> press ============= result <<
+ 
+                            ANY KEY = DSK#.LOAD
+ 
+                            ENTER   = DSK#.UTIL1
+ 
+                          (COMMA) , = DSK#.BATCH
+ 
+                          SPACE BAR = RXB COMMAND MODE
+ 
+                          (PERIOD) . = EDITOR ASSEMBLER
+
+
+
+
+
+
+
+
+           NOTE: 0 (ZERO) defaults to WDS1.LOAD or after pressing
+
+                 ENTER defaults to WDS1.UTIL1 

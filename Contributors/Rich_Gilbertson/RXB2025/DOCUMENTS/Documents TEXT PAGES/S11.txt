@@ -1,0 +1,42 @@
+          SIZE           command or subprogram                 PAGE S11
+          -------------------------------------------------------------
+ 
+          Format         SIZE
+ 
+                         CALL SIZE
+ 
+          Description
+ 
+          See EXTENDED BASIC MANUAL PAGE 169 for more data. 
+          RXB has added many more features to SIZE. RXB shows the
+          size and memory address of VDP, RAM and SAMS. Very uselful
+          for XB or Assembly progammers. EXAMPLE:
+ 
+          >SIZE                          
+             11840 Bytes of Stack Free 
+             24488 Bytes of Program    
+             8192  Bytes of Assembly   
+             * PAGE NUMBER = LOCATION *
+             2     Page = >2000 - >2FFF
+             3     Page = >3000 - >3FFF
+             10    Page = >A000 - >AFFF                                                                                                                                                                    
+             11    Page = >B000 - >BFFF
+             12    Page = >C000 - >CFFF
+             13    Page = >D000 - >DFFF
+             14    Page = >E000 - >EFFF
+             15    Page = >F000 - >FFFF
+             * MEMORY UNUSED and FREE *
+             >37D7 VDP Free Address    
+             >0958 VDP STACK Address   
+             >FFE7 Program Free Address
+             >A040 Program End Address 
+             >2000 RAM Free Address    
+             >4000 RAM End Address 
+ 
+            This shows normal XB values but also includes more
+           useful things like Assembly free and SAMS pages 
+           used and where these pages are. Lastly it shows
+           VDP STACK location, First free VDP address, XB RAM
+           First free address and End address. Lastly first
+           free Assembly address and End address used. SAMS size is
+           not reported just like Foppy size or hard drive is'nt!

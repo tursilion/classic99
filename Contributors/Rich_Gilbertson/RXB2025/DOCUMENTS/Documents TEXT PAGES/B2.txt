@@ -1,0 +1,21 @@
+          BEEP           subprogram                            PAGE  B2
+          -------------------------------------------------------------
+ 
+          Format         CALL BEEP
+ 
+ 
+          Description
+ 
+          The BEEP command produces the same sound as the ACCEPT or
+          INPUT, or BEEP as in DISPLAY options. 
+          See EXTENDED BASIC MANUAL pages 47, 48, 49, 77, 78.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL BEEP
+          will produce a beep sound.    |
+          Show request.                 | >110 PRINT "YNyn ?"
+          Key press request.            | >120 CALL KEY("YNyn",0,K,S)   
+
+          The above program will BEEP then wait for a key and only
+          accept Y N y n from CALL KEY into K.

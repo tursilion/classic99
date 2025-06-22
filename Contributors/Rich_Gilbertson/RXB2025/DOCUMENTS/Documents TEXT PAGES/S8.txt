@@ -1,0 +1,39 @@
+          SCROLLLEFT     command or subprogram                 PAGE  S8
+          -------------------------------------------------------------
+ 
+          Format         CALL SCROLLLEFT
+
+                         CALL SCROLLLEFT(repetition)
+    
+                         CALL SCROLLLEFT(repetition,string)
+
+                         CALL SCROLLLEFT(repetition,string,tab)
+ 
+ 
+          Description
+ 
+          SCROLLLEFT scrolls screen to the left so repetition will
+          repeat the scroll number of times left, the string will only 
+          display vertically 24 characters of the string on left side
+          of screen. SCROLLLEFT unlike SCROLLRIGHT puts the string on
+          screen and wraps to other side if string is to long.
+          If the string is empty (null) it will just scroll the screen
+          each line till end of string. Numbers or variables can be 
+          used instead of a string. SCROLLLEFT runs from ROM.
+           Repetition can be 1 to 65535 max.
+ 
+          Programs
+ 
+          Scroll left 2 times print PI  | >CALL SCROLLLEFT(2,PI)
+                                        |
+          Clear screen for demo         | >100 CALL CLEAR  
+          Prints line                   | >110 PRINT "SCREEN PRINT"
+          Scroll screen left            | >120 CALL SCROLLLEFT
+          Repeat the program            | >130 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" SCROLL LEFT"
+          Print X$                      | >110 PRINT X$
+          Scroll left 9 spaces use X$   | >120 CALL SCROLLLEFT(9,X$)
+          Repeat the program            | >130 GOTO 100
+
+           

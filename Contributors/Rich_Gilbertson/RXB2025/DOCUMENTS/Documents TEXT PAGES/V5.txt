@@ -1,0 +1,38 @@
+          VPUT           subprogram                            PAGE  V5
+          -------------------------------------------------------------
+ 
+          Format         CALL VPUT(row,column,string[,...])
+ 
+                         CALL VPUT(row,column,string-variable[,...])
+ 
+          Description
+ 
+          The VPUT subprogram puts a string or string-variable or 
+          number or number variable or constant onto the screen at
+          row and column. The row numbers from 1 to 24 and
+          column numbers from 1 to 32. If the string or number or 
+          numeric variable or string-variable or constant being 
+          put onto screen goes to an bottom it wraps to the top
+          screen just like VCHAR does. VPUT runs from ROM.
+ 
+          Programs
+ 
+          Line 100 puts string "THIS" on| >100 CALL VPUT(10,4,"THIS")
+          the screen at row 10 and      |
+          column 4.                     |
+                                        |
+          Line 110 sets string-variable | >110 A$="VPUT"
+          A$ equal to string "VPUT"     |
+                                        |
+          Line 120 puts string "is" at  | >120 CALL VPUT(11,5,"is",10,6
+          row 11 and column 5, then puts|  ,A$)
+          string-variable A$ at row 10  |
+          and column 6.                 |
+          Puts 456 at row 10 col 15     | >100 CALL VPUT(10,15,456)             
+                                        |
+
+          Options:
+          CALL VPUT is now written in Assembly so much faster is
+          faster than normal then XB DISPLAY AT(row,column) 
+          (But a vertical version.)
+          See HCHAR, VCHAR, HPUT, HGET and VGET.

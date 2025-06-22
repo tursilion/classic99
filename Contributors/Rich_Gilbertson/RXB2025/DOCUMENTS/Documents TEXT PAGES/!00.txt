@@ -1,0 +1,41 @@
+          *************************************************************
+          *                    TABLE OF CONTENTS                      *
+          *************************************************************
+          NAME---------------------TYPE----------ACCESS---------PAGE-##
+          ALL                   OPTION SUBPROGRAM                    A1
+          ALPHALOCK             SUBPROGRAM        JOYSTICK/KEYBOARD  A2
+          BASIC             DSR or SUBPROGRAM     DEVICE             B1
+          BEEP                  SUBPROGRAM        SOUND              B2
+          BIAS                  SUBPROGRAM        CONVERSION         B3
+          BYE               SUBPROGRAM/COMMAND    EXIT RXB           B4
+          CAT                   SUBPROGRAM        DISK or HARD DRIVE C1
+          CHAR                  SUBPROGRAM        SCREEN             C2
+          CHARSET               SUBPROGRAM        SCREEN             C3
+          CLEARPRINT            SUBPROGRAM        SCREEN             C4
+          CLSALL                SUBPROGRAM        DISK               C5
+          COINC                 SUBPROGRAM        SPRITE             C6
+          COLLIDE               SUBPROGRAM        SPITE              C7
+          COLOR                 SUBPROGRAM        SPRITE             C8
+          COPY                  COMMAND           EDITOR LINES       C9
+          DEL                   COMMAND           EDITOR LINES       D1
+          DIR                   SUBPROGRAM        DISK or HARD DRIVE D2
+          DISTANCE              SUBPROGRAM        SPRITE             D4
+          EA                    DSR               DEVICE             E1
+          EXE                   SUBPROGRAM        ASSEMBLY SUPPORT   E3
+          EXECUTE               SUBPROGRAM        ASSEMBLY SUPPORT   E4
+          FILES                 SUBPROGRAM        DISK               F1
+          GCHAR                 SUBPROGRAM        SCREEN             G1
+          GO                    OPTION SUBPROGRAM SPRITE             G2
+          GMOTION               SUBPROGRAM        SPRITE             G3
+          HCHAR                 SUBPROGRAM        SCREEN             H1
+          HEX                   SUBPROGRAM        CONVERSION         H2
+          HGET                  SUBPROGRAM        SCREEN             H4  
+          HONK                  SUBPROGRAM        SOUND              H5
+          HPUT                  SUBPROGRAM        SCREEN             H6
+          INIT                  SUBPROGRAM        ASSEMBLY SUPPORT   I1
+          INVERSE               SUBPROGRAM        CHARACTER          I2
+          IO                    SUBPROGRAM        TSM9901 CONTROL    I3
+          ISROFF                SUBPROGRAM        INTERUPTS         I14
+          ISRON                 SUBPROGRAM        INTERUPTS         I15
+          IV254                 OPTION SUBPROGRAM DISK              I16
+

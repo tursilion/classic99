@@ -1,0 +1,33 @@
+          VCHAR          subprogram                            PAGE  V1
+          -------------------------------------------------------------
+ 
+          Format         CALL VCHAR(row,column,character-code)
+ 
+                         CALL VCHAR(row,column,character-code,
+                         repetition[,...])
+ 
+          Description
+ 
+           See EXTENDED BASIC MANUAL page 188 for more data. The only
+          syntax change to VCHAR is the auto-repeat function. Notice the 
+          new auto-repeat must have the repetitions used or it gets row
+          confused with repetitions. Also RXB HCHAR is now in ROM.
+          
+ 
+          Programs
+ 
+          This line puts character 38 at| >100 CALL VCHAR(1,1,38,99,9,1
+           row 1 column 1 for 99 times, |  ,87)
+           then puts character code 87  |
+           at row 9 column 1            |
+                                        |
+          Fills screen with characters. | >100 CALL VCHAR(1,1,32,768,1,
+                                        |  1,65,768,1,1,97,768,1,1,30,
+                                        |  768) :: GOTO 100
+                                        |
+
+          Options
+          CALL VCHAR is now written in Assembly so much faster is
+          faster than normal XB, also as separate line numbers are
+          needed to continue placing characters on screen.
+          See HCHAR, HPUT, VPUT, HGET and VGET.

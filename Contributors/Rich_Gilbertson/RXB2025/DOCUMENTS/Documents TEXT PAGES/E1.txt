@@ -1,0 +1,44 @@
+          EA             Device Service Routine (DSR)          PAGE  E1
+          -------------------------------------------------------------
+ 
+          Format         RUN "EA"
+ 
+                         DELETE "EA"
+ 
+                         CALL XB("EA")
+ 
+                         CALL CAT("EA")
+ 
+                         OLD EA
+ 
+                         SAVE "EA"        -(Must have a program within
+                                          - memory to work at all)
+                         CALL EA      
+ 
+          Description
+ 
+          The EA DSR (Device Service Routine) allows access to the
+          Editor Assembler section of RXB. The access will work only
+          if the DSR is the GPLDSR or LINK DSR. In other words, a DSR
+          that acknowledges any type of DSR in RAM, ROM, GROM, GRAM,
+          or VDP. Most DSR's only accept DSK or PIO. Others like the
+          SAVE or LIST commands will only work with a program in the
+          memory first. Still others like CALL LOAD("EA") must have 
+          the CALL INIT command used first. Almost all DSR's today 
+          only acknowledge the ROM or RAM DSR's. 
+ 
+          Programs
+ 
+          Go to the Editor Assembler.   | >100 CALL XB("EA")
+                                        |
+          This line asks for a string.  | >100 INPUT A$ :: DELETE A$
+          Type EA will go to EA module  |
+                                        |
+          Switch to Editor Assembler    | >CALL CAT("EA")
+                                        |
+          Lower case can also be used.  | >call ea
+                                        |
+          Strange looping effect.       | >CALL EA("EA")
+ 
+          Options
+          BASIC and XB are also available. 

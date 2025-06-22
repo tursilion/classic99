@@ -1,0 +1,36 @@
+
+          ON (SAMS)      option for subprogram                 PAGE  O2
+          -------------------------------------------------------------
+ 
+          Format         CALL SAMS("ON")
+ 
+ 
+          Description
+ 
+          SAMS("ON") command will only work with a SAMS memory card. 
+          The read/write lines to the SAMS mapper registers are turned 
+          on so they can be changed. Any PEEK or LOAD to the DSR space 
+          can then be used to change the mapper registers or read them.
+          See docs MANUAL-SAMS for examples of memory maps. Also run
+          SAMS-TEST or SAMS-SAVE or SAMS-LOAD programs.
+ 
+          Programs
+ 
+          This turns on read/write.     | >100 CALL SAMS("ON")
+          This loads 9 in map register 2| >110 CALL LOAD(16388,9)
+          This turns off read/write.    | >120 CALL SAMS("OFF")
+          This loads values in lower 8K.| >130 CALL LOAD(8192,1,2,3,4)
+          This turns on pass mode.      | >140 CALL SAMS("PASS")
+          This peeks values in lower 8K.| >150 CALL PEEK(8192,A,B,C,D)
+          This prints values.           | >160 PRINT A;B;C;D
+          This turns ON read/write & MAP| >170 CALL SAMS("ON","MAP")
+          This loads 2 in map register 2| >180 CALL LOAD(16388,2)
+          Turns off read/write & PASS   | >190 CALL SAMS("OFF","PASS")
+          This peeks values in low page.| >200 CALL PEEK(8192,A,B,C,D)
+          This prints values.           | >210 PRINT A;B;C;D
+                                        |
+ 
+
+          It is recommended to use CALL SAMS("ON") only for when a
+          CALL PEEK is used to check a mapper register value.
+          CALL SAMS manages AMS mapping much better.

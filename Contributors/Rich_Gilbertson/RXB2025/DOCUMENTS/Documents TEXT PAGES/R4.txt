@@ -1,0 +1,36 @@
+          RND           subprogram                             PAGE  R4
+          -------------------------------------------------------------
+ 
+          Format         RND
+
+
+          Description
+
+           The RND subprogram in RXB has been replaced with a TI BASIC
+          version as the normal XB RND subprogram is hindered with so
+          much Floating Point as to make it 3 times slower then the 
+          TI BASIC version of RND. Extensive testing proves that the
+          new RXB RND is many times faster then the previous version.
+           There will actually be some programs expecting a particular
+          RND pattern of random numbers that will no longer work the 
+          same as a result of this change. But games will appear more
+          random then normal Extended Basic.
+           The RANDOMIZE seed still works but the results of the that
+          pattern of random numbers will be different then normal XB,
+          thus unless absolutely required will be a bigger benefit 
+          then the cost of this XB previous feature.
+
+          Program
+      
+          RND example to prove speed    | >100 DIM N(100)
+          Counter in a FOR loop         | >110 FOR X=1 TO 100
+          Load Array with random numbers| >120 N(X)=RND
+          Show that number              | >130 PRINT N(X)
+          Repeat loop till done         | >140 NEXT X
+           
+          Run this above example in TI BASIC, XB and RXB 2015 to
+          show game type results of program results with new RND
+          
+
+          Options
+          Random Music programs will sound very very fast.

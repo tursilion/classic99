@@ -1,0 +1,27 @@
+          SIZE           command or subprogram                 PAGE S12
+          -------------------------------------------------------------
+ 
+          Format         SIZE
+ 
+                         CALL SIZE
+
+
+          Command
+ 
+          May only be used from command | >SIZE
+          mode.                         |
+                                        |
+          Programs
+ 
+          May only be used from program | >100 CALL SIZE
+          mode.                         | 
+          Delay for keypress.           | >110 CALL KEY("",0,K,S)
+          Set up for Assembly support.  | >120 CALL INIT
+          Shows memory used including   | >130 CALL SIZE
+          Assembly space free.          |
+          Set VDP STACK to >1820 hex.   | >140 CALL VDPSTACK(6176) 
+          Show VDP STACK location.      | >150 CALL SIZE
+          Delay for keypress.           | >150 CALL KEY("",0,S,S)
+          Set XB RAM to >A000 hex.      | >160 CALL PRAM(-24576)
+          Shows 64 more bytes of XB RAM | >170 CALL SIZE          
+           for use in XB.               |

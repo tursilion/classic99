@@ -1,0 +1,39 @@
+          IO (SOUND LIST)                                      PAGE  I5
+          -------------------------------------------------------------
+           If the first byte is hex FF or decimal 255, the next two
+          bytes indicate an address in the other memory space. (That
+          means one block points to another block but in another type
+          of memory.) These allow switching sound lists from GROM/GRAM
+          to VDP or VDP to GRAM/GROM. By making this the beginning of
+          the entire table, the sound sequence can be made to repeat
+          indefinitely.
+           The type 0 indicates sound lists in GROM or GRAM and type 1
+          indicates sound lists in VDP.
+           Executing a sound list while table-driven sound control is
+          already in progress (from a previous sound list) causes the
+          old sound control to be totally supplanted by the new sound
+          instruction. (That means any sound chip command will over-
+          ride old sound chip commands).
+           The SGC has 3 tone (square wave) generators - 0, 1, and 2
+          all of which can be working simultaneously or in combination.
+          The frequency (pitch) and attenuation (volume) of each
+          generator can be independently controlled. In addition, there
+          is a noise generator which can output white or periodic
+          noise. For more information on controlling the SGC, see the             
+          TSM9919 SGC specification.                                                
+ 
+          ATTENUATION CONTROL (for generators 0, 1, 2 or 3)
+ 
+          One byte must be transmitted to the SGC:
+ 
+          Binary     1-REG#-1-Attenuation
+ 
+                REG# = register number (0,1,2,3)
+                Attenuation = Attenuation/2
+                      (e.g. A=0000 0  db = highest volume;
+                            A=1000 16 db = medium volume;
+                            A=1111 30 db = off. )
+ 
+          EXAMPLE: 1 10 1 0000 : turn on gen. #2 highest volume.
+                   1 01 1 0100 : turn on gen. #1 medium high volume.
+                   1 11 1 1111 | turn off gen. #3 (noise generator).

@@ -1,0 +1,34 @@
+          USER           subprogram                            PAGE  U2
+          -------------------------------------------------------------
+
+          Programs
+ 
+          This line starts USER to use  | >CALL USER("DSK1.FILENAME")
+          Batch processing on a file    |
+          called FILENAME               |
+                                        |
+          Line 100 is same as above.    | >100 CALL USER("DSK1.FILE")
+          but within a program.         |
+                                        |
+          Line 100 variable A$ equals a | >100 A$="DSK.VOLUME.FILE"
+          String-variable path name.    |
+          Line 110 starts USER to use   | >110 CALL USER(A$)
+          Batch processing on A$        |
+                                        |
+          Save this program as LOAD.    | >100 CALL USER("DSK1.BATCH")
+                                        |
+ 
+          Here is an example DV80 file you save with the name BATCH.
+ 
+                        ! BATCH file for using 
+                        NEW and CALL FILES and RUN. cr
+                        cr
+                        CALL XB("DSK1.A-PROGRAM",#) cr
+                        ! The # is 0 to 15 (see FILES)
+ 
+         The above DV80 file uses cr to mean Carriage Return. And # is
+        for the number of files you wish open. A-PROGRAM is the name of
+        the XB program that needs a certain number of files open.
+ 
+        Options
+        To many to list out. See BATCH for demo.

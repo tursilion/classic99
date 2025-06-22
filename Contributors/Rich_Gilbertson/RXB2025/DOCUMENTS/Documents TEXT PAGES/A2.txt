@@ -1,0 +1,22 @@
+
+          ALPHALOCK    option for subprogram                   PAGE  A2
+          -------------------------------------------------------------
+ 
+          Format       CALL ALPHALOCK(numeric-variable)
+
+ 
+          Description
+ 
+          The ALPHALOCK detects if the key ALPHALOCK key is on or off.
+          If the ALPHALOCK key is off the numeric-variable will be 0.
+          But if the ALPHALOCK key is on numeric-variable will be non
+          zero i.e. -26294 just for giggles that is hex >994A
+          ALPHALOC runs from ROM.
+ 
+          Programs
+ 
+          Check ALPHALOCK key on/off    | >100 CALL ALPHALOCK(N)
+          Show the value of N           | >110 PRINT N
+          If N not zero then HONK       | >120 IF N THEN CALL HONK
+          Loop forever                  | >130 GOTO 100                          
+                                        | 

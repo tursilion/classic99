@@ -1,0 +1,37 @@
+          SWAPCOLOR      subprogram                            PAGE S16
+          -------------------------------------------------------------
+ 
+          Format         CALL SWAPCOLOR(character-set,character-set
+                         [,...])
+ 
+                         CALL SWAPCOLOR(#sprite-number,#sprite-number
+                         [,...])
+ 
+          Description
+ 
+          The SWAPCOLOR subprogram swaps foreground and background
+          colors of the first set with the second set. Or swaps the
+          first sprite-number color with the second sprite-number
+          color. The character-set numbers are given below:
+ 
+                         set-number          character-codes
+                         ~~~~~~~~~~          ~~~~~~~~~~~~~~~
+                               0   ----------  30  to   31
+                               1   ----------  32  to   39
+                               2   ----------  40  to   47
+                               3   ----------  48  to   55
+                               4   ----------  56  to   63
+                               5   ----------  64  to   71
+                               6   ----------  72  to   79
+                               7   ----------  80  to   87
+                               8   ----------  88  to   95
+                               9   ----------  96  to  103
+                              10   ---------- 104  to  111
+                              11   ---------- 112  to  119
+                              12   ---------- 120  to  127
+                              13   ---------- 128  to  135
+                              14   ---------- 136  to  143
+          (also sprite table) 15   ---------- 144  to  151
+          (also sprite table) 16   ---------- 152  to  159
+ 
+          

@@ -1,0 +1,39 @@
+                                                            PAGE    S4
+                              SAMS MAPPER
+     *****************************************************************
+ 
+     In map mode the mapper register setup is equivalent to: EXAMPLE2
+ 
+     mapper address  mapper  page num            address range
+     --------------  ------  --------            -------------
+      HEX     Dec            HEX  Dec             memory area
+      ---     ---            ---  ---             -----------
+     >4004 = 16388 is MR02 = >62 =  98 points to >2000 - >2FFF range
+     >4006 = 16390 is MR03 = >63 =  99 points to >3000 - >3FFF range
+ 
+     >4014 = 16404 is MR10 = >64 = 100 points to >A000 - >AFFF range
+     >4016 = 16406 is MR11 = >65 = 101 points to >B000 - >BFFF range
+     >4018 = 16408 is MR12 = >66 = 102 points to >C000 - >CFFF range
+     >401A = 16410 is MR13 = >67 = 103 points to >D000 - >DFFF range
+     >401C = 16412 is MR14 = >68 = 104 points to >E000 - >EFFF range
+     >401E = 16414 is MR15 = >69 = 105 points to >F000 - >FFFF range
+ 
+     (MR=Mapper Register)
+ 
+     In MAP mode the mapper register setup is equivalent to: EXAMPLE3
+ 
+     mapper address mapper  page num             address range
+     -------------- ------  --------             -------------
+      HEX   Dec            HEX    Dec             memory area
+      ---   ---            ---    ---             -----------
+     >4004=16388 is MR02 =>1FF9 = 8185 points to >2000 - >2FFF range
+     >4006=16390 is MR03 =>1FFA = 8186 points to >3000 - >3FFF range
+ 
+     >4014=16404 is MR10 =>1FFB = 8187 points to >A000 - >AFFF range
+     >4016=16406 is MR11 =>1FFC = 8188 points to >B000 - >BFFF range
+     >4018=16408 is MR12 =>1FFD = 8189 points to >C000 - >CFFF range
+     >401A=16410 is MR13 =>1FFE = 8190 points to >D000 - >DFFF range
+     >401C=16412 is MR14 =>1FFF = 8191 points to >E000 - >EFFF range
+     >401E=16414 is MR15 =>2000 = 8192 points to >F000 - >FFFF range
+ 
+     (MR=Mapper Register)

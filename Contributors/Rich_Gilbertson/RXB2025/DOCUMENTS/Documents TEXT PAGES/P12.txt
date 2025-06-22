@@ -1,0 +1,27 @@
+          PSAVE              subprogram                        PAGE P12
+          -------------------------------------------------------------
+
+
+          Procedure for hidden loaders.|
+          Loads program on disk 1      | >CALL XB("DSK1.LOAD")
+          Break program.               | PRESS FCTN 4 to break program.
+          Get address of interrupts.   | >CALL ISROFF(I)
+          See if they are on.          | >PRINT I
+          Save the programs to disk.   | >CALL PSAVE(2,"DSK2.EXAMPLE1",
+                                       | 3,"DSK2.EXAMPLE2")
+                                       |
+
+
+          Options
+          SAMS users will find this a easy way to save RXB SAMS support
+          EXAMPLE:
+                  >100 Z$="DSK1.PAGE"
+                  >110 FOR L=15 TO 32 STEP 2
+                  >120 CALL SAMS(2,L,3,L+1)
+                  >130 CALL PSAVE(2,Z$&STR$(L),3,Z$&STR$(L+1))
+                  >140 NEXT L
+
+           The above program would save RXB SAMS pages 16 to 33 into
+           8 program image files named PAGE15 to PAGE33 on disk 1.
+
+           See SAMS, ISROFF, ISRON, EXECUTE, and MOVES.

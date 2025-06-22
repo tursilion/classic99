@@ -1,0 +1,45 @@
+                                                               PAGE   2                                                                                         
+       This is a explanation of the keys of the MENU screen:
+       ----------------------------------------------------------------
+       (any key) = DSK#.LOAD
+          
+        While the screen shows menu RXB is selected pressing 
+       any key will be the drive that DSK#.LOAD will be run from.     
+       RAMDISK number keys 1 to 9 or the alpha keys A to z.
+        Pressing 0 (zero) key will run WDS1.LOAD
+         
+       ----------------------------------------------------------------
+       (ENTER key) = DSK#.UTIL1
+          
+        While the screen shows menu RXB is selected pressing
+       ENTER key allows Assembly Programs to be used. Pressing 
+       any key will be the drive that DSK#.UTIL1 will be run from.     
+       RAMDISK number keys 1 to 9 or the alpha keys A to z.
+        Pressing 0 (zero) key will run WDS1.UTIL1
+                   
+       --------------------------------------------------------------- 
+       (COMMA) , = DSK#.BATCH
+          
+         While the screen shows menu RXB is selected pressing
+       COMMA key runs DSK#.BATCH 
+       DSK#.BATCH defaults to DSK1 if BATCH not found will default to 
+       command mode. For more information on this feature read USER in 
+       the RXB information on BATCH FILE SYSTEM below.
+
+       ----------------------------------------------------------------
+       (SPACE BAR) = RXB COMMAND MODE
+          
+        Pressing the SPACE BAR results in XB command mode.
+        (Same as waiting a few seconds just like normal XB does.)
+
+       ----------------------------------------------------------------- 
+       (PERIOD) . = EDITOR ASSEMBLER
+          
+        Pressing the . (PERIOD) key will switch to EDITOR ASSEMBLER
+       menu. Pressing the . 
+
+       -----------------------------------------------------------------
+       (ZERO) 0 = WSD1.LOAD
+
+         Pressing the 0 (ZERO) key will start a WSD1.LOAD to execute
+        from hard drive 1. If the root directory has a LOAD program.

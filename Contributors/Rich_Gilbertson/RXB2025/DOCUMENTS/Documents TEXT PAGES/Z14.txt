@@ -1,0 +1,272 @@
+
+                                                                                PAGE REA1
+
+                          *************************************************************** 
+                          *              RXB Editor Assembler Version 2024              * 
+                          ***************************************************************
+ 
+                           REA is a new completely re-written Editor Assembler module. 
+                         Any code not needed was removed, and this left room for many 
+                         new features. TI BASIC support has been removed to add in the 
+                         features like catalog a drive and set pathnames.
+                         This is a copy of the REA title screen:
+
+                                       Rich Editor & Assembler V=2015 
+                                       --------------------------------
+                                            S   SET PATHS NAMES 
+
+
+                                            D   DIRECTORY
+
+                                            A   ASSEMBLER 
+
+                                            E   EDITOR 
+
+                                            X   XB PROGRAM 
+
+                                            L   LOAD and RUN 
+
+                                            P   PROGRAM FILE 
+
+                                            .   R X B
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                              PAGE REA2
+
+                      This is a copy of the REA Configure Paths:
+
+
+                                         * CONFIGURE PATHS *
+   
+                                    1  DSK1.EDIT1
+
+
+                                    2  DSK1.ASSM1
+
+
+                                    3  DSK1.SOURCE
+
+
+                                    4  DSK1.OBJECT
+
+
+                                    5  DSK1.LIST
+
+
+                                    6  OPTIONS: L
+                                    
+                                                                   
+                                       CTRL 1 - 5 DRIVE SELECTION
+
+                                       ANY OTHER KEY TO MAIN MENU
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                     
+
+                                                                              PAGE REA3
+                      S SET PATH NAMES
+                      Sets path of Editor, Assembler,source, object, and list files.
+                      Selection of 1 to 6 allows a input like as in previous Editor
+                      Assembler version including REA. Selection of CTRL 1 to 5 will
+                      allow single selection of drive number for that path. As an
+                      example is select CTRL 1 and the number 1 in path DSK1.EDIT1 
+                      will beep and ask for a drive number or letter. Another beep
+                      indicates selection made and shows the change.
+                                                      E EDITOR
+                      Has a arrow to indicate which option has been selected, thus
+                      the user will no longer make a mistake of saving a blank file
+                      over the original that he actually meant to load or save. Also
+                      as Edit path is preset the loading is automatic for the Editor
+                      and the file to load. Save file still asks for a path name and
+                      file. Print also asks for device or path name. 
+                      i.e. DSK.VOLUMENAME.EDIT1 or WDS1.DIRECTORY.SUBDIRECTORY.EDIT1                       The directory will load the selected file if this option is
+                      used. See Directory for features.
+                    
+                      A ASSEMBLER
+                      Assembler has no menu selection as CONFIGURE PATHS does this.
+                      The ASSM1 path from S SET PATH automatically loads Source,
+                      Object, List file paths and Options. A Assember key press from
+                      main menu starts the Assembler, but SET PATH must be first.
+                      i.e. DSK.VOLUMENAME.ASSM1 or WDS1.DIRECTORY.SUBDIRECTORY.ASSM1
+                       The directory will replace the selected file if this option
+                      is used. See Directory for features.
+
+                      L LOAD and RUN
+                      The directory will load the selected file if this option is
+                      used. After loading a file all the link names will be displayed
+                      inclucding all support routines. Using arrow keys the selected
+                      link name can be executed by pressing ENTER key. Up to 80 link
+                      names will be displayed on screen thus arrow keys to select a
+                      program name to run. See Directory for features.
+
+                      P PROGRAM FILE
+                      By pressing a single key then enter, DSK#.UTIL1 is displayed
+                      and executed. # indicates the key pressed A to Z or 1 to 9.
+                      Pressing 0 (zero) runs WDS1.UTIL1 at PROGRAM FILE. The directory
+                      will load the selected file if this option is used. The lower 8K
+                      support routines normally only loaded by the EA3 option are now
+                      loaded by this option too. So users can load FORTH, FORTRAM, and
+                      C programs from the EA5 prompt.
+                      X XB PROGRAM
+                      New feature that prompts for a XB program file to run. If the
+                      file or device errors out, then a return to RXB command mode is
+                      done. The * R X B * and a flashing cursor indicates the XB
+                      command mode. By pressing a single key then enter, DSK#.LOAD is
+                      displayed and executed. # indicates the key pressed. The
+                      directory will load the selected file if this option is used.
+                      See Directory for new features.
+
+
+
+
+
+
+ 
+                                                                            PAGE REA4
+                     
+                      D DIRECTORY
+                      A new feature that prompts for a device name. EXAMPLE: DSK1.
+                      The period MUST be included if the full device name is used.
+                      Or type in a path name EXAMPLE: WDS1.DIRECTORY. The quicker way
+                      is to just type a number or letter then enter. Thus DSK#. is
+                      used and the key pressed represents the # used. While the
+                      catalog is being scrolled on screen, ANY KEY will pause the
+                      display and reading of a disk, an arrow will appear next to the
+                      file read and the ARROW KEYS will move the arrow up or down.
+                      (FCNT/CTRL optional). To page forward or backward a screen at
+                      a time press left and right arrow keys. The arrow last pointing
+                      to will stay at the top or bottom of the screen display. This
+                      in much better than other paging methods like DM1000 or Funnel
+                      Web Disk review to see single lines.
+ 
+                      ONLY the SPACE BAR will pause the catalog until pressed again.
+
+                      2015 added new keys to Directory: 1 = Editor.                                                   A or a = Assembler file.
+                                                   G or g = GPL Assembler file.
+
+                      Use ENTER to select the filename so it will be placed into into
+                      a buffer, the cataloger will auto-load Dis/Fix 80 files into
+                      the EA3 menu, Programs will be EA5, and only Dis/Var 254 is
+                      considered to be XB programs. So to load XB programs use the
+                      SPACE BAR to buffer the filename, thus loading is automatic
+                      from there for XB programs. For DIS/VAR 80 or DIS/FIX 80 files
+                      to be edited or assembled use ENTER or SPACE BAR, then select
+                      the Edit or Assembler from the main menu. Loading is automatic
+                      from there.
+                      Directory will automatically assume you wish to catalog a
+                      sub-directory if a Directory was selected. To buffer anything
+                      else you must use the SPACE BAR, to select a filename to be
+                      placed into a buffer, then auto return to REA main menu. Now
+                      select the option to be used from this buffer.
+
+                      If you select D DIRECTORY again, the buffer will be used and the
+                      last device accessed will be used again. If you wish to clear
+                      the buffer just use FCTN BACK to the REA main menu.
+
+                      NOTE:
+                      SOURCE file name must be filled in as this is the default. But
+                      if you use DIRECTORY to flag a file it will be placed into
+                      S SET PATH NAMES for all uses.
+
+                      . R X B
+                      A previous feature that was optional since version 1000 but had
+                      no menu option on screen indicating it was a option. (Period) .
+                      will return to RXB menu screen.
+
+
+
+
+
+
+
+
+
+
+
+                                                                            PAGE REA5
+
+                      SYSTEM SUPPORT
+                      The modified version of the Editor/Assembler no longer supports
+                      the 99/4 computer. A 99/4A is required. All TI BASIC support
+                      routines (CALL INIT, CALL LINK, CALL LOAD,CALL PEEK, CALL PEEKV,
+                      CALL POKEV, and CALL CHARPAT) have been removed from the
+                      Editor/Assembler. If you have a program that must be run from
+                      TI BASIC and requires these routines, you must plug an
+                      Editor/Assembler module into the cartridge connector.                      There are some assembly language programs that access data
+                      internal to the Editor/Assembler cartridge. These programs
+                      will not run correctly due to the re-structuring of the data
+                      in the Editor/Assembler module. For these programs you must
+                      use your Editor/Assembler cartridge. On the other hand like
+                      FunnelWeb REA loads the support routines before EA3 or EA5
+                      loaders to engage, so C, FORTRAM, and FORTH will load from
+                      the EA5 prompt.
+
+                      NO 32K NEEDED TO WHAT?                      REA has been totally re-written so the user can now use some
+                      of the features of REA without that nasty *NO MEMORY EXPANSION*
+                      error turning up. The error routine only disallows the user
+                      from accessing those aspects of REA that absolutely needs 32K
+                      to work. The user may now use the REA EDITOR PRINT FILE menu,
+                      or use the x R X B file loader menu, or use D DIRECTORY menu.                      That means with RXB and REA the user can now print files, view
+                      files, load any BASIC or XB program and catalog from REA with
+                      or without a 32K memory.
+                      EASTER EGGS
+                      When on main menu of REA 2015 using keys 1 will still go to
+                      the Editor, 2 will still go to Assembler, 3 will still go to
+                      the Load and Run, and 5 will still go to RUN PROGRAM FILE.
+                      There are more to look for.

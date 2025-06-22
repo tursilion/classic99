@@ -1,0 +1,45 @@
+          IO (CASSETTE ACESS)                                  PAGE I12
+          -------------------------------------------------------------
+ 
+          CASSETTE INPUT/OUTPUT/VERIFY INSTUCTION
+ 
+          Format         CALL IO(type,length,vdp-address[,...])
+ 
+           The three different cassette I/O instructions use the same
+          format. The write and read instructions physically perform
+          Input/Output to the cassette. The verify instruction will
+          read a tape and compare it, byte by byte, against what is in
+          the specified VDP area. All will report an  I/O error if one
+          is detected. No prompts are present with these three formats.   
+          These three types control the cassette directly so no prompt 
+          will tell the user to turn on or off the cassette record/play 
+          buttons. The programmer must inform the user with own prompt.
+ 
+          Programs
+          (Presently I have no cassette to write programs with.)
+ 
+          AUDIO GATE
+          ----------
+          CRU bit 24 is the audio gate which allows data being read to
+          be heard. If the bit is set to 1, the data being read is
+          heard, and if the bit is set to 0, the data is not heard.
+          Setting the bit to a 0 or 1 is done with an IO instruction, or
+          a Assembly instruction.
+ 
+          MOTOR CONTROL
+          -------------
+          There are two CRU bits (22 and 23) used to control cassettes
+          1 and 2, respectively. When there is no Cassette IO being
+          done, both motors remain on. When Cassette IO is specified,
+          the DSR (Device Service Routine) will control the data being
+          read. If there are two motor units connected, the data will be
+          read simultaneously, or you may have the option of reading
+          data from one motor unit and playing the recorded voice from
+          another motor unit through the TV (Monitor) speaker. 
+          
+          *NOTE:
+          Compatibility with or without 32K or other devices is not a
+          concern as IO needs no RAM to work with. Therefore from just
+          a console all IO commands will work fine. If you only have a
+          Cassette and RXB you can quickly load/save/verify without
+          menus, or just make up your own.

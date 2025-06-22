@@ -1,0 +1,1185 @@
+************************************************************************
+*
+* Multicolor Routines for Extended Basic
+*
+* Version 1.0, 2023-02-14
+*
+* 2022-2023 by Stefan 'SteveB' Bauch
+*
+************************************************************************
+
+       DEF  MCON,MCOLOR,MCDONE,MCCLR,MCSYNC,VPORT,MCMODE 
+       DEF  PUTPIX,GETPIX,HLINE,VLINE,LINE,SQUARE
+       DEF  SHAPE,SHAPE2,BLIT,MCMAG,DUMMY,DUMMY4      
+
+       AORG >2600           Remove when preparing the library to compile
+
+* Misc memory addresses
+
+NUMREF EQU  >200C    Gets a numeric parameter
+NUMASG EQU  >2008    Makes a numeric assignment
+STRREF EQU  >2014    Gets String Parameter
+XMLLNK EQU  >2018    Links to the assembly language routines in the console
+CFI    EQU  >12B8    Convert Floating Point to Integer with XMLLNK
+CIF    EQU  >20      Convert Integer to Floating Point with XMLLNK
+FAC    EQU  >834A    Floating Point Accumulator
+
+* VDP addresses
+VDPRD  EQU  >8800    VDP read data
+VDPSTA EQU  >8802    VDP status
+VDPWD  EQU  >8C00    VDP write data
+VDPWA  EQU  >8C02    VDP set read/write address
+
+VSBW   EQU  >2020    Write single character to VRAM
+VMBW   EQU  >2024    Write multiple characters to VRAM
+VMBR   EQU  >202C    Reads multiple bytes from VDP RAM
+VWTR   EQU  >2030    Writes a single byte to a VDP Register
+
+* Tables and buffers
+RETADR BSS   8       Reserve 8 bytes to save registers R11, R13, R14, R15
+SHPTOP BSS   2       First free address to store shapes
+SPRATT EQU >0300     Sprite Attribute List
+SPRPAT EQU >0400     Sprite Pattern Table
+CHRPAT EQU >1000     Pattern Table in VRAM 
+
+
+* Program variables and parameter
+PCOLOR BSS 2
+PX     BSS 2
+PY     BSS 2
+PX2    BSS 2
+PY2    BSS 2
+PCOUNT BSS 2
+PMODE  BSS 2
+PSPMAG BSS 2
+VPY1   DATA >0000      Viewport, default all pixel 
+VPX1   DATA >0000
+VPY2   DATA >002F
+VPX2   DATA >003F
+
+ONE    DATA >0001
+ZERO   DATA >0000
+
+PDX    EQU >834A       Reuse FAC and ARG 16 Bytes of 16bit Memory
+PDY    EQU >834C       for Bresenham LINE Algorythm
+PER    EQU >834E
+PE2    EQU >8350
+PSX    EQU >8352
+PSY    EQU >8354
+PE3    EQU >835C
+
+
+
+       EVEN
+
+
+****************************************************************************
+*
+* CALL MCOLOR(COL[,MODE]) - Starts Multicolor Mode and initialize CPU RAM 
+*                           Buffer with color COL and clears the screen
+*
+****************************************************************************
+
+MCOLOR
+       * Read Parameter 1: Background Color 
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R0
+       ANDI R0,>000F       Makue sure <=15   (>000F)
+       MOV R0,@PCOLOR      Store first parameter PCOLOR
+
+       * Read Optional Parameter 2: Mode - 1 = Writethrough
+       MOV @ZERO,@PMODE
+
+       LI R0,>0100
+       CB @>8312,R0
+       JEQ MCOLR1
+       
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read second parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R0
+       ANDI R0,>0001       Makue sure 1 or0
+       MOV R0,@PMODE       Store second parameter PMODE
+
+MCOLR1 LI R0,>EB01         Set register for Multicolor mode
+       MOVB R0,@>83D4      Store copy of graphics mode
+       SWPB R0             MSB >01 VDP Reg, LSB >EB (1110 1011) mode
+       BLWP @VWTR          Write to VDP reg
+       LI R0,>0203         Reg 2: Screen Image Table at >0C00 (3 x >0400)
+       BLWP @VWTR				
+       LI R0,>0402         Reg 4: Pattern Table at >1000 (2 x >0800)
+       BLWP @VWTR				
+       * LI R0,>0506       Reg 5: Sprite Attribute Table >0300 (6 x >80)
+       * BLWP @VWTR		
+       * LI R0,>0601       Reg 6: Sprite Pattern Table >0800 (1 x >0800)
+       * BLWP @VWTR	
+		
+*      Initialize Screen Image Table
+       LI R3,>0C00         VRAM start Adresss for SIT >0C00 
+       LI R4,0             Counter 0..5 for row-block
+       LI R5,0             Char to be written
+
+LPLINE
+       LI R6,0                 R6 counter for buffer-loop
+       MOV R4,R5               Load start character of row
+       SWPB R5                 Char in High-Byte
+LPLIN2                         
+       MOVB R5,@COLBUF(R6)     Fill Buffer with one line 
+       INC R6
+       AI R5,>0600
+       CI R6,>1F
+       JLE LPLIN2
+
+FILL1               
+       MOV R3,R0               Fill 1st lines with Buffer 
+       LI R1,COLBUF       
+       LI R2,>20       
+       BLWP @VMBW
+       AI R3,>0020
+
+       MOV R3,R0               Fill 2nd lines with Buffer 
+       BLWP @VMBW
+       AI R3,>0020
+
+       MOV R3,R0               Fill 3rd lines with Buffer 
+       BLWP @VMBW
+       AI R3,>0020
+
+       MOV R3,R0               Fill 4th lines with Buffer 
+       BLWP @VMBW
+       AI R3,>0020
+
+       INC R4                  Repeat with next block of vour rows
+       CI R4,5
+       JLE LPLINE
+
+*      Initialize the CPU RAM Buffer
+       BL @MCCLR2
+       BL @MCSYN1   
+
+*      Set Viewport to full screen
+       MOV @ZERO,@VPY1   
+       MOV @ZERO,@VPX1   
+       LI R0,47
+       MOV R0,@VPY2
+       LI R0,63
+       MOV R0,@VPX2   
+
+       LI R0,SHPBUF            Initialize Shape-Top to start of buffer
+       MOV R0,@SHPTOP
+
+       SETO @MONWS+12          R6 of monitor workspace. If 0 then in g32 mode; if >ffff then in multicolor mode
+
+       B @>006A                Return to XB or compiled program
+
+****************************************************************************
+*
+* CALL MCDONE - STUB for returning to G32 Graphics Mode
+*
+****************************************************************************
+
+MCDONE 
+       CLR @MONWS+12           R6 of monitor workspace. Set to G32
+       B @>006A                Return to XB or compiled program
+
+****************************************************************************
+*
+* CALL MCCLR(COL) - initialize CPU RAM Buffer with color
+*
+****************************************************************************
+
+MCCLR
+       CLR  @FAC            Clear Floating Point Accumulator
+       LI   R1,1            set R1 for reading the first parameter
+       CLR  R0              set R2 to zero for single value (no array)
+       BLWP @NUMREF         read first parameter in FAC
+       BLWP @XMLLNK         Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R0
+       ANDI R0,>000F        Makue sure <=15   (>000F)
+       MOV R0,@PCOLOR       Store first parameter PCOLOR
+
+       BL @MCCLR2           Call the internal clear-routine
+       B @>006A             Return to XB or compiled program
+
+MCCLR2 MOV @PCOLOR,R4
+       SWPB R4
+       SOC @PCOLOR,R4       Color in MSB and LSB
+       LI R6,3072           3072 bytes to clear, two at a time (word)
+       LI R1,SCRN1
+       LI R2,16
+  
+MCCLR3 MOV R4,*R1+          Write two color bytes as one word 
+       MOV R4,*R1+          Unroll loop for speed
+       MOV R4,*R1+       
+       MOV R4,*R1+       
+       MOV R4,*R1+       
+       MOV R4,*R1+       
+       MOV R4,*R1+       
+       MOV R4,*R1+       
+       S R2,R6              Decrement 8 x 2 byte
+       JNE MCCLR3
+
+MCCLRY MOV @PMODE,R1        Write through active? 
+       JEQ MCCLRZ       
+
+       LI R1,1536  
+       LI R0,CHRPAT         VRAM Adress of CharPat table
+       SWPB R0
+       MOVB R0,@VDPWA       Write lo-byte of VRAM Address
+       SWPB R0
+       ORI  R0,>4000        Set R/W bits 14 and 15 to 01 
+       MOVB R0,@VDPWA       Write hi-byte of VRAM Address       
+       LI R8,VDPWD          Faster access to R0 than to @VDPWD
+       MOV @PCOLOR,R4 
+       SLA R4,12
+       AB @PCOLOR+1,R4
+
+MCCLR4 MOVB R4,*R8
+       MOVB R4,*R8
+       DECT R1
+       JNE MCCLR4
+
+MCCLRZ 
+       RT
+
+
+****************************************************************************
+*
+* CALL MCSYNC - Writes the CPU RAM Buffer to VRAM
+*
+****************************************************************************
+
+MCSYNC 
+       BL @MCSYN1          Execute the sync  
+       B @>006A            Return to XB or compiled program
+
+
+MCSYN1
+       LI R0,CHRPAT        VRAM Adress of CharPat table
+       LI R4,SCRN1         Address of even column pixel
+       LI R5,SCRN1+48      Address of odd column pixel
+       LI R6,6             Row Block Count until 0 
+       LI R7,64            Columns Count until 0
+       LI R8,VDPWD         Faster access to R0 than to @VDPWD
+
+       STWP R2             Get Workspace Address
+       AI R2,3             R1 starts in byte 2, LSB in Byte 3
+
+       * Setup VRAM Address 
+       SWPB R0
+       MOVB R0,@VDPWA          Write lo-byte of VRAM Address
+       SWPB R0
+       ORI  R0,>4000           Set R/W bits 14 and 15 to 01 
+       MOVB R0,@VDPWA          Write hi-byte of VRAM Address       
+
+LPSYNC MOV *R4+,R1             read even column bytes 
+       SLA R1,4                shift 4 bits for left nybbles 
+       SOC *R5+,R1             merge right nybbles out of R5
+       MOVB R1,*R8             Write "character hi" to VRAM
+       MOVB *R2,*R8            Write "character lo" to VRAM
+
+       MOV *R4+,R1             read even column bytes 
+       SLA R1,4                shift 4 bits for left nybbles 
+       SOC *R5+,R1             merge right nybbles out of R5
+       MOVB R1,*R8             Write "character hi" to VRAM
+       MOVB *R2,*R8            Write "character lo" to VRAM
+
+       MOV *R4+,R1             read even column bytes 
+       SLA R1,4                shift 4 bits for left nybbles 
+       SOC *R5+,R1             merge right nybbles out of R5
+       MOVB R1,*R8             Write "character hi" to VRAM
+       MOVB *R2,*R8            Write "character lo" to VRAM
+
+       MOV *R4+,R1             read even column bytes 
+       SLA R1,4                shift 4 bits for left nybbles 
+       SOC *R5+,R1             merge right nybbles out of R5
+       MOVB R1,*R8             Write "character hi" to VRAM
+       MOVB *R2,*R8            Write "character lo" to VRAM
+        
+       DEC R6  
+       JNE LPSYNC              column not done?
+       LI R6,6                 Row Count until 0 again 
+       AI R4,48                next column ... skip one (odd/even) 
+       AI R5,48
+       DECT R7
+       JNE LPSYNC              not all columns done?
+
+       RT
+       
+       
+****************************************************************************
+*
+* CALL VPORT(Row1,Column1,Row2,Column2) - Sets boundaries for drawing
+*
+****************************************************************************
+
+VPORT
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@VPY1      Store first parameter Viewport Y1
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@VPX1      Store second parameter Viewport X1
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,3           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@VPY2      Store first parameter Viewport Y2
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,4           set R1 for reading the fourth parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@VPX2      Store second parameter Viewport X2
+       
+       B @>006A            Return to XB or compiled program
+
+****************************************************************************
+*
+* CALL MCMODE(MODE) - Sets the mode 0=Buffer; 1=Writethrough
+*
+****************************************************************************
+
+MCMODE
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R0
+       ANDI R0,>0001       Makue sure 1 or0
+       MOV R0,@PMODE       Store second parameter PMODE
+
+       B @>006A            Return to XB or compiled program
+
+    
+****************************************************************************
+*
+* CALL PUTPIX(Row,Column,Color) - Sets Pixel in Buffer
+*
+* > changing Registers 1 through 6!
+*
+****************************************************************************
+
+PUTPIX
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PY        Store first parameter PY
+      
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read  parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PX        Store second parameter PX
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,3           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R0
+       ANDI R0,>000F       Makue sure <=15   (>000F)
+       MOV R0,@PCOLOR      Store parameter PCOLOR
+
+       BL @PUTPX2
+       B @>006A            Return to XB or compiled program  
+
+
+PUTPX2 
+       MOV @PY,R3           R3 - Row Y
+       MOV @PX,R4           R4 - Column X
+PUTPX3
+       C R4,@VPX1           Check not below ViewPortX1
+       JLT PUTPX0
+       C R3,@VPY1           Check not below ViewPortY1
+       JLT PUTPX0
+       C R4,@VPX2           Check not above ViewPortX2
+       JGT PUTPX0
+       C R3,@VPY2           Check not above ViewPortY2
+       JGT PUTPX0
+
+       LI R6,48             Row-Multiplier   
+       MPY R6,R4            Columns x RowMultiplier -> Start of Column in R5 !
+       A R3,R5              Add row 
+       MOVB @PCOLOR+1,@SCRN1(R5)   Put Color-Byte MSB in calculated position    
+
+       MOV @PMODE,R5
+       JEQ PUTPX0           Done when no write-through
+
+PUTPXZ MOV @PX,R4
+       ANDI R4,>0001
+       JNE PUTPX4           skip for odd column
+       MOV @PY,R3           R3 - Row Y
+       MOV @PX,R4           R4 - Column X
+       INC R4               move one right 
+       LI R6,48             Row-Multiplier   
+       MPY R6,R4            Columns x RowMultiplier -> Start of Column in R5 !
+       A R3,R5              Add row 
+       MOVB @SCRN1(R5),R2   Get the color of the neighbor in the lower nybble of the hi byte
+       ANDI R2,>0F00
+       MOV @PCOLOR,R1
+       SLA R1,12            Shift to hi byte upper nybble
+       A R1,R2
+       JMP PUTPX5
+
+PUTPX4 
+       MOV @PY,R3           R3 - Row Y
+       MOV @PX,R4           R4 - Column X
+       DEC R4               move one left 
+       LI R6,48             Row-Multiplier   
+       MPY R6,R4            Columns x RowMultiplier -> Start of Column in R5 !
+       A R3,R5              Add row 
+       MOVB @SCRN1(R5),R2   Get the color of the neighbor in the hi byte of R2
+       ANDI R2,>FF00
+       SLA R2,4             Shift to hi byte upper nybble
+       MOV @PCOLOR,R1
+       SLA R1,8             Shift to hi byte lower nybble
+       A R1,R2
+
+PUTPX5    
+       MOV @PY,R3           R3 - Row Y
+       MOV @PX,R4           R4 - Column X
+       SRA R4,1             Divide columns by 2 to get the char-column rounded      
+       LI R1,48
+       MPY R1,R4            Byte offset in R5
+       A R3,R5              plus row 0..47
+       AI R5,CHRPAT         VRAM offset for character image table
+       SWPB R5
+       MOVB R5,@VDPWA       Write lo-byte of VRAM Address
+       SWPB R5
+       ORI  R5,>4000        Set R/W bits 14 and 15 to 01 
+       MOVB R5,@VDPWA       Write hi-byte of VRAM Address       
+       MOVB R2,@VDPWD       Write two-pixel Byte to VRAM
+
+PUTPX0                      * Jump destination for x,y out of viewport
+       RT       
+
+
+****************************************************************************
+*
+* CALL GETPIX(Row,Column,Color) - Query Pixel in Buffer
+*
+****************************************************************************
+
+GETPIX
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PY        Store first parameter PY
+      
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read  parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PX        Store second parameter PX
+
+       BL @GETPX2
+       B @>006A            Return to XB or compiled program  
+
+
+GETPX2 
+       MOV @PY,R3           R3 - Row Y
+       MOV @PX,R4           R4 - Column X
+
+GETPX3 LI R6,48             Row-Multiplier   
+       MPY R6,R4            Columns x RowMultiplier -> Start of Column in R5 !
+       A R3,R5              Add row 
+       MOVB @SCRN1(R5),@PCOLOR+1  
+       MOV @PCOLOR,@FAC 
+       BLWP @XMLLNK        Converts FAC from Word to RADIX-100 
+       DATA CIF
+       CLR R0
+       LI R1,3             Update 3rd Variable in List
+       BLWP @NUMASG
+      
+GETPX0                      * Jump destination for x,y out of viewport
+       RT  
+
+
+
+    
+****************************************************************************
+*
+* CALL HLINE(Row,Column,Color,Count) - Draws horizontal line in Buffer
+*
+****************************************************************************
+
+HLINE
+       BL @PLINE
+       BL @HLINE2 
+       B @>006A            Return to XB or compiled program  
+
+
+HLINE2 MOV R11,@RETADR
+
+HLINE3 BL @PUTPX2
+       INC @PX
+       DEC R7
+       JNE HLINE3
+
+       MOV @RETADR,R11
+       RT  
+
+****************************************************************************
+*
+* CALL VLINE(Row,Column,Color,Count) - Draws vertical line in Buffer
+*
+****************************************************************************
+
+VLINE
+       BL @PLINE
+       BL @VLINE2  
+       B @>006A            Return to XB or compiled program  
+
+VLINE2 MOV R11,@RETADR
+
+VLINE3 BL @PUTPX2
+       INC @PY
+       DEC R7
+       JNE VLINE3
+
+       MOV @RETADR,R11
+       RT
+
+****************************************************************************
+*
+* CALL LINE(Y1,X1,Y2,X2,Color) - Draws arbitrary line in Buffer 
+*                                using Bresenham's algorithm
+*
+****************************************************************************
+
+LINE
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PY        Store first parameter Row of point 1
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PX        Store second parameter Column of point 1
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,3           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PY2       Store first parameter Row of point 2
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,4           set R1 for reading the fourth parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PX2        Store second parameter Column of point 2
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,5           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R5
+       ANDI R5,>000F       Makue sure <=15   (>000F)
+       MOV R5,@PCOLOR      Store fifth parameter PCOLOR 
+
+LINE2
+       BL @LINE3
+       B @>006A            Return to XB or compiled program  
+
+
+LINE3                    
+       MOV R11,@RETADR
+       MOV @PX2,R6         DX = ABS(X2 - X1) 
+       S @PX,R6
+       ABS R6
+       MOV R6,@PDX         
+       MOV @ONE,@PSX       SX = 1
+       C @PX,@PX2          IF X1 < X2 THEN LINE3A
+       JLT LINE3A          
+       DECT @PSX           SX = SX-2   
+     
+LINE3A
+       MOV @PY2,R6         DY = ABS(Y2 - Y1)   
+       S @PY,R6
+       ABS R6
+       MOV R6,@PDY       
+       MOV @ONE,@PSY       SY = 1
+       C @PY,@PY2          IF Y1 < y2 THEN LINE3B
+       JLT LINE3B
+       DECT @PSY           SY = SY-2
+
+LINE3B                     
+       MOV @PDY,R6         ER = -DY
+       NEG R6              
+       MOV R6,@PER      
+       C @PDY,@PDX         IF DY > DX THEN LINE3C
+       JGT LINE3C
+       MOV @PDX,@PER       ER = DX
+
+LINE3C
+       MOV @PER,R6         ER = INT(ER / 2) 
+       SRA R6,1            
+       MOV R6,@PER
+
+
+LINE4            
+       MOV @PY,R3          CALL PUTPIX(Y1,X1,C)
+       MOV @PX,R4
+       BL @PUTPX3          ** Draw Pixel at row R3 and Col R4
+
+       C @PX,@PX2          IF X1 <> X2 THEN LINE4A
+       JNE LINE4A          ** No? Continue drawing
+
+       C @PY,@PY2          IF Y1 <> Y2 THEN LINE4A
+       JNE LINE4A          ** No? Continue drawing
+      
+       MOV  @RETADR,R11    SUBEXIT
+       RT           
+
+LINE4A
+       MOV @PER,@PE3	   E3 = ER - DY  // Part 1 - save PER to PE3
+       MOV @PER,R6         E2 = ER + DX  // R6 as PE2
+       A @PDX,R6           
+       JLT LINE4B          IF E2 < 0 THEN LINE4B
+       S @PDY,@PER         ER = ER - DY 
+       A @PSX,@PX          X1 = X1 + SX
+
+LINE4B 
+       MOV @PE3,R6         E3 = ER - DY  // Part 2 - Subtract DY
+       S @PDY,R6           
+       JGT LINE4           IF E3 >= 0 THEN LINE4
+       JEQ LINE4
+       A @PDX,@PER         ER = ER + DX 
+       A @PSY,@PY          Y1 = Y1 + SY
+       JMP LINE4           GOTO LINE4
+
+
+
+****************************************************************************
+*
+* CALL SQUARE(Y1,X1,Y2,X2,Color) - Draws a solid sqare
+*
+****************************************************************************
+
+SQUARE
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PY        Store first parameter Row of point 1
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PX        Store second parameter Column of point 1
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,3           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PY2       Store first parameter Row of point 2
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,4           set R1 for reading the fourth parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,@PX2        Store second parameter Column of point 2
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,5           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R5
+       ANDI R5,>000F       Makue sure <=15   (>000F)
+       MOV R5,@PCOLOR      Store fifth parameter PCOLOR 
+
+       BL @SQUAR1
+       B @>006A            Return to XB or compiled program    
+
+SQUAR1
+       MOV R11,@RETADR 
+       C @PX,@PX2           Check Parameters 
+       JGT SQUAR0
+       C @PY,@PY2
+       JGT SQUAR0
+
+       MOV @PX,R0          Current column to paint
+
+SQUAR2 MOV @PY,R9
+
+SQUAR3 MOV R9,R3  
+       MOV R0,R4
+       BL @PUTPX3          Draw Pixel at row R3 and Col R4
+       INC R9
+       C R9,@PY2
+       JLE SQUAR3
+
+       INC R0
+       C R0,@PX2
+       JLE SQUAR2
+
+SQUAR0 
+       MOV @RETADR,R11
+       RT
+       
+
+****************************************************************************
+*
+* CALL CALL SHAPE(ID,ROWS,COLS,PATTERN$) - Defines a Pattern for a Shape 
+*
+****************************************************************************
+
+SHAPE
+       MOV @SHPTOP,R9
+       * Skip 1st Parameter, only returned at the end
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOVB @FAC+1,*R9+    Store rows in Shape
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,3           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOVB @FAC+1,*R9+    Store columnss in Shape
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,4           set R1 for reading the pattern string in the 4th parameter
+       LI   R0,>8000       Set buffer length
+       MOV  R0,@COLBUF
+       CLR  R0             set R2 to zero for single value (no array)
+       LI   R2,COLBUF      Setup string buffer     
+       BLWP @STRREF        read string parameter in buffer
+
+       MOVB @COLBUF,R1      Store actual lenngth of string read in R1
+       ANDI R1,>FF00
+       SWPB R1
+       LI R2,1 
+
+       BL @SHAPE1
+       B @>006A            Return to XB or compiled program  
+
+SHAPE1 MOVB @COLBUF(R2),R3 Covert buffer from ASCII to HEX-Digits
+       ANDI R3,>FF00
+       SWPB R3
+       LI R8,64 
+       S R8,R3
+       JGT SHAPE3
+       LI R8,7
+       A R8,R3
+SHAPE3 LI R8,9
+       A R8,R3 
+       SWPB R3
+       MOVB R3,@COLBUF(R2)
+       INC R2
+       DEC R1
+       JNE SHAPE1 
+
+       MOVB @COLBUF,R1      Store actual lenngth of string read in R1
+       ANDI R1,>FF00
+       SWPB R1
+       LI R2,1
+
+SHAPE4 MOVB @COLBUF(R2),R3
+       ANDI R3,>0F00
+       SLA R3,4
+       AB @COLBUF+1(R2),R3
+       MOVB R3,*R9+         Store compressed hex in Shape
+       INCT R2
+       DECT R1
+       JNE SHAPE4        
+
+       LI R0,>0100          Has this been called with one parameter? 
+       CB @>8312,R0         Then it was SHAPE2 ... no returning of the base-address  
+       JEQ SHAPE0
+
+
+SHAPE6 MOV @SHPTOP,@FAC 
+       BLWP @XMLLNK        Converts FAC from Word to RADIX-100 
+       DATA CIF
+       CLR R0
+       LI R1,1             Update 3rd Variable in List
+       BLWP @NUMASG
+
+SHAPE0
+       MOV R9,@SHPTOP      Store new TOP for next call.
+       RT
+
+
+
+****************************************************************************
+*
+* CALL CALL SHAPE2(PATTERN$) - Appends the Pattern to the last Shape if the
+*                              string was not long enough.
+*
+****************************************************************************
+
+SHAPE2
+       MOV @SHPTOP,R9
+
+       LI   R1,1           set R1 for reading the pattern string in the only parameter
+       LI   R0,>8000       Set buffer length
+       MOV  R0,@COLBUF
+       CLR  R0             set R2 to zero for single value (no array)
+       LI   R2,COLBUF      Setup string buffer     
+       BLWP @STRREF        read string parameter in buffer
+
+       MOVB @COLBUF,R1     Store actual lenngth of string read in R1
+       ANDI R1,>FF00
+       SWPB R1
+       LI R2,1 
+
+       JMP SHAPE1
+
+
+****************************************************************************
+*
+* CALL BLIT(ID,ROW,COL) - Draws a shape to the buffer
+*
+****************************************************************************
+
+BLIT   
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R9         Store first parameter R9
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R3         
+       MOV R3,@PY
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,3           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R4
+       MOV R4,@PX
+
+BLITA
+       BL @BLIT1
+       B @>006A            Return to XB or compiled program  
+
+BLIT1  MOV R11,@RETADR
+       CLR R5
+       MOVB *R9+,R5        Get nr of rows
+       SWPB R5
+       MOV R5,@PDY         
+       CLR R5
+       MOVB *R9+,R5        Get nr of columns
+       SWPB R5
+       MOV R5,@PDX         
+       
+       LI R7,0             Current Row
+       LI R8,0             Current Column 
+
+BLIT2  MOVB *R9+,@PE2       Get next Byte
+       MOV @PE2,R0
+       ANDI R0,>F000
+       JEQ BLIT3            Skip if color = 0 = background = transparent
+       SRL R0,4
+       MOVB R0,@PCOLOR+1
+       MOV @PY,R3
+       A R7,R3
+       MOV @PX,R4
+       A R8,R4
+       BL @PUTPX3
+
+BLIT3  INC R7
+       MOV @PE2,R0
+       ANDI R0,>0F00
+       JEQ BLIT4            Skip if color = 0 = background = transparent 
+       MOVB R0,@PCOLOR+1
+       MOV @PY,R3
+       A R7,R3
+       MOV @PX,R4
+       A R8,R4
+       BL @PUTPX3
+BLIT4  INC R7
+       C R7,@PDY 
+       JLT BLIT2
+       INC R8
+       LI R7,0 
+       C R8,@PDX
+       JLT BLIT2 
+
+
+BLIT0 
+       MOV @RETADR,R11
+       RT
+       
+
+****************************************************************************
+*
+* CALL MCMAG(MAG) - Magnification for sprites
+*
+****************************************************************************
+
+MCMAG
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R2
+       DEC R2               XB 1-4, ALC 0-3
+       ANDI R2,>0003        Make sure <=3   
+       MOV R2,@PSPMAG      
+
+       MOV @>83D4,R0
+       ANDI R0,>FC00
+       INC R0  
+       SWPB R0 
+       A R2,R0
+       BLWP @VWTR          Write to VDP reg
+       SWPB R0 
+       MOVB R0,@>83D4      Store copy of graphics mode
+    
+       B @>006A            Return to XB or compiled program  
+
+
+* Helper Routine for HLINE / VLINE : Read 4 Parameters
+
+PLINE
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,1           set R1 for reading the first parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read first parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R3         Store first parameter PY and R3 for PUTPX2
+       MOV R3,@PY      
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,2           set R1 for reading the second parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R4         Store second parameter PX and R4 for PUTPX2
+       MOV R4,@PX
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,3           set R1 for reading the third parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R5
+       ANDI R5,>000F       Makue sure <=15   (>000F)
+       MOV R5,@PCOLOR      Store first parameter PCOLOR and R5
+      
+
+       CLR  @FAC           Clear Floating Point Accumulator
+       LI   R1,4           set R1 for reading the fourth parameter
+       CLR  R0             set R2 to zero for single value (no array)
+       BLWP @NUMREF        read parameter in FAC
+       BLWP @XMLLNK        Converts FAC from RADIX-100 to Word
+       DATA CFI
+       MOV @FAC,R7         Store first parameter PCOUNT and R7
+       MOV R7,@PCOUNT
+       RT
+
+
+DUMMY4 
+       MOV R11,@RETADR
+       BL @PLINE
+       MOV @RETADR,R11
+
+DUMMY
+       B @>006A            Return to XB or compiled program  
+
+****************************************************************************
+*
+* Harry Wilhelms Monitor to keep the new VRAM layout alive 
+*      see: https://forums.atariage.com/topic/228454-multicolor-mode-the-mode-everybody-wants/?do=findComment&comment=5186227 
+*
+****************************************************************************
+
+MONWS  BSS 32
+BUFFER BSS 16
+BOTSTK DATA >1600
+HX0958 DATA >0958
+HX8080 DATA >8080
+CONTXT DATA >A3C3,>AFCF,>AECE    CcOoNn with offset
+
+MONITR LWPI MONWS    
+*this section looks to see if there has been a garbage collection
+*if there has been, then we need to reset from >0958 to >1600 (BOTSTK)
+       C @>836E,@HX0958    a quick check to see if garbage collection happened - no slow VDP
+       JNE MONITG    if NE then a garbage collection has not just happened
+*garbage collection has happened or is happening, need to check further to see if it is finished
+       LI R0,>0388
+       LI R1,MONWS+6    
+       LI R2,2
+       BLWP @VMBR    read two bytes from V0388 into R3
+       C R3,@HX0958
+       JNE MONITG    not done with garbage collection
+*done with garbage collection, so reset pointers
+       MOV @BOTSTK,R3     >1600 to R3
+       BLWP @VMBW    write 2 bytes from R3 to V0388
+       MOV R3,@>8324
+       MOV R3,@>836E
+*at this point have reset pointers so the bottom of the stack is where we want it
+ 
+
+*******************************************************************
+MONITG CB @>8344,R5        >8344 is the run flag for XB.  0 if not running, >ffff if running
+       JNE RCHANG        if NE then there has been a change in RUN flag
+                
+MONBK  LWPI >83E0     go back
+       B *R11
+    
+*run state has changed if program gets here
+RCHANG MOVB @>8344,R5    store the new run state
+       JEQ MONBK        IF =0 then prog is not running, nothing to do so go back  
+ 
+*program just started this cycle, need to see if it is from RUN or from CON
+*To do this we copy 16 bytes from the crunch buffer in VDP and look for CON or con
+NEWRUN LI R0,>08C0        start of crunch buffer
+       LI R1,BUFFER
+       LI R2,16
+       BLWP @VMBR        read 16 bytes from the crunch buffer, will look for CON
+*get rid of leading spaces if any    
+MONI2A CB *R1,@HX8080        a space?
+       JNE MONI2B
+       INC R1
+       JMP MONI2A
+*leading spaces are all gone when we get here    
+MONI2B LI R2,CONTXT        "CcOoNn" with offset
+MONI2C CB *R1,*R2+
+       JEQ MONI2D
+       CB *R1,*R2
+       JNE NOTCON        not con
+MONI2D INC R1
+       INC R2
+       CI R2,CONTXT+6
+       JNE MONI2C        not a match for con
+*CON was found in edit/recall buffer    
+BP1    MOV R6,R6        did program break in multicolor or G32 mode
+	JEQ MONBK            if eq then program broke in graphics mode, just go back
+	LI R3,MCREG        broke in multicolor mode, so set multicolor registers
+	BL @REGSET
+	JMP MONBK
+*A new RUN below (i.e. not a CON)    
+NOTCON CLR R6            program always starts in the graphics mode so clear multicolor flag
+       CLR @CHLFLG        Flag that tells whether multicolor screen has been initialized
+       JMP MONBK
+       
+CHLFLG        DATA 0            flag for multicolor screen initialized.  0 if not, -1 if it has been       
+***************************************************************************************    
+
+************************************************************************
+*CALL LINK("MCON") sets up interrupt routine for the multicolor mode   *
+************************************************************************
+*MCON uses GPLWS
+MCON   CLR @MONWS+10        
+       MOVB @>8344,@MONWS+10    Move the run state byte into MSB R5 of monitor workspace
+       CLR @MONWS+12            flag for graphics mode =0
+       LI R0,MONITR
+       MOV R0,@>83C4            start up MONITR  
+    
+BK2XB  LWPI >83E0            return to XB
+       B @>006A       
+
+******************************************    
+REGSET MOVB @3(R3),@>83D4
+REGSE  MOV *R3+,R0
+       JLT REGSE1
+       BLWP @VWTR
+       JMP REGSE
+REGSE1 B *R11
+    
+MCREG  DATA >0000,>01E8,>0203,>0402,>FFFF,>07F4
+G32REG DATA >0000,>01E0,>0200,>0400,>0717,>FFFF
+
+****************************************************************************
+*
+* DATA section ... use remaining memory
+*
+****************************************************************************
+
+
+COLBUF BSS 130       Buffer for Strings and other calculations
+SCRN1  BSS 3072      Screen 1 Buffer : One Byte per Pixel, 48 rows x 64 Columns 
+SHPBUF BSS 512       Shape Storage 
+
+
+       END
+
+
+
+
+
+

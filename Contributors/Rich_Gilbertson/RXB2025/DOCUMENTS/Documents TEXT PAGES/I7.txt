@@ -1,0 +1,38 @@
+
+          IO (SOUND LIST)                                      PAGE  I7
+          -------------------------------------------------------------
+ 
+          Programs
+ 
+          Line 100 clears screen.       | >100 CALL CLEAR ! Chimes
+          Line 110 to ...               | >110 DATA 5,159,191,223,255,2
+                                        |  27,1,9,142,1,164,2,197,1,144
+                                        |  ,182,211,6,3,145,183,212,5,3
+                                        |  ,146,184,213,4
+                                        | >120 DATA 5,167,4,147,176,214
+                                        |  ,5,3,148,177,215,6,3,149,178
+                                        |  ,216,7
+                                        | >130 DATA 5,202,2,150,179,208
+                                        |  ,6,3,151,180,209,5,3,152,181
+                                        |  ,210,4
+                                        | >140 DATA 5,133,3,144,182,211
+                                        |  ,5,3,145,183,212,6,3,146,184
+                                        |  ,213,7
+                                        | >150 DATA 5,164,2,147,176,214
+                                        |  ,6,3,148,177,215,5,3,149,178
+                                        |  ,216,4
+          Line 160 ends sound list.     | >160 DATA 5,197,1,150,179,208
+                                        |  ,5,3,151,180,209,6,3,152,181
+                                        |  ,210,7,3,159,191,223,0
+          Line 170 reads list into B and| >170 A=A+1 :: READ B :: CALL
+          A is counter                  |   POKEV(A,B)
+          Line 180 checks end of list?  | >180 IF B=0 THEN 190 ELSE 170
+          Line 190 shows how to access. | >190 PRINT "TYPE:": :"CALL IO(
+                                        |  1,8192)"
+                                        | >200 CALL IO(1,8192)
+                                        | 
+          
+          Line 310 continues AD loop.   | >310 NEXT AD
+          Line 320 executes sound list. | >320 CALL IO(1,4096)
+          Line 330 prints out suggestion| >330 PRINT "CRASH": :"TYPE:":
+          on how to test IO.            |  "CALL IO(1,4096)"

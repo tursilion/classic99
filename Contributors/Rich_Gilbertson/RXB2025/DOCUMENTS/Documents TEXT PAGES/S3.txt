@@ -1,0 +1,38 @@
+                                                                PAGE S3
+                              SAMS MAPPER
+     ******************************************************************
+     The SAMS card has tons of documents as to its function and use.
+     So to re-explain these docs would be pointless. Read the docs or
+     find some, sorry but the RXB package is already huge.
+     In PASS mode the mapper register setup is equivalent to:
+
+     mapper address  mapper  page num            address range
+     --------------  ------  --------            -------------
+      HEX     Dec            HEX  Dec            memory area
+      ---     ---            ---  ---            -----------
+     >4004 = 16388 is MR02 = >02 = 02 points to >2000 - >2FFF range
+     >4006 = 16390 is MR03 = >03 = 03 points to >3000 - >3FFF range
+     >4014 = 16404 is MR10 = >0A = 10 points to >A000 - >AFFF range
+     >4016 = 16406 is MR11 = >0B = 11 points to >B000 - >BFFF range
+     >4018 = 16408 is MR12 = >0C = 12 points to >C000 - >CFFF range
+     >401A = 16410 is MR13 = >0D = 13 points to >D000 - >DFFF range
+     >401C = 16412 is MR14 = >0E = 14 points to >E000 - >EFFF range
+     >401E = 16414 is MR15 = >0F = 15 points to >F000 - >FFFF range
+     (MR=Mapper Register)
+
+     In MAP mode the mapper register setup is equivalent to: EXAMPLE1
+
+     mapper address  mapper  page num            address range
+     --------------  ------  --------            -------------
+      HEX     Dec            HEX  Dec            memory area
+      ---     ---            ---  ---            -----------
+     >4004 = 16388 is MR02 = >10 = 16 points to >2000 - >2FFF range
+     >4006 = 16390 is MR03 = >11 = 17 points to >3000 - >3FFF range
+     >4014 = 16404 is MR10 = >12 = 18 points to >A000 - >AFFF range
+     >4016 = 16406 is MR11 = >13 = 19 points to >B000 - >BFFF range
+     >4018 = 16408 is MR12 = >14 = 20 points to >C000 - >CFFF range
+     >401A = 16410 is MR13 = >15 = 21 points to >D000 - >DFFF range
+     >401C = 16412 is MR14 = >16 = 22 points to >E000 - >EFFF range
+     >401E = 16414 is MR15 = >17 = 23 points to >F000 - >FFFF range
+
+     (MR=Mapper Register)

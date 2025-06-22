@@ -1,0 +1,39 @@
+          PLOAD          subprogram                            PAGE  P5
+          -------------------------------------------------------------
+ 
+          Format         CALL PLOAD(memory-boundry,"access-name")
+ 
+                         CALL PLOAD(contant,string-variable)
+ 
+          Description
+ 
+          The PLOAD subprogram loads ONLY program image files created
+          by PSAVE. PLOAD is the opposite of PSAVE. PLOAD is a faster
+          version of CALL LOAD. PLOAD has the speed of a hidden loader
+          and is much easier to use. PLOAD loads any 4K boundry in 32K.
+           Memory boundries are 2, 3, A, B, C, D, E, F (upper case).
+          i.e. 2 is >2000 or 3 is >3000 or A is >A000 up to F is >F000
+          Removing the zeros made more sense then adding 3 zeros.
+           Unlike CALL LOAD the PLOAD and PSAVE subprogram will work
+          without CALL INIT being used first. Remember to turn on the
+          interrupts if the program has them. Or the program support
+          will not work. See ISROFF and ISRON.
+          NOTE: 4K of VDP memory MUST be free for PLOAD to function or
+                a memory full error will result. Always place the
+                PLOAD command at the top of the RXB program.
+ 
+          Programs
+ 
+          This line loads a previously | >100 CALL PLOAD(2,"DSK2.MOUSE
+          saved programs image files.  | ",3,"DSK2.MOUSE2")
+          This line turns on the mouse | >110 CALL LINK("MSON")
+          (program would continue here)|
+                                       |
+          This line load a previously  | >100 CALL PLOAD(B,"DSK1.DUMP"
+          saved program image file.    | )
+          This line turns on interrupt | >110 CALL ISRON(16384)
+          within program.              |
+          This line links to support   | >120 CALL LINK("DUMPIT") ! 
+          address DUMPIT routine.      | link to Program Support
+                                       |
+

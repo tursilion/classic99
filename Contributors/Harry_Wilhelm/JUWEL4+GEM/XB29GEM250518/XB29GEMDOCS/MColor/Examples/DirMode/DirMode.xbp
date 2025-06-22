@@ -1,0 +1,54 @@
+[Files]
+XBtxt=S:\classic99\PRJ\MColor\Examples\DirMode\DirMode.xb
+XB=S:\classic99\PRJ\MColor\Examples\DirMode\DirMode
+SXB=S:\classic99\PRJ\MColor\Examples\DirMode\DirMode.sxb
+Merge=S:\classic99\PRJ\MColor\Examples\DirMode\DirMode-M
+VXRef=S:\classic99\PRJ\MColor\Examples\DirMode\DirMode.vxr
+CharSet=S:\classic99\PRJ\MColor\Examples\DirMode\DirMode.cset
+
+[Build]
+Token=1
+Merge=1
+
+[Param]
+LineStart=100
+LineInc=10
+LineGOSUB=20000
+LineSUB=30000
+MemBase=auto
+TiBas=0
+Verbose=3
+Debug=1
+
+[Lib]
+Package=LIB\MultiColor.xbpkg
+User=
+Standard=1
+LCLink=0
+
+[PostProc]
+Command=
+Active=0
+
+[IntLoad]
+Line0=OLD DSK4.DirMode :RET.
+Auto=0
+
+[IntRun]
+Line0=RUN :S+:OEM7.:S-DSK4.DirMode:S+:OEM7.:S- :RET.
+Auto=0
+
+[IntCompile]
+Line0=RUN :S+:OEM7.:S-DSK1.COMPILER:S+:OEM7.:S- :RET.
+Line1=:WAIT4.:F3.
+Line2=DSK4.DirMode-M :RET.
+Line3=:RET.
+Line4=Y:RET.
+Line5=N:RET.
+Line6=Y:RET.
+Line7=:DIALOG. Compile successful?
+Line8=:ASSEMBLER. S:\classic99\PRJ\MColor\Examples\DirMode\DirMode.txt
+Line9=:RET.:WAIT2.
+Line10=N:RET.:WAIT1.:RET.:WAIT9.
+Line11=:RET.:WAIT1.:RET.
+Auto=0

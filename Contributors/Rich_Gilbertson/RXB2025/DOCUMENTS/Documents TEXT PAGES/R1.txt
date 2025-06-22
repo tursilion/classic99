@@ -1,0 +1,34 @@
+          RANDOMIZE     subprogram                             PAGE  R1
+          -------------------------------------------------------------
+ 
+          Format         RANDOMIZE
+
+                         RANDOMIZE SEED
+
+
+          Description
+
+           The RANDOMIZE command can be found on XB manual page 151 to
+          help explain it's use. RXB unlike any other XB produced has 
+          a feature that makes RND and RANDOMZE different and better.
+          RANDOMIZE SEED in RXB is same as TI BASIC randomize seed.
+          Thus in RXB do not expect the same random numbers as you 
+          would get with any other XB made. RXB is way more random
+          due to this change different then any other Extended Basic.
+
+          Program
+      
+          Will put hex >3567 into seed  | >100 RANDOMIZE
+          RND example to prove speed    | >110 DIM N(100)
+          Counter in a FOR loop         | >120 FOR X=1 TO 100
+          Load Array with random numbers| >130 N(X)=RND
+          Show that number              | >140 PRINT N(X)
+          Repeat loop till done         | >150 NEXT X
+           
+          Run this above example in TI BASIC, XB and RXB 2020 to
+          show game type results of program results with new RND
+          
+
+          Options
+          Random Music programs will sound very very fast due to
+          the speed increase in RXB RND is much faster.

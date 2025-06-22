@@ -1,0 +1,45 @@
+          CAT            subprogram                            PAGE  C1
+          -------------------------------------------------------------
+ 
+          Format         CALL CAT("#"[,...])
+ 
+                         CALL CAT("DSK#."[,...])
+ 
+                         CALL CAT("DSK.DISKNAME."[,...])
+ 
+                         CALL CAT(string-variable[,...])
+ 
+                         CALL CAT(number[,...])
+ 
+                         CALL CAT(numeric-variable[,...])
+ 
+                         CALL CAT(ASC II value[,...])
+ 
+          Description
+ 
+           The CAT command catalogs the disk drive indicated by the
+          # which can be 1 to z or by path name. The path name may be
+          up to 30 characters long. A numeric variable or number can
+          be used for drives 1 to 9 or if higher then it is assumed
+          that the numeric-variable or number is a ASCII value between
+          30 to 255. This allows a catalog of a RAM-DISK designated by
+          letters or control characters. Also CAT can catalog up to 32 
+          drives in one command. The SPACE BAR will pause the catalog 
+          routine, then when the pressed again continues the catalog 
+          listing. ANY OTHER KEY WILL ABORT THE CATALOG.
+ 
+          Programs
+ 
+          This line has pathname in A$  | >100 A$="DSK.ADISKNAME"
+          This line uses A$ for the name| >110 CALL CAT(A$)
+           of the device to catalog.    |
+          This line will catalog drive 4| >100 CALL CAT(N)
+           if N=4                       |
+          This line will catalog drive C| >100 CALL CAT(X)
+           if X=67  (ASCII 67 is C)     |
+          This line is path name.       | >10 V$="WDS1.VOLUME.SUB-DIR."
+          This line will catalog device | >20 CALL CAT(V$)
+           WDS1 for directory VOLUME and|
+           catalog SUB-DIR              |
+          This line catalogs drives 1   | >100 CALL CAT(1,2,3,"WDS1.")
+           then 2 then 3 then WDS1l     |

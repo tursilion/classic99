@@ -1,0 +1,24 @@
+          CLEARPRINT     subprogram                            PAGE  C4
+          -------------------------------------------------------------
+ 
+          Format         CALL CLEARPRINT
+ 
+          Description
+ 
+           The CLEARPRINT command is just like the CLEAR command, but
+          it clears columns 3 to 28 that is the PRINT or DISPLAY area
+          leaving columns 1 and 2 along with columns 31 and 32 as are.
+          Use CLEARPRINT to take the place of CALL HCHAR loops.
+          CLEARPRINT runs from ROM.
+ 
+          Programs
+
+          Shows what CLEARPRINT does    | CALL CLEARPRINT
+                                        |
+          Set loop chars 30 to 159      | >100 FOR X=30 to 159
+          Show characters on screen.    | >110 CALL HCHAR(1,1,X,768)
+          Clear columns 3 to 28         | >120 CALL CLEARPRINT
+          Delay loop                    | >130 FOR Y=1 TO 200::NEXT Y
+          Next character                | >140 NEXT X 
+          Loop forever                  | >150 GOTO 100
+                                        | 

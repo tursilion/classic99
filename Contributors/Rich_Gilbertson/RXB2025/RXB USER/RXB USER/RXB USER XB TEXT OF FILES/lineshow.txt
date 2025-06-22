@@ -1,0 +1,10 @@
+
+1 ! MERGE TO SHOW ADDRESS     AND LINE SIZE OF PROGRAMS
+2 CALL CLEAR :: PRINT :"Output to Device? (Y/N)" :: CALL KEY("YN",3,K,S):: IF K=89 THEN INPUT "DEVICE:":Z$ :: OPEN #1:Z$,OUTPUT :: P=1
+3 CALL CLEAR :: CALL PEEK(-31952,A,B,C,D):: A=A*256+B-65536 :: C=C*256+D-65536 :: PRINT #P:"    PROGRAM INFORMATION": :"Line Number Table" :: CALL HEX(A,A$,C,C$)
+4 PRINT #P: :"Start Address ";A$:"End   Address ";C$: : :"Line    Bytes Start":"Number  Used  Address":"------  ----- -------"
+5 FOR I=C-3 TO A STEP -4 :: CALL PEEK(I,B,D,E,F):: B=B*256+D :: E=E*256+F-65536 
+:: CALL PEEK(E-1,D):: D=D+5 :: T=T+D :: CALL HEX(E,E$)
+6 PRINT #P,USING "#####     ###  ######":B,D,E$ :: IF E THEN CALL SCREEN(6):: GOSUB 8
+7 NEXT I :: A=(A-C-1)/-4 :: PRINT #P: : :TAB(8);"Total Bytes =";T:"   Number of lines =";A:"Average Bytes/Line =";INT(T/A):: STOP
+8 IF Z$="" THEN CALL KEY("",3,D,E):: CALL SCREEN(8):: RETURN ELSE RETURN

@@ -1,0 +1,42 @@
+
+          BASIC          Device Service Routine (DSR)          PAGE  B1
+          -------------------------------------------------------------
+ 
+          Format         RUN "BASIC"
+ 
+                         DELETE "BASIC"
+ 
+                         CALL XB("BASIC")
+ 
+                         CALL CAT("BASIC")
+ 
+                         OLD BASIC
+ 
+                         CALL BASIC
+ 
+ 
+          Description
+ 
+          The BASIC DSR (Device Service Routine) allows access to
+          the TI BASIC . The access will work only if the DSR is the
+          GPLDSR or LINK DSR. In other words, a DSR that acknowledges
+          any type of DSR in RAM, ROM, GROM, GRAM, or VDP. Most DSR's
+          only accept DSK or PIO. Others like the SAVE or LIST commands
+          will only work with a program in the memory first. Still
+          others like CALL LOAD("EA") must have the CALL INIT command
+          used first.
+           Keep in mind that if it does not work, the problem is the
+          DSR your using. Almost all DSR's today only acknowledge the
+          ROM or RAM DSR's. As the BASIC DSR is in GROM/GRAM it seems
+          a bit short sighted on the part of most programmers to use
+          cut down versions of a DSR. Please discourage this practice
+          as it is a disservice to us all.
+ 
+          Programs
+ 
+          Will go to BASIC prompt       | >100 CALL XB("BASIC")
+          This line asks for a string.  | >100 INPUT A$
+          If string A$="BASIC" will go  | >110 DELETE A$
+          will switch to BASIC.         |
+          Will switch to BASIC.         | >CALL BASIC
+          Lower case also works!        | >CALL EA("basic")

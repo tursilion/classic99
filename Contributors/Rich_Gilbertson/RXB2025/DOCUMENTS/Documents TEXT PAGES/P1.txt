@@ -1,0 +1,27 @@
+          PASS (SAMS)    option for subprogram                 PAGE  P1
+          -------------------------------------------------------------
+ 
+          Format         CALL SAMS("PASS")
+ 
+ 
+          Description
+ 
+          SAMS("PASS") command will only work with a SAMS memory card.
+          PASS MODE on the SAMS card means the mapper registers are not
+          on. This is the normal mode of the SAMS. No extra memory is
+          is available or used. This renders the SAMS like a normal 32K
+          card. See docs MANUAL-SAMS for examples of memory maps. Also
+          run SAMS-TEST or SAMS-SAVE or SAMS-LOAD programs.
+ 
+          Programs
+ 
+          This turns on read/write.     | >110 CALL SAMS("ON")
+          Load 37 into map register 2.  | >120 CALL LOAD(16388,37)
+          This turns off read/write.    | >130 CALL SAMS("OFF")
+          This turns on pass mode.      | >140 CALL SAMS("PASS")
+                                        |
+          This shows multiple commands  | >100 CALL SAMS("ON","PASS")
+
+          SAMS("PASS") is mainly used to turn off SAMS or protect the 
+          SAMS pages from being used or to behaves like a normal 32K
+          when the SAMS is not being used.

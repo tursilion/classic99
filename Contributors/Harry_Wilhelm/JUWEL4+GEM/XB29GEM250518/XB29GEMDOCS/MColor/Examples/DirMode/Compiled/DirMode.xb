@@ -1,0 +1,12 @@
+100 CALL SCREEN(2)
+110 CALL LINK("mcolor",4,1)
+120 x=31 :: Y=23 :: C=11
+130 call joyst(1,jx,jy)
+140 call key(1,k,s)
+150 x=x+(jx/4)+(k=2)-(k=3)
+160 y=y-(jy/4)+(k=5)-(k=0)
+170 c=c-(k=18)
+180 if k=16 then k=5
+190 CALL LINK("putpix",y,x,c)
+200 IF NOT (k=16) THEN 130
+210 end

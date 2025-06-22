@@ -1,0 +1,35 @@
+          CALL           subprogram list of format modified    PAGE  12
+          -------------------------------------------------------------
+
+          CALL CHAR(ALL,pattern-identifier[,...])
+
+          CALL CHARSET(ALL)
+
+          CALL COLOR(ALL,foreground-color,background-color[,...])
+ 
+          CALL DISTANCE(#sprite,#sprite,numeric-variable[,...])
+ 
+          CALL FILES(number) {0 to 15 can be used now}
+ 
+          CALL GCHAR(row,column,numeric-variable[,...])
+
+          CALL HCHAR(row,column,character-code,repetition[,...])
+ 
+          CALL JOYST(key-unit,x-return,y-return[,...])
+ 
+          CALL KEY(key-unit,return-variable,status-variable[,...])
+          CALL KEY(string,key-unit,return-variable,status-variable[,...])
+
+          CALL MAGNIFY(magnification-factor[,...])
+ 
+          CALL MOTION(ALL,row-velocity,column-velocity[,...])
+          CALL MOTION(GO[,...])
+          CALL MOTION(STOP[,...])
+
+          CALL SCREEN(color[,...])
+          CALL SCREEN(ON[,...])
+          CALL SCREEN(OFF[,...])
+  
+          CALL VCHAR(row,column,character-code,repetition[,...])
+ 
+          

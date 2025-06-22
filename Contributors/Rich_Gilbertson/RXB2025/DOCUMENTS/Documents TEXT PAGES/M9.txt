@@ -1,0 +1,42 @@
+
+          MOVES                                                PAGE  M9
+          -------------------------------------------------------------
+ 
+          Programs
+
+          Loop address RAM              | >100 FOR R=_32768 to 32767
+          Load that 8 bytes into space  | >110 CALL MOVES("RV",8,R,1024)
+          Loop back                     | >120 NEXT R
+                                        | 
+          Line 100 sets string-variable.| >100 I$=RPT$("I",255)
+          Line 120 type$ specifies I$   | >110 CALL MOVES("$V",55,I$,0)
+          to VDP. 55 bytes are moved.   |
+          Line 120 copies string J$ to  | >120 CALL MOVES("$R",255,J$,8
+          into lower 8K, then string I$ |  192,"$R",255,I$,8492)
+          into lower 8K.                |
+          Line 130 copies string I$ to  | >130 J$=I$ :: PRINT J$ : : I$
+          into J$. Eliminates old J$.   |
+          Then prints them.             |
+          Line 150 copies from lower 8K | >140 CALL MOVES("R$",255,8192
+          to J$, then from lower 8K at  |  ,J$,"R$",255,8492,I$) :: PRI
+          8492 into I$ thus restoring   |  NT J$: :I$
+          both strings and printing them|
+          thus a way to save stings.    |
+                                        | 
+          Line 100 sets up loop. Counts | >100 FOR GA=-32768 TO 32767
+          from -32768 to 0 to 32767 or  |
+          (HEX >8000 to >0000 to >7FFF) |
+          Line 110 moves type$ GRAM/GROM| >110 CALL MOVES("G$",8,GA,H$)
+          to VDP. 8 bytes to be moved.  |
+          GA is counter. H$ is string   |
+          for storing data found.       |
+          Line 120 prints H$ on screen. | >120 PRINT H$
+          Line 130 next loop            | >130 NEXT GA
+
+          Options
+          Dependent on Assembly Language programmers and the RXB
+          programs that are developed. MOVES is good for replacing those
+          CALL LOAD loops. It also provides a means to rewrite XB while
+          running XB instead of rewriting MERGE files then loading
+          them. Future devices benefit from MOVES as it can copy or move
+          different types of memory directly from or to them.

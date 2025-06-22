@@ -1,0 +1,9 @@
+
+10 ! RXB EXAMPLE            CALL RMOTION(#sprite)       CALL RMOTION(ALL)
+100 A(0)=-1 :: A(1)=1 :: CALL CLEAR :: CALL MAGNIFY(2):: CALL SCREEN(15)
+110 FOR S=1 TO 28
+120 CALL SPRITE(#S,64+S,INT(RND*16)+1,20+S,50+S,INT(A(RND*1))*INT(RND*32),INT(A(RND*1))*INT(RND*32))
+130 NEXT S
+140 IF RND>.2 THEN CALL RMOTION(#INT(RND*28)+1)ELSE CALL RMOTION(ALL)
+150 Z=Z+1 :: IF Z<200 THEN 140
+160 ! As this does all this  in a single command should  be used in place of normal  XB  more compliated version

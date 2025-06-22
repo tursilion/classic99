@@ -1,0 +1,37 @@
+          VGET           subprogram                            PAGE  V4
+          -------------------------------------------------------------
+ 
+          Format         CALL VGET(row,column,length,string-variable
+                         [,...])
+ 
+          Description
+ 
+          The VGET subprogram returns into a string-variable from the
+          screen at row and column. Length determines how many
+          characters to put into the string-variable. Row numbers
+          from 1 to 24 and column numbers from 1 to 32. Length may
+          number from 1 to 255. If VGET comes to the bottom of the 
+          screen then it wraps to the top of screen.Also RXB VGET 
+          is now in ROM.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL VGET(5,9,11,E$)
+          get into string-variable E$   |
+          the 11 characters at row 5 and|
+          column 9.                     |
+                                        |
+          The program to the right will | >100 CALL VGET(1,3,5,M$,9,3,1
+          get into string-variable M$   |  ,Q$,24,1,32,N$)
+          the 5 characters at row 1 and |
+          column 3, then put into       |
+          string-variable Q$ the 1      |
+          character at row 9 and column |
+          3, then put into              |
+          string-variable N$ the 32     |
+          characters at row 24 and      |
+          column 1.                     |
+                                        |
+
+          Options:
+          See HPUT, VPUT, and HGET.

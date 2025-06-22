@@ -1,0 +1,15 @@
+100 CALL LOAD("DSK4.MCOLOR.OBJ")
+110 CALL LINK("MCON")
+120 RUN 130
+130 CALL SCREEN(2)
+140 CALL LINK("MCOLOR",4,1)
+150 x=31 :: Y=23 :: C=11
+160 call joyst(1,jx,jy)
+170 call key(1,k,s)
+180 x=x+(jx/4)+(k=2)-(k=3)
+190 y=y-(jy/4)+(k=5)-(k=0)
+200 c=c-(k=18)
+210 if k=16 then k=5
+220 CALL LINK("PUTPIX",y,x,c)
+230 IF NOT (k=16) THEN 160
+240 end

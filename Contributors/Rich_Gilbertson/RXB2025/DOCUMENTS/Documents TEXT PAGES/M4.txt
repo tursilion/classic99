@@ -1,0 +1,31 @@
+          MOD            subprogram                            PAGE  M4
+          -------------------------------------------------------------
+ 
+          Format         CALL MOD(number,divisor,quotiant,remainder
+                         [,...})
+
+
+          Description
+ 
+          The MOD command will make a MODULO FACTOR of a number and 
+          divisor to produce a quotiant and remainder. MOD command
+          will only factor numbers from -32678 to 32767 larger values
+          will be clipped by the internal integer format. Also if the 
+          number is 0 or divisor is 0 a error of bad value will
+          result as you can not divide 0 by anything or anything by 0.
+ 
+          Programs
+ 
+          Number=10 and Divisor=3       | >100 N=10 :: D=3
+          Do MOD on values with results | >110 CALL MOD(N,D,Q,R)
+          Print Q and R values on screen| >120 PRINT Q,R
+          N=number,D=divisor,Q=Quotiant |
+          and R=remainder               | 
+                                        |
+          Divide 32767/3                | >100 CALL MOD(32767,3,Q,R)
+          Show results                  | >110 PRINT Q,R
+          Q=10922 and R=1               |
+                                        | 
+          Divide -32768/3               | >100 CALL MOD(-32768,3,Q,R)
+          Show results                  | >110 PRINT Q,R
+          Q=10922 and R=2               | 

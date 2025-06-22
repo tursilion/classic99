@@ -2273,3 +2273,12 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 - fix for 80 column mode
 - add support for reading xa99 listing symbol tables in debugger
 
+-----------------------------------------------
+
+22 Jun 2025
+
+- updated RXB to RXB2025
+- updated XBGEM to 250518
+- Updated FIAD disk system to formally support directories, rename and delete
+- Fix PI.CLOCK. I implemented it, but I forgot to link it in! Operates the same as the normal CLOCK device.
+

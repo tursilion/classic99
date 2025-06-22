@@ -1,0 +1,18 @@
+          STOP (MOTION)  option for subprogram                 PAGE S14
+          -------------------------------------------------------------
+ 
+          Format         CALL MOTION(STOP[,...])
+
+
+ 
+          Description
+ 
+          The STOP command is a option in the MOTION subprogram.
+          STOP does exactly what you would expect, stop all sprite
+          motion and freezes the sprites in place. 
+          MOTION runs from ROM.
+
+ 
+          Programs
+ 
+          See MOTION subprogram for examples of use of STOP.

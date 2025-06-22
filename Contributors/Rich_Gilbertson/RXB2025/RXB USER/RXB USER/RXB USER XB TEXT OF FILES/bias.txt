@@ -1,0 +1,9 @@
+
+10 ! RXB EXAMPLE CALL BIAS
+20 ! MOVES get VDP from     screen into a String         Variable X$
+30 CALL MOVES("V$",255,511,X$)
+40 ! CALL BIAS removes 96   screen bias from all         characters in String   
+         Variable X$
+50 CALL BIAS(0,X$)
+60 ! After screen bias is   removed it can be printed    on screen
+70 PRINT X$

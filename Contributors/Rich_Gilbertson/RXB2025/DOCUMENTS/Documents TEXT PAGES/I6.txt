@@ -1,0 +1,28 @@
+
+          IO (SOUND LIST)                                      PAGE  I6
+          -------------------------------------------------------------
+          
+          FREQUENCY CONTROL   (for generators 0, 1, 2)
+          -----------------
+          Two bytes must be transmitted to the SGC for a given register
+          and to compute the number of counts from the frequency F
+          use: N = 111860 / F
+ 
+          Binary     1-REG#-N(1s 4 bits)-00-N(ms 6 bits)
+                            Note that N must be split up into its least
+                            significant 4 bits and most significant 6
+                            bits (10 bits total).
+ 
+           The lowest frequency possible is 110 Hz and the highest is
+          55938 Hz.
+ 
+          NOISE CONTROL                 |
+          -------------                 |
+          One byte must be transmitted to the SGC:
+ 
+          Binary     1-1-1-0-0-T-S
+ 
+                T = 0 for white noise, 1 for periodic noise;
+                S = Shift rate (0,1,2,3) = frequency center of noise.
+                    S=3=frequency dependent on the frequency of tone
+                    generator #3.

@@ -1,0 +1,20 @@
+          POKEG          subprogram                            PAGE  P7
+          -------------------------------------------------------------
+ 
+          Format         CALL POKEG(address,numeric-variable-list[,...])
+ 
+ 
+          Description
+ 
+          The POKEG command writes the data in the numeric variable
+          list to GRAM at the specified address. It functions identical
+          to the EXTENDED BASIC command LOAD page 115. Except that it
+          writes to GRAM. GROM or GRAM addresses above 32767 must be
+          converted to a negative number by subtracting 65536 from the
+          desired address. CALL HEX is recommended for this.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL POKEG(1001,128)
+          write 128 to GRAM address 1001|
+                                        | 

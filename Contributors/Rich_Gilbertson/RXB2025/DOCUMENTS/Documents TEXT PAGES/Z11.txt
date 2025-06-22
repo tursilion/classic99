@@ -1,0 +1,37 @@
+                                                                PAGE 11
+
+       RXB FIXES TO XB REQUESTED BY USERS
+       ----------------------------------------------------------------
+        RXB has numerous fixes thru the years a few will be mentioned
+       here as far back as 1983 when I bought my TI99/4A.
+        Recently asked to fix RANDOMIZE SEED not working with the 
+       CALL LINK in XB, so I added a line to reset RANDOM SEED upon
+       use of the CALL LINK. Your welcome.
+        RXB and XB had a issue with PRINT that worked fine in BASIC 
+       and a fix was made to solve this very rare issue. You might 
+       have seen it when edge characters were improperly shown.
+        CALL FILES(0) never worked in BASIC or XB but does work in
+       RXB now. This meant a update to SIZE routine too.
+        Another XB bug was this example:
+       10 PRINT 
+       LIST
+       ACCEPT A
+        Now a error is produced unlike version 110 XB crashes. 
+       RXB shows this instead * Only legal in a program *
+
+
+       THANKS TO LEE STEWART 
+       ----------------------------------------------------------------
+       RXB 2022 has muliple routines now in Assembly to speed up these
+       routines ALPHALOCK, CLEAR, CLEARPRINT, CHARSET, COLLIDE, INIT, 
+       HCHAR, HEX, ISROFF, ISRON, VCHAR, HPUT, HGET, ROLLDOWN, 
+       ROLLLEFT, ROLLDOWN, ROLLUP, SCROLLDOWN, SCROLLLEFT, SCROLLRIGHT,
+       SCROLLUP, VPUT, VGET and the character loader all are Assembly 
+       in ROM. Expect next version of RXB to have even more Assembly 
+       for former GPL routines thanks to help from Lee Stewart. 
+       Specifically CLEAR, HPUT, VPUT, HCHAR, VCHAR, SCROLL, ROLL and
+       CLEARPRINT are all speedy due to be Assembly now instead of GPL.
+       Most recent additional Assembly was added to speed up CHARPAT,
+       CHAR, CHARSET, COINC, COLOR, DELSPRITE, DISTANCE, JOYST, KEY,
+       LOCATE, MAGNIFY, MOTION, PATTERN, POSITION, and SPRITE.
+       

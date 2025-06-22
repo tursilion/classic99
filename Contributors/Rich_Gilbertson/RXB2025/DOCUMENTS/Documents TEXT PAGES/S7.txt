@@ -1,0 +1,42 @@
+          SCROLLDOWN     command or subprogram                 PAGE  S7
+          -------------------------------------------------------------
+ 
+          Format         CALL SCROLLDOWN
+
+                         CALL SCROLLDOWN(repetition)
+              
+                         CALL SCROLLDOWN(repetition,string)
+
+                         CALL SCROLLDOWN(repetition,string,tab)
+ 
+ 
+          Description
+ 
+          SCROLLDOWN scrolls screen to the down so repetition will
+          repeat the scroll number of times down, the string will only 
+          display horizontally 32 characters of the string on right 
+          side of screen. SCROLLDOWN puts the string on screen and 
+          wraps to bottom if string is to long.
+          If the string is empty (null) it will just scroll the screen. 
+          Like PRINT TAB will go to next line right of left side of 
+          screen each line till end of string. Numbers or varaibles 
+          can be used instead of a string. SCROLLDOWN runs from ROM.
+           Repetition can be 1 to 65535 max.
+ 
+          Programs
+ 
+          Scroll down 2 times print PI  | >CALL SCROLDOWN(2,PI)
+                                        |
+          Clear screen for demo         | >100 CALL CLEAR  
+          Prints line                   | >110 PRINT "SCREEN PRINT"
+          Scroll screen down            | >120 CALL SCROLLDOWN
+          Repeat the program            | >130 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" SCROLL DOWN"
+          Print X$                      | >110 PRINT X$
+          Scroll down 9 times use X$    | >120 CALL SCROLLDOWN(9,X$)
+          Repeat the program            | >130 GOTO 100
+
+          
+
+           

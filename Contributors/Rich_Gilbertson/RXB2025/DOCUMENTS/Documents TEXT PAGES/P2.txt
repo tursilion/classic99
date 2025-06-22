@@ -1,0 +1,24 @@
+          PATTERN        subprogram                            PAGE  P2
+          -------------------------------------------------------------
+ 
+          Format         CALL PATTERN(#sprite-number,character-value
+                         [,...])
+
+ 
+          Description
+ 
+           See EXTENDED BASIC MANUAL page 142 for more data.  
+          Now 30 (CURSOR) and 31 (EDGE CHARACTER) and 144 to 159 may 
+          used if only the top highest sprite numbers are used. For 
+          example you can not use sprite #1 if you are using characters
+          143 to 146 to define a sprite pattern, but you could use 
+          sprite #28 instead with no issues. Thus some care must be 
+          taken to use all characters from 144 to 159 when using sprites.
+          But the advantage is now you can use 30 to 159 in RXB.
+          PATTERN runs from ROM.
+ 
+          CALL PATTERN just allows Sprite patterns not characters.
+
+          Options
+          Sprites may not be used if characters 144 to 159 are being
+          redefined for use.

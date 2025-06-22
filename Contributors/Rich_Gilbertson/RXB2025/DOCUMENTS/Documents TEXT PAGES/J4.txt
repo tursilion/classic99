@@ -1,0 +1,45 @@
+          JOYMOTION      subprogram                            PAGE  J4
+          -------------------------------------------------------------
+
+          Format         CALL JOYMOTION(key-unit,x-return,y-return,  
+                         #sprite,row-index,column-index)
+
+                         CALL JOYMOTION(key-unit,x-return,y-return,  
+                         #sprite,row-index,column-index,
+                         key-return-variable)
+
+
+                         CALL JOYMOTION(key-unit,x-return,y-return,  
+                         #sprite,row-index,column-index,
+                         key-return-variable)
+                         GOTO line-number
+
+          Description
+
+          JOYMOTION combines commands JOYST, KEY, MOTION and a built in
+          IF fire-button GOTO line-number. Keyboard key or fire button
+          is in key-return-variable, but only joystick fire or key Q is
+          used for GOTO line-number. As seen above line number 
+          option can be left out or furter key-return-variable can be 
+          left out too. Index is number of dots for row and column.
+
+          Programs
+
+          Clear screen.                | >100 CALL CLEAR
+          Set character for use.       | >110 CALL CHAR(143,"FFFFFFFFFF
+                                       |  FFFFFF")
+          Set up a sprite to use.      | >120 CALL SPRITE(#1,143,2,9,19
+                                       |  0,20,0)
+          Look for joystick movement   | >130 CALL JOYMOTION(1,X,Y,#1,9                     
+          and move it or ignore.       |  ,9,K) GOTO 160        
+          Show variables on screen.    | >140 PRINT X;Y;K
+          Loop forever                 | >150 GOTO 130
+          Show variables on screen.    | >160 PRINT X;Y;K;"FIRE"
+          Loop forever                 | 170 GOTO 130
+                                       |
+
+          Options:
+          See JOYMOTION or ONKEY or KEY for more XB changes created
+          by RXB to speed up the programs and make them easier to 
+          read and write.
+ 

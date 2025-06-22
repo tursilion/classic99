@@ -1,0 +1,24 @@
+          VERSION        subprogram                            PAGE  V3
+          -------------------------------------------------------------
+ 
+          Format         CALL VERSION(numeric-variable)
+ 
+          Description
+ 
+          See EXTENDED BASIC MANUAL PAGE 190 for more data. 
+          Also see Programs below.
+ 
+          This line will ask for version| >CALL VERSION(X)
+          and return current to numeric-|
+          variable X.                   |
+                                        |
+          Line 100 asks for version num.| >100 CALL VERSION(V)
+          Line 110 checks for version   | >110 IF V<2016 THEN INPUT "DSK
+          to be larger than 2001 and if |  NAME":D$ :: INPUT "FILENAME"
+          it is will ask for input to   |  :F$ :: CALL XB("DSK."&D$&F$)
+          use a old routine CALL XB. |                
+                                        |
+
+          Options
+          Will always return current version of RXB. As you can see RXB
+          actually makes VERSION a valuable routine again.

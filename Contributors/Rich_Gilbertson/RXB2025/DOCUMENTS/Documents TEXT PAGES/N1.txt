@@ -1,0 +1,28 @@
+          NEW            command or subprogram                 PAGE  N1
+          -------------------------------------------------------------
+ 
+          Format         NEW
+ 
+                         CALL NEW
+ 
+          Description
+ 
+          The NEW command is the same as the EXTENDED BASIC MANUAL
+          page 126. NEW can only be used from edit mode. But now
+          CALL NEW can be called from program mode. As expected
+          all values are reset and all defined characters become
+          undefined. Any open files are closed. Characters 32 to 95
+          are reset to their standard definitions. The TRACE and
+          BREAK commands are canceled. The program is erased from
+          memory.
+ 
+          Command
+ 
+          The line to the right will    | >NEW
+          reset memory for XB.          |
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL NEW
+          reset memory for XB.          |
+                                        |

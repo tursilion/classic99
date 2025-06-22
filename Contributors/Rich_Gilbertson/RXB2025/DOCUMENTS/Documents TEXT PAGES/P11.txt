@@ -1,0 +1,37 @@
+          PSAVE          subprogram                            PAGE P11
+          -------------------------------------------------------------
+ 
+          Format         CALL PSAVE(memory-boundry,"access-name")
+ 
+                         CALL PSAVE(constant,string-variable)
+ 
+          Description
+ 
+          The PSAVE subprogram saves ONLY program image files to be
+          used for PLOAD. PSAVE is the opposite of PLOAD. PSAVE has
+          the speed of a hidden loader without the hassle. 
+          PLOAD saves any 4K boundry from 32K.
+           Memory boundries are 2, 3, A, B, C, D, E, F (upper case).
+          i.e. 2 is >2000 or 3 is >3000 or A is >A000 up to F is >F000
+          Removing the zeros made more sense then adding 3 zeros.
+           Unlike CALL LOAD the PLOAD and PSAVE subprogram will work
+          without CALL INIT being used first.
+           To save a program with hidden loaders just break program
+          after loading is complete and type:
+          CALL PSAVE(2,"DSK#.NAME1",3,"DSK#.NAME2") ! 2 4K of lower 8K
+          Remember to check for interrupts or the program will not work
+          after loading with PLOAD. See ISRON and ISROFF.
+          NOTE: 4K of VDP memory MUST be free for PSAVE to function or
+                a memory full error will result. Always place the PSAVE
+                command at the top of the RXB program.
+ 
+          Programs
+ 
+          Initialize lower 8K.         | >100 CALL INIT
+          Load the assembly support.   | >110 CALL LOAD("DSK1.MSETUPO")
+          Load the assembly support.   | >120 CALL LOAD("DSK1.HDSR")
+          Turn on the mouse setup.     | >130 CALL LINK("MSETUP")
+          BSAVE 2 of 4K sections of    | >140 CALL PSAVE(2,"DSK2.MOUSE1
+           lower 8K.                   | ",3,"DSK2.MOUSE2")
+                                       |
+          

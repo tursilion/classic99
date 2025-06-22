@@ -1,0 +1,34 @@
+          OFF (SAMS)     option for subprogram                 PAGE  O1
+          -------------------------------------------------------------
+ 
+          Format         CALL SAMS("OFF")
+ 
+ 
+          Description
+ 
+          SAMS("OFF") command will only work with a SAMS memory card. 
+          The read/write lines to the AMS mapper registers are turned
+          off so they will not be changed. Any PEEK or LOAD to the DSR
+          space will be zero after the SAMS("OFF") command. They can't
+          be read/written to. See docs MANUAL-AMS for examples of 
+          memory maps. 
+          Also run SAMS-TEST or SAMS-SAVE or SAMS-LOAD programs.
+ 
+          Programs
+ 
+          This turns on read/write.     | >100 CALL SAMS("ON")
+          This fetches map register 2.  | >110 CALL PEEK(16388,BYTE)
+          This turns off read/write.    | >120 CALL SAMS("OFF")
+          This turns on pass mode.      | >130 CALL SAMS("PASS")
+          This prints the page from map | >140 PRINT "Register 2 PAGE#"
+           mode in register 2.          |  ;BYTE
+                                        |
+
+          The above program will print out initialized SAMS page 2 in 
+          register 2. 
+      
+          It is recommended that CALL SAMS("OFF") only be used to 
+          protect the AMS mapper registers from being molested by 
+          programs that could access the AMS. CALL SAMS is more 
+          easy to use to manage SAMS memory as SAMS always turns off 
+          the SAMS read/write registers like SAMS("OFF") does. 

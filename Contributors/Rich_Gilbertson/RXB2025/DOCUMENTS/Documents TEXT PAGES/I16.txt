@@ -1,0 +1,35 @@
+          IV254          command                               PAGE I16
+          -------------------------------------------------------------
+ 
+          Format         SAVE DSK2.PRGM,IV254
+
+ 
+          Description
+ 
+          The IV254 command functions normally to save XB programs in
+          Internal Variable format of 254 size per record. 
+          An additional freature is IV254 may be specified after the
+          SAVE command to convert to Internal Variable 254 format.
+          The IV254 format makes it much more easy to tell an XB
+          program from EA programs when cataloging a disk.
+          Internal Variable files do take up one sector more then
+          XB program format. It should be noted that XB programs
+          smaller then 3 sectors can not be saves in IV254 format.
+ 
+          Command
+ 
+          Saves to DISK 2 in XB program | >SAVE DSK2.TEST
+          image format TEST             |
+                                        |
+          Saves to disk 3 in XB program | >sAVE DSK3.STUFF,IV254
+          Internal Variable 254 named   |
+          STUFF                         |
+                                        | 
+          Saves to WDS1 in dirctory EXB | >SAVE WDS1.EXB.RB,IV254
+          XB program Internal Variable  |                              
+          254 named RB                  |
+                                        |             
+
+
+          Options
+          Allows better cataloging options for saving XB files.

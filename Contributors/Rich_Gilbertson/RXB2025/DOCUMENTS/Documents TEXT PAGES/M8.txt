@@ -1,0 +1,43 @@
+          MOVES                                                PAGE  M8
+          -------------------------------------------------------------
+
+          RAM may be moved but not into ROM, and that you may move 
+          memory into GRAM but not GROM. You can copy or move memory 
+          from ROM or GROM. Also note that any devices that use phony 
+          GRAM will not work with MOVES as these devices don't use the 
+
+          Programs
+ 
+          Line 100 has the type$ string.| >100 X$="VV"
+          Line 110 thus uses type$ 0 VDP| >110 CALL MOVES(X$,767,1,0)
+          to VDP. 767 bytes are moved. A|
+          VDP from-address of 1 and a   |
+          VDP to-address of 0. Will use |
+          a ripple effect of moving all |
+          screen bytes over one address.|
+                                        |
+          Line 100 copies entire screen | >100 CALL MOVES("VR",768,0,81
+          into lower 8K.                |  92)
+                                        |
+          Line 110 clears the screen.   | >110 CALL CLEAR
+          Line 120 copies entire screen | >120 CALL MOVES("VR",768,0,90
+          into lower 8K.                |  00)
+          Line 130 copies from lower 8K | >130 CALL MOVES("RV",768,8192
+          to screen, then again. GOTO   |  ,0,"RV",768,9000,0) :: GOTO 
+          makes it an endless loop.     |  130
+                                        |
+          Line 100 sets up loop. Counts | >100 FOR G=-32768 TO 32767
+          from -32768 to 0 to 32767 or  |
+          (HEX >8000 to >0000 to >7FFF) |
+          Line 110 move GRAM/GROM to    | >110 CALL MOVES("GV",8,G,1024)
+          VDP. 8 bytes to be moved. GA  |  
+          is counter. 1024 is decimal   |
+          address of space character in |
+          VDP pattern table.            |
+          Line 120 completes loop.      | >120 NEXT G
+                                        |
+                                        |     
+          Loop address VDP              | >100 FOR V=0 TO 16384
+          Load that 8 bytes into space  | >110 CALL MOVES("VV",8,V,1024)
+          Loop back                     | >120 NEXT V
+                                        |

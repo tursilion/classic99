@@ -1,0 +1,46 @@
+          IO (SOUND LIST)                                      PAGE  I9
+          -------------------------------------------------------------
+          Sound table creator for conversion of sound data.
+
+          100 CALL CLEAR :: PRINT "*SOUND DATA TABLE CREATOR*"
+          110 Q$="0123456789ABCDEF"
+          120 INPUT "GENERATOR # ?":GN
+          130 INPUT "DURATION ?":DUR
+          140 INPUT "FREQUENCY ?":FREQ
+          150 INPUT "VOLUME ?":VOL :: PRINT : : :
+          160 IF DUR>17 THEN 180
+          170 DUR=17
+          180 REM  DURATION 
+          190 DUR=INT((DUR*255)/4250) :: CONV=DUR :: GOSUB 400
+          200 DUR$=SEG$(HX$,3,2) :: IF FREQ>-1 THEN 290
+          210 REM   NOISE FREQUENCY  
+          220 FR=ABS(FREQ)-1 :: FR$="E"&STR$(FR)
+          230 REM  NOISE VOLUME 
+          240 VOL=INT(VOL/2) :: CONV=VOL
+          250 GOSUB 430 :: VOL$="F"&SEG$(HX$,4,1)
+          260 PRINT "DATA>02";FR$;",>";VOL$;DUR$: : :
+          270 GOTO 360
+          280 REM  TONE FREQUENCY 
+          290 FR=INT((111860.8/FREQ)+.5)
+          300 CONV=FR :: GOSUB 400
+          310 FR$=SEG$(Q$,GN*2+7,1)&SEG$(HX$,4,1)&SEG$(HX$,2,2)
+          320 REM  TONE VOLUME 
+          330 VOL=INT(VOL/2) :: CONV=VOL :: GOSUB 400
+          340 VOL$=SEG$(Q$,GN*2+8,1)&SEG$(HX$,4,1)
+          350 PRINT "DATA>03";SEG$(FR$,1,1)&SEG$(FR$,2,1);",>";
+          SEG$(FR$,3,2);VOL$;",>";DUR$;"00": : :
+          360 PRINT: :"ANOTHER SOUND (Y/N)?"
+          370 CALL ONKEY("YN",3,K,S) GOTO 100,390
+          380 GOTO 370
+          390 CALL CLEAR :: END
+          400 REM  DECIMAL TO HEX 
+          410 AY=INT(CONV)/16 :: BY=INT(AY)/16 
+          420 CY=INT(BY)/16 :: DY=INT(CY)/16
+          430 AP=(AY-INT(AY))*16 :: BP=(BY-INT(BY))*16
+          440 CP=(CY-INT(CY))*16 :: DP=(DY-INT(DY))*16
+          450 HX$=SEG$(Q$,DP+1,1)&SEG$(Q$,CP+1,1)&
+          SEG$(Q$,BP+1,1)&SEG$(Q$,AP+1,1) :: RETURN
+         
+          Use this program to create Hex strings that can use
+          CALL MOVES to move strings into VDP to be played from
+          a CALL IO(1,VDP-address)

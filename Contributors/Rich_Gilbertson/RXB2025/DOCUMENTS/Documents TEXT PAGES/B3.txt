@@ -1,0 +1,37 @@
+
+          BIAS           subprogram                            PAGE  B3
+          -------------------------------------------------------------
+ 
+          Format         CALL BIAS(numeric-variable,string-variable
+                         [,...])
+ 
+          Description
+ 
+          The BIAS command adds 96 to all characters in the string or
+          subtracts 96 from all characters in the string. If numeric
+          variable is 0 then it subtracts the XB screen bias of 96
+          from the characters, if the numeric variable is not 0 then
+          it adds the XB screen bias of 96 to all the characters in
+          the string. ONLY A STRING VARIABLE IS ALLOWED FOR BIAS.
+           The XB screen bias only affects characters read or written
+          to the screen. See PEEKV, POKEV and MOVES.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL MOVES("V$",255,511
+          load X$ with 255 characters   |  ,X$)
+          off the screen. But will not  |
+          be readable due to a bias.    |
+          The bias is now subtracted    | >110 CALL BIAS(0,X$)
+          from the string printed.      | >120 PRINT X$
+                                        |
+          Set up a string to use        | >100 Y$="This is a test!"
+          Remove add BIAS to string     | >110 CALL BIAS(1,Y$)
+          Put the string onto screen    | >120 CALL MOVES("$V",15,Y$,
+                                        |  96)
+                                        |
+
+          The above program copies 255 bytes from screen address 511
+          (511=15 rows plus 31 columns) into string X$. Then BIAS      
+          removes 96 from each byte in string X$. Finally X$ is 
+          shown on screen by PRINT X$

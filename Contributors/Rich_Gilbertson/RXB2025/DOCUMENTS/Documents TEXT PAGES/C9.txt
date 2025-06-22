@@ -1,0 +1,37 @@
+          COPY           command                               PAGE  C9
+          -------------------------------------------------------------
+ 
+          Format       COPY start line-end line,new start line,increment
+ 
+          Description
+ 
+          The COPY command is used to copy a program line or block of
+          program lines to any other location in the program. The COPY
+          does not affect the original lines and leaves them intact.
+           The block to be copied is defined by start line and end line.
+          If either of these numbers are omitted, the defaults are the
+          first program line and the last program line. However, at least
+          one number and a dash must be entered (both can't be omitted),
+          and there must be at least one valid program line between start
+          line and end line. To copy one line enter it as both the start
+          line and end line number. If any of the above conditions are
+          not met, a Bad Line Number Error will result.
+           The new start line number defines the new line number of the
+          first line in the block to be copied. This number must be
+          entered. There is no default. The increment defines the line
+          number spacing of the copied lines and may be omitted. The
+          default is 10.There must be sufficient space in the program          
+          for the copied segment to fit between new start line number 
+          and the next program line following the location where the                       
+          block will be moved. If not, a Bad Line Number Error message
+          is reported. This problem can be corrected by using a smaller 
+          increment, or by using RES to open up space for the segment. 
+          A Bad Line Number Error also results if the copying process 
+          would result in a line number higher than 32767.
+           The COPY routine does not change any program references to
+          the copied lines. It is an exact copy of the source lines
+          with new line numbers. A check for sufficient memory space
+          is made before each line is copied. If space is not available
+          the copying process is halted than Memory Full Error reported.
+           Before the first line is copied, any open files are closed
+          and all variables are lost.

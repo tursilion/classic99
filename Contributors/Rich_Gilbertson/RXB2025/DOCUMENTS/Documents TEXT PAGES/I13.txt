@@ -1,0 +1,37 @@
+          ISR             CRU MAP ADDRESS                      PAGE I13
+          -------------------------------------------------------------
+          Bit R12-address I/O/I+ Usage
+          =============================================================
+           0   >0000	  I/O    0: I/O mode 1: timer mode
+           1   >0002	  I+     0: A peripheral interrupt occured
+           2   >0004	  I+     0: a VDP interrupt occured
+           3   >0006	  I      =      .   ,   M   N   /  fire1  fire2 
+           4   >0008	  I      Space  L   K   J   H   ;  left1  left2
+           5   >000A	  I      enter  O   I   U   Y   P  right1 right2
+           6   >000C	  I      (none) 9   8   7   6   0  down1  down2
+           7   >000E	  I      fctn   2   3   4   5   1  up1    up2 
+           8   >0010	  I      shift  S   D   F   G   A 
+           9   >0012	  I      ctrl   W   E   R   T   Q 
+          10   >0014	  I      (none) X   C   V   B   Z 
+          11   >0016	  -	 (see bit 27)
+          12   >0018	  I/I+   Pull up 10K to +5V
+          13   >001A	  -      (see bit 25)
+          14   >001C	  -      (see bit 24)
+          15   >001E	  -      (see bit 23)
+          16   >0020	  I/O    n.c.
+          17   >0022	  I/O    n.c.
+          18   >0024	  O      Select keyboard column (or joystick)
+          19   >0026	  O      Select keyboard column (or joystick)   
+          20   >0028	  O      Select keyboard column (or joystick) 
+          21   >002A	  O      Set alpha-lock key
+          22   >002C	  O      1: turn CS1 motor on
+          23   >002E	  O      1: turn CS2 motor on
+          24   >0030	  O      Audio gate
+          25   >0032	  O      Output to cassette mike jack
+          26   >0034	  -      (see bit 18)
+          27   >0036	  I      Input from cassette headphone jack
+          28   >0038      -      (see bit 10: keyboard mirror)
+          29   >003A      -      (see bit 9)
+          30   >003C      -      (see bit 8)
+          31   >003E      -      (see bit 7)
+=================================================================

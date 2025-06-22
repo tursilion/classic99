@@ -1,0 +1,32 @@
+          DIR            subprogram                            PAGE  D2
+          -------------------------------------------------------------
+ 
+          Format         CALL DIR("#"[,...])
+ 
+                         CALL DIR("DSK#."[,...])
+ 
+                         CALL DIR("DSK.DISKNAME."[,...])
+ 
+                         CALL DIR(string-variable[,...])
+ 
+                         CALL DIR(number[,...])
+ 
+                         CALL DIR(numeric-variable[,...])
+ 
+                         CALL DIR(ASC II value[,...])
+ 
+ 
+          Description
+ 
+           The DIR command catalogs the disk drive indicated by the
+          # which can be 1 to z or by path name. The path name may be
+          up to 30 characters long. A numeric variable or number can
+          be used for drives 1 to 9 or if higher then it is assumed
+          that the numeric-variable or number is a ASCII value between
+          30 to 255. This allows a catalog of a RAM-DISK designated by
+          letters or control characters.
+           RXB DIR can be used from program mode or command mode. Also
+          DIR can catalog up to 32 drives in one command.
+           The SPACE BAR will pause the catalog routine, then when the
+          pressed again continues the catalog listing.
+          ANY OTHER KEY WILL ABORT THE CATALOG. See CAT for more info.

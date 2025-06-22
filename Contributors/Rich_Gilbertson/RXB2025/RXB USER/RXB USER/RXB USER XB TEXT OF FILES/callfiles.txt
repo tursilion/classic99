@@ -1,0 +1,7 @@
+
+10 ! If RXB has not blown   your mind watch this!
+110 CALL FILES(0)
+120 ! You can do CALL FILES  from program mode now!
+130 ! But notice 0 files?
+140 ! RXB can do CALL FILES  with a modified 0 files!
+150 ! RXB executes a NEW     after the CALL FILES so     you do not have to do that  and in PROGRAM MODE or      EDIT MODE for you!

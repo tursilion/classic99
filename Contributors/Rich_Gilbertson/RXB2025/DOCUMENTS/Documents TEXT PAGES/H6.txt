@@ -1,0 +1,45 @@
+          HPUT           subprogram                            PAGE  H6
+          -------------------------------------------------------------
+ 
+          Format         CALL HPUT(row,column,string[,...])
+ 
+                         CALL HPUT(row,column,string-variable[,...])
+ 
+                         CALL HPUT(row,column,number[,...])
+ 
+                         CALL HPUT(row,column,numeric-variable[,...])
+ 
+          Description
+ 
+          The HPUT subprogram puts a string, string-variable, number,
+          or numeric-variable onto the screen at row and column. The
+          The row numbers from 1 to 24 and column numbers for 1 to 32.
+          If the string, string-variable, number, or numeric-variable
+          being put onto screen goes to an edge it wraps to the other
+          side. Unlike the EXTENDED BASIC DISPLAY AT the HPUT
+          subprogram will not scroll the screen. HPUT runs from ROM.
+ 
+          Programs
+ 
+          Line 100 puts string "THIS" on| >100 CALL HPUT(10,4,"THIS")
+          the screen at row 10 and      |
+          column 4.                     |
+                                        |
+          Line 110 sets string-variable | >110 A$="HPUT"
+          A$ equal to string "HPUT"     |
+                                        |
+          Line 120 puts string "is" at  | >120 CALL HPUT(12,5,"is",14,4
+          row 12 and column 5, then puts|  ,A$)
+          string-variable A$ at row 14  |
+          and column 4.                 |
+                                        |
+          Line 100 puts string A$ at row| >100 CALL HPUT(16,5,A$)
+          16 and column 5.              |
+                                        |
+          Puts 456 at row 10 col 15     | >100 CALL HPUT(10,15,456)
+                                        | 
+
+          Options:
+          CALL HPUT is now written in Assembly so much faster is
+          faster than normal then XB DISPLAY AT(row,column)
+          See HCHAR, VCHAR, HGET and VGET.

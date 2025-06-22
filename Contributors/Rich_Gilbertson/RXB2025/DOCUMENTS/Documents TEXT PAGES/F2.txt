@@ -1,0 +1,36 @@
+          FILES          subprogram                            PAGE  F2
+          -------------------------------------------------------------
+ 
+          Format         CALL FILES(number)
+ 
+                         CALL FILES(numeric-variable)
+
+ 
+
+           If you use CALL FILES and SIZE:
+          CALL FILES(15)  5624 Stack Bytes Free
+          CALL FILES(14)  6142 Stack Bytes Free
+          CALL FILES(13)  6660 Stack Bytes Free
+          CALL FILES(12)  7178 Stack Bytes Free
+          CALL FILES(11)  7696 Stack Bytes Free
+          CALL FILES(10)  8214 Stack Bytes Free
+          CALL FILES(9)   8732 Stack Bytes Free
+          CALL FILES(8)   9250 Stack Bytes Free 
+          CALL FILES(7)   9768 Stack Bytes Free
+          CALL FILES(6)  10286 Stack Bytes Free
+          CALL FILES(5)  10804 Stack Bytes Free
+          CALL FILES(4)  11322 Stack Bytes Free
+          CALL FILES(3)  11840 Stack Bytes Free
+          CALL FILES(2)  12358 Stack Bytes Free
+          CALL FILES(1)  12876 Stack Bytes Free
+          CALL FILES(0)  13394 Stack Bytes Free  
+
+          This shows the free VDP memory for XB programs and how it
+          is calculated is first free addres in high VDP memory 
+          minus VDP Stack Address plus 64 bytes in lower VDP memory.
+
+          You should notice each CALL FILES is 518 bytes in size.
+
+          Lastly RXB created CALL FILES(0) and is not the same as
+          any other CALL FILES(0) by others as RXB follows TI
+          standards to be consistant and predictable.         

@@ -1,0 +1,37 @@
+          *************************************************************
+          *                    TABLE OF CONTENTS                      *
+          *************************************************************
+          NAME---------------------TYPE----------ACCESS---------PAGE-##
+          JOYST                 SUBPROGRAM        JOYSTICKS          J1
+          JOYLOCATE             SUBPROGRAM        JOYSTICK & SPRITES J2
+          JOYMAP                SUBPROGRAM        JOYSTICK & SPRITES J3
+          JOYMOTION             SUBPROGRAM        JOYSTICK & SPRITES J4
+          KEY                   SUBPROGRAM        KEYBOARD           K1
+          LIST                  COMMAND           SCREEN/DSK/PRINTER L1
+          LOAD                  SUBPROGRAM        DISK/ASSEMBLY      L2
+          MAGNIFY               SUBPROGRAM        SPRITE             M1
+          MAP  (SAMS)           OPTION SUBPROGRAM SAMS MEMORY        M2
+          MERGE                 COMMAND           DISK/FILES         M3
+          MOD                   SUBPROGRAM        CONVERSION         M4
+          MOTION                SUBPROGRAM        SPRITE             M5
+          MOVE                  COMMAND           EDIT LINES         M6
+          MOVES                 SUBPROGRAM        MEMORY (ALL TYPES) M7
+          NEW            SUBPROGRAM or COMMAND    MEMORY (XB)        N1
+          OFF  (SAMS)           OPTION SUBPROGRAM SAMS MEMORY        O1
+          ON   (SAMS)           OPTION SUBPROGRAM SAMS MEMORY        O2 
+          ONKEY                 SUBPROGRAM        KEYBOARD           O3
+          PASS (SAMS)           OPTION SUBPROGRAM SAMS MEMORY        P1 
+          PATTERN               SUBPROGRAM        SPRITE/CHARACTER   P2
+          PEEKG                 SUBPROGRAM        GROM               P3
+          PEEKV                 SUBPROGRAM        VDP                P4
+          PLOAD                 SUBPROGRAM        DISK or HARD DRIVE P5  
+          POKEG                 SUBPROGRAM        GRAM               P7
+          POKER                 SUBPROGRAM        VDP REGISTERS      P8
+          POKEV                 SUBPROGRAM        VDP                P9
+          PRAM                  SUBPROGRAM        RAM MEMORY         P10
+          PSAVE                 SUBPROGRAM        DISK or HARD DRIVE P11
+          QUITOFF               SUBPROGRAM        KEYBOARD           Q1
+          QUITON                SUBPROGRAM        KEYBOARD           Q2
+
+
+

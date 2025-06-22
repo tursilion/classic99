@@ -1,0 +1,32 @@
+          ROLLRIGHT      command or subprogram                 PAGE  R7
+          -------------------------------------------------------------
+ 
+          Format         CALL ROLLRIGHT
+
+                         CALL ROLLRIGHT(repetition)
+ 
+ 
+          Description
+ 
+          ROLLRIGHT scrolls screen to the right so repetition will
+          repeat the scroll number of times to right.
+          Repetition can be 1 to 65535 max. ROLLRIGHT runs from ROM.
+ 
+          Programs
+ 
+         Roll screen right 2 times      | >CALL ROLLRIGHT(2)
+                                        | 
+          Prints line                   | >100 PRINT "SCREEN PRINT"
+          Roll screen right             | >110 CALL ROLLRIGHT
+          Repeat the program            | >120 GOTO 110
+                                        |
+          Load X$ string variable       | >100 X$=" ROLL RIGHT"
+          Print X$                      | >110 PRINT X$
+          Scroll right 9 times use X$   | >120 CALL ROLLRIGHT(9)
+          Repeat the program            | >130 GOTO 100
+
+          
+          Options
+          New features allow for some special that can take the place
+          of some routines that are slower in XB.
+           

@@ -1,0 +1,42 @@
+          GMOTION        subprogram                            PAGE  G3
+          -------------------------------------------------------------
+ 
+          Format         CALL GMOTION(#sprite-number,row-velocity,
+                         column-velocity[,...])
+ 
+          Description
+ 
+          The GMOTION subprogram returns the row-velocity and
+          column-velocity as numbers from -128 to 127. If the sprite is
+          not defined, row-velocity and column-velocity is set to zero.
+          The sprite continues to move after its motion is returned, so
+          this must be allowed for. See EXTENDED BASIC MANUAL MOTION
+          subprogram for more data. GMOTION runs from ROM.
+ 
+          Program
+ 
+          GMOTION returns the row-      | >100 CALL GMOTION(#1,X,Y)
+          velocity into X and the       |
+          column-velocity into Y.       |
+                                        |
+          Set up screen and up,down     | >100 A(0)=-1::A(1)=1::CALL CL
+          ,left,right variables         |  EAR::CALL MAGNIFY(2)::CALL S
+          A(0) and A(1)                 |  CREEN(15)
+          Loop for 28 sprites.          | >110 FOR S=1 TO 28
+          Set up 28 random sprites      | >120 CALL SPRITE(#S,64+S,INT(
+          with random colors and        |  RND*16)+1,20+S,50+S,INT(A(RN
+          motion.                       |  D*1))*INT(RND*127),INT(A(RND
+                                        |  *1))*INT(RND*127))
+          Loop counter.                 | >130 NEXT S
+          Random sprite selector,       | >140 S=INT(RND*28)+1::CALL GM
+          get that sprites motion,      |  OTION(#S,X,Y)::CALL HPUT(24,
+          put the values on screen.     |  3,"CALL GMOTION(#"&STR$(S)&"
+                                        |  ,"&STR$(X)&","&STR$(Y)&")")
+          Delay loop.                   | >150 FOR L=1 TO 1E3::NEXT L 
+          Clear screen and Z+1.         | >160 CALL CLEAR::Z=Z+1::IF
+           Loop till Z>8                |  Z<8 THEN 140
+                                        |
+ 
+          Options
+          While characters 144 to 159 are being used, you cannot use
+          sprites.

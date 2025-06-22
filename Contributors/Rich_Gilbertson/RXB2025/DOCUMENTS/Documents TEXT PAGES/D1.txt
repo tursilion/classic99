@@ -1,0 +1,35 @@
+          DEL            command                               PAGE  D1
+          -------------------------------------------------------------
+ 
+          Format       DEL start line-end line
+ 
+          Description
+ 
+          The DEL command is used to delete a line or block of lines
+          from a program. Start line number and end line number define
+          the lines to be deleted. If start line number is omitted,
+          line deletion will begin at the first line of the program. In
+          this case, end line number must be preceded by a dash. If
+          end line number is omitted, line deletion will end at the last
+          line of the program. If start line number and end line number
+          are omitted, then the first line number of the program to the
+          last line number of the program is deleted. At least one valid
+          program line must exist between start line number and end line
+          number or a Bad Line Number Error will be reported. If only
+          one line number is given without a dash, then that one line
+          will be deleted.
+           After the DEL command has executed any open files are closed
+          and all variables are lost.
+ 
+ 
+          Commands
+ 
+          Lines 100 to 150 are deleted. | >DEL 100-150
+                                        |
+          Line 10 is deleted.           | >DEL 10
+                                        |
+          Line 5 to last line are       | >DEL 5-
+          deleted.                      |
+                                        |
+          First line to 80 are deleted. | >DEL -80
+                                        |

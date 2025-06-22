@@ -1,0 +1,12 @@
+
+100 ! RXB CALL JMOTION
+110 ! JOYMOTION              JOYST + MOTION + IF KEY GOTOLINE NUMBER
+120 ! As this does all this in asingle command should  be   used in place of normal XB  more compliated version
+130 CALL CLEAR
+140 CALL CHAR(143,"FFFFFFFFFFFFFFFF")
+150 CALL SPRITE(#1,143,2,9,190,20,0)
+160 CALL JOYMOTION(1,X,Y,#1,9,9,K)GOTO 190
+170 PRINT X;Y,K
+180 GOTO 160
+190 PRINT X;Y,K;"FIRE"
+200 GOTO 160

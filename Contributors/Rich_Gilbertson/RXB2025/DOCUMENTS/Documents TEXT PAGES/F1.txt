@@ -1,0 +1,43 @@
+          FILES          subprogram                            PAGE  F1
+          -------------------------------------------------------------
+ 
+          Format         CALL FILES(number)
+ 
+                         CALL FILES(numeric-variable)
+ 
+          Description
+ 
+          The FILES subprogram differs from the Disk Controller FILES
+          on the CorComp, TI, Myarc or Parcom versions. All of these
+          require a NEW after CALL FILES. NEW is executed after the
+          FILES subprogram in RXB, so there is no need to use NEW.
+          Also RXB FILES accepts values from 0 to 15 unlike the other
+          FILES routines that can only accept 0 to 9. Each open file
+          reduces VDP by 534 bytes, plus each file opened will use
+          518 bytes more. Only RXB has a valid CALL FILES(0) or a
+          CALL FILES(15) that works.
+ 
+          Programs
+ 
+          FILES opens usual buffers.    | >CALL FILES(3)
+                                        |
+          FILES ends the program and    | >100 CALL FILES(1)
+          executes NEW.                 |
+                                        | 
+          Only possible in RXB          | >100 CALL FILES(15)
+                                        | >SIZE
+                                        |
+          Only possible in RXB          | >CALL FILES(0)
+                                        | >SIZE
+                                        |
+                                        
+
+          Will display 5624 Bytes of Stack free and 24488 Bytes of
+          Program space free. At this point up to 15 files may be
+          open at the same time. Not recommended but possible now.
+          Also 0 files now is possible in RXB.
+
+          Options
+          See XB for even more powerful applications made easy.
+          For example CALL XB("DSK1.LOAD",1)  will do a 
+          CALL FILES(1) then NEW then RUN "DSK1.LOAD" AUTOMATICALLY

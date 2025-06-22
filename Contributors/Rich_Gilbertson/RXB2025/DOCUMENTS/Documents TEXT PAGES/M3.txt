@@ -1,0 +1,25 @@
+          MERGE          subprogram                            PAGE  M3
+          -------------------------------------------------------------
+ 
+          Format         MERGE "device.filename"
+
+
+          Description
+ 
+          See EXTENDED BASIC MANUAL PAGE 122 for more data. The only 
+          reason for this page in RXB is a problem with SIZE and the
+          MERGE command breaks SIZE from working as they both use the
+          same address to record XB RAM END ADDRESS. This problem
+          will only happen if you use PRAM to change program normal 
+          start and end locations of XB RAM. Please never use the
+          merge command if you have changed XB RAM with PRAM command.
+
+ 
+          Command
+ 
+          Change locations to start XB  | >CALL PRAM(-12288,-16384)
+          to >C000 and end to >D000     | 
+          This will load a program.     | >OLD DSK1.TEST
+          This will merge both programs.| >MERGE DSK1.TEST2
+          SIZE will report wrong program| >SIZE 
+          space incorrectly             |

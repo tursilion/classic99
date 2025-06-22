@@ -1,0 +1,39 @@
+          CHAR           subprogram                            PAGE  C2
+          -------------------------------------------------------------
+ 
+          Format         CALL CHAR(character-code,pattern-identifier
+                         [,...])
+
+                         CALL CHAR(ALL,pattern-identifier[,...])
+
+          Description
+ 
+           See EXTENDED BASIC MANUAL page 56 for more data. Addition 
+          characters 30 to 159 by redefined, but this affects sprites. 
+          Now 30 (CURSOR) and 31 (EDGE CHARACTER) to be redefined. 
+          Also 144 to 159 may be redefined if sprites are not used.
+          Pattern-identifier increased from 64 to 240 string. Thus up
+          to 15 characters may be defined in single command, 4 was old
+          limit in XB allowed to be defined in XB manaual page 56
+          CHAR runs from ROM.
+
+          Programs
+ 
+          This line will define all the | >100 CALL CHAR(ALL,"")
+           characters as a empty string.|
+          FOR NEXT loop 30 to 127       | >110 FOR X=30 to 127
+          This line prints a character. | >120 PRINT CHR$(X);
+          NEXT to continue loop.        | >130 NEXT X
+          Reset characters 32 to 127    | >140 CALL CHARSET(ALL)
+          This line repeats the program.| >150 GOTO 100                              
+                                        | 
+          Sets variable A$ up.          | >100 A$="FF818181818181FF"
+          Define all the characters same| >110 CALL CHAR(ALL,A$)                                    |       
+          This line defines the cursor. | >120 CALL CHAR(30,"FF81FF")
+          This line defines the edge    | >130 CALL CHAR(31,"55")
+          character.                    |             
+                                        |
+
+          Options
+          Sprites may not be used if characters 144 to 159 are being
+          redefined for use. 15 characters now defined up from 4 in XB.

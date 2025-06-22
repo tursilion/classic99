@@ -1,0 +1,12 @@
+
+100 ! RXB CALL JOYMAP
+110 ! JOYMAP                 JOYST + MOTION + POSITION + IF KEY GOTOLINE NUMBER
+120 ! As this does all this in asingle command should  be   used in place of normal XB  more compliated version
+130 CALL CLEAR
+140 CALL CHAR(143,"FFFFFFFFFFFFFFFF")
+150 CALL SPRITE(#1,143,2,9,190,20,0)
+160 CALL JOYMAP(1,X,Y,#1,40,40,DR,DC,K)GOTO 190
+170 PRINT X;Y;DR;DC;K
+180 GOTO 160
+190 PRINT X;Y;DR;DC;K;"FIRE"
+200 GOTO 160

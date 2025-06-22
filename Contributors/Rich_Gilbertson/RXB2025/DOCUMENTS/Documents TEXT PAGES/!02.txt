@@ -1,0 +1,31 @@
+          *************************************************************
+          *                    TABLE OF CONTENTS                      *
+          *************************************************************
+          NAME---------------------TYPE----------ACCESS---------PAGE-##
+          RANDOMIZE             SUBPROGRAM        INITIALIZE SEED    R1
+          RES                   COMMAND           EDIT LINES         R2
+          RMOTION               SUBPROGRAM        SPRITE             R3
+          RND                   SUBPROGRAM        CONVERSION         R4
+          ROLLDOWN              SUBPROGRAM        SCREEN             R5
+          ROLLLEFT              SUBPROGRAM        SCREEN             R6
+          ROLLRIGHT             SUBPROGRAM        SCREEN             R7
+          ROLLUP                SUBPROGRAM        SCREEN             R8
+          SAMS                  SAMS CONTROL      SAMS MEMORY        S1
+          SAVE                  COMMAND           DISK or HARD DRIVE S5
+          SCREEN                SUBPROGRAM        SCREEN             S6
+          SCROLLDOWN            SUBPROGRAM        SCREEN             S7
+          SCROLLLEFT            SUBPROGRAM        SCREEN             S8
+          SCROLLRIGHT           SUBPROGRAM        SCREEN             S9
+          SCROLLUP              SUBPROGRAM        SCREEN             S10
+          SIZE              SUBPROGRAM/COMMAND    MEMORY (ALL)       S11
+          STOP                  OPTION SUBPROGRAM SPRITES            S14 
+          SWAPCHAR              SUBPROGRAM        CHAR               S15
+          SWAPCOLOR             SUBPROGRAM        COLOR              S16
+          USER                  SUBPROGRAM        CONTROL/DISK DOS   U1
+          VCHAR                 SUBPROGRAM        SCREEN             V1
+          VDPSTACK              SUBPROGRAM        VDP STACK LOCATION V2
+          VERSION               SUBPROGRAM        GROM RXB           V3
+          VGET                  SUBPROGRAM        SCREEN             V4
+          VPUT                  SUBPROGRAM        SCREEN             V5
+          XB                DSR or SUBPROGRAM     DEVICE             X1
+

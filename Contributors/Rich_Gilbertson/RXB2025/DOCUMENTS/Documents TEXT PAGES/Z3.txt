@@ -1,0 +1,30 @@
+                                                               PAGE    3
+
+       BATCH FILE SYSTEM:
+       -----------------------------------------------------------------
+       CALL USER overrides the normal edit mode by allowing a DV80 file
+       to take control. This allows conversions from DV80 to XB program
+       or DV80 to XB MERGE format or loading files, re-sequencing them,
+       and saving or merging or adding lines through another DV80 file.
+       All variables used through CALL USER are not affected so from a
+       running program more lines or variables can be added to the size
+       of the program without losing anything. Of course the RUN command
+       will as always clear all variables before the program is run,
+       this feature can be turned off with a CALL LOAD. (PRESCAN OFF)
+        As the USER subprogram can override the Editor many features can
+       be bypassed. Example:
+                            NEW                       cr
+                            OLD DSK1.XBPROGRAM        cr
+                            RES 11,3                  cr
+                            MERGE "DSK1.MERGEPGM"     cr
+                            SIZE                      cr
+                            SAVE "DSK1.NEWPROGRAM"    cr
+                            RUN                       cr
+                            NEW                       cr  
+                            OLD DSK1.LOAD             cr  
+ 
+        The above is a good example of a DV80 Batch file for RXB. Note
+       that there must be a CHR$(13) or Carriage Return after every input
+       line. If not then RXB assumes the it is the same line. But even
+       that is not much of a problem as RXB allows 21 lines of input per
+       program line. You can make them even longer if you want in USER.

@@ -1,0 +1,41 @@
+          IO  (SOUND LIST)                                     PAGE  I4
+          -------------------------------------------------------------
+          The variable can input or output values ranging from 0 to 255
+          as that is equivalent to a single byte value. As there are
+          two variables 16 bits can be represented in the two 8 bit
+          variables. If CRU input reads less than 8 bits, the unused
+          bits in the byte are reset to zero. If CRU input reads less
+          then 16 but more than 8 bits, the unused bits in the word
+          will be reset to zero. The bits range from 1 to 16 for input
+          or output.
+ 
+          AUTO-SOUND INSTRUCTION GROM/GRAM/VDP
+ 
+          Format         CALL IO(type,address[,...])
+ 
+           Control of the Sound Generator Chip (SGC) in the system
+          console is through a pre-defined table in GROM/GRAM or VDP
+          memory. Sound output is controlled by the table and the VDP
+          Interrupt Service Routine (ISR). A control byte at the end of
+          the table can cause control to loop back up in the table to
+          continue, or end sound output. The format of the table is the
+          same regardless of where it resides. The table consists of a
+          series of blocks, each of which contains a series of bytes
+          which are directly output to the SGC.
+           Since the VDP generates 60 interrupts per second, the
+          interrupt count is expressed in units of one-sixtieth of a
+          second.
+           When the IO command is called, upon the next occurring
+          VDP interrupt, the first block of bytes is output to the SGC.
+          The interpreter (Operating System) waits the requested number
+          of interrupts (for example, if interrupt counts are 1, every
+          interrupt causes the next block to be output). Remember that
+          interpretation of XB continues normally while the SGC control
+          is enabled.
+           The sound control can be terminated by using an interrupt
+          count of 0 in the last block of the table. Alternatively, a
+          primitive looping control is provided by using a block whose
+          first byte is 0, and the next 2 bytes indicate an address in
+          the same memory space of the next sound block to use. (That
+          means one block points to another block only in the same type
+          of memory).

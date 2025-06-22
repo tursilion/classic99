@@ -1,0 +1,33 @@
+          PEEKV          subprogram                            PAGE  P4
+          -------------------------------------------------------------
+ 
+          Format         CALL PEEKV(address,numeric-variable-list[,...])
+ 
+ 
+          Description
+ 
+          The PEEKV command reads data from VDP into the variable(s)
+          specified. It functions identical to the regular EXTENDED
+          BASIC PEEK command page 143. Except it reads from VDP.
+          The VDP address should not exceed 16384 in a TI with a 9918
+          VDP chip, 9938 or 9958 VDP chips can go the full 32767.
+           VDP addresses above 32767 must be converted to a negative
+          number by subtracting 65536 from the desired address. Also
+          whenever a value is peeked or poked to the screen a screen
+          offset is present. 96 must be subtracted from or added to the
+          value to correct it.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL PEEKV(767,B)
+          read a byte from VDP and put  |
+          it into variable B.           |
+          This line will print it.      | >110 PRINT B-96
+                                        |
+          Address loop counter          | >100 FOR D=0 TO 16383
+          PEEK Grom address value.      | >110 CALL PEEV(D,X)
+          Convert to HEX                | >120 CALL HEX(A,H$,X,B$)
+          Show address and value.       | >130 PRINT "Address:";H$,
+                                        |  D:"VALUE:";B$,X
+          Loop.                         | >140 NEXT D
+                                        | 

@@ -1,0 +1,19 @@
+          HONK           subprogram                            PAGE  H5
+          -------------------------------------------------------------
+ 
+          Format         CALL HONK
+ 
+
+          Description
+ 
+          The HONK command produces the same sound as the ACCEPT or
+          in INPUT or if a error occurs.
+ 
+          Programs
+ 
+          The program to the right will | >100 PRINT "YN ?"
+          will produce a honk sound.    |
+          Key request for YN.           | >110 CALL KEY("YN",0,K,S) 
+          Indicate N was pressed.       | >120 IF K=78 THEN CALL HONK
+          Continue on with program.     | >130 GOTO 100
+                                        | 

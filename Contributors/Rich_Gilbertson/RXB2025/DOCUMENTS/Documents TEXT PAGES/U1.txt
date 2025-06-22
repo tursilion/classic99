@@ -1,0 +1,41 @@
+          USER           subprogram                            PAGE  U1
+          -------------------------------------------------------------
+ 
+          Format         CALL USER(quoted-string)
+ 
+                         CALL USER(string-variable)
+ 
+          Description
+ 
+          The USER subprogram overrides the normal editor of edit mode
+          of XB and reads a DV80 file into the key scan routine as if
+          the user was keying it in.
+           That means Batch Processing is creating XB programs from
+          DV80 files, Editing XB programs, MERGING, Saving, and
+          RUNNING XB programs. Also RESequencing, adding lines, or
+          deleting lines, and re-writing lines from the DV80 file.
+           Every line to be input from the DV80 file MUST END WITH A
+          CARRIAGE RETURN! A line of input may be up to 588 characters
+          in length. The editor will error out if the crunch buffer is
+          full, reporting a *Line Too Long* error. (Over 163 tokens)
+           Other errors will be reported but will not stop the process
+          of USER continuing to input lines. To find errors in the DV80
+          file the input lines are shown on screen as they are input
+          into the editor, and errors will be reported. So you must
+          observe the screen for errors to test the DV80 file.
+           USER will stop after reaching the end of the file. But USER
+          can have its operation suspended CALL POKEV(2242,0) will
+          halt USER and CALL POKEV(2242,9) will resume USER.
+           INPUT and ACCEPT will try to read from USER if it is not
+          turned off. On the other hand DV80 files can go directly into
+          a INPUT or ACCEPT prompts. Turn off USER to be safe though.
+           USER will only report errors upon opening, thus if incorrect
+          device or filename then USER reports * USER ERROR * and just
+          closes the USER file, thus ending operation of USER.
+           Example files are included with RXB to show and explain the
+          use of USER. The batch processing USER subprogram opens a new
+          world to the RXB programmer. 
+          Addtionally new commands like CALL VDPSTACK and CALL PRAM used
+          with CALL USER means you can modify the entire XB memory in 
+          both VDP and RAM from a BATCH file.
+          Possibilities are almost endless!

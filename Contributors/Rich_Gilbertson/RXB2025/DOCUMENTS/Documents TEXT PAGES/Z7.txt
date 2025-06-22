@@ -1,0 +1,43 @@
+                                                                PAGE  7
+
+       JOYSTICK and SPRITE MOTION CONTROL with KEY built FIRE button
+       ----------------------------------------------------------------
+       As normal XB JOYSTICK and SPRITE controls were seperate commands
+       this slowed down response in XB games and utilities. The main 
+       issue was these commands were not combined. RXB added two new
+       commands to the arsenal but also added CALL KEY and also added
+       a IF THEN into the mix. Thus CALL JOYMOTION acts just like
+       CALL JOYST + CALL KEY + CALL MOTION + IF FIRE THEN line number
+       To bring even more to the table is an INDEX value for SPRITES.
+       EXAMPLE:
+       CALL JOYMOTION(key-unit,x-return,y-return,#sprite,
+       row-index,column-index,key-return-variable) GOTO line-number
+
+       key-unit,x-return,y-return are like normal XB JOYST
+       #sprite,row-index,column-index are like XB MOTION but dot based
+       key-return-variable is just like XB KEY key varible
+       GOTO line-number is like XB IF KEY THEN line-number
+
+       The GOTO is not required nor is the key-return-variable as these 
+       are optional depending on your needs.
+
+
+       JOYSTICK and SPRITE LOCATE CONTROL with KEY built in FIRE button
+       ----------------------------------------------------------------
+       As normal XB JOYSTICK and SPRITE controls were seperate commands
+       this slowed down response in XB games and utilities. The main 
+       issue was these commands were not combined. RXB added two new
+       commands to the arsenal but also added CALL KEY and also added
+       a IF THEN into the mix. Thus CALL JOYLOCATE acts just like
+       CALL JOYST + CALL KEY + CALL MOTION + IF FIRE THEN line number 
+       EXAMPLE:
+       CALL JOYLOCATE(key-unit,x-return,y-return,row-index,column-index,
+       #sprite,dot-row,dot-column),key-return-variable) GOTO line-number
+
+       key-unit,x-return,y-return are like normal XB JOYST
+       #sprite,row-index,column-index are like XB LOCATE but dot based
+       key-return-variable is just like XB KEY key varible
+       GOTO line-number is like XB IF KEY THEN line-number
+
+       The GOTO is not required nor is the key-return-variable as these 
+       are optional depending on your needs.

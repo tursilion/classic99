@@ -1,0 +1,43 @@
+                                                              PAGE    4
+
+       INPUT/OUTPUT ACCESS:
+       ----------------------------------------------------------------
+       CALL IO controls the 9901 CRU chip. Sound lists can be played
+       independently of current status. (i.e. type in a program while
+       playing music from VDP/GROM.) Control Register Unit can turn
+       on/off single bits of CRU address bus. (i.e. cards/chips)
+       Cassette direct bus control. (i.e. no menu input/output, verify)
+                                     
+       REDO KEY RESTORED (Was removed in RXB2001 to RXB2012):                                             
+       ----------------------------------------------------------------
+        The REDO (FCTN 8) is RESTORED in RXB2015. USER needed a buffer
+       that would not be molested or modified by CALL LINK, CALL LOAD
+       or routines that need a buffer and usually use the same area
+       that USER previously used. So to update and eliminate questions
+       of compatibility the USER buffer was installed in place of the
+       Edit recall buffer (REDO). The REDO key was not considered to be
+       of much use anyway as the Crunch Buffer is 163 tokens long and
+       in non-tokenized form the Edit recall buffer is only 152 bytes
+       long. That is why when REDO is pressed only part of the line
+       last typed in was recalled to screen. Additionally COPY lines,
+       and MOVE lines commands can do the same thing as REDO could, so
+       not much of anything is lost because it is assumed a TEXT EDITOR
+       will be used to create programs in RXB then use CALL USER.
+ 
+       PROGRAM DEVICE NAMES ACCESS:
+       ----------------------------------------------------------------
+       New access names established as devices are now available. By
+       using any TRUE DSR (Device Service Routine) you may now access
+       the Editor Assembler main menu by typing 'EA' within Basic or
+       RXB. Example:  RUN "EA" or OLD EA or DELETE "EA"
+       You may also access RXB from Editor Assembler or Basic or even
+       another cartridge. Example: OLD XB or DELETE "XB" from Basic.
+       At any Editor Assembler device prompt type 'XB' then enter.
+ 
+       FOR ASSEMBLY LANGUAGE PROGRAMMERS:
+       -----------------------------------------------------------------
+       CALL MOVES is a new command that is a GPL command converted and
+       added to RXB to give total control over every type of memory with
+       in the TI-99/4A. MOVES works with address or strings to copy,
+       over-write or move blocks of memory of any type of memory. RAM,
+       VDP, GROM, GRAM, and ROM can be accessed by CALL MOVES.

@@ -1,0 +1,36 @@
+          MAP (SAMS)     option for subprogram                 PAGE  M2
+          -------------------------------------------------------------
+ 
+          Format         CALL SAMS("MAP"[,...])
+ 
+ 
+          Description
+ 
+          The SAMS MAP command will only work with a AMS memory card. 
+          MAP MODE on the AMS card means the mapper registers are
+          turned on so they can be changed. But even with the mapper on
+          unless the read/write lines are on no mappers will appear to
+          be at the DSR address. SAMS ON turns on read/write mapper 
+          registers.
+          Then a LOAD or SAMS can change the memory pages.
+          See docs MANUAL-SAMS for examples of memory maps. Also run
+          SAMS-TEST or SAMS-SAVE or SAMS-LOAD programs.
+ 
+          Programs
+ 
+          This turns on map mode.       | >100 CALL SAMS("MAP")
+          This turns on read/write.     | >110 CALL SAMS("ON")
+          This fetches map register 2.  | >120 CALL PEEK(16388,BYTE)
+          This turns off read/write.    | >130 CALL SAMS("OFF")
+          This turns on pass mode.      | >140 CALL SAMS("PASS")
+          This prints the page from map | >150 PRINT "Register 2 PAGE#"
+           mode in register 2.          |  ;BYTE
+                                        |
+
+          The above program will print out whatever SAMS page is
+          presently stored in SAMS map register 2.
+
+
+          It is recommended that CALL SAMS("MAP") only be used to 
+          check SAMS pages with CALL PEEK. CALL SAMS is much more easy
+          to use to manage AMS memory.

@@ -1,0 +1,9 @@
+
+10 ! Decimal & Hexidecimal
+11 FOR D=-32000 TO 30000 STEP 1000
+12 CALL HEX(D,H$)
+13 PRINT "DEC=";D,"HEX=";H$
+100 ! Hexidecimal to Decimal
+120 CALL HEX(H$,D)
+130 PRINT "HEX=";H$,"DEC=";D
+140 NEXT D

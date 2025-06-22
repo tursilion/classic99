@@ -1,0 +1,42 @@
+          RMOTION        subprogram                            PAGE  R3
+          -------------------------------------------------------------
+ 
+          Format         CALL RMOTION(#sprite-number[,...])
+ 
+                         CALL RMOTION(ALL[,...])
+ 
+          Description
+ 
+          The RMOTION subprogram reverses the row-velocity and
+          column-velocity as numbers from -127 to 127. This means that
+          RMOTION simply reverses the direction of the sprite specified
+          so it goes in the opposite direction it was going in.
+          This also means RMOTION ignores 0 and -128, so you can use
+          those to bypass RMOTION if you do not want RMOTION to change
+          the sprite. The fastest and slowest sprite speeds are never
+          affected by RMOTION. This feature adds more power to RMOTION.
+          The ALL feature also allows all sprites on the screen to
+          reverse all at once. ALL may also be called as many times as
+          wanted in a single program line. RMOTION runs from ROM.
+ 
+          Program
+ 
+          RMOTION reverses the row-     | >100 CALL RMOTION(#1)
+          velocity and the column-      |
+          velocity in sprite-number 1.  |
+                                        |
+          This line reverses the motion | >100 CALL RMOTION(ALL)
+          of all sprites.               |
+                                        |
+          Line 100 sets up a sprite.    | >100 CALL SPRITE(#1,33,2,96,1
+                                        |  8,99,84)
+          Line 110 waits for a number   | >110 IF RND<.8 THEN 110
+          higher than .8 randomly.      |
+          Line 120 reverses the motion  | >120 CALL RMOTION(#1)
+          of the sprite.                |
+          Continues the program.        | >130 GOTO 110
+ 
+ 
+          Options
+          While characters 144 to 159 are being used, you cannot use
+          sprites.

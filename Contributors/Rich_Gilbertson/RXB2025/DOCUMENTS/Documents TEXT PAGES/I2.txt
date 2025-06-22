@@ -1,0 +1,39 @@
+          INVERSE        subprogram                            PAGE  I2
+          -------------------------------------------------------------
+ 
+          Format         CALL INVERSE(character-code[,...])
+ 
+                         CALL INVERSE(ALL[,...])
+ 
+          Description
+ 
+          The INVERSE subprogram finds the character definition of the
+          character-code and inverts all the bytes in the character
+          definition. That means it just reverses the foreground and
+          background. The ALL feature inverts characters 30 to 143
+          thus not affecting characters 144 to 159 as this would
+          destroy sprites.
+ 
+          Programs
+ 
+          The program to the right will | >100 CALL INVERSE(65)
+          INVERSE all character-code (A)|
+          in the character definition   |
+          table in memory.              |
+                                        |
+          The program to the right will | >100 CALL INVERSE(ALL)
+          INVERSE all character-codes   |
+          from 30 to 143.               |
+                                        |
+          Line 100 will ask for a string| >100 INPUT A$
+          of characters terminated by   |
+          the ENTER key.                |
+          Line 110 is a loop to counter.| >110 FOR L=1 TO LEN(A$)
+          Line 120 singles each one of  | >120 C=ASC(SEG$(A$,L,1))
+          the characters in A$.         |
+          Line 130 INVERSEs each one.   | >130 CALL INVERSE(C)
+          Line 140 completes the loop.  | >140 NEXT L
+          Line 150 restarts the program.| >150 GOTO 100
+          (Be sure and not enter any blank characters in this program)
+ 
+

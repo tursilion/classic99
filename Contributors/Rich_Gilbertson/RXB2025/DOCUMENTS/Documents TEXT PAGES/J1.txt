@@ -1,0 +1,30 @@
+          JOYST          subprogram                            PAGE  J1
+          -------------------------------------------------------------
+ 
+          Format         CALL JOYST(key-unit,x-return,y-return[,...])
+ 
+          Description
+ 
+          See EXTENDED BASIC MANUAL page 108 
+          Except for adding auto repeat there is no changes to JOYST
+          Some of JOYST runs from ROM.
+ 
+          Programs
+ 
+          The program on the right will | >100 CALL CLEAR
+          illustrate a use of JOYST     | >110 CALL SPRITE(#1,33,5,96,1
+          subprogram. It creates two    |  28,#2,42,2,96,128)
+          sprites and then moves them   | >120 CALL JOYST(1,X1,Y1,2,X2,
+          around according to the input |  Y2)
+          from the joysticks.           | >130 CALL MOTION(#1,-Y1,X1,#2
+          Two players with the same     |  -Y2,X2)
+          input speed and motion.       | >140 GOTO 120
+                                        |
+
+
+          Options:
+          See JOYMOTION, JOYLOCATE, KEY or ONKEY making it much more 
+          easy to use then normal XB routines as it combines several 
+          commands into a single command to use, also much faster 
+          response and more variables are used to control routines
+          for a user.

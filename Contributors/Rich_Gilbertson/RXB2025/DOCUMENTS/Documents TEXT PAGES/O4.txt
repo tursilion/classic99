@@ -1,0 +1,19 @@
+          ONKEY          subprogram                            PAGE  O4
+          -------------------------------------------------------------
+          Programs
+
+          This line accepts a key>    | >100 CALL ONKEY("123",0,K,S)  
+                                      |   GOTO 120,130,140
+          Keep scanning the key.      | >110 GOTO 100
+          First line.                 | >120 PRINT "ONE"::GOTO 100
+          Second line.                | >130 PRINT "TWO"::GOTO 100
+          Third line.                 | >140 PRINT "THREE"::GOTO 100                          
+                                      |
+          Using GOSUB                 | >100 GOSUB 110::GOTO 100
+          Key scan.                   | >110 CALL ONKEY("YN",3,K,S)
+                                      |   GOTO 120,130
+          First line.                 | >120 PRINT "YES"::RETURN
+          Second line.                | >130 PRINT "NO"::RETURN
+                                      |           
+          The above program both act like ON GOTO with the key
+          selecting in the string the position and line number.
