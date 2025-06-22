@@ -115,7 +115,8 @@ enum {
 	IMAGE_IMG,			// Windows Image file (ie: any headerless file)
 	IMAGE_SECTORDSK,	// File on a sector dump (V9T9) disk image
 	IMAGE_TRACKDSK,		// File on a track dump (PC99) disk image (TODO: not used, used SECTORDSK)
-	IMAGE_OMNIFLOP		// File on a physical floppy accessed via OmniFlop/TI99-PC (TODO: probably never)
+	IMAGE_OMNIFLOP,		// File on a physical floppy accessed via OmniFlop/TI99-PC (TODO: probably never)
+    IMAGE_DIRECTORY     // A directory file (on whatever supporting medium)
 };
 
 // PAB error codes
@@ -214,10 +215,13 @@ enum {
 	OPT_FIAD_WRITEALLDFASTEXT,
 	OPT_FIAD_READTXTASDV,
 	OPT_FIAD_READTXTWITHOUTEXT,
+    OPT_FIAD_ALLOWDELETE,
 	OPT_FIAD_READIMGASTIAP,
 	OPT_FIAD_ALLOWNOHEADERASDF128,
 	OPT_FIAD_ENABLELONGFILENAMES,
 	OPT_FIAD_ALLOWMORE127FILES,
+    OPT_FIAD_SWAPSLASHES,
+    OPT_FIAD_RETURNSUBDIRS,
 
 	OPT_IMAGE_USEV9T9DSSD,	// reverse sector order for side 2 -- deprecated
 

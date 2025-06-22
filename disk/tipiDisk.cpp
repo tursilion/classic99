@@ -714,7 +714,11 @@ bool dsrTipi() {
 }
 bool dsrPiClock() {
     debug_write("Remapping PI.CLOCK to CLOCK...");
-    do_dsrlnk("CLOCK");
+    // pretend PI.CLOCK is all one name and move the DSR pointer to after CLOCK
+    int PAB = romword(0x8356, ACCESS_FREE);
+    PAB+=6;
+    wrword(0x8356, PAB);
+    do_dsrlnk("PI.CLOCK");
     return true;
 }
 
@@ -739,6 +743,7 @@ bool dsrPI() {
     else if (0 == _strnicmp((char*)&VDP[PAB], "CON", 3)) return dsrPiConfig();
     else if (0 == _strnicmp((char*)&VDP[PAB], "STA", 3)) return dsrPiStatus();
     else if (0 == _strnicmp((char*)&VDP[PAB], "VAR", 3)) return dsrPiVars();
+    else if (0 == _strnicmp((char*)&VDP[PAB], "CLO", 3)) return dsrPiClock();
     else if (0 == _strnicmp((char*)&VDP[PAB], "SHU", 3)) return dsrPiHardwareNop();
     else if (0 == _strnicmp((char*)&VDP[PAB], "REB", 3)) return dsrPiHardwareNop();
     else if (0 == _strnicmp((char*)&VDP[PAB], "UPG", 3)) return dsrPiHardwareNop();

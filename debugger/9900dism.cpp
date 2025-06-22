@@ -46,6 +46,18 @@ std::map<int,std::string> Symbols;
 //		A line has 16 spaces followed by 0x and 12 zeros (for TI)
 //		Next are 4 bytes of address, then 16 more spaces, then the label
 //		We ignore the header lines.
+//
+// THREE: From XA99 assembler symbol tables
+//      Up to four columns of symbols.
+//      There are potential symbols at: 4, 22, 40, and 58. 
+//      2 characters back from there is a potential tag:
+//       space   No special meaning
+//	     '     Symbol is relocatable                            NO
+//	     +     Symbol has an absolute address                  YES
+//	     D     Symbol is in the XDEF list                        ? - maybe yeah, maybe no, can be relocatable
+//	     U     Symbol is undefined                              NO
+//	     E     Symbol is in the XREF list                       NO
+//	     X     Symbol is an defined extended operation (DXOP)    ? - maybe yeah, maybe no, can be relocatable
 void ImportMapFile(const char *fn) {
 	FILE *fp;
 

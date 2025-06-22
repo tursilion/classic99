@@ -88,10 +88,13 @@ const char *pszOptionNames[] = {
 	"FIAD_ReadTextAsDV",
 	"FIAD_ReadTextAsDF",
 	"FIAD_ReadTextWithoutExt",
+	"FIAD_AllowDelete",
 	"FIAD_ReadImgAsTIAP",
 	"FIAD_AllowNoHeaderAsDF128",
 	"FIAD_EnableLongFilenames",
 	"FIAD_AllowMore127Files",
+    "FIAD_SwapSlashes",
+    "FIAD_ReturnSubdirs",
 
 	"IMAGE_UseV9T9DSSD",
 

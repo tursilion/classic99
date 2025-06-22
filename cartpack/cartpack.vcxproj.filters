@@ -295,10 +295,10 @@
     <None Include="roms\XB29GEM_8.BIN">
       <Filter>DataFiles\ROMS</Filter>
     </None>
-    <None Include="roms\RXB2024B_8.bin">
+    <None Include="roms\RXB2025_8.bin">
       <Filter>DataFiles\ROMS</Filter>
     </None>
-    <None Include="roms\RXB2024B_G.bin">
+    <None Include="roms\RXB2025_G.bin">
       <Filter>DataFiles\ROMS</Filter>
     </None>
   </ItemGroup>

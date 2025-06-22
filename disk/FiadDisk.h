@@ -57,7 +57,7 @@ public:
 	virtual bool GetOption(int nOption, int &nValue);
 //	virtual FileInfo *AllocateFileInfo();				// base class ok
 //	virtual FileInfo *FindFileInfo(CString csFile);		// base class ok
-//	virtual CString BuildFilename(FileInfo *pFile);		// base class ok
+	virtual CString BuildFilename(FileInfo *pFile) override;
 
 	// disk support
 	virtual bool Flush(FileInfo *pFile);
@@ -67,27 +67,27 @@ public:
 	virtual CString GetDiskName();
 
 	// standard PAB opcodes
-	virtual FileInfo *Open(FileInfo *pFile);
-//	virtual bool Close(FileInfo *pFile);				// base class ok
-//	virtual bool Read(FileInfo *pFile);					// base class ok
-//	virtual bool Write(FileInfo *pFile);				// base class ok
-//	virtual bool Restore(FileInfo *pFile);				// base class ok
-	virtual bool Load(FileInfo *pFile);
-	virtual bool Save(FileInfo *pFile);
-//	virtual bool Delete(FileInfo *pFile);				// not supported
-//	virtual bool Scratch(FileInfo *pFile);				// not supported
-//	virtual void MapStatus(FileInfo *src, FileInfo *dest);// base class ok
-//	virtual bool GetStatus(FileInfo *pFile);			// base class ok
+	virtual FileInfo *Open(FileInfo *pFile) override;
+//	virtual bool Close(FileInfo *pFile) override;				// base class ok
+//	virtual bool Read(FileInfo *pFile) override;				// base class ok
+//	virtual bool Write(FileInfo *pFile) override;				// base class ok
+//	virtual bool Restore(FileInfo *pFile) override;				// base class ok
+	virtual bool Load(FileInfo *pFile) override;
+	virtual bool Save(FileInfo *pFile) override;
+	virtual bool Delete(FileInfo *pFile) override;
+//	virtual bool Scratch(FileInfo *pFile) override;				// not supported
+//	virtual void MapStatus(FileInfo *src, FileInfo *dest);      // base class ok
+//	virtual bool GetStatus(FileInfo *pFile) override;			// base class ok
 
 	// SBRLNK opcodes (files is handled by shared handler)
-	virtual bool ReadSector(FileInfo *pFile);
-//	virtual bool WriteSector(FileInfo *pFile);			// not supported
-	virtual bool ReadFileSectors(FileInfo *pFile);
-	virtual bool WriteFileSectors(FileInfo *pFile);
-//	virtual bool FormatDisk(FileInfo *pFile);			// not supported
-//	virtual bool ProtectFile(FileInfo *pFile);			// not supported
-//	virtual bool UnProtectFile(FileInfo *pFile);		// not supported
-//	virtual bool RenameFile(FileInfo *pFile);			// not supported
+	virtual bool ReadSector(FileInfo *pFile) override;
+//	virtual bool WriteSector(FileInfo *pFile) override;			// not supported
+	virtual bool ReadFileSectors(FileInfo *pFile) override;
+	virtual bool WriteFileSectors(FileInfo *pFile) override;
+//	virtual bool FormatDisk(FileInfo *pFile) override;			// not supported
+//	virtual bool ProtectFile(FileInfo *pFile) override;			// not supported
+//	virtual bool UnProtectFile(FileInfo *pFile) override;		// not supported
+    virtual bool RenameFile(FileInfo *pFile, const char *csNewName) override; // 10 character limit!!
 
 	// class-specific functions
 	FILE *fopen(const char *szFile, char *szMode);
@@ -114,14 +114,18 @@ public:
 	bool bReadTxtAsDV;
 	bool bAllowNoHeaderAsDF128;
 	bool bAllowTxtWithoutExtension;
+    bool bAllowDelete;
 	bool bReadImgAsTIAP;
 	bool bEnableLongFilenames;
 	bool bAllowMore127Files;
+    bool bSwapPeriodAndSlash;
+    bool bReturnSubdirs;
 
 	// directory cache
 	int nCachedDrive;
 	FileInfo *pCachedFiles;
 	time_t tCachedTime;
+    CString csCachedPath;
 	int nCachedCount;
 };
 

@@ -41,6 +41,8 @@
 #include <io.h>
 #include <atlstr.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include "..\console\tiemul.h"
 #include "diskclass.h"
 #include "fiaddisk.h"
@@ -64,6 +66,9 @@ FiadDisk::FiadDisk() {
 	bReadImgAsTIAP = false;
 	bEnableLongFilenames = false;
 	bAllowMore127Files = false;
+    bAllowDelete = false;
+    bSwapPeriodAndSlash = true;
+    bReturnSubdirs = false;
 
 	nCachedDrive=-1;
 	pCachedFiles=NULL;
@@ -136,7 +141,11 @@ void FiadDisk::SetOption(int nOption, int nValue) {
 			bAllowTxtWithoutExtension = nValue?true:false;
 			break;
 
-		case OPT_FIAD_READIMGASTIAP:
+		case OPT_FIAD_ALLOWDELETE:
+			bAllowDelete = nValue?true:false;
+			break;
+
+        case OPT_FIAD_READIMGASTIAP:
 			bReadImgAsTIAP = nValue?true:false;
 			break;
 
@@ -148,7 +157,15 @@ void FiadDisk::SetOption(int nOption, int nValue) {
 			bAllowMore127Files = nValue?true:false;
 			break;
 
-		default:
+        case OPT_FIAD_SWAPSLASHES:
+            bSwapPeriodAndSlash = nValue?true:false;
+            break;
+
+        case OPT_FIAD_RETURNSUBDIRS:
+            bReturnSubdirs = nValue?true:false;
+            break;
+
+        default:
 			BaseDisk::SetOption(nOption, nValue);
 			break;
 	}
@@ -196,7 +213,11 @@ bool FiadDisk::GetOption(int nOption, int &nValue) {
 			nValue = bAllowTxtWithoutExtension;
 			break;
 
-		case OPT_FIAD_READIMGASTIAP:
+		case OPT_FIAD_ALLOWDELETE:
+			nValue = bAllowDelete;
+			break;
+
+        case OPT_FIAD_READIMGASTIAP:
 			nValue = bReadImgAsTIAP;
 			break;
 
@@ -208,11 +229,58 @@ bool FiadDisk::GetOption(int nOption, int &nValue) {
 			nValue = bAllowMore127Files;
 			break;
 
-		default:
+        case OPT_FIAD_SWAPSLASHES:
+            nValue = bSwapPeriodAndSlash;
+            break;
+
+        case OPT_FIAD_RETURNSUBDIRS:
+            nValue = bReturnSubdirs;
+            break;
+
+        default:
 			return BaseDisk::GetOption(nOption, nValue);
 	}
 
 	return true;
+}
+
+// return a formatted local path name
+CString FiadDisk::BuildFilename(FileInfo *pFile) {
+	CString csTmp;
+
+	if (NULL == pFile) {
+		return csTmp;
+	}
+
+    // handles the unset drive index for MakeCart
+    if (pFile->nDrive == -1) {
+        // filename is already set
+        return pFile->csName;
+    }
+
+	// get local path
+	csTmp = pDriveType[pFile->nDrive]->GetPath();
+	// check for ending backslash
+	if (csTmp.Right(1) != "\\") {
+		csTmp+='\\';
+	}
+
+    // munge the filename if needed
+    CString csLocalFile = pFile->csName;
+    if (bSwapPeriodAndSlash) {
+        for (int idx=0; idx<csLocalFile.GetLength(); ++idx) {
+            // check csName, change csLocalFile. That way there
+            // is no conflict on the swap
+            if (pFile->csName[idx] == '/') csLocalFile.SetAt(idx, '.');
+            if (pFile->csName[idx] == '\\') csLocalFile.SetAt(idx, '.');
+            if (pFile->csName[idx] == '.') csLocalFile.SetAt(idx, '\\');
+        }
+    }
+
+	// append requested filename
+	csTmp+=csLocalFile;
+
+	return csTmp;
 }
 
 // Wrapper function to more easily handle filename munging for FIAD files
@@ -226,8 +294,11 @@ FILE *FiadDisk::fopen(const char *szFile, char *szMode) {
 	while (*p) {
 		// replace some characters okay on the TI with ~ here
 		switch (*p) {
-			case '?':
 			case '/':
+                if (bSwapPeriodAndSlash) break;
+                // else fallthrough
+
+            case '?':
 //			case '\\':		// we allow backslash as a path limiter, so we can't support it
 			case '>':
 			case '<':
@@ -510,7 +581,12 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 	} else {
 		// or the alternate, possible from SBR calls
 		if (pFile->csName.IsEmpty()) {
-			int idx=csFileName.ReverseFind('\\');
+			int idx;
+            if (bSwapPeriodAndSlash) {
+                idx=csFileName.ReverseFind('.');
+            } else {
+                idx=csFileName.ReverseFind('\\');
+            }
 			if (-1 == idx) idx=0;
 			pFile->csName=csFileName.Mid(idx+1);
 		}
@@ -521,10 +597,43 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 	// Configuration switches may disable any of these!
 	pFile->ImageType = IMAGE_UNKNOWN;
 
+    // disregard . and ..
+    if ((csFileName.Right(2) == "\\.") || (csFileName.Right(3) == "\\..")) {
+        debug_write("Skipping directory %s\n", csFileName.GetString());
+        return;
+    }
+
 	// file must exist and be readable! (and if it needs a header, has to have it)
 	FILE *fp=fopen((LPCSTR)csFileName, "rb");
 	if (NULL == fp) {
-		debug_write("Can't read file %s, errno %d", (LPCSTR)csFileName, errno);
+        if (errno == 2) {
+            // check if it's a folder - guess this could test existence too, but
+            // you need an open to check access anyway
+            struct _stat buf;
+            if (0 == _stat(csFileName.GetString(), &buf)) {
+                if (buf.st_mode & S_IFDIR) {
+                    // it is a directory! 
+                    if (bReturnSubdirs) {
+                        debug_write("Detected %s as a subdirectory", (LPCSTR)csFileName);
+                        pFile->ImageType = IMAGE_DIRECTORY;
+				        pFile->HeaderSize = 0;
+				        pFile->LengthSectors=0;
+				        pFile->FileType=6;  // hard coded
+				        pFile->RecordsPerSector=0;
+				        pFile->BytesInLastSector=0;
+				        pFile->RecordLength=38;
+				        pFile->NumberRecords=0;
+				        // translate FileType to Status
+				        pFile->Status = 0;
+                        return;
+                    }
+                }
+            }
+            // return the original errno... we know it was 2
+      		debug_write("Can't stat file %s, errno %d", (LPCSTR)csFileName, 2);
+        } else {
+            debug_write("Can't read file %s, errno %d", (LPCSTR)csFileName, 2);
+        }
 		return;
 	}
 
@@ -591,7 +700,11 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 		int idx=0;
 		// a little parsing helps with stripping subdirectories
 		CString csTmpName = pFile->csName;
-		idx = csTmpName.ReverseFind('\\');
+        if (bSwapPeriodAndSlash) {
+    		idx = csTmpName.ReverseFind('.');
+        } else {
+    		idx = csTmpName.ReverseFind('\\');
+        }
 		if (idx != -1) {
 			csTmpName = csTmpName.Mid(idx+1);
 		}
@@ -677,10 +790,16 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 		// Perhaps for that we can implement file system filters - they take in the
 		// filename and the FileInfo object for the open, and extract appropriate data
 		debug_write("Filename test against %s", (LPCSTR)pFile->csName);
+        // TODO: this is awful, checking both modes, but the directory calls this with
+        // PC names and the TI side calls it with TI names, so we can't win. Need
+        // more smarts, but this will probably be okay for now
 		if ((pFile->csName.Right(4).CompareNoCase(".TXT") == 0) || 
 		(pFile->csName.Right(4).CompareNoCase(".OBJ") == 0) || 
 		(pFile->csName.Right(4).CompareNoCase(".COB") == 0) ||
-		((bAllowTxtWithoutExtension)&&(-1 == pFile->csName.Find('.'))) ||
+        (pFile->csName.Right(4).CompareNoCase("/TXT") == 0) || 
+		(pFile->csName.Right(4).CompareNoCase("/OBJ") == 0) || 
+		(pFile->csName.Right(4).CompareNoCase("/COB") == 0) ||
+        ((bAllowTxtWithoutExtension)&&(-1 == pFile->csName.Find('.'))) ||
 		(pFile->csOptions.Find('W')!=-1)  ) {
 			if (bReadTxtAsDV) {
 				debug_write("Detected %s as a Host TEXT file", (LPCSTR)csFileName);
@@ -705,7 +824,9 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 					// exception: OBJ and COB will be fixed.
 					// need a way to configure this
 					if ((csFileName.Right(4).CompareNoCase(".OBJ") == 0) || 
-						(csFileName.Right(4).CompareNoCase(".COB") == 0)) {
+						(csFileName.Right(4).CompareNoCase(".COB") == 0) ||
+                        (csFileName.Right(4).CompareNoCase("/OBJ") == 0) || 
+						(csFileName.Right(4).CompareNoCase("/COB") == 0)) {
 							// do no such thing
 					} else {
 						pFile->FileType |= TIFILES_VARIABLE;
@@ -1631,32 +1752,12 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 	// then load all its data into a buffer.
 
 	// TODO: Some directory enhancements
-	// 1) support subdirectories for directory listing (using only \ as a separator)
-	//	  There are a lot of problems adapting '.' when it comes to telling extensions
-	//	  apart from paths. It's solvable on a read, but on a write you are just guessing!
-	//
-	// 2) The long filename support is a bust - TI Artist just crashes, for instance.
-	//	  So change it - normally a directory is Internal/Fixed 38 (often opened as 0).
-	//	  For long filenames, use Internal/Variable 0, and return IV254 records with
-	//	  filenames up to 127 characters. (Done)
-	//
-	// 3) As part of the above, code a mapping for long filenames to short. We can't use
+	//    As part of the above, code a mapping for long filenames to short. We can't use
 	//	  the windows scheme, as the resulting filename is still 12 characters long and
-	//	  this won't work on a Linux filesystem. I recommend using the '~' as a tag at
-	//	  a fixed position, position 4. So the short filename is 3 characters from the
-	//	  beginning, the '~', then 6 characters from the end. This is because extensions
-	//	  are generally 4 characters (.EXT), so allows us to keep 2 characters from the
-	//	  real filename. Of course, if there is no extension then we get more of the end,
-	//	  that should still be okay. In the event of collision, place a digit (or more) after the
-	//	  tilde, up to 6 digits should be more then enough for this emulation!!
-	//	  Example: ANATASIA5089_P becomes ANA~5089_P
-	//	  The tilde should be looked for only when the filename is 10 characters. Also,
-	//	  be aware that files saved with the character actually take on that filename!
-	//	  Alternate idea: a mapping file on the disk of long->short names?
+	//	  this won't work on a Linux filesystem. See my filesystem proposal for this idea.
 
 	// Check for directory (empty filename)
-	// TODO: subdirectories using '.' someday...
-	if (pFile->csName == ".") {
+	if (pFile->csName.Right(1) == ".") {
 		CString csTmp;
 		char *pData, *pStart;
 
@@ -1754,7 +1855,7 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 
 		// now the rest of the entries. 
 		// - Filename (an ascii string of upto 10 chars) 
-		// - Filetype: 1=D/F, 2=D/V, 3=I/F, 4=I/V, 5=Prog, 0=end of directory.
+		// - Filetype: 1=D/F, 2=D/V, 3=I/F, 4=I/V, 5=Prog, 6=Subdir, 0=end of directory.
 		//   If the file is protected, this number is negative (-1=D/F, etc).
 		// - File size in sectors (including the FDR itself).
 		// - File record length (0 for programs).
@@ -1783,7 +1884,9 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 			memcpy(pData, (LPCSTR)csTmp, csTmp.GetLength());								// filename
 			pData+=csTmp.GetLength();
 			int nType=0;
-			if (Filenames[idx].FileType & TIFILES_PROGRAM) {
+            if (Filenames[idx].ImageType == IMAGE_DIRECTORY) {
+                nType = 6;
+            } else if (Filenames[idx].FileType & TIFILES_PROGRAM) {
 				nType = 5;
 			} else {
 				nType = 1;	// DF
@@ -2072,9 +2175,17 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 	HANDLE fsrc;
 	WIN32_FIND_DATA myDat;
 	CString csSearchPath;
+    CString csDirectory;
+
+    csDirectory = pDriveType[pFile->nDrive]->GetPath();
+    if (pFile->csName.GetLength() > 1) {
+        csDirectory += pFile->csName.Left(pFile->csName.GetLength()-1);
+        csDirectory += '\\';
+    }
 
 	// check cache first
 	if ((nCachedDrive == pFile->nDrive) &&
+        (csCachedPath == csDirectory) &&
 		(pCachedFiles != NULL) &&
 		(time(NULL) < tCachedTime+15)) {
 			// just replay the cache
@@ -2101,7 +2212,7 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 	new(&Filenames[0]) FileInfo;
 
 	n=0;
-	csSearchPath.Format("%s*", (LPCSTR)pDriveType[pFile->nDrive]->GetPath());
+	csSearchPath.Format("%s*", csDirectory.GetString());
 	fsrc=FindFirstFile(csSearchPath, &myDat);
 	if (INVALID_HANDLE_VALUE == fsrc) {
 		n=0;
@@ -2110,7 +2221,7 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 			// Make uppercase - do we still do this? (TODO: maybe another option?)
 			_strupr(myDat.cFileName);
 			// get the path for the sake of collecting data
-			csSearchPath.Format("%s%s", (LPCSTR)pDriveType[pFile->nDrive]->GetPath(), myDat.cFileName);
+			csSearchPath.Format("%s%s", csDirectory.GetString(), myDat.cFileName);
 			// cache the fileinfo header too.
 			// This way we can automatically handle new filetypes without adding them here
 			Filenames[n].csName = myDat.cFileName;
@@ -2130,6 +2241,13 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 				} else if (Filenames[n].csName.Right(5).MakeUpper() == ".TIAM") {
 					Filenames[n].csName.Replace(".TIAM", "_M");
 				}
+
+                // it's just a filename, so we only need to remap periods if set
+                if (bSwapPeriodAndSlash) {
+                    for (int idx=0; idx<Filenames[n].csName.GetLength(); ++idx) {
+                        if (Filenames[n].csName[idx] == '.') Filenames[n].csName.SetAt(idx, '/');
+                    }
+                }
 
 				n++;
 				if ((n>126) && (!bAllowMore127Files)) {
@@ -2154,6 +2272,7 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 	memcpy(pCachedFiles, Filenames, _msize(Filenames));
 	nCachedDrive=pFile->nDrive;
 	time(&tCachedTime);
+    csCachedPath = csDirectory;
 	nCachedCount = n;
 
 	return n;
@@ -2454,6 +2573,88 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	// all done
 	fclose(fp);
 	return true;
+}
+
+// This is kind of dumb as the API limits it to 10 character filenames
+// But I suppose if the person /really/ wants it... mostly doing this
+// for the Unix guy...
+bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile) {
+    // check if we're allowed to
+    if (!bAllowDelete) {
+        debug_write("You need to enable rename and delete on this drive!");
+		pFile->LastError = ERR_ILLEGALOPERATION;
+		return false;
+	}
+
+    if (pFile->bOpen) {
+		// trying to open a file that is already open! Can't allow that!
+        debug_write("Can't rename an open file! Returning error.");
+		pFile->LastError = ERR_FILEERROR;
+		return false;
+	}
+	CString csFileName = BuildFilename(pFile);
+
+    if (pFile->ImageType == IMAGE_V9T9) {
+        debug_write("Refusing to rename V9T9 file %s", csFileName.GetString());
+		pFile->LastError = ERR_DEVICEERROR;
+		return false;
+	}
+
+    // we need to extract the path from csFileName and get szNewFile onto the same path
+    // otherwise Windows will MOVE the file
+    // We shouldn't have any local paths... but I guess it's possible
+    CString csNewName;
+    int slash = csFileName.ReverseFind('\\');
+    if (slash == -1) slash = csFileName.ReverseFind('/');
+    if (slash != -1) {
+        csNewName = csFileName.Left(slash) + '\\' + szNewFile;
+    } else {
+        csNewName = szNewFile;
+    }
+
+    // Ask windows to rename it
+    if (0 == rename(csFileName.GetString(), csNewName)) {
+        return true;
+    }
+
+    debug_write("Failed to rename '%s', errno %d\n", csFileName.GetString(), errno);
+    switch (errno) {
+        case EACCES: pFile->LastError = ERR_ILLEGALOPERATION; break;
+        case ENOENT: pFile->LastError = ERR_FILEERROR; break;
+        case EINVAL: pFile->LastError = ERR_BADATTRIBUTE; break;
+        default: pFile->LastError = ERR_FILEERROR; break;
+    }
+    return false;
+}
+
+bool FiadDisk::Delete(FileInfo *pFile) { 
+    // check if we're allowed to
+    if (!bAllowDelete) {
+        debug_write("You need to enable rename and delete on this drive!");
+		pFile->LastError = ERR_ILLEGALOPERATION;
+		return false;
+	}
+
+    if (pFile->bOpen) {
+		// trying to open a file that is already open! Can't allow that!
+        debug_write("Can't delete an open file! Returning error.");
+		pFile->LastError = ERR_FILEERROR;
+		return false;
+	}
+
+	CString csFileName = BuildFilename(pFile);
+
+    if (0 == remove(csFileName.GetString())) {
+        return true;
+    }
+
+    debug_write("Failed to delete '%s', errno %d\n", csFileName.GetString(), errno);
+    switch (errno) {
+        case EACCES: pFile->LastError = ERR_ILLEGALOPERATION; break;
+        case ENOENT: pFile->LastError = ERR_FILEERROR; break;
+        default: pFile->LastError = ERR_FILEERROR; break;
+    }
+    return false;
 }
 
 // return two letters indicating DISPLAY or INTERNAL,

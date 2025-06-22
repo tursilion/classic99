@@ -4856,10 +4856,12 @@ void DisableAllDiskOptions(HWND hwnd) {
 	EnableDlgItem(hwnd, IDC_FIAD_READV9T9, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_READTEXTASDF, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_READTEXTASDV, FALSE);
+	EnableDlgItem(hwnd, IDC_FIAD_ALLOWDELETE, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_READTEXTWITHOUTEXT, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_ALLOWNOHEADERASDF128, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_ENABLELONGFILENAMES, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_ALLOWMORE127FILES, FALSE);
+	EnableDlgItem(hwnd, IDC_FIAD_RETURNSUBDIRS, FALSE);
 
 	EnableDlgItem(hwnd, IDC_IMAGE_USEV9T9DSSD, FALSE);
 
@@ -4896,10 +4898,12 @@ void EnableDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
 	EnableDlgItem(hwnd, IDC_FIAD_READV9T9, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_READTEXTASDF, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_READTEXTASDV, TRUE);
+	EnableDlgItem(hwnd, IDC_FIAD_ALLOWDELETE, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_READTEXTWITHOUTEXT, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_ALLOWNOHEADERASDF128, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_ENABLELONGFILENAMES, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_ALLOWMORE127FILES, TRUE);
+	EnableDlgItem(hwnd, IDC_FIAD_RETURNSUBDIRS, TRUE);
 
 	if (NULL != pDisk) {
 		// then set options based on it
@@ -4939,6 +4943,10 @@ void EnableDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
 		SendDlgItemMessage(hwnd, IDC_FIAD_READTEXTASDV, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
 	
 		nValue = 0; 
+		pDisk->GetOption(OPT_FIAD_ALLOWDELETE, nValue);
+		SendDlgItemMessage(hwnd, IDC_FIAD_ALLOWDELETE, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
+
+        nValue = 0; 
 		pDisk->GetOption(OPT_FIAD_READTXTWITHOUTEXT, nValue);
 		SendDlgItemMessage(hwnd, IDC_FIAD_READTEXTWITHOUTEXT, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
 	
@@ -4953,7 +4961,15 @@ void EnableDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
 		nValue = 0; 
 		pDisk->GetOption(OPT_FIAD_ALLOWMORE127FILES, nValue);
 		SendDlgItemMessage(hwnd, IDC_FIAD_ALLOWMORE127FILES, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
-	}
+
+    	nValue = 0; 
+		pDisk->GetOption(OPT_FIAD_SWAPSLASHES, nValue);
+		SendDlgItemMessage(hwnd, IDC_FIAD_SWAPSLASHES, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
+
+    	nValue = 0; 
+		pDisk->GetOption(OPT_FIAD_RETURNSUBDIRS, nValue);
+		SendDlgItemMessage(hwnd, IDC_FIAD_RETURNSUBDIRS, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
+    }
 
 	EnableDiskGlobalOptions(hwnd, pDisk);
 }
@@ -4991,11 +5007,14 @@ void GetDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
 		pDisk->SetOption(OPT_FIAD_READTIFILES,		SendDlgItemMessage(hwnd, IDC_FIAD_READTIFILES, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_READV9T9,			SendDlgItemMessage(hwnd, IDC_FIAD_READV9T9, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_READTXTASDV,		SendDlgItemMessage(hwnd, IDC_FIAD_READTEXTASDV, BM_GETCHECK, 0, 0)==BST_CHECKED);
+		pDisk->SetOption(OPT_FIAD_ALLOWDELETE,		SendDlgItemMessage(hwnd, IDC_FIAD_ALLOWDELETE, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_READTXTWITHOUTEXT, SendDlgItemMessage(hwnd, IDC_FIAD_READTEXTWITHOUTEXT, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_ALLOWNOHEADERASDF128, SendDlgItemMessage(hwnd, IDC_FIAD_ALLOWNOHEADERASDF128, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_ENABLELONGFILENAMES, SendDlgItemMessage(hwnd, IDC_FIAD_ENABLELONGFILENAMES, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_ALLOWMORE127FILES, SendDlgItemMessage(hwnd, IDC_FIAD_ALLOWMORE127FILES, BM_GETCHECK, 0, 0)==BST_CHECKED);
-	}
+		pDisk->SetOption(OPT_FIAD_SWAPSLASHES,      SendDlgItemMessage(hwnd, IDC_FIAD_SWAPSLASHES, BM_GETCHECK, 0, 0)==BST_CHECKED);
+		pDisk->SetOption(OPT_FIAD_RETURNSUBDIRS,    SendDlgItemMessage(hwnd, IDC_FIAD_RETURNSUBDIRS, BM_GETCHECK, 0, 0)==BST_CHECKED);
+    }
 	GetDiskGlobalOptions(hwnd, pDisk);
 }
 

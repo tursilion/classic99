@@ -1620,11 +1620,11 @@ bool ImageDisk::WriteFileSectors(FileInfo *pFile) {
 
 // rename should be reasonably safe
 // it needs to resort the index!
-bool ImageDisk::RenameFile(FileInfo *pFile, const char *csNewFile) {
+bool ImageDisk::RenameFile(FileInfo *pFile, const char *szNewFile) {
 	unsigned char fdr[256];	// work buffer
 
-    if (strlen(csNewFile) > 10) {
-        debug_write("New filename '%s' may not be longer than 10 characters on image disk.", csNewFile);
+    if (strlen(szNewFile) > 10) {
+        debug_write("New filename '%s' may not be longer than 10 characters on image disk.", szNewFile);
         pFile->LastError = ERR_BADATTRIBUTE;
         return false;
     }
@@ -1652,8 +1652,8 @@ bool ImageDisk::RenameFile(FileInfo *pFile, const char *csNewFile) {
 
     // now in theory we just replace the filename
     for (unsigned int idx=0; idx<10; ++idx) {
-        if (idx < strlen(csNewFile)) {
-            fdr[idx] = csNewFile[idx];
+        if (idx < strlen(szNewFile)) {
+            fdr[idx] = szNewFile[idx];
         } else {
             fdr[idx] = ' ';
         }
@@ -1821,7 +1821,14 @@ bool ImageDisk::Delete(FileInfo *pFile) {
 	unsigned char fdr[256];	// work buffer
 	unsigned char sector[256];
 
-	CString csFileName = BuildFilename(pFile);
+    if (pFile->bOpen) {
+		// trying to open a file that is already open! Can't allow that!
+        debug_write("Can't delete an open file! Returning error.");
+		pFile->LastError = ERR_FILEERROR;
+		return false;
+	}
+
+    CString csFileName = BuildFilename(pFile);
 	FILE *fp=NULL;
 	int *pSectorList = NULL, *pTmp;
 	FileInfo lclInfo;

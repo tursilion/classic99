@@ -374,8 +374,8 @@
     <None Include="roms\PCardD.ROM" />
     <None Include="roms\PENNIES" />
     <None Include="roms\QUEST" />
-    <None Include="roms\RXB2024B_8.bin" />
-    <None Include="roms\RXB2024B_G.bin" />
+    <None Include="roms\RXB2025_8.bin" />
+    <None Include="roms\RXB2025_G.bin" />
     <None Include="roms\ScottAdams\ADVENTURE" />
     <None Include="roms\ScottAdams\AdventurePatchedG.bin" />
     <None Include="roms\ScottAdams\COUNT" />

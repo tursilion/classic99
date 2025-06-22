@@ -73,7 +73,6 @@
 // A debug option can turn the munging off, but it should be ON by default. This helps prevent
 // software that ONLY works in Classic99.
 
-
 // TODO: directories: The TI disk controller always returns 128 records. If there are fewer than
 // 128 files, then the additional records are filled with zeros. Here's the literal code:
 //  
@@ -85,6 +84,10 @@
 //
 // Probably should make my directories work the same way, dumb as it is.
 
+// TODO: Fred wrote some docs that cover the subdirectory stuff here: 
+// https://hexbus.com/ti99geek/Doc/level2subprograms.html
+
+// We can also go for rename and delete I guess.
 
 // Includes
 #include <stdio.h>
@@ -414,7 +417,7 @@ void do_dsrlnk(char *forceDevice) {
 	PAB -= 4;					// enough to differentiate which we have (DSKx and CLIP are both 4 chars)
 	if (0 == _strnicmp("clock", (const char*)&VDP[PAB]-1, 5)) PAB--;		// must be CLOCK, subtract one more
 	if (0 == _strnicmp("dsk.", (const char*)&VDP[PAB]+1, 4)) PAB++;			// if DSK., then add one (this is kind of hacky)
-    if (0 == _strnicmp("\x2PI.", (const char*)&VDP[PAB]+1, 4)) PAB+=2;      // Handles "PI.", which we can get in force cases (the length byte is included in the test so TIPI doesn't match PI)
+    if (0 == _strnicmp("\x8PI.", (const char*)&VDP[PAB]-4, 4)) PAB-=3;      // Handles "PI.", which we can get in force cases (the length byte is included in the test so TIPI doesn't match PI)
 	PAB-=10;					// back up to the beginning of the PAB
 	PAB&=0x3FFF;				// mask to VDP memory range
 
@@ -428,8 +431,8 @@ void do_dsrlnk(char *forceDevice) {
 	// 11 - Clock "CLOCK"
 	// ?? - Diskname "DSK"
     if (forceDevice) {
-        // forceDevice right now can only be DSKx or CLOCK
-        if (0 == _stricmp(forceDevice, "CLOCK")) {
+        // forceDevice right now can only be DSKx or PI.CLOCK
+        if (0 == _stricmp(forceDevice, "PI.CLOCK")) {
             nDrive = CLOCK_DRIVE_INDEX;
         } else if ((strlen(forceDevice) > 3) && (isdigit(forceDevice[3]))) {
     		nDrive = forceDevice[3]-'0';
@@ -518,9 +521,14 @@ void do_dsrlnk(char *forceDevice) {
 		PAB = (++PAB)&0x3fff;		// skip the '.' too
 		--nLen;
 	} else {
-		PAB+=5;			// skip the "DSKx."						// 10-14
+        if ((NULL != forceDevice) && (0 == strcmp(forceDevice, "PI.CLOCK"))) {
+            PAB += 8;
+            nLen -= 8;
+        } else {
+    		PAB += 5;		// skip the "DSKx."						// 10-14
+	    	nLen -= 5;		// "DSKx."
+        }
 		PAB&=0x3FFF;
-		nLen -= 5;		// "DSKx."
 	}
 	GetFilenameFromVDP(PAB, nLen, &tmpFile);
 
