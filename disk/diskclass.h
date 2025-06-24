@@ -222,6 +222,7 @@ enum {
 	OPT_FIAD_ALLOWMORE127FILES,
     OPT_FIAD_SWAPSLASHES,
     OPT_FIAD_RETURNSUBDIRS,
+    OPT_FIAD_CASESENSITIVE,
 
 	OPT_IMAGE_USEV9T9DSSD,	// reverse sector order for side 2 -- deprecated
 

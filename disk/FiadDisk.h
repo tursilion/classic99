@@ -120,6 +120,7 @@ public:
 	bool bAllowMore127Files;
     bool bSwapPeriodAndSlash;
     bool bReturnSubdirs;
+    bool bCaseSensitive;
 
 	// directory cache
 	int nCachedDrive;

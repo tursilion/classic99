@@ -1167,11 +1167,18 @@ void tms5220_device::process(int16_t *buffer, unsigned int size)
 			LOGMASKED(LOG_GENERATION_VERBOSE, "\n");
 
 			/* next, force result to 14 bits (since its possible that the addition at the final (k1) stage of the lattice overflowed) */
-			while (this_sample > 16383) this_sample -= 32768;
+			// TURSI HACK
+            if (this_sample > 16383) this_sample = 16383;
+            if (this_sample < -16384) this_sample = -16384;
+            buffer[buf_count] = clip_analog(this_sample);
+#if 0
+            while (this_sample > 16383) this_sample -= 32768;
 			while (this_sample < -16384) this_sample += 32768;
-			if (m_digital_select == 0) // analog SPK pin output is only 8 bits, with clipping
+            if (m_digital_select == 0) {
+                // analog SPK pin output is only 8 bits, with clipping
 				buffer[buf_count] = clip_analog(this_sample);
-			else // digital I/O pin output is 12 bits
+            } 
+            else // digital I/O pin output is 12 bits
 			{
 #ifdef ALLOW_4_LSB
 				// input:  ssss ssss ssss ssss ssnn nnnn nnnn nnnn
@@ -1186,6 +1193,7 @@ void tms5220_device::process(int16_t *buffer, unsigned int size)
 				buffer[buf_count] = (this_sample<<1)|((this_sample&0x3E00)>>9);
 #endif
 			}
+#endif
 			// Update all counts
 
 			m_subcycle++;
@@ -1263,10 +1271,10 @@ void tms5220_device::process(int16_t *buffer, unsigned int size)
 
 /**********************************************************************************************
 
-     clip_analog -- clips the 14 bit return value from the lattice filter to its final 10 bit value (-512 to 511), and upshifts/range extends this to 16 bits
+     clip_analog -- clips the 14 bit return value from the lattice filter to its final 
+     10 bit value (-512 to 511), and upshifts/range extends this to 16 bits
 
 ***********************************************************************************************/
-
 int16_t tms5220_device::clip_analog(int16_t cliptemp) const
 {
 	/* clipping, just like the patent shows:
@@ -1280,6 +1288,8 @@ int16_t tms5220_device::clip_analog(int16_t cliptemp) const
 	 * 00 0bcd efgh xxxx -> 0b0bcdefgh
 	 * 0x xxxx xxxx xxxx -> 0b01111111
 	 */
+
+    cliptemp *= 1.5;
 	if ((cliptemp > 2047) || (cliptemp < -2048))
 		LOGMASKED(LOG_CLIP, "clipping cliptemp to range; was %d\n", cliptemp);
 	if (cliptemp > 2047) cliptemp = 2047;
@@ -1296,10 +1306,9 @@ int16_t tms5220_device::clip_analog(int16_t cliptemp) const
 	// N taps:       ^^^ ^^^^      = 0x07F0
 	// P taps:       ^             = 0x0400
 	// output: snnn nnnn NNNN NNNP
-	return (cliptemp << 4)|((cliptemp&0x7F0)>>3)|((cliptemp&0x400)>>10); // upshift and range adjust
+	return ((cliptemp << 4)|((cliptemp&0x7F0)>>3)|((cliptemp&0x400)>>10)); // upshift and range adjust
 #endif
 }
-
 
 /**********************************************************************************************
 

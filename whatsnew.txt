@@ -2282,3 +2282,12 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 - Updated FIAD disk system to formally support directories, rename and delete
 - Fix PI.CLOCK. I implemented it, but I forgot to link it in! Operates the same as the normal CLOCK device.
 
+-----------------------------------------------
+
+23 Jun 2025
+
+- Fix for subfolder directories
+- Tweak to speech synth - louder?
+- add option for case-sensitive FIAD disk directories
+- not sure cartpack was actually updated in the previous release
+

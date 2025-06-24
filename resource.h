@@ -244,7 +244,6 @@
 #define IDC_WRITEGROME                  1167
 #define IDC_FIAD_ENABLELONGFILENAMES    1168
 #define IDC_FIAD_ALLOWMORE127FILES      1169
-#define IDC_FIAD_ALLOWMORE127FILES2     1170
 #define IDC_FIAD_RETURNSUBDIRS          1170
 #define IDC_DISK_AUTOMAPDSK1            1171
 #define IDC_CHECK1                      1172
@@ -253,6 +252,8 @@
 #define IDC_CHKNOISE                    1172
 #define IDC_CHKALTF4                    1172
 #define IDC_BREAKGPU                    1173
+#define IDC_FIAD_RETURNSUBDIRS2         1173
+#define IDC_FIAD_CASESENSITIVE          1173
 #define IDC_IGNORECONSOLE               1174
 #define IDC_JOY1LIST                    1175
 #define IDC_JOY2LIST                    1176

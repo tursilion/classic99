@@ -95,6 +95,7 @@ const char *pszOptionNames[] = {
 	"FIAD_AllowMore127Files",
     "FIAD_SwapSlashes",
     "FIAD_ReturnSubdirs",
+    "FIAD_CaseSensitive",
 
 	"IMAGE_UseV9T9DSSD",
 

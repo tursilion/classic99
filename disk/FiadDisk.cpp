@@ -69,6 +69,7 @@ FiadDisk::FiadDisk() {
     bAllowDelete = false;
     bSwapPeriodAndSlash = true;
     bReturnSubdirs = false;
+    bCaseSensitive = false;
 
 	nCachedDrive=-1;
 	pCachedFiles=NULL;
@@ -165,6 +166,10 @@ void FiadDisk::SetOption(int nOption, int nValue) {
             bReturnSubdirs = nValue?true:false;
             break;
 
+        case OPT_FIAD_CASESENSITIVE:
+            bCaseSensitive = nValue?true:false;
+            break;
+
         default:
 			BaseDisk::SetOption(nOption, nValue);
 			break;
@@ -235,6 +240,10 @@ bool FiadDisk::GetOption(int nOption, int &nValue) {
 
         case OPT_FIAD_RETURNSUBDIRS:
             nValue = bReturnSubdirs;
+            break;
+
+        case OPT_FIAD_CASESENSITIVE:
+            nValue = bCaseSensitive;
             break;
 
         default:
@@ -599,7 +608,7 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 
     // disregard . and ..
     if ((csFileName.Right(2) == "\\.") || (csFileName.Right(3) == "\\..")) {
-        debug_write("Skipping directory %s\n", csFileName.GetString());
+        debug_write("Skipping directory %s", csFileName.GetString());
         return;
     }
 
@@ -2181,6 +2190,10 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
     if (pFile->csName.GetLength() > 1) {
         csDirectory += pFile->csName.Left(pFile->csName.GetLength()-1);
         csDirectory += '\\';
+        // parse and replace any periods
+        for (int idx=0; idx<csDirectory.GetLength(); ++idx) {
+            if (csDirectory[idx] == '.') csDirectory.SetAt(idx, '\\');
+        }
     }
 
 	// check cache first
@@ -2218,8 +2231,10 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 		n=0;
 	} else {
 		do {
-			// Make uppercase - do we still do this? (TODO: maybe another option?)
-			_strupr(myDat.cFileName);
+            if (!bCaseSensitive) {
+    			// Make uppercase
+	    		_strupr(myDat.cFileName);
+            }
 			// get the path for the sake of collecting data
 			csSearchPath.Format("%s%s", csDirectory.GetString(), myDat.cFileName);
 			// cache the fileinfo header too.
