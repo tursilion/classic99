@@ -2196,6 +2196,27 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
         }
     }
 
+    // Check if the path exists and that it actually is a directory
+    // because the path ends in "\", stat will usually return file not found
+    // even if there is a file with the same name
+    {
+        struct _stat buf;
+        if (0 == _stat(csDirectory.GetString(), &buf)) {
+            if (0 == (buf.st_mode & S_IFDIR)) {
+                debug_write("'%s' is not a directory", csDirectory.GetString());
+                Filenames = NULL;   // it should be NULL when passed in, but make sure
+                return 0;
+            } else {
+                debug_write("'%s' is a valid directory", csDirectory.GetString());
+            }
+        } else {
+            // debug the error number
+            debug_write("Can't stat file %s, errno %d", csDirectory.GetString(), errno);
+            Filenames = NULL;   // it should be NULL when passed in, but make sure
+            return 0;
+        }
+    }
+
 	// check cache first
 	if ((nCachedDrive == pFile->nDrive) &&
         (csCachedPath == csDirectory) &&

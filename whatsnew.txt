@@ -2291,3 +2291,8 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 - add option for case-sensitive FIAD disk directories
 - not sure cartpack was actually updated in the previous release
 
+-----------------------------------------------
+
+27 Jun 2025
+
+- Make subfolder catalogs fail if the path is invalid, instead of returning empty
