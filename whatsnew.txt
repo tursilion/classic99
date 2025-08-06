@@ -2296,3 +2296,16 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 27 Jun 2025
 
 - Make subfolder catalogs fail if the path is invalid, instead of returning empty
+
+-----------------------------------------------
+
+5 Aug 2025
+
+- fix crash while watching disassembly view in debugger with GPU code active - very tight race that often triggered as the GPU stopped or started
+- remove deprecated option to invert the order of side 2 of a V9T9 floppy disk
+- lots more comments for myself on operation
+- add working folder concept to disk system as well as the 0x2X SBR opcodes... but not 100% confident in them. Need test code. (FIAD only)
+    - Added mkdir and rmdir
+    - Added rename dir
+- fix TIPI PROGRAM load to correctly test the TIFILES header for bit 0x1, not value 0x1
+- update the manual cover to cover

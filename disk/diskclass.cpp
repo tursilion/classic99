@@ -192,6 +192,7 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	bDirty = p->bDirty;
 //	bFree = p->bFree;		// watch out for this one!
 	csOptions = p->csOptions;
+    bUseWorkingPath = p->bUseWorkingPath;
 
 	// NOTE: Changing source! We are taking it's data,
 	// NOT COPYING IT!

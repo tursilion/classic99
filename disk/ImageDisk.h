@@ -86,7 +86,10 @@ public:
 //	virtual bool FormatDisk(FileInfo *pFile) override;			// TODO - maybe someday
 //	virtual bool ProtectFile(FileInfo *pFile) override;			// TODO - maybe never
 //	virtual bool UnProtectFile(FileInfo *pFile) override;       // TODO - maybe never
-	virtual bool RenameFile(FileInfo *pFile, const char *csNewFile) override;
+	virtual bool RenameFile(FileInfo *pFile, const char *csNewFile, bool bIsDir) override;
+//  virtual bool SetSubDir(FileInfo *pFile) override;   // not supported
+//	virtual bool CreateDirectory(FileInfo *pFile) override;                         // not supported
+//	virtual bool DeleteDirectory(FileInfo *pFile) override;                         // not supported
 
 	// class-specific functions
 	bool BufferSectorFile(FileInfo *pFile);

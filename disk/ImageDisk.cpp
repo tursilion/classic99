@@ -75,6 +75,8 @@ void ImageDisk::Startup() {
 
 // handle options
 void ImageDisk::SetOption(int nOption, int nValue) {
+    // there are no valid switches right now, so just leaving this as reference
+#if 0
 	switch (nOption) {
 		case OPT_IMAGE_USEV9T9DSSD:	
 			bUseV9T9DSSD = nValue?true:false;
@@ -84,9 +86,14 @@ void ImageDisk::SetOption(int nOption, int nValue) {
 			BaseDisk::SetOption(nOption, nValue);
 			break;
 	}
+#else
+    BaseDisk::SetOption(nOption, nValue);
+#endif
 }
 
 bool ImageDisk::GetOption(int nOption, int &nValue) {
+    // there are no valid switches right now, so just leaving this as reference
+#if 0
 	switch (nOption) {
 		case OPT_IMAGE_USEV9T9DSSD:	
 			nValue = bUseV9T9DSSD;
@@ -95,6 +102,9 @@ bool ImageDisk::GetOption(int nOption, int &nValue) {
 		default:
 			return BaseDisk::GetOption(nOption, nValue);
 	}
+#else
+    return BaseDisk::GetOption(nOption, nValue);
+#endif
 
 	return true;
 }
@@ -1620,8 +1630,14 @@ bool ImageDisk::WriteFileSectors(FileInfo *pFile) {
 
 // rename should be reasonably safe
 // it needs to resort the index!
-bool ImageDisk::RenameFile(FileInfo *pFile, const char *szNewFile) {
+bool ImageDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool bIsDir) {
 	unsigned char fdr[256];	// work buffer
+
+    if (bIsDir) {
+        debug_write("Device does not support directories.");
+	    pFile->LastError = ERR_DEVICEERROR;
+	    return false;
+    }
 
     if (strlen(szNewFile) > 10) {
         debug_write("New filename '%s' may not be longer than 10 characters on image disk.", szNewFile);

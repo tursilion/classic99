@@ -57,7 +57,10 @@ public:
 //	virtual bool FormatDisk(FileInfo *pFile);			// not supported
 //	virtual bool ProtectFile(FileInfo *pFile);			// not supported
 //	virtual bool UnProtectFile(FileInfo *pFile);		// not supported
-//	virtual bool RenameFile(FileInfo *pFile);			// not supported
+//  virtual bool RenameFile(FileInfo *pFile, const char *csNewName, bool bIsDir) override;       // not supported
+//  virtual bool SetSubDir(FileInfo *pFile) override;   // not supported
+//	virtual bool CreateDirectory(FileInfo *pFile) override;                         // not supported
+//	virtual bool DeleteDirectory(FileInfo *pFile) override;                         // not supported
 
     // Class specific functions (as needed)
     virtual void DetectImageType(FileInfo *pFile);

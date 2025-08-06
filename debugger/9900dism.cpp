@@ -212,8 +212,8 @@ Byte GetSafeCpuByte(int x, int bank) {
 		// XB is supposed to only page the upper 4k, but some Atari carts seem to like it all
 		// paged. Most XB dumps take this into account so only full 8k paging is implemented.
 		if (xb) {
-            if (bank == -1) {
-                // this is hacky... -1 means GPU. So a bug somewhere... (TODO)
+            if (bank < 0) {
+                // this is hacky... -1 means GPU. But I think the bug is solved now.
                 bank=0;
             }
 			return(CPU2[(bank<<13)+(x-0x6000)]);		// cartridge bank 2

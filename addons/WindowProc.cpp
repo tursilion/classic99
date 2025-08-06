@@ -108,7 +108,7 @@ extern struct _break BreakPoints[];
 extern int nBreakPoints;
 extern char lines[DEBUGLINES][DEBUGLEN];				// debug lines
 extern bool bDebugDirty;
-extern struct history Disasm[DEBUGLINES];				// last x addresses for disasm
+extern struct history Disasm[DEBUGLINES];	    // last x addresses for disasm - protect with csDisasm
 extern bool bScrambleMemory;
 extern RECT gWindowRect;
 extern bool bCorruptDSKRAM;
@@ -210,9 +210,9 @@ char szCaption1[4096] = {0}, szCaption2[4096] = {0};
 int g_DiskCfgNum;
 
 // whether logging disassembly to disk
-FILE *fpDisasm = NULL;
+FILE *fpDisasm = NULL;  // protect with csDisasm
 int disasmLogType = 0;  // 0 = all, 1 = exclude < 2000
-CRITICAL_SECTION csDisasm;  // initialized in tiemul.c
+CRITICAL_SECTION csDisasm;  // initialized in tiemul.c - protects fpDisasm and Disasm array
 
 #ifndef GET_X_LPARAM
 #define GET_X_LPARAM(x) (x&0xffff)
@@ -4386,11 +4386,14 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines) 
 	Word PC = obj.pc;
 
 	// tweak the prefix with the bank if not specified
-	if (cPrefix == 'b') {
+    if (obj.bank == -1) {
+        // GPU mode
+        pLclCPU = pGPU;
+        if (cPrefix != '>') {
+            cPrefix = 'G';
+        }
+    } else if (cPrefix == 'b') {
 		cPrefix = hexstr[obj.bank&0x0f];
-	} else if ((cPrefix == ' ') && (obj.bank == -1)) {
-		cPrefix = 'G';
-		pLclCPU = pGPU;
 	}
 
 	int nSize = Dasm9900(buf2, PC, obj.bank);
@@ -4425,7 +4428,8 @@ int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines) 
 //		-RS232/PIO card (someday)
 extern Byte ReadSafeGrom(int nBase, int adr);
 void DebugUpdateThread(void*) {
-	static int nOldCPC=-1;
+    static struct history Distmp[DEBUGLINES];   // somewhere to copy the history to when displaying
+    static int nOldCPC=-1;
 	static int nOldGPC=-1;
 	static int nOldMemType=-1;
 	static char szOldMemory[5][32] = { "", "", "", "", "" };
@@ -4479,14 +4483,23 @@ void DebugUpdateThread(void*) {
 							int nLineCnt=0;
 							struct history myHist;
 
+                            // we can race displaying the disassembly with the CPUs
+                            // not an issue when breakpointed, but can be otherwise
+                            // So we'll make a copy to work from to avoid having the
+                            // data changed while we are working on it
+                            EnterCriticalSection(&csDisasm);
+                                memcpy(Distmp, Disasm, sizeof(Disasm));
+                            LeaveCriticalSection(&csDisasm);
+
 							// show line with bank only for multi-bank cartridges
 							// we want to generate a few extra lines to guarantee the cursor is stable
 							int precount = DEBUGLINES*2/3;
 							for (idx=precount-10; idx<DEBUGLINES; idx++) {
-								if ((xb)&&((Disasm[idx].pc & 0xE000) == 0x6000)) {
-									EmitDebugLine('b', Disasm[idx], csOut, nLineCnt);
+                                // This assumes the GPU can never execute at >6000
+								if ((xb)&&((Distmp[idx].pc & 0xE000) == 0x6000)) {
+									EmitDebugLine('b', Distmp[idx], csOut, nLineCnt);
 								} else {
-									EmitDebugLine(' ', Disasm[idx], csOut, nLineCnt);
+									EmitDebugLine(' ', Distmp[idx], csOut, nLineCnt);
 								}
 							}
 							while (nLineCnt > precount) {
@@ -4985,11 +4998,11 @@ void EnableDiskImageOptions(HWND hwnd, BaseDisk *pDisk) {
 
 	if (NULL != pDisk) {
 		// then set options based on it
-		int nValue;
+		//int nValue;
 		
-		nValue = 0; 
-		pDisk->GetOption(OPT_IMAGE_USEV9T9DSSD, nValue);
-		SendDlgItemMessage(hwnd, IDC_IMAGE_USEV9T9DSSD, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
+		//nValue = 0; 
+		//pDisk->GetOption(OPT_IMAGE_USEV9T9DSSD, nValue);
+		//SendDlgItemMessage(hwnd, IDC_IMAGE_USEV9T9DSSD, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
 	}
 
 	EnableDiskGlobalOptions(hwnd, pDisk);
@@ -5028,7 +5041,7 @@ void GetDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
 void GetDiskImageOptions(HWND hwnd, BaseDisk *pDisk) {
 	if (NULL != pDisk) {
 		// then get options into it
-		pDisk->SetOption(OPT_IMAGE_USEV9T9DSSD, SendDlgItemMessage(hwnd, IDC_IMAGE_USEV9T9DSSD, BM_GETCHECK, 0, 0)==BST_CHECKED);
+		//pDisk->SetOption(OPT_IMAGE_USEV9T9DSSD, SendDlgItemMessage(hwnd, IDC_IMAGE_USEV9T9DSSD, BM_GETCHECK, 0, 0)==BST_CHECKED);
 	}
 	GetDiskGlobalOptions(hwnd, pDisk);
 }

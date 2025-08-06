@@ -86,8 +86,11 @@
 
 // TODO: Fred wrote some docs that cover the subdirectory stuff here: 
 // https://hexbus.com/ti99geek/Doc/level2subprograms.html
-
-// We can also go for rename and delete I guess.
+// And the official docs: https://ftp.whtech.com/datasheets%20and%20manuals/Hardware/Myarc/Myarc%20HFDC%20Manual%202nd%20edition-scanned.pdf
+//
+// TODO: should we support the WDS name and RAM-based PABs? I guess we have
+// everything else, but I don't really like the limitations on the compatibility routines...
+// Should have just done a new system...
 
 // Includes
 #include <stdio.h>
@@ -184,6 +187,19 @@ bool HandleDisk() {
 	case 0x4828:	// sbr 0x14
 	case 0x482a:	// sbr 0x15
 	case 0x482c:	// sbr 0x16
+    //se 0x482e:    // sbr 0x17 - not valid on floppy
+    case 0x4830:    // sbr 0x18
+    case 0x4832:    // sbr 0x19
+    case 0x4834:    // sbr 0x1a
+    case 0x4844:    // sbr 0x22
+    case 0x4846:    // sbr 0x23
+    case 0x4848:    // sbr 0x24
+    case 0x484a:    // sbr 0x25
+    case 0x484c:    // sbr 0x26
+    case 0x484e:    // sbr 0x27
+    case 0x4850:    // sbr 0x28
+    case 0x4852:    // sbr 0x29
+    case 0x4854:    // sbr 0x2a
 		// SBR entries for disk (calculate the opcode based on the entry point - see DSR header)
 		// Technically we didn't need to do this, I guess, we could have just looked at the
 		// actual name the program used. Oh well, just a little extra search on the 9900 side which
@@ -984,6 +1000,23 @@ void do_sbrlnk(int nOpCode) {
 		return;
 	}
 
+    // convert the hard drive codes to floppy codes
+    if ((nOpCode&0xf0)==0x20) {
+        // check if we need to modify the path
+        if (pDriveType[tmpFile.nDrive]->IsSubDirSupported()) {
+            tmpFile.bUseWorkingPath = true;
+            nOpCode -= 0x10;    // convert to floppy opcode
+            // TODO: if the disk index (already checked above) has 0x80 set, then
+            // these opcodes are supposed to use CPU RAM instead of VDP
+        } else {
+            // this is an unsupported opcode on this device
+            debug_write("Hard Drive SBRLNK not supported on drive %d", tmpFile.nDrive);
+		    tmpFile.LastError=ERR_ILLEGALOPERATION;
+		    wcpubyte(0x8350, tmpFile.LastError);
+		    return;
+        }
+    }
+
     // log the SBR opcode for later use
     // Fortunately, they don't conflict with the PAB opcodes
     tmpFile.OpCode = nOpCode;
@@ -1116,6 +1149,9 @@ void do_sbrlnk(int nOpCode) {
 			}
 			break;
 
+        // these two are nearly the same
+        case SBR_RENAMEDIR:
+            // fallthrough
 		case SBR_RENAME:
 			{
 				CString csNewFile;
@@ -1125,7 +1161,9 @@ void do_sbrlnk(int nOpCode) {
 				csNewFile = tmpFile.csName;
 				GetFilenameFromVDP(romword(0x8350), 10, &tmpFile);		// old filename
 
-				debug_write("Rename file, drive %d, from %s to %s", tmpFile.nDrive, (LPCSTR)tmpFile.csName, (LPCSTR)csNewFile);
+				debug_write("Rename %s, drive %d, from %s to %s", 
+                            nOpCode==SBR_RENAMEDIR?"folder":"file",
+                            tmpFile.nDrive, (LPCSTR)tmpFile.csName, (LPCSTR)csNewFile);
                 tmpFile.Status = FLAG_UPDATE;
 
 				// check for disk write protection
@@ -1136,7 +1174,7 @@ void do_sbrlnk(int nOpCode) {
 					break;
 				}
 
-				if (!pDriveType[tmpFile.nDrive]->RenameFile(&tmpFile, csNewFile)) {
+				if (!pDriveType[tmpFile.nDrive]->RenameFile(&tmpFile, csNewFile, nOpCode == SBR_RENAMEDIR)) {
 					// write the error code into >8350 (done below)
 					// wcpubyte(0x8350, tmpFile.LastError);
 				}
@@ -1203,6 +1241,114 @@ void do_sbrlnk(int nOpCode) {
 				wcpubyte(0x834d, tmpFile.LengthSectors);	// sectors read/written
 			}
 			break;
+
+        case SBR_SETPATH:
+            // this can never be called as 0x17, only a converted 0x27
+			{
+				CString csNewFile;
+
+				// set working directory. The path can be up to 39 characters
+                // on the Myarc. It needs to be "WDS1.SUB.SUB2." including the 
+                // WDS and ending period according to Myarc. We'll assume "DSK1." 
+                // and just check the rest. What's weird is this takes the unit 
+                // number AND expects the drive name? It says they have to match.
+				GetFilenameFromVDP(romword(0x834e), 39, &tmpFile);		// new path
+
+                // does it end with a period?
+                if (tmpFile.csName.Right(1) != ".") {
+					debug_write("New directory path '%s' does not end with period.", tmpFile.csName.GetString());
+					// write the error code into >8350 (done below)
+					tmpFile.LastError = ERR_BADATTRIBUTE;
+					break;
+				}
+
+                // does the device name match?
+                if (tmpFile.csName.Left(3) != "DSK") {
+                    // TODO: maybe WDS too?
+					debug_write("New directory path '%s' does not start with 'DSK'", tmpFile.csName.GetString());
+					// write the error code into >8350 (done below)
+					tmpFile.LastError = ERR_BADATTRIBUTE;
+					break;
+                }
+
+                if (tmpFile.csName.Mid(4) != ".") {
+					debug_write("New directory path '%s' does not start with 'DSKn.'", tmpFile.csName.GetString());
+					// write the error code into >8350 (done below)
+					tmpFile.LastError = ERR_BADATTRIBUTE;
+					break;
+				}
+
+                // we know it's long enough, so just check the index
+                if (tmpFile.csName.GetString()[3] != tmpFile.nDrive + '0') {
+					debug_write("New directory path '%s' does not index drive %d", tmpFile.csName.GetString(), tmpFile.nDrive);
+					// write the error code into >8350 (done below)
+					tmpFile.LastError = ERR_BADATTRIBUTE;
+					break;
+				}
+
+                // okay, should be valid
+				debug_write("cd %s", (LPCSTR)tmpFile.csName);
+                tmpFile.Status = FLAG_UPDATE;
+
+                // before we pass it in, let's strip off the useless chaff
+                tmpFile.csName = tmpFile.csName.Mid(5);
+                tmpFile.csName = tmpFile.csName.Left(tmpFile.csName.GetLength()-1);
+
+                // in theory we already checked IsSubDirSupported()
+				if (!pDriveType[tmpFile.nDrive]->SetSubDir(&tmpFile)) {
+					// write the error code into >8350 (done below)
+					// wcpubyte(0x8350, tmpFile.LastError);
+				}
+			}
+            break;
+
+        case SBR_MKDIR:
+			{
+				CString csNewFile;
+
+				// create a directory - we are limited to 10 characters in this call
+				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+				debug_write("Create directory, drive %d, %s", tmpFile.nDrive, (LPCSTR)tmpFile.csName);
+                tmpFile.Status = FLAG_UPDATE;
+
+				// check for disk write protection
+				if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
+					debug_write("Attempt to write to write-protected disk.");
+					// write the error code into >8350 (done below)
+					tmpFile.LastError = ERR_WRITEPROTECT;
+					break;
+				}
+
+				if (!pDriveType[tmpFile.nDrive]->CreateDirectory(&tmpFile)) {
+					// write the error code into >8350 (done below)
+					// wcpubyte(0x8350, tmpFile.LastError);
+				}
+			}
+            break;
+
+        case SBR_RMDIR:
+			{
+				CString csNewFile;
+
+				// remove a directory - we are limited to 10 characters in this call
+				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+				debug_write("Remove directory, drive %d, %s", tmpFile.nDrive, (LPCSTR)tmpFile.csName);
+                tmpFile.Status = FLAG_UPDATE;
+
+				// check for disk write protection
+				if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
+					debug_write("Attempt to write to write-protected disk.");
+					// write the error code into >8350 (done below)
+					tmpFile.LastError = ERR_WRITEPROTECT;
+					break;
+				}
+
+				if (!pDriveType[tmpFile.nDrive]->DeleteDirectory(&tmpFile)) {
+					// write the error code into >8350 (done below)
+					// wcpubyte(0x8350, tmpFile.LastError);
+				}
+			}
+            break;
 
 		default:
 			debug_write("Unsupported SBRLNK opcode 0x%x", nOpCode);

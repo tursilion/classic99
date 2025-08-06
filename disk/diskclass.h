@@ -83,6 +83,7 @@ typedef struct s_FILEINFO {
     int initDataSize;
 	
 	// internal data
+    bool bUseWorkingPath;  // for those opcodes that need it
 	int nIndex;			// never meant to change, just for debug
 	int LastError;
 	bool bFree;
@@ -121,7 +122,7 @@ enum {
 
 // PAB error codes
 #define ERR_NOERROR			0			// This also means the DSR was not found!
-#define ERR_BADBAME			0			// thus the duplicate definition
+#define ERR_BADNAME			0			// thus the duplicate definition
 #define ERR_WRITEPROTECT	1
 #define ERR_BADATTRIBUTE	2
 #define ERR_ILLEGALOPERATION 3
@@ -144,9 +145,11 @@ enum {
 
 // Filetype enums for TIFILES (same for V9T9?) - these go into FileInfo::FileType and come from the file
 #define TIFILES_VARIABLE	0x80		// else Fixed
-#define TIFILES_PROTECTED	0x08		// else not protected
+#define TIFILES_EMULATE     0x20        // Myarc Emulate bits indicates this is a DSK1 emulation file
+#define TIFILES_BACKUP      0x10        // Myarc "Archive" bit, same idea as DOS
+#define TIFILES_PROTECTED	0x08		// else not protected (I don't support this)
 #define TIFILES_INTERNAL	0x02		// else Display
-#define TIFILES_PROGRAM		0x01		// else Data
+#define TIFILES_PROGRAM		0x01		// else Data - remember this is a BIT field
 // others undefined - for the mask, ignore protection bit
 #define TIFILES_MASK	(TIFILES_VARIABLE|TIFILES_INTERNAL|TIFILES_PROGRAM)
 
@@ -172,7 +175,7 @@ enum {
 #define OP_STATUS		9
 
 // SBR opcodes - note: there is some assumption these do not overlap the File operation codes
-// Not that we can change them, since they are pre-defined by TI ;)
+// Not that we can't change them, since they are pre-defined by TI ;)
 #define SBR_SECTOR		0x10
 #define SBR_FORMAT		0x11
 #define SBR_PROTECT		0x12
@@ -180,6 +183,22 @@ enum {
 #define SBR_FILEIN		0x14
 #define SBR_FILEOUT		0x15
 #define SBR_FILES		0x16
+#define SBR_SETPATH     0x17    // not normally valid on DSK (0x1_)
+#define SBR_MKDIR       0x18    // not normally valid on DSK (0x1_)
+#define SBR_RMDIR       0x19    // not normally valid on DSK (0x1_)
+#define SBR_RENAMEDIR   0x1A    // not normally valid on DSK (0x1_)
+
+// these versions are subdirectory aware and the values are based in the Myarc/SCSI controllers
+//efine SCS_SECTOR      0x20    // not supported in Classic99
+//efine SCS_FORMAT      0x21    // not supported in Classic99
+#define SCS_PROTECT     0x22
+#define SCS_RENAME      0x23
+#define SCS_FILEIN      0x24
+#define SCS_FILEOUT     0x25
+#define SCS_SETPATH     0x27
+#define SCS_MKDIR       0x28
+#define SCS_RMDIR       0x29
+#define SCS_RENAMEDIR   0x2A
 
 // file open modes (update is read+write)
 #define PAB_READ		0x01
@@ -223,8 +242,6 @@ enum {
     OPT_FIAD_SWAPSLASHES,
     OPT_FIAD_RETURNSUBDIRS,
     OPT_FIAD_CASESENSITIVE,
-
-	OPT_IMAGE_USEV9T9DSSD,	// reverse sector order for side 2 -- deprecated
 
 	OPT_DISK_AUTOMAPDSK1,	// scan for DSK1 strings while loading, and patch them on the fly
 	OPT_DISK_WRITEPROTECT,	// disallow writes to the disk
@@ -301,6 +318,10 @@ public:
 	// Must return the sector number in RecordNumber if no error.
 	virtual bool WriteSector(FileInfo *pFile) { return unsupported(pFile); }
 
+    // We can do most of the current directory abstraction here in the root,
+    // but I want it to work only on supported filesystems. So for now, a simple test.
+    virtual bool IsSubDirSupported() { return false; }
+
 	// These functions both take in the same parameters:
 	// LengthSectors - number of sectors to read/write
 	// csName - Name of the file to access
@@ -327,9 +348,21 @@ public:
 	// No return beyond error code required
 	virtual bool UnProtectFile(FileInfo *pFile) { return unsupported(pFile); }
 
-	// RenameFile: nDrive=Drive#, csName=old filename
+	// RenameFile: nDrive=Drive#, csName=old filename, isDir=true if directory instead of file
 	// No return beyond error code required
-	virtual bool RenameFile(FileInfo *pFile, const char * /*pNewFile*/) { return unsupported(pFile); }
+	virtual bool RenameFile(FileInfo *pFile, const char * /*pNewFile*/, bool /*isDir*/) { return unsupported(pFile); }
+
+    // SetSubDir: nDrive=Drive#, csName=subdir (limited to 39 chars), onlr SBRLNK 0x2x codes use it
+    // No return beyond error code required
+    virtual bool SetSubDir(FileInfo *pFile) { return unsupported(pFile); }
+
+	// CreateDirectory: nDrive=Drive#, csName=filename
+	// No return beyond error code required
+	virtual bool CreateDirectory(FileInfo *pFile) { return unsupported(pFile); }
+
+	// DeleteDirectory: nDrive=Drive#, csName=filename
+	// No return beyond error code required
+	virtual bool DeleteDirectory(FileInfo *pFile) { return unsupported(pFile); }
 
 	// public base functions
 	bool GetWriteProtect() { return bWriteProtect; }
@@ -347,6 +380,7 @@ protected:
 	void AutomapDSK(unsigned char *pBuf, int nSize, int nDsk, bool bVariable);
 
 	CString m_csPath;
+    CString m_csCurrentFolder;          // for those devices that support it on those opcodes that use it (only fiad for now)
 	int m_nMaxFiles;					// TODO: need to make this meaningful
 	FileInfo m_sFiles[MAX_FILES];		// up to 9 files allowed per drive
 	static bool bPowerUpRun;			// to help ensure powerup is only run once (one controller!)

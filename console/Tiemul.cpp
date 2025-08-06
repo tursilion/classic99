@@ -335,7 +335,7 @@ Byte CPUSpeechHaltByte=0;
 Byte SidCache[29];                                  // cache of written sid registers
 
 // disassembly view
-struct history Disasm[DEBUGLINES];					// history object
+struct history Disasm[DEBUGLINES];					// history object - protect with csDisasm
 
 // video
 extern int bEnable80Columns;						// 80 column hack
@@ -1558,7 +1558,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// clear debugging strings
 	memset(lines, 0, sizeof(lines));
-	memset(Disasm, 0, sizeof(Disasm));
+    EnterCriticalSection(&csDisasm);
+        memset(Disasm, 0, sizeof(Disasm));
+    LeaveCriticalSection(&csDisasm);
 	bDebugDirty=true;
 
 	// Print some initial debug
@@ -3959,23 +3961,23 @@ void do1()
             return;
 		}
 
-		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
-			if (pCurrentCPU->enableDebug) {
-				// Update the disassembly trace
-				memmove(&Disasm[0], &Disasm[1], (DEBUGLINES-1)*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
-				Disasm[DEBUGLINES-1].pc=pCurrentCPU->GetPC();
-				if (pCurrentCPU == pGPU) {
-					Disasm[DEBUGLINES-1].bank = -1;
-				} else {
-					Disasm[DEBUGLINES-1].bank = xbBank;
-				}
-			}
-			// will fill in cycles below
-		}
-
-		// disasm running log
-        // TODO: doesn't support GPU run - we can add that with a second file handle
         EnterCriticalSection(&csDisasm);
+		    if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
+			    if (pCurrentCPU->enableDebug) {
+				    // Update the disassembly trace
+				    memmove(&Disasm[0], &Disasm[1], (DEBUGLINES-1)*sizeof(Disasm[0]));	// TODO: really should be a ring buffer
+				    Disasm[DEBUGLINES-1].pc=pCurrentCPU->GetPC();
+				    if (pCurrentCPU == pGPU) {
+					    Disasm[DEBUGLINES-1].bank = -1;
+				    } else {
+					    Disasm[DEBUGLINES-1].bank = xbBank;
+				    }
+			    }
+			    // will fill in cycles below
+		    }
+
+		    // disasm running log
+            // TODO: doesn't support GPU run - we can add that with a second file handle
             if ((NULL != fpDisasm) && (pCurrentCPU == pCPU)) {
                 int pc = pCurrentCPU->GetPC();
                 if ((disasmLogType == 0) || (pc >= 0x2000)) {
@@ -4032,10 +4034,12 @@ void do1()
 
 		if ((!nopFrame) && ((!bStepOver) || (nStepCount))) {
 			if (pCurrentCPU->enableDebug) {
-				Disasm[DEBUGLINES-1].cycles = pCurrentCPU->GetCycleCount();
-                if (cycleCountOn) {
-                    cycleCounter[Disasm[DEBUGLINES-1].pc] += Disasm[DEBUGLINES-1].cycles;
-                }
+                EnterCriticalSection(&csDisasm);
+    				Disasm[DEBUGLINES-1].cycles = pCurrentCPU->GetCycleCount();
+                    if (cycleCountOn) {
+                        cycleCounter[Disasm[DEBUGLINES-1].pc] += Disasm[DEBUGLINES-1].cycles;
+                    }
+                LeaveCriticalSection(&csDisasm);
 			}
 		}
 
@@ -7282,11 +7286,13 @@ void TriggerBreakPoint(bool bForce, bool openDebugger) {
 		return;
 	}
 
-    if (NULL != fpDisasm) {
-        if ((disasmLogType == 0) || (pCurrentCPU->GetPC() > 0x2000)) {
-            fprintf(fpDisasm, "**** Breakpoint triggered\n");
+    EnterCriticalSection(&csDisasm);
+        if (NULL != fpDisasm) {
+            if ((disasmLogType == 0) || (pCurrentCPU->GetPC() > 0x2000)) {
+                fprintf(fpDisasm, "**** Breakpoint triggered\n");
+            }
         }
-    }
+    LeaveCriticalSection(&csDisasm);
 
 	SetWindowText(myWnd, "Classic99 - Breakpoint. F1 - Continue, F2 - Step, F3 - Step Over");
 	max_cpf=0;

@@ -37,6 +37,7 @@
 //
 
 #include <windows.h>
+#include <filesystem>
 #include <stdio.h>
 #include <io.h>
 #include <atlstr.h>
@@ -274,6 +275,15 @@ CString FiadDisk::BuildFilename(FileInfo *pFile) {
 		csTmp+='\\';
 	}
 
+    // merge in the working directory if needed
+    // we don't support munging on the working folder
+    if (pFile->bUseWorkingPath) {
+        if (m_csCurrentFolder.GetLength() > 0) {
+            csTmp += m_csCurrentFolder;
+            csTmp += '\\';
+        }
+    }
+
     // munge the filename if needed
     CString csLocalFile = pFile->csName;
     if (bSwapPeriodAndSlash) {
@@ -286,7 +296,7 @@ CString FiadDisk::BuildFilename(FileInfo *pFile) {
         }
     }
 
-	// append requested filename
+	// append requested filename, which may or may not have been munged
 	csTmp+=csLocalFile;
 
 	return csTmp;
@@ -2614,7 +2624,7 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 // This is kind of dumb as the API limits it to 10 character filenames
 // But I suppose if the person /really/ wants it... mostly doing this
 // for the Unix guy...
-bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile) {
+bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool isDir) {
     // check if we're allowed to
     if (!bAllowDelete) {
         debug_write("You need to enable rename and delete on this drive!");
@@ -2635,6 +2645,23 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile) {
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
 	}
+
+    // check if it's file or directory appropriately
+    // I'm going to allow rename to cover directories until someone complains...
+    // only the explicit rename folder will be picky. MS says it should work.
+    struct _stat buf;
+    if (0 == _stat(csFileName.GetString(), &buf)) {
+        if ((isDir) && ((buf.st_mode & S_IFDIR) == 0)) {
+            debug_write("%s is not a subdirectory", csFileName.GetString());
+		    pFile->LastError = ERR_DEVICEERROR;
+		    return false;
+        }
+    } else {
+        // although I'd call file not found a success, technically it's an error too...
+        debug_write("%s could not be verified, errno %d", csFileName.GetString(), errno);
+		pFile->LastError = ERR_DEVICEERROR;
+		return false;
+    }
 
     // we need to extract the path from csFileName and get szNewFile onto the same path
     // otherwise Windows will MOVE the file
@@ -2660,6 +2687,63 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile) {
         case EINVAL: pFile->LastError = ERR_BADATTRIBUTE; break;
         default: pFile->LastError = ERR_FILEERROR; break;
     }
+    return false;
+}
+
+// set subdirectory for hard drive commands.
+// When we are called here, this is a complete path prefix but
+// does not include the "DSK1." part or the trailing period
+bool FiadDisk::SetSubDir(FileInfo *pFile) {
+    if (NULL == pFile) {
+        debug_write("No file object passed to SetSubDir");
+        return false;
+    }
+
+    // if you want to use subdirectories, you need to use the valid
+    // TI characters, not native windows ones.
+    m_csCurrentFolder = pFile->csName;
+
+    return true;
+}
+
+// CreateDirectory: nDrive=Drive#, csName=filename
+// No return beyond error code required
+bool FiadDisk::CreateDirectory(FileInfo *pFile) {
+    std::error_code ec;
+    CString csFileName = BuildFilename(pFile);
+
+    if (std::filesystem::create_directory(csFileName.GetString(), ec)) {
+        return true;
+    }
+    debug_write("Failed to create '%s', error %d", ec.value());
+    pFile->LastError = ERR_FILEERROR;
+    return false;
+}
+
+// DeleteDirectory: nDrive=Drive#, csName=filename
+// No return beyond error code required
+bool FiadDisk::DeleteDirectory(FileInfo *pFile) {
+    std::error_code ec;
+
+    if (!bAllowDelete) {
+        debug_write("You need to enable rename and delete on this drive!");
+		pFile->LastError = ERR_ILLEGALOPERATION;
+		return false;
+	}
+
+    CString csFileName = BuildFilename(pFile);
+
+    if (!std::filesystem::is_directory(csFileName.GetString())) {
+        debug_write("%s is not a subdirectory", csFileName.GetString());
+        pFile->LastError = ERR_DEVICEERROR;
+		return false;
+    }
+
+    if (std::filesystem::remove(csFileName.GetString(), ec)) {
+        return true;
+    }
+    debug_write("Failed to remove '%s', error %d", ec.value());
+    pFile->LastError = ERR_FILEERROR;
     return false;
 }
 

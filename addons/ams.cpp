@@ -51,6 +51,16 @@
 // larger increments that may come along), which has a separate latch that captures the LSbyte of a WORD that is 
 // written to the registers.  That's why it's recommended that software assumes a larger card and to be fully 
 // compatible with any SAMS.
+//
+// Note from Rich that explains the "default" mapping being needed. When mapping is off, it automatically
+// uses the first 16 pages:
+//
+// RXB does not use pages 0 to 15 as stated way back in 2000 these would be used for future expansions.
+// Pages 2,3,A,B,C,D,E,F are used in PASS mode or MAP mode so are just used for normal 32 Memory thus left alone.
+// Pages 0,1,4,5,6,7,8,9 are totally ignored.
+// Now RXB 2020 on you can use these pages but in Documents it states that is not a good idea.
+// I do believe devices like TIPI and some others do use some of these pages like 0 and 1 but not entirely sure this is the case.
+
 
 // define sizes for memory arrays 
 static const int MaxMapperPages	= 0x2000;       // MUST be a power of 2

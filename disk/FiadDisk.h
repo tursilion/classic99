@@ -79,7 +79,9 @@ public:
 //	virtual void MapStatus(FileInfo *src, FileInfo *dest);      // base class ok
 //	virtual bool GetStatus(FileInfo *pFile) override;			// base class ok
 
-	// SBRLNK opcodes (files is handled by shared handler)
+    virtual bool IsSubDirSupported() override { return true; }  // must override for it to work
+
+    // SBRLNK opcodes (files is handled by shared handler)
 	virtual bool ReadSector(FileInfo *pFile) override;
 //	virtual bool WriteSector(FileInfo *pFile) override;			// not supported
 	virtual bool ReadFileSectors(FileInfo *pFile) override;
@@ -87,7 +89,10 @@ public:
 //	virtual bool FormatDisk(FileInfo *pFile) override;			// not supported
 //	virtual bool ProtectFile(FileInfo *pFile) override;			// not supported
 //	virtual bool UnProtectFile(FileInfo *pFile) override;		// not supported
-    virtual bool RenameFile(FileInfo *pFile, const char *csNewName) override; // 10 character limit!!
+    virtual bool RenameFile(FileInfo *pFile, const char *csNewName, bool bIsDir) override; // 10 character limit?
+    virtual bool SetSubDir(FileInfo *pFile) override;   // 39 character limit
+	virtual bool CreateDirectory(FileInfo *pFile) override; // 10 character limit?
+	virtual bool DeleteDirectory(FileInfo *pFile) override; // 10 character limit?
 
 	// class-specific functions
 	FILE *fopen(const char *szFile, char *szMode);

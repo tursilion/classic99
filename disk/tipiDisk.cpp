@@ -215,9 +215,9 @@ unsigned char *getWebFile(CString &filename, int &outSize) {
     int outPos = 0;
     outSize = 0;
 
-    // Parse out pi.http vs urix
+    // Parse out pi.http[s] vs urix
     //
-    // it's a URI request - if PI make sure it's http
+    // it's a URI request - if PI make sure it's http[s]
     // TODO: not sure if multiple web files are allowed to
     // be open! This code assumes only one...
     CString url;
@@ -239,8 +239,6 @@ unsigned char *getWebFile(CString &filename, int &outSize) {
         // assuming, not checking for the '.'
         url = TipiURI[idx] + '/' + filename.Mid(5); // confirmed there is an automatic slash added
     }
-
-    debug_write("Load URL is '%s'", url.GetString());
 
     // split up the path and make it wide
     strncpy(tmpStr, url.GetString(), MAX_PATH);
@@ -276,6 +274,8 @@ unsigned char *getWebFile(CString &filename, int &outSize) {
         _snwprintf(host, MAX_PATH, L"%S", p);
         _snwprintf(resource, MAX_PATH, L"");
     }
+
+    debug_write("Load URL is '%s' (Secure: %s)", url.GetString(), secure?"Yes":"No");
 
     // CALL TIPI("PI.http://harmlesslion.com/tipi/PIANO1")
 
@@ -659,7 +659,7 @@ nextfile:
             return false;
         }
         // might as well check it's a PROGRAM image too, won't bother with the rest
-        if (buf[10] != TIFILES_PROGRAM) {
+        if ((buf[10] & TIFILES_PROGRAM) == 0) {
             debug_write("CALL TIPI load is non-PROGRAM TIFILES image, TIPI resets TI.");
             // the Classic99 code will "return" to the caller's
             // R11, so we need to load the address we want there,

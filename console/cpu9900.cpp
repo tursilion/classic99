@@ -2707,6 +2707,9 @@ void CPU9900::op_dbg() {
     // dbg is technically an illegal opcode followed by a JMP, so
     // it's 6+10 = 16 cycles. The Classic99 part is free ;)
 
+    // TODO: we should execute the JMP to make sure the user coded
+    // it correctly, since real hardware will.
+
     // Base cycles: 16
     // 2 memory accesses:
     //  Read dbg instruction (already done)
