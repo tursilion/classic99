@@ -71,11 +71,13 @@ FiadDisk::FiadDisk() {
     bSwapPeriodAndSlash = true;
     bReturnSubdirs = false;
     bCaseSensitive = false;
+    bSubDirApi = true;
 
 	nCachedDrive=-1;
 	pCachedFiles=NULL;
 	tCachedTime=(time_t)0;
 	nCachedCount=0;
+    m_csCurrentFolder = "";
 }
 
 FiadDisk::~FiadDisk() {
@@ -90,6 +92,7 @@ FiadDisk::~FiadDisk() {
 // powerup routine
 void FiadDisk::Startup() {
 	BaseDisk::Startup();
+    m_csCurrentFolder = "";
 }
 
 // path - make sure we end with a backslash!
@@ -171,6 +174,10 @@ void FiadDisk::SetOption(int nOption, int nValue) {
             bCaseSensitive = nValue?true:false;
             break;
 
+        case OPT_FIAD_SUBDIRAPI:
+            bSubDirApi = nValue?true:false;
+            break;
+
         default:
 			BaseDisk::SetOption(nOption, nValue);
 			break;
@@ -247,6 +254,10 @@ bool FiadDisk::GetOption(int nOption, int &nValue) {
             nValue = bCaseSensitive;
             break;
 
+        case OPT_FIAD_SUBDIRAPI:
+            nValue = bSubDirApi;
+            break;
+
         default:
 			return BaseDisk::GetOption(nOption, nValue);
 	}
@@ -277,11 +288,9 @@ CString FiadDisk::BuildFilename(FileInfo *pFile) {
 
     // merge in the working directory if needed
     // we don't support munging on the working folder
-    if (pFile->bUseWorkingPath) {
-        if (m_csCurrentFolder.GetLength() > 0) {
-            csTmp += m_csCurrentFolder;
-            csTmp += '\\';
-        }
+    if (m_csCurrentFolder.GetLength() > 0) {
+        csTmp += m_csCurrentFolder;
+        csTmp += '\\';
     }
 
     // munge the filename if needed
@@ -294,6 +303,14 @@ CString FiadDisk::BuildFilename(FileInfo *pFile) {
             if (pFile->csName[idx] == '\\') csLocalFile.SetAt(idx, '.');
             if (pFile->csName[idx] == '.') csLocalFile.SetAt(idx, '\\');
         }
+    }
+
+    // don't allow TI filenames to go up a directory (possible attempt to escape path)
+    if (csLocalFile.Find("..") != -1) {
+        // technically this is a legal TI filename, but using swap it'd become "\\" as a folder separator
+        // we could be pickier and check for slashes, but I won't. Just don't do that.
+        debug_write("Filenames including '..' are not allowed (might be // if translated)");
+        return "";
     }
 
 	// append requested filename, which may or may not have been munged
@@ -420,6 +437,10 @@ FILE *FiadDisk::fopen(const char *szFile, char *szMode) {
 bool FiadDisk::CreateOutputFile(FileInfo *pFile) {
 	FILE *fp;
 	CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
 	// first a little sanity checking -- we never overwrite an existing file
 	// unless the mode is 'output', so check existance against the mode
@@ -430,6 +451,7 @@ bool FiadDisk::CreateOutputFile(FileInfo *pFile) {
 		if ((pFile->Status & FLAG_MODEMASK) != FLAG_OUTPUT) {
 			// no, we are not
 			debug_write("Can't overwrite existing file with open mode 0x%02X", (pFile->Status & FLAG_MODEMASK));
+            pFile->LastError = ERR_FILEERROR;
 			return false;
 		}
 	}
@@ -489,6 +511,10 @@ bool FiadDisk::CreateOutputFile(FileInfo *pFile) {
 bool FiadDisk::TryOpenFile(FileInfo *pFile) {
 	char *pMode;
 	CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 	int nMode = pFile->Status & FLAG_MODEMASK;	// should be UPDATE, APPEND or INPUT
 	FILE *fp=NULL;
 	FileInfo lclInfo;
@@ -597,6 +623,9 @@ void FiadDisk::DetectImageType(FileInfo *pFile, CString csFileName) {
 
 	if (csFileName.IsEmpty()) {
 		CString csFileName = BuildFilename(pFile);
+        if (csFileName.GetLength() == 0) {
+            return;
+        }
 	} else {
 		// or the alternate, possible from SBR calls
 		if (pFile->csName.IsEmpty()) {
@@ -995,6 +1024,10 @@ bool FiadDisk::BufferFiadFile(FileInfo *pFile) {
 	// it's really a sector count. So we need to read them differently,
 	// more like a text file.
 	csFileName=BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
 	FILE *fp=fopen(csFileName, "rb");
 	if (NULL == fp) {
@@ -1155,6 +1188,9 @@ bool FiadDisk::BufferTextFile(FileInfo *pFile) {
     bool noCRLF = false;
 
 	csFileName=BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        return false;
+    }
 	pFile->NumberRecords=0;		// we don't know how many records there are, so we just read
 
 	FILE *fp=fopen(csFileName, "r");
@@ -1289,6 +1325,9 @@ bool FiadDisk::BufferImgFile(FileInfo *pFile) {
 	unsigned char *pData;
 
 	csFileName=BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        return false;
+    }
 	pFile->NumberRecords=0;		// we could calculate the number of records, but that's okay
 
 	FILE *fp=fopen(csFileName, "rb");
@@ -1406,6 +1445,10 @@ bool FiadDisk::Flush(FileInfo *pFile) {
 // Write out a display file as normal Windows text (\r\n ending)
 bool FiadDisk::FlushWindowsText(FileInfo *pFile) {
 	CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 	FILE *fp = fopen(csFileName, "wb");		// note we still use binary mode, just in case
 	if (NULL == fp) {
 		debug_write("Unable to write file %s", (LPCSTR)csFileName);
@@ -1455,6 +1498,10 @@ bool FiadDisk::FlushFiad(FileInfo *pFile) {
 	}
 
 	CString csFileName = BuildFilename(pFile);  // handles the -1 drive for makecart
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 	FILE *fp = fopen(csFileName, "wb");
 	if (NULL == fp) {
 		debug_write("Unable to write file %s", (LPCSTR)csFileName);
@@ -2015,6 +2062,9 @@ bool FiadDisk::Load(FileInfo *pFile) {
 	FILE *fp;
 	int read_bytes;
 	CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        return false;
+    }
 
 	// sanity check -- make sure we don't request more data
 	// than there is RAM. A real TI would probably wrap the 
@@ -2080,6 +2130,10 @@ bool FiadDisk::Load(FileInfo *pFile) {
 // Save a PROGRAM image file
 bool FiadDisk::Save(FileInfo *pFile) {
 	CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 	FILE *fp;
 
 	// sanity check -- make sure we don't save more data
@@ -2428,6 +2482,10 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 	FILE *fp;
 	FileInfo lclFile;
 	CString csFilename = BuildFilename(pFile);
+    if (csFilename.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
 	if (pFile->LengthSectors == 0) {
 		DetectImageType(&lclFile, csFilename);
@@ -2512,6 +2570,10 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	FILE *fp;
 	CString csFilename = BuildFilename(pFile);
+    if (csFilename.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
 	if (pFile->LengthSectors == 0) {
 		// Create File
@@ -2639,6 +2701,10 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool isDir) {
 		return false;
 	}
 	CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
     if (pFile->ImageType == IMAGE_V9T9) {
         debug_write("Refusing to rename V9T9 file %s", csFileName.GetString());
@@ -2711,11 +2777,15 @@ bool FiadDisk::SetSubDir(FileInfo *pFile) {
 bool FiadDisk::CreateDirectory(FileInfo *pFile) {
     std::error_code ec;
     CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
     if (std::filesystem::create_directory(csFileName.GetString(), ec)) {
         return true;
     }
-    debug_write("Failed to create '%s', error %d", ec.value());
+    debug_write("Failed to create '%s', error %d", csFileName.GetString(), ec.value());
     pFile->LastError = ERR_FILEERROR;
     return false;
 }
@@ -2732,6 +2802,10 @@ bool FiadDisk::DeleteDirectory(FileInfo *pFile) {
 	}
 
     CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
     if (!std::filesystem::is_directory(csFileName.GetString())) {
         debug_write("%s is not a subdirectory", csFileName.GetString());
@@ -2763,6 +2837,10 @@ bool FiadDisk::Delete(FileInfo *pFile) {
 	}
 
 	CString csFileName = BuildFilename(pFile);
+    if (csFileName.GetLength() == 0) {
+        pFile->LastError = ERR_FILEERROR;
+        return false;
+    }
 
     if (0 == remove(csFileName.GetString())) {
         return true;

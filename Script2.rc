@@ -592,6 +592,8 @@ BEGIN
     CONTROL         "Dir: Return subdirectories",IDC_FIAD_RETURNSUBDIRS,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,151,131,109,10
     CONTROL         "Dir: Case Sensitive",IDC_FIAD_CASESENSITIVE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,132,109,10
+    CONTROL         "Dir: Allow Myarc/TIPI subdir API",IDC_FIAD_SUBDIRAPI,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,151,144,146,10
 END
 
 IDD_OPTGRAM DIALOGEX 0, 0, 198, 110

@@ -77,30 +77,29 @@
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
 Byte ReadMemoryByte(Word address, READACCESSTYPE rmw);
 
+// Match match the order of the enum in diskclass.h
 const char *pszOptionNames[] = {
-	"FIAD_WriteV9T9",		
-	"FIAD_ReadTIFILES",
-	"FIAD_ReadV9T9",
-	"FIAD_WriteDV80AsText",
-	"FIAD_WriteAllDVAsText",
-	"FIAD_WriteDF80AsText",
-	"FIAD_WriteAllDFAsText",
-	"FIAD_ReadTextAsDV",
-	"FIAD_ReadTextAsDF",
-	"FIAD_ReadTextWithoutExt",
-	"FIAD_AllowDelete",
-	"FIAD_ReadImgAsTIAP",
-	"FIAD_AllowNoHeaderAsDF128",
-	"FIAD_EnableLongFilenames",
-	"FIAD_AllowMore127Files",
-    "FIAD_SwapSlashes",
-    "FIAD_ReturnSubdirs",
-    "FIAD_CaseSensitive",
+	"FIAD_WriteV9T9",		            // OPT_FIAD_WRITEV9T9
+	"FIAD_ReadTIFILES",                 // OPT_FIAD_READTIFILES
+	"FIAD_ReadV9T9",                    // OPT_FIAD_READV9T9
+	"FIAD_WriteDV80AsText",             // OPT_FIAD_WRITEDV80ASTEXT
+	"FIAD_WriteAllDVAsText",            // OPT_FIAD_WRITEALLDVASTEXT
+	"FIAD_WriteDF80AsText",             // OPT_FIAD_WRITEDF80ASTEXT
+	"FIAD_WriteAllDFAsText",            // OPT_FIAD_WRITEALLDFASTEXT
+	"FIAD_ReadTextAsDV",                // OPT_FIAD_READTXTASDV
+	"FIAD_ReadTextWithoutExt",          // OPT_FIAD_READTXTWITHOUTEXT
+	"FIAD_AllowDelete",                 // OPT_FIAD_ALLOWDELETE
+	"FIAD_ReadImgAsTIAP",               // OPT_FIAD_READIMGASTIAP
+	"FIAD_AllowNoHeaderAsDF128",        // OPT_FIAD_ALLOWNOHEADERASDF128
+	"FIAD_EnableLongFilenames",         // OPT_FIAD_ENABLELONGFILENAMES
+	"FIAD_AllowMore127Files",           // OPT_FIAD_ALLOWMORE127FILES
+    "FIAD_SwapSlashes",                 // OPT_FIAD_SWAPSLASHES
+    "FIAD_ReturnSubdirs",               // OPT_FIAD_RETURNSUBDIRS
+    "FIAD_CaseSensitive",               // OPT_FIAD_CASESENSITIVE
+    "FIAD_SubDirAPI",                   // OPT_FIAD_SUBDIRAPI
 
-	"IMAGE_UseV9T9DSSD",
-
-	"DISK_AutoMapDSK1",
-	"DISK_WriteProtect",
+	"DISK_AutoMapDSK1",                 // OPT_DISK_AUTOMAPDSK1
+	"DISK_WriteProtect",                // OPT_DISK_WRITEPROTECT
 };
 
 const char *szDiskTypes[] = {
@@ -117,6 +116,28 @@ const char *szDiskTypes[] = {
 	"Clock",					// and clock too
     "TIPIsim",                  // TIPI sim
 };
+
+// This buffer is used by the file operations, and is valid
+// ONLY for the duration of that ONE operation. It's used to
+// abstract the interface between CPU and VDP RAM needed for
+// the Myarc API, which was copied by others. This way we
+// can centralize the memory access instead of needing to hack
+// every single operation. It'll slow things down a little
+// bit, but not notably on modern hardware, and the Classic99
+// disk is still way faster than the real thing anyway.
+// This is probably a good abstraction for moving the code
+// to V4 anyway, eventually.
+// Currently it's loaded into s_FILEINFO by the constructor
+// HOWEVER, this is not currently implemented. It is a maddeningly
+// inconsistent API. All the SBRLNK opcodes get 0x80 added. All the
+// non-SBRLNK opcodes get 0x40 added. The PAB buffer can be in CPU
+// if the address has 0x8000 set (and presumably that's the address
+// it must live at), but the PAB is /differently laid out/ in that
+// case. It's BS and I ain't doing it today.
+// Search for bUseCPU - I disabled the flag at the source, and
+// none of the actual operations support it yet.
+// Classic99v4 can just run actual DSRs instead.
+unsigned char DiskWorkBuffer[64*1024];
 
 //********************************************************
 // s_FILEINFO (FileInfo)
@@ -152,6 +173,8 @@ s_FILEINFO::s_FILEINFO() {
 	nLocalData=0;
     initData = NULL;
     initDataSize = 0;
+    bUseCPU = false;
+    pWorkData = DiskWorkBuffer; // DO NOT CHANGE THIS
 	// warning: this is not atomic, but it will work here
 	nIndex=nCnt++;
 }
@@ -183,7 +206,8 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	RecordLength = p->RecordLength;
 	NumberRecords = p->NumberRecords;
 	
-	LastError = p->LastError;
+	bUseCPU = p->bUseCPU;
+    LastError = p->LastError;
 	nCurrentRecord = p->nCurrentRecord;
 	nLocalData = p->nLocalData;
 	ImageType = p->ImageType;
@@ -192,7 +216,6 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	bDirty = p->bDirty;
 //	bFree = p->bFree;		// watch out for this one!
 	csOptions = p->csOptions;
-    bUseWorkingPath = p->bUseWorkingPath;
 
 	// NOTE: Changing source! We are taking it's data,
 	// NOT COPYING IT!

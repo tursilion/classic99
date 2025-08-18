@@ -1,5 +1,5 @@
 //
-// (C) 2009 Mike Brent aka Tursi aka HarmlessLion.com
+// (C) 2025 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
 // express or implied is provided.
 //
@@ -187,7 +187,7 @@ bool HandleDisk() {
 	case 0x4828:	// sbr 0x14
 	case 0x482a:	// sbr 0x15
 	case 0x482c:	// sbr 0x16
-    //se 0x482e:    // sbr 0x17 - not valid on floppy
+    case 0x482e:    // sbr 0x17 - valid on floppy only with config
     case 0x4830:    // sbr 0x18
     case 0x4832:    // sbr 0x19
     case 0x4834:    // sbr 0x1a
@@ -961,7 +961,6 @@ void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile) {
 			pFile->csName += '.';
 		}
 	}
-	// this should already be true for subdirectories, which I still need to work out...
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -987,6 +986,24 @@ void do_sbrlnk(int nOpCode) {
 
 	// the only common value, used by all but SBR_FILES
 	tmpFile.nDrive = rcpubyte(0x834c);		// drive index
+
+    // check the unit to see if it's requesting CPU RAM
+    // I don't think I like this working generally, so I'll
+    // require the subdir extensions also to be turned on
+    // But, I can't check that until I qualify the drive number...
+    if (tmpFile.nDrive & 0x80) {
+        // strip it either way - this might complicate debug a bit so write something too
+        //debug_write("Drive index >%02X requests CPU RAM", tmpFile.nDrive);
+        //tmpFile.nDrive &= 0x7f;
+        //tmpFile.bUseCPU = true;
+
+        // Not doing this at this time. See comments at DiskWorkBuffer
+        debug_write("CPU buffers not supported on SBRLNK unit >%02X", tmpFile.nDrive);
+		tmpFile.LastError=ERR_DEVICEERROR;
+		wcpubyte(0x8350, tmpFile.LastError);
+		return;
+	}
+
 	if ((tmpFile.nDrive < 0) || (tmpFile.nDrive >= MAX_DRIVES) || (NULL == pDriveType[tmpFile.nDrive])) {
 		debug_write("SBRLNK call to invalid drive %d", tmpFile.nDrive);
 		tmpFile.LastError=ERR_DEVICEERROR;
@@ -995,33 +1012,61 @@ void do_sbrlnk(int nOpCode) {
 	}
 	if (DISK_TICC == pDriveType[tmpFile.nDrive]->GetDiskType()) {
 		// it's a TI disk controller! We have to handle it special
+        if (tmpFile.bUseCPU) {
+            debug_write("TI Disk Controller does not support RAM buffers!");
+		    tmpFile.LastError=ERR_DEVICEERROR;
+		    wcpubyte(0x8350, tmpFile.LastError);
+		    return;
+	    }
+        // No need to check bSubDirApi here, it doesn't have one
 		TICCDisk *pDisk = (TICCDisk*)pDriveType[tmpFile.nDrive];
 		pDisk->sbrlnk(nOpCode);
 		return;
 	}
 
+    // and if we are NOT supporting subdirectories, then we shouldn't support RAM buffers
+    // do this before we convert the opcode so we can debug more cleanly
+    if ((!pDriveType[tmpFile.nDrive]->IsSubDirSupported()) && (tmpFile.bUseCPU)) {
+        // this is an unsupported opcode on this device
+        debug_write("SBRLNK >%02X: CPU buffers not supported on drive %d (enable subdir api)", nOpCode, tmpFile.nDrive);
+		tmpFile.LastError=ERR_ILLEGALOPERATION;
+		wcpubyte(0x8350, tmpFile.LastError);
+		return;
+    }
+
     // convert the hard drive codes to floppy codes
     if ((nOpCode&0xf0)==0x20) {
         // check if we need to modify the path
         if (pDriveType[tmpFile.nDrive]->IsSubDirSupported()) {
-            tmpFile.bUseWorkingPath = true;
             nOpCode -= 0x10;    // convert to floppy opcode
-            // TODO: if the disk index (already checked above) has 0x80 set, then
-            // these opcodes are supposed to use CPU RAM instead of VDP
         } else {
             // this is an unsupported opcode on this device
-            debug_write("Hard Drive SBRLNK not supported on drive %d", tmpFile.nDrive);
+            debug_write("SBRLNK >%02X not supported on drive %d", nOpCode, tmpFile.nDrive);
 		    tmpFile.LastError=ERR_ILLEGALOPERATION;
 		    wcpubyte(0x8350, tmpFile.LastError);
 		    return;
         }
     }
 
-    // log the SBR opcode for later use
+    // we have to check 0x17 set subdirectory separately, cause TIPI allows it but TICC doesn't
+    if (nOpCode == SBR_SETPATH) {
+        if (!pDriveType[tmpFile.nDrive]->IsSubDirSupported()) {
+            // this is an unsupported opcode on this device
+            debug_write("SetPath SBRLNK not supported on drive %d", tmpFile.nDrive);
+		    tmpFile.LastError=ERR_ILLEGALOPERATION;
+		    wcpubyte(0x8350, tmpFile.LastError);
+		    return;
+        }
+    }
+
+    // log the (possibly modified) SBR opcode for later use
     // Fortunately, they don't conflict with the PAB opcodes
     tmpFile.OpCode = nOpCode;
     // also, some DSRs expect the mode (in status) to be set correctly in order to open the file correctly
     // we'll set them individually below
+
+    // Sadly, for Myarc's sake, anywhere in this entire API that says "VDP buffer" might
+    // instead be a CPU buffer. %$$#^$%# twice. It's flagged in the file object, so DON'T LOSE IT.
 
 	switch (nOpCode) {
 		case SBR_SECTOR:
@@ -1043,14 +1088,14 @@ void do_sbrlnk(int nOpCode) {
 				tmpFile.RecordNumber = romword(0x8350);	// sector index
 
 				if (rcpubyte(0x834d)) {		// 0 = write, else read
-					debug_write("Sector read: drive %d, sector %d, VDP >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.DataBuffer);
+					debug_write("Sector read: drive %d, sector %d, %s >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.bUseCPU?"CPU":"VDP", tmpFile.DataBuffer);
                     tmpFile.Status = FLAG_INPUT;
 					if (!pDriveType[tmpFile.nDrive]->ReadSector(&tmpFile)) {
 						// write the error code into >8350 (done below)
 						// wcpubyte(0x8350, tmpFile.LastError);
 					}
 				} else {
-					debug_write("Sector write: drive %d, sector %d, VDP >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.DataBuffer);
+					debug_write("Sector write: drive %d, sector %d, %s >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.bUseCPU?"CPU":"VDP", tmpFile.DataBuffer);
                     tmpFile.Status = FLAG_OUTPUT;
 
 					// check for disk write protection
@@ -1243,7 +1288,6 @@ void do_sbrlnk(int nOpCode) {
 			break;
 
         case SBR_SETPATH:
-            // this can never be called as 0x17, only a converted 0x27
 			{
 				CString csNewFile;
 
@@ -1252,7 +1296,16 @@ void do_sbrlnk(int nOpCode) {
                 // WDS and ending period according to Myarc. We'll assume "DSK1." 
                 // and just check the rest. What's weird is this takes the unit 
                 // number AND expects the drive name? It says they have to match.
-				GetFilenameFromVDP(romword(0x834e), 39, &tmpFile);		// new path
+                // Why would you limit it that much AND waste that much space with
+                // fixed strings? Not to mention the matching code!
+                // 
+                // This is a Pascal/BASIC string with a length byte - the only one.
+                // But since I'm still not supporting spaces, I suppose we can use
+                // the same old API.
+                int adr = romword(0x834e) & 0x3fff; // handle wraparound
+                int len = VDP[adr++];
+                adr &= 0x3fff;
+				GetFilenameFromVDP(adr, len, &tmpFile);		// new path
 
                 // does it end with a period?
                 if (tmpFile.csName.Right(1) != ".") {

@@ -581,7 +581,6 @@ public:
             fi.CharCount = 0;
             fi.csName = opt.FileName;
             fi.csOptions = "";
-            fi.bUseWorkingPath = false;
             fi.FileType = 0;    // display/fixed
             fi.ImageType = IMAGE_TIFILES;
             fi.LastError = 0;

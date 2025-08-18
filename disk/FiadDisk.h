@@ -79,7 +79,7 @@ public:
 //	virtual void MapStatus(FileInfo *src, FileInfo *dest);      // base class ok
 //	virtual bool GetStatus(FileInfo *pFile) override;			// base class ok
 
-    virtual bool IsSubDirSupported() override { return true; }  // must override for it to work
+    virtual bool IsSubDirSupported() override { return bSubDirApi; }  // must override for it to work
 
     // SBRLNK opcodes (files is handled by shared handler)
 	virtual bool ReadSector(FileInfo *pFile) override;
@@ -126,6 +126,7 @@ public:
     bool bSwapPeriodAndSlash;
     bool bReturnSubdirs;
     bool bCaseSensitive;
+    bool bSubDirApi;
 
 	// directory cache
 	int nCachedDrive;

@@ -252,9 +252,10 @@
 #define IDC_CHKNOISE                    1172
 #define IDC_CHKALTF4                    1172
 #define IDC_BREAKGPU                    1173
-#define IDC_FIAD_RETURNSUBDIRS2         1173
 #define IDC_FIAD_CASESENSITIVE          1173
 #define IDC_IGNORECONSOLE               1174
+#define IDC_FIAD_RETURNSUBDIRS2         1174
+#define IDC_FIAD_SUBDIRAPI              1174
 #define IDC_JOY1LIST                    1175
 #define IDC_JOY2LIST                    1176
 #define IDC_CHKF10                      1177

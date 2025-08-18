@@ -83,7 +83,7 @@ typedef struct s_FILEINFO {
     int initDataSize;
 	
 	// internal data
-    bool bUseWorkingPath;  // for those opcodes that need it
+    bool bUseCPU;       // Myarc extension - use CPU memory instead of VDP
 	int nIndex;			// never meant to change, just for debug
 	int LastError;
 	bool bFree;
@@ -95,6 +95,7 @@ typedef struct s_FILEINFO {
 	int HeaderSize;		// varies per driver, only meant for FiadDisk
 	int nLocalData;		// 32-bits for the driver to use as it likes
 	CString csOptions;	// options string is always before the filename as "?x." - x may be longer though
+    unsigned char *pWorkData;   // address of a buffer to work in (currently always the same buffer)
 	unsigned char *pData;
 	// Format of pData - it is a buffer allocated dynamically
 	// It contains rows of data. Each row is RecordLength bytes long 
@@ -183,7 +184,7 @@ enum {
 #define SBR_FILEIN		0x14
 #define SBR_FILEOUT		0x15
 #define SBR_FILES		0x16
-#define SBR_SETPATH     0x17    // not normally valid on DSK (0x1_)
+#define SBR_SETPATH     0x17    // not normally valid on DSK (0x1_), but TIPI did it so we have to allow it
 #define SBR_MKDIR       0x18    // not normally valid on DSK (0x1_)
 #define SBR_RMDIR       0x19    // not normally valid on DSK (0x1_)
 #define SBR_RENAMEDIR   0x1A    // not normally valid on DSK (0x1_)
@@ -242,6 +243,7 @@ enum {
     OPT_FIAD_SWAPSLASHES,
     OPT_FIAD_RETURNSUBDIRS,
     OPT_FIAD_CASESENSITIVE,
+    OPT_FIAD_SUBDIRAPI,
 
 	OPT_DISK_AUTOMAPDSK1,	// scan for DSK1 strings while loading, and patch them on the fly
 	OPT_DISK_WRITEPROTECT,	// disallow writes to the disk

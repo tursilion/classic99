@@ -4876,8 +4876,8 @@ void DisableAllDiskOptions(HWND hwnd) {
 	EnableDlgItem(hwnd, IDC_FIAD_ALLOWMORE127FILES, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_RETURNSUBDIRS, FALSE);
 	EnableDlgItem(hwnd, IDC_FIAD_CASESENSITIVE, FALSE);
-
-	EnableDlgItem(hwnd, IDC_IMAGE_USEV9T9DSSD, FALSE);
+	EnableDlgItem(hwnd, IDC_FIAD_SWAPSLASHES, FALSE);
+	EnableDlgItem(hwnd, IDC_FIAD_SUBDIRAPI, FALSE);
 
 	EnableDlgItem(hwnd, IDC_DISK_AUTOMAPDSK1, FALSE);
 	EnableDlgItem(hwnd, IDC_DISK_WRITEPROTECT, FALSE);
@@ -4919,6 +4919,8 @@ void EnableDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
 	EnableDlgItem(hwnd, IDC_FIAD_ALLOWMORE127FILES, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_RETURNSUBDIRS, TRUE);
 	EnableDlgItem(hwnd, IDC_FIAD_CASESENSITIVE, TRUE);
+	EnableDlgItem(hwnd, IDC_FIAD_SWAPSLASHES, TRUE);
+	EnableDlgItem(hwnd, IDC_FIAD_SUBDIRAPI, TRUE);
 
 	if (NULL != pDisk) {
 		// then set options based on it
@@ -4988,13 +4990,16 @@ void EnableDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
         nValue = 0; 
 		pDisk->GetOption(OPT_FIAD_CASESENSITIVE, nValue);
 		SendDlgItemMessage(hwnd, IDC_FIAD_CASESENSITIVE, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
+
+    	nValue = 0; 
+		pDisk->GetOption(OPT_FIAD_SUBDIRAPI, nValue);
+		SendDlgItemMessage(hwnd, IDC_FIAD_SUBDIRAPI, BM_SETCHECK, nValue?BST_CHECKED:BST_UNCHECKED, 0);
     }
 
 	EnableDiskGlobalOptions(hwnd, pDisk);
 }
 
 void EnableDiskImageOptions(HWND hwnd, BaseDisk *pDisk) {
-	EnableDlgItem(hwnd, IDC_IMAGE_USEV9T9DSSD, TRUE);
 
 	if (NULL != pDisk) {
 		// then set options based on it
@@ -5034,6 +5039,7 @@ void GetDiskFiadOptions(HWND hwnd, BaseDisk *pDisk) {
 		pDisk->SetOption(OPT_FIAD_SWAPSLASHES,      SendDlgItemMessage(hwnd, IDC_FIAD_SWAPSLASHES, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_RETURNSUBDIRS,    SendDlgItemMessage(hwnd, IDC_FIAD_RETURNSUBDIRS, BM_GETCHECK, 0, 0)==BST_CHECKED);
 		pDisk->SetOption(OPT_FIAD_CASESENSITIVE,    SendDlgItemMessage(hwnd, IDC_FIAD_CASESENSITIVE, BM_GETCHECK, 0, 0)==BST_CHECKED);
+		pDisk->SetOption(OPT_FIAD_SUBDIRAPI,        SendDlgItemMessage(hwnd, IDC_FIAD_SUBDIRAPI, BM_GETCHECK, 0, 0)==BST_CHECKED);
     }
 	GetDiskGlobalOptions(hwnd, pDisk);
 }

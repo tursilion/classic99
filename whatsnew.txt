@@ -2309,3 +2309,12 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
     - Added rename dir
 - fix TIPI PROGRAM load to correctly test the TIFILES header for bit 0x1, not value 0x1
 - update the manual cover to cover
+
+-----------------------------------------------
+
+18 Aug 2025
+
+- Somewhat under protest, I've allowed the SETPATH SBRLNK opcode to work at >17. This must be enabled per FIAD drive and is not supported on any other type.
+- I found a misconfiguration of the save function for FIAD disk options - I recommend reviewing your disk settings for all 10 drives.
+- The subdirectory API is still untested and all operations are limited to 10 characters except SETPATH, which is 39 as per MYARC. Unfortunately these are fixed length buffers and can't be safely extended.
+
