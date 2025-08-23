@@ -126,10 +126,6 @@ From Matt - check this decrement:
 // slower than the fastest 9900 write cycle (MOVB Rn,*Rm = 26 cycles = 8.63uS)
 // On the later chip that took a 500kHz clock (not used in the TI?)
 // only 4 clocks were needed, so it was 8.0uS to respond.
-// This means the normally used sound chip can potentially /just barely/
-// be overrun by the CPU, but we should be fine with this emulation.
-// (In truth, the time it takes to fetch the next instruction should make it
-// impossible to overrun.)
 //
 // Futher note: the TI CPU is halted by the sound chip during the write,
 // so not only is overrun impossible, but the system is halted for a significant

@@ -2318,3 +2318,9 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 - I found a misconfiguration of the save function for FIAD disk options - I recommend reviewing your disk settings for all 10 drives.
 - The subdirectory API is still untested and all operations are limited to 10 characters except SETPATH, which is 39 as per MYARC. Unfortunately these are fixed length buffers and can't be safely extended.
 
+-----------------------------------------------
+
+22 Aug 2025
+
+- All the extensions to the disk DSR broke the loading of it (I forgot to extend the load size), so CALL FILES didn't work and some of the new SBRLNK opcodes were dropped
+

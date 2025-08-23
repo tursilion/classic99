@@ -473,7 +473,7 @@ void joyStruct::changeMode(int n) {
 
 // ROMs to always load
 struct IMG AlwaysLoad[] = {
-    {	IDR_AMI99DSK,	0x1100, 0x01c0,	TYPE_DSR	, 0, 0},
+    {	IDR_AMI99DSK,	0x1100, 0x0200,	TYPE_DSR	, 0, 0},
     {	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
     {   IDR_TIPISIM,    0x1200, 0x0110, TYPE_DSR    , 0, 0},
 //	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0, 0},
@@ -3202,6 +3202,104 @@ void readroms() {
 
     // set xbBank if paging
     findXBbank();
+
+#ifdef _DEBUG
+    // a sanity test for me - check the DSRs make sense
+    // This is mostly for Ami99DSK
+
+    for (int dsr=0; dsr<0x10; ++dsr) {
+        if (DSR[dsr][0] != 0xaa) continue;
+
+        // verify the DSR header
+        debug_write("DSR at CRU >1%X00", dsr);
+
+        int i;
+        int x = DSR[dsr][4]*256+DSR[dsr][5]-0x4000;
+        if (x > 0) {
+            debug_write("Power-up Chain:");
+            do {
+                int next = DSR[dsr][x]*256+DSR[dsr][x+1];
+                int run = DSR[dsr][x+2]*256+DSR[dsr][x+3];
+                debug_write("  >%04X >%04X", next, run);
+                x = next-0x4000;
+            } while (x>0);
+        }
+
+        x = DSR[dsr][6]*256+DSR[dsr][7]-0x4000;
+        if (x > 0) {
+            debug_write("Program List (should not exist):");
+            do {
+                char buf[257];
+                int next = DSR[dsr][x]*256+DSR[dsr][x+1];
+                int run = DSR[dsr][x+2]*256+DSR[dsr][x+3];
+                int len = DSR[dsr][x+4];
+                memset(buf, 0, sizeof(buf));
+                for (i=0; i<len; ++i) {
+                    buf[i] = DSR[dsr][x+5+i];
+                }
+                debug_write("  >%04X >%04X : %s", next, run, buf);
+                x = next-0x4000;
+            } while (x>0);
+        }
+
+        x = DSR[dsr][8]*256+DSR[dsr][9]-0x4000;
+        if (x > 0) {
+            debug_write("DSR List:");
+            do {
+                char buf[257];
+                int next = DSR[dsr][x]*256+DSR[dsr][x+1];
+                int run = DSR[dsr][x+2]*256+DSR[dsr][x+3];
+                int len = DSR[dsr][x+4];
+                memset(buf, 0, sizeof(buf));
+                for (i=0; i<len; ++i) {
+                    buf[i] = DSR[dsr][x+5+i];
+                }
+                debug_write("  >%04X >%04X : %s", next, run, buf);
+                x = next-0x4000;
+            } while (x>0);
+        }
+
+        x = DSR[dsr][10]*256+DSR[dsr][11]-0x4000;
+        if (x > 0) {
+            debug_write("Subprogram List:");
+            do {
+                char buf[257];
+                int next = DSR[dsr][x]*256+DSR[dsr][x+1];
+                int run = DSR[dsr][x+2]*256+DSR[dsr][x+3];
+                int len = DSR[dsr][x+4];
+                memset(buf, 0, sizeof(buf));
+                if (len == 1) {
+                    // this isn't necessarily guaranteed, but covers current needs
+                    sprintf(buf, ">%02X", DSR[dsr][x+5]);
+                    // special hack to verify Classic99's DSR
+                    if (dsr == 1) {
+                        int code = (run - 0x4800)/2;
+                        if (code != DSR[dsr][x+5]) {
+                            strcat(buf, " (WRONG)");
+                        }
+                    }
+                } else {
+                    for (i=0; i<len; ++i) {
+                        buf[i] = DSR[dsr][x+5+i];
+                    }
+                }
+                debug_write("  >%04X >%04X : %s", next, run, buf);
+                x = next-0x4000;
+            } while (x>0);
+        }
+
+        x = DSR[dsr][12]*256+DSR[dsr][13]-0x4000;
+        if (x > 0) {
+            debug_write("ISR Chain:");
+            do {
+                int next = DSR[dsr][x]*256+DSR[dsr][x+1];
+                int run = DSR[dsr][x+2]*256+DSR[dsr][x+3];
+                debug_write("  >%04X >%04X", next, run);
+                x = next-0x4000;
+            } while (x>0);
+        }
+    }
+#endif
 
     if (bEnableAppMode) {
         // patch the boot GROMs as appropriate
