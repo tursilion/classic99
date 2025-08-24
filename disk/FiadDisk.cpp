@@ -287,10 +287,11 @@ CString FiadDisk::BuildFilename(FileInfo *pFile) {
 	}
 
     // merge in the working directory if needed
-    // we don't support munging on the working folder
-    if (m_csCurrentFolder.GetLength() > 0) {
-        csTmp += m_csCurrentFolder;
-        csTmp += '\\';
+    if (pFile->bUsesFolder) {
+        if (m_csCurrentFolder.GetLength() > 0) {
+            csTmp += m_csCurrentFolder;
+            csTmp += '\\';
+        }
     }
 
     // munge the filename if needed
@@ -2197,7 +2198,6 @@ bool FiadDisk::Save(FileInfo *pFile) {
 
 // Read the volume information block (sector 0)
 bool FiadDisk::ReadVIB(FileInfo *pFile) {
-	unsigned char *p;
 	CString csPath = pDriveType[pFile->nDrive]->GetDiskName();
 
 	// DiskName - first 10 bytes - we provide the local path (last 10 chars of it)
@@ -2205,34 +2205,85 @@ bool FiadDisk::ReadVIB(FileInfo *pFile) {
 		csPath += ' ';
 	}
 	csPath = csPath.Right(10);
-	memcpy(&VDP[pFile->DataBuffer], (LPCSTR)csPath, 10);
+    if (pFile->bUseCPU) {
+        for (int i=0; i<10; ++i) {
+            wcpubyte(pFile->DataBuffer+i, csPath[i]);
+        }
+    } else {
+    	memcpy(&VDP[pFile->DataBuffer], (LPCSTR)csPath, 10);
+    }
 
 	// next block
-	p = &VDP[pFile->DataBuffer+0x0a];	// point to next part
-	*p++ = 0x05;						// number of sectors (we write 0x5A0 - 1440 - same as a DSDD)
-	*p++ = 0xa0;
-	*p++ = 0x12;						// Sectors per track, we write 0x12 (DD)
-	*p++ = 'D';							// Magic tag, "DSK"
-	*p++ = 'S';
-	*p++ = 'K';
-	*p++ = ' ';							// "P" for protected, would be space otherwise
-	*p++ = 0x28;						// Tracks per side, we write 0x28 for DD
-	*p++ = 0x02;						// Number of sides (2 for DS)
-	*p++ = 0x02;						// Density (2 for DD)
-	
-	// write out the reserved bytes as zero
-	memset(p, 0x00, 36);
-	p+=36;
+    if (pFile->bUseCPU) {
+        int adr = pFile->DataBuffer+0x0a;	// point to next part
+	    wcpubyte(adr++, 0x05);				// number of sectors (we write 0x5A0 - 1440 - same as a DSDD)
+	    wcpubyte(adr++, 0xa0);
+	    wcpubyte(adr++, 0x12);				// Sectors per track, we write 0x12 (DD)
+	    wcpubyte(adr++, 'D');				// Magic tag, "DSK"
+	    wcpubyte(adr++, 'S');
+	    wcpubyte(adr++, 'K');
+	    wcpubyte(adr++, ' ');				// "P" for protected, would be space otherwise
+	    wcpubyte(adr++, 0x28);				// Tracks per side, we write 0x28 for DD
+	    wcpubyte(adr++, 0x02);				// Number of sides (2 for DS)
+	    wcpubyte(adr++, 0x02);				// Density (2 for DD)
 
-	// write out the disk bitmap as fully empty, except the first 129 sectors
-	memset(p, 0xff, 16);	// 128
-	p+=16;
-	*p++ = 0x80;			// 129
-	memset(p, 0x00, 163);	// rest of the bitmap
-	p+=163;
+        // write out the reserved bytes as zero - still even
+        for (int i=0; i<36; i+=2) {
+            wrword(adr+i, 0);
+        }
+	    adr+=36;
 
-	// write out the last reserved bytes as 0xff
-	memset(p, 0xff, 20);
+	    // write out the disk bitmap as fully empty, except the first 129 sectors
+        for (int i=0; i<16; i+=2) {
+            wrword(adr+i, 0xff);
+        }
+	    adr+=16;
+
+        // not even offset after this 0x80
+	    wcpubyte(adr++, 0x80);  			// 129
+        for (int i=0; i<163; i++) {         // rest of the bitmap
+            wcpubyte(adr+i, 0x00);
+        }
+	    adr+=163;
+
+	    // write out the last reserved bytes as 0xff (even again)
+        for (int i=0; i<20; i+=2) {
+            wrword(adr+i, 0xff);
+        }
+
+        // temp debug code
+        if (adr - pFile->DataBuffer != 256) {
+            debug_write("CPU output in ReadVIB was not correct size! got %d bytes (not 256)", adr - pFile->DataBuffer);
+        }
+    } else {
+	    unsigned char *p;
+
+        p = &VDP[pFile->DataBuffer+0x0a];	// point to next part
+	    *p++ = 0x05;						// number of sectors (we write 0x5A0 - 1440 - same as a DSDD)
+	    *p++ = 0xa0;
+	    *p++ = 0x12;						// Sectors per track, we write 0x12 (DD)
+	    *p++ = 'D';							// Magic tag, "DSK"
+	    *p++ = 'S';
+	    *p++ = 'K';
+	    *p++ = ' ';							// "P" for protected, would be space otherwise
+	    *p++ = 0x28;						// Tracks per side, we write 0x28 for DD
+	    *p++ = 0x02;						// Number of sides (2 for DS)
+	    *p++ = 0x02;						// Density (2 for DD)
+
+        // write out the reserved bytes as zero
+	    memset(p, 0x00, 36);
+	    p+=36;
+
+	    // write out the disk bitmap as fully empty, except the first 129 sectors
+	    memset(p, 0xff, 16);	// 128
+	    p+=16;
+	    *p++ = 0x80;			// 129
+	    memset(p, 0x00, 163);	// rest of the bitmap
+	    p+=163;
+
+	    // write out the last reserved bytes as 0xff
+	    memset(p, 0xff, 20);
+    }
 
 	// should total 256 bytes exactly - check if you alter this code.
 	return true;
@@ -2385,30 +2436,57 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 // should be the same as the V9T9 or TIFILES header, but
 // there seem to be variations in places.
 bool FiadDisk::ReadFDR(FileInfo *pFile, FileInfo *Filenames) {
-	unsigned char *p;
 	CString csTmp;
 
-	p=&VDP[pFile->DataBuffer];
+    if (pFile->bUseCPU) {
+	    int adr = pFile->DataBuffer;
 
-	// first 10 chars are the filename
-	csTmp = Filenames->csName;
-	while (csTmp.GetLength() < 10) {
-		csTmp+=' ';
-	}
-	csTmp = csTmp.Left(10);			// take the first 10 chars
-	memcpy(p, (LPCSTR)csTmp, 10);
-	p+=10;
+	    // first 10 chars are the filename
+	    csTmp = Filenames->csName;
+	    while (csTmp.GetLength() < 10) {
+		    csTmp+=' ';
+	    }
+	    csTmp = csTmp.Left(10);			// take the first 10 chars
+        for (int i=0; i<10; ++i) {
+            wcpubyte(adr+i, csTmp[i]);
+        }
+	    adr+=10;
 
-	*(p++)=0;								// reserved
-	*(p++)=0;
-	*(p++)=Filenames->FileType;				// TIFILES file type
-	*(p++)=Filenames->RecordsPerSector;
-	*(p++)=Filenames->LengthSectors/256;
-	*(p++)=Filenames->LengthSectors%256;
-	*(p++)=Filenames->BytesInLastSector;
-	*(p++)=Filenames->RecordLength;
-	*(p++)=Filenames->NumberRecords%256;	// NOTE: Little endian!
-	*(p++)=Filenames->NumberRecords/256;
+	    wcpubyte(adr++, 0);								// reserved
+	    wcpubyte(adr++, 0);
+	    wcpubyte(adr++, Filenames->FileType);			// TIFILES file type
+	    wcpubyte(adr++, Filenames->RecordsPerSector);
+	    wcpubyte(adr++, Filenames->LengthSectors/256);
+	    wcpubyte(adr++, Filenames->LengthSectors%256);
+	    wcpubyte(adr++, Filenames->BytesInLastSector);
+	    wcpubyte(adr++, Filenames->RecordLength);
+	    wcpubyte(adr++, Filenames->NumberRecords%256);	// NOTE: Little endian!
+	    wcpubyte(adr++, Filenames->NumberRecords/256);
+    } else {
+	    unsigned char *p;
+	    p=&VDP[pFile->DataBuffer];
+
+	    // first 10 chars are the filename
+	    csTmp = Filenames->csName;
+	    while (csTmp.GetLength() < 10) {
+		    csTmp+=' ';
+	    }
+	    csTmp = csTmp.Left(10);			// take the first 10 chars
+	    memcpy(p, (LPCSTR)csTmp, 10);
+	    p+=10;
+
+	    *(p++)=0;								// reserved
+	    *(p++)=0;
+	    *(p++)=Filenames->FileType;				// TIFILES file type
+	    *(p++)=Filenames->RecordsPerSector;
+	    *(p++)=Filenames->LengthSectors/256;
+	    *(p++)=Filenames->LengthSectors%256;
+	    *(p++)=Filenames->BytesInLastSector;
+	    *(p++)=Filenames->RecordLength;
+	    *(p++)=Filenames->NumberRecords%256;	// NOTE: Little endian!
+	    *(p++)=Filenames->NumberRecords/256;
+    }
+
 	// 0x14-0x1b are reserved (leave as 0)
 	// 0x1c-0xff are the cluster list (not used here, left as 0)
 
@@ -2417,6 +2495,7 @@ bool FiadDisk::ReadFDR(FileInfo *pFile, FileInfo *Filenames) {
 
 // ReadSector: nDrive=Drive#, DataBuffer=VDP address, RecordNumber=Sector to read
 // Must return the sector number in RecordNumber if no error.
+// We DO support CPU buffers. Thanks Myarc. In this case only the sector goes to CPU memory
 bool FiadDisk::ReadSector(FileInfo *pFile) {
 	bool nRet = true;
 
@@ -2428,7 +2507,13 @@ bool FiadDisk::ReadSector(FileInfo *pFile) {
 	}
 
 	// Zero buffer first
-	memset(&VDP[pFile->DataBuffer], 0, 256);
+    if (pFile->bUseCPU) {
+        for (int i=0; i<256; i+=2) {
+            wrword(pFile->DataBuffer+i, 0);
+        }
+    } else {
+    	memset(&VDP[pFile->DataBuffer], 0, 256);
+    }
 
 	// which sector?
 	if (pFile->RecordNumber == 0) {
@@ -2447,7 +2532,11 @@ bool FiadDisk::ReadSector(FileInfo *pFile) {
 				// Sector 1 is the FDR index - pointers to all files on the disk
 				for (int idx = 0; idx < nCnt; idx++) {
 					// We store our FDRs in the first 129 "sectors", so we only need one byte each
-					VDP[pFile->DataBuffer + (2*idx) + 1] = idx + 2;
+                    if (pFile->bUseCPU) {
+                        wcpubyte(pFile->DataBuffer + (2*idx) + 1, idx + 2);
+                    } else {
+    					VDP[pFile->DataBuffer + (2*idx) + 1] = idx + 2;
+                    }
 				}
 			} else {
 				// another sector - if it's not an FDR sector then it's invalid
@@ -2507,18 +2596,31 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 		return true;
 	}
 
-	// sanity test
-	if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
-		debug_write("Attempt to sector read file %s past end of VDP, truncating.", pFile->csName);
-		pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
-		if (pFile->LengthSectors < 1) {
-			debug_write("Not enough VDP RAM for even one sector, aborting.");
-			pFile->LastError = ERR_BUFFERFULL;
-			return false;
-		}
-	}
+    if (pFile->bUseCPU) {
+	    // sanity test
+	    if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x10000) {
+		    debug_write("Attempt to sector read file %s past end of CPU, truncating.", pFile->csName);
+		    pFile->LengthSectors = (0x10000 - pFile->DataBuffer) / 256;
+		    if (pFile->LengthSectors < 1) {
+			    debug_write("Not enough CPU RAM for even one sector, aborting.");
+			    pFile->LastError = ERR_BUFFERFULL;
+			    return false;
+		    }
+	    }
+    } else {
+	    // sanity test
+	    if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
+		    debug_write("Attempt to sector read file %s past end of VDP, truncating.", pFile->csName);
+		    pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
+		    if (pFile->LengthSectors < 1) {
+			    debug_write("Not enough VDP RAM for even one sector, aborting.");
+			    pFile->LastError = ERR_BUFFERFULL;
+			    return false;
+		    }
+	    }
+    }
 
-	debug_write("Reading drive %d file %s sector %d-%d to VDP %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->DataBuffer);
+	debug_write("Reading drive %d file %s sector %d-%d to %s %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->bUseCPU?"CPU":"VDP", pFile->DataBuffer);
 
 	// Read the requested sectors from the file
 	DetectImageType(&lclFile, csFilename);
@@ -2542,8 +2644,30 @@ bool FiadDisk::ReadFileSectors(FileInfo *pFile) {
 
 	fp=fopen(csFilename, "rb");
 	fseek(fp, pFile->RecordNumber*256+pFile->HeaderSize, SEEK_SET);
-	int readcnt = fread(&VDP[pFile->DataBuffer], 1, pFile->LengthSectors*256, fp);
-	pFile->LengthSectors = (readcnt+255)/256;
+    
+    if (pFile->bUseCPU) {
+        unsigned char sec[256];
+        int adr = pFile->DataBuffer;
+
+        for (int i=0; i<pFile->LengthSectors; ++i) {
+	        int readcnt = fread(sec, 1, 256, fp);
+            for (int j=0; j<256; ++j) {
+                wcpubyte(adr++, sec[j]);
+            }
+            if (readcnt > 0) {
+                // mark this sector as read
+                pFile->LengthSectors = i;
+            }
+            if (readcnt < 256) {
+                // was the end
+                break;
+            }
+        }
+    } else {
+	    int readcnt = fread(&VDP[pFile->DataBuffer], 1, pFile->LengthSectors*256, fp);
+	    pFile->LengthSectors = (readcnt+255)/256;
+    }
+
 	fclose(fp);
 
 	if (pFile->LengthSectors == 0) {
@@ -2618,17 +2742,29 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	}
 
 	// sanity test
-	if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
-		debug_write("Attempt to sector write file %s past end of VDP, truncating.", pFile->csName);
-		pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
-		if (pFile->LengthSectors < 1) {
-			debug_write("Not enough VDP RAM for even one sector, aborting.");
-			pFile->LastError = ERR_BUFFERFULL;
-			return false;
-		}
-	}
+    if (pFile->bUseCPU) {
+	    if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x10000) {
+		    debug_write("Attempt to sector write file %s past end of CPU, truncating.", pFile->csName);
+		    pFile->LengthSectors = (0x10000 - pFile->DataBuffer) / 256;
+		    if (pFile->LengthSectors < 1) {
+			    debug_write("Not enough CPU RAM for even one sector, aborting.");
+			    pFile->LastError = ERR_BUFFERFULL;
+			    return false;
+		    }
+	    }
+    } else {
+	    if (pFile->LengthSectors*256 + pFile->DataBuffer > 0x4000) {
+		    debug_write("Attempt to sector write file %s past end of VDP, truncating.", pFile->csName);
+		    pFile->LengthSectors = (0x4000 - pFile->DataBuffer) / 256;
+		    if (pFile->LengthSectors < 1) {
+			    debug_write("Not enough VDP RAM for even one sector, aborting.");
+			    pFile->LastError = ERR_BUFFERFULL;
+			    return false;
+		    }
+	    }
+    }
 
-	debug_write("Writing drive %d file %s sector %d-%d from VDP %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->DataBuffer);
+	debug_write("Writing drive %d file %s sector %d-%d from %s %04x", pFile->nDrive, pFile->csName, pFile->RecordNumber, pFile->RecordNumber+pFile->LengthSectors-1, pFile->bUseCPU?"CPU":"VDP", pFile->DataBuffer);
 
 	// verify the file exists and get its current data
 	FileInfo lclFile;
@@ -2663,7 +2799,18 @@ bool FiadDisk::WriteFileSectors(FileInfo *pFile) {
 	fseek(fp, pFile->RecordNumber*256+pFile->HeaderSize, SEEK_SET);
 
 	// Write the sectors
-	pFile->LengthSectors = fwrite(&VDP[pFile->DataBuffer], 256, pFile->LengthSectors, fp);
+    if (pFile->bUseCPU) {
+        char buf[256];
+        int adr = pFile->DataBuffer;
+        for (int j=0; j<pFile->LengthSectors; ++j) {
+            for (int i=0; i<256; ++i) {
+                buf[i] = rcpubyte(adr++);
+            }
+            fwrite(buf, 256, 1, fp);
+        }
+    } else {
+    	pFile->LengthSectors = fwrite(&VDP[pFile->DataBuffer], 256, pFile->LengthSectors, fp);
+    }
 
 	if (pFile->LengthSectors == 0) {
 		debug_write("Failed to write any data to the file!");
@@ -2700,6 +2847,7 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool isDir) {
 		pFile->LastError = ERR_FILEERROR;
 		return false;
 	}
+    pFile->bUsesFolder = true;
 	CString csFileName = BuildFilename(pFile);
     if (csFileName.GetLength() == 0) {
         pFile->LastError = ERR_FILEERROR;
@@ -2723,7 +2871,6 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool isDir) {
 		    return false;
         }
     } else {
-        // although I'd call file not found a success, technically it's an error too...
         debug_write("%s could not be verified, errno %d", csFileName.GetString(), errno);
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
@@ -2759,6 +2906,7 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool isDir) {
 // set subdirectory for hard drive commands.
 // When we are called here, this is a complete path prefix but
 // does not include the "DSK1." part or the trailing period
+// Note this subdir is only used by mkdir, rmdir, and both renames
 bool FiadDisk::SetSubDir(FileInfo *pFile) {
     if (NULL == pFile) {
         debug_write("No file object passed to SetSubDir");
@@ -2769,6 +2917,17 @@ bool FiadDisk::SetSubDir(FileInfo *pFile) {
     // TI characters, not native windows ones.
     m_csCurrentFolder = pFile->csName;
 
+    // do up a swap so that the buildfilename function works
+    if (bSwapPeriodAndSlash) {
+        for (int idx=0; idx<m_csCurrentFolder.GetLength(); ++idx) {
+            // check csName, change csLocalFile. That way there
+            // is no conflict on the swap
+            if (pFile->csName[idx] == '/') m_csCurrentFolder.SetAt(idx, '.');
+            if (pFile->csName[idx] == '\\') m_csCurrentFolder.SetAt(idx, '.');
+            if (pFile->csName[idx] == '.') m_csCurrentFolder.SetAt(idx, '\\');
+        }
+    }
+
     return true;
 }
 
@@ -2776,6 +2935,7 @@ bool FiadDisk::SetSubDir(FileInfo *pFile) {
 // No return beyond error code required
 bool FiadDisk::CreateDirectory(FileInfo *pFile) {
     std::error_code ec;
+    pFile->bUsesFolder = true;
     CString csFileName = BuildFilename(pFile);
     if (csFileName.GetLength() == 0) {
         pFile->LastError = ERR_FILEERROR;
@@ -2801,6 +2961,7 @@ bool FiadDisk::DeleteDirectory(FileInfo *pFile) {
 		return false;
 	}
 
+    pFile->bUsesFolder = true;
     CString csFileName = BuildFilename(pFile);
     if (csFileName.GetLength() == 0) {
         pFile->LastError = ERR_FILEERROR;

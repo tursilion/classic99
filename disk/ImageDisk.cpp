@@ -1286,6 +1286,13 @@ int ImageDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 bool ImageDisk::ReadSector(FileInfo *pFile) {
 	bool nRet = true;
 
+    // we should not get here with CPU buffers, but just in case
+    if (pFile->bUseCPU) {
+		debug_write("CPU buffers are not supported.");
+		pFile->LastError = ERR_ILLEGALOPERATION;
+		return false;
+	}
+
 	// sanity test
 	if (pFile->DataBuffer + 256 > 0x4000) {
 		debug_write("Attempt to read sector past end of VDP memory, aborting.");
@@ -1321,7 +1328,14 @@ bool ImageDisk::ReadSector(FileInfo *pFile) {
 bool ImageDisk::WriteSector(FileInfo *pFile) {
 	bool nRet = true;
 
-	// sanity test
+    // we should not get here with CPU buffers, but just in case
+    if (pFile->bUseCPU) {
+		debug_write("CPU buffers are not supported.");
+		pFile->LastError = ERR_ILLEGALOPERATION;
+		return false;
+	}
+
+    // sanity test
 	if (pFile->DataBuffer + 256 > 0x4000) {
 		debug_write("Attempt to write sector from buffer past end of VDP memory, aborting.");
 		pFile->LastError = ERR_DEVICEERROR;
@@ -1382,7 +1396,14 @@ const char* ImageDisk::GetAttributes(int nType) {
 // On return, LengthSectors must contain the actual number of sectors read
 // This is just a wrapper for ReadFileSectorsToAddress
 bool ImageDisk::ReadFileSectors(FileInfo *pFile) {
-	if (pFile->LengthSectors == 0) {
+    // we should not get here with CPU buffers, but just in case
+    if (pFile->bUseCPU) {
+		debug_write("CPU buffers are not supported.");
+		pFile->LastError = ERR_ILLEGALOPERATION;
+		return false;
+	}
+
+    if (pFile->LengthSectors == 0) {
 		FileInfo lclFile;
 		lclFile.CopyFileInfo(pFile, true);  // not that this is necessarily correct yet
 		if (!TryOpenFile(&lclFile)) {
@@ -1482,6 +1503,12 @@ bool ImageDisk::WriteFileSectors(FileInfo *pFile) {
 	FILE *fp;
     CString csFilename = BuildFilename(pFile);
 
+    // we should not get here with CPU buffers, but just in case
+    if (pFile->bUseCPU) {
+		debug_write("CPU buffers are not supported.");
+		pFile->LastError = ERR_ILLEGALOPERATION;
+		return false;
+	}
 	if (pFile->LengthSectors == 0) {
 		// Create a new, empty file
         // first, delete the old one if it exists
@@ -1632,6 +1659,8 @@ bool ImageDisk::WriteFileSectors(FileInfo *pFile) {
 // it needs to resort the index!
 bool ImageDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool bIsDir) {
 	unsigned char fdr[256];	// work buffer
+
+    // CPU or not doesn't matter on this one
 
     if (bIsDir) {
         debug_write("Device does not support directories.");

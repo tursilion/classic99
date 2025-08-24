@@ -140,6 +140,7 @@ void do_dsrlnk(char *forceDevice);
 void do_sbrlnk(int nOpCode);
 void setfileerror(FileInfo *pFile);
 void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile);
+void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile);
 extern Byte GetSafeCpuByte(int x, int bank);
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
 
@@ -936,6 +937,13 @@ void do_dsrlnk(char *forceDevice) {
 
 // helper function to get csName from VDP
 void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile) {
+    if (pFile->bUseCPU) {
+        // I don't WANT to do this, but I don't want it to break either
+        debug_write("Internal consistency error in Classic99 fetching filename from VDP");
+        GetFilenameFromCPU(nName, nMax, pFile);
+        return;
+    }
+
 	// get the filename from VDP
 	pFile->csName = "";
 	for (int idx=0; idx<nMax; idx++) {
@@ -950,14 +958,55 @@ void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile) {
 			// TI disk controller allows high ASCII as a separator
 			pFile->csName += '.';
 		} else {
-			pFile->csName += VDP[nName++];
+			pFile->csName += VDP[nName];
 		}
+        ++nName;
 	}
 	// disk directories should not work unless they end with a period, so,
 	// if the filename is blank, copy the period over so the controller can check
 	if (pFile->csName.GetLength() == 0) {
 		// not even bothering if you try to do a wraparound name...
 		if ((nName>0) && (VDP[nName-1] == '.')) {
+			pFile->csName += '.';
+		}
+	}
+}
+
+// helper function to get csName from CPU. Thanks Myarc.
+void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile) {
+    if (!pFile->bUseCPU) {
+        // I don't WANT to do this, but I don't want it to break either
+        debug_write("Internal consistency error in Classic99 fetching filename from CPU");
+        GetFilenameFromVDP(nName, nMax, pFile);
+        return;
+    }
+
+	// get the filename from CPU
+	pFile->csName = "";
+	for (int idx=0; idx<nMax; idx++) {
+		// wraparound address
+		while (nName >= 0x10000) {
+			nName-=0x10000;
+		}
+        Byte c = rcpubyte(nName);
+		if (c == ' ') {
+			break;
+		}
+		if (c & 0x80) {
+			// TI disk controller allows high ASCII as a separator
+			pFile->csName += '.';
+		} else {
+			pFile->csName += c;
+		}
+        ++nName;
+	}
+
+	// disk directories should not work unless they end with a period, so,
+	// if the filename is blank, copy the period over so the controller can check
+	if (pFile->csName.GetLength() == 0) {
+		// not even bothering if you try to do a wraparound name...
+        Byte c = rcpubyte(nName - 1);
+		if ((nName>0) && (c == '.')) {
 			pFile->csName += '.';
 		}
 	}
@@ -993,15 +1042,15 @@ void do_sbrlnk(int nOpCode) {
     // But, I can't check that until I qualify the drive number...
     if (tmpFile.nDrive & 0x80) {
         // strip it either way - this might complicate debug a bit so write something too
-        //debug_write("Drive index >%02X requests CPU RAM", tmpFile.nDrive);
-        //tmpFile.nDrive &= 0x7f;
-        //tmpFile.bUseCPU = true;
+        debug_write("Drive index >%02X requests CPU RAM", tmpFile.nDrive);
+        tmpFile.nDrive &= 0x7f;
+        tmpFile.bUseCPU = true;
 
-        // Not doing this at this time. See comments at DiskWorkBuffer
-        debug_write("CPU buffers not supported on SBRLNK unit >%02X", tmpFile.nDrive);
-		tmpFile.LastError=ERR_DEVICEERROR;
-		wcpubyte(0x8350, tmpFile.LastError);
-		return;
+        // set up for CPU buffers
+        //debug_write("CPU buffers not supported on SBRLNK unit >%02X", tmpFile.nDrive);
+		//tmpFile.LastError=ERR_DEVICEERROR;
+		//wcpubyte(0x8350, tmpFile.LastError);
+		//return;
 	}
 
 	if ((tmpFile.nDrive < 0) || (tmpFile.nDrive >= MAX_DRIVES) || (NULL == pDriveType[tmpFile.nDrive])) {
@@ -1086,6 +1135,8 @@ void do_sbrlnk(int nOpCode) {
 				// raw sector I/O to the disk
 				tmpFile.DataBuffer = romword(0x834e);	// address in VDP of data buffer
 				tmpFile.RecordNumber = romword(0x8350);	// sector index
+                // TICC and others copy the sector index to >834A too. God knows why.
+                wrword(0x834a, tmpFile.RecordNumber);
 
 				if (rcpubyte(0x834d)) {		// 0 = write, else read
 					debug_write("Sector read: drive %d, sector %d, %s >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.bUseCPU?"CPU":"VDP", tmpFile.DataBuffer);
@@ -1124,10 +1175,23 @@ void do_sbrlnk(int nOpCode) {
 				tmpFile.DataBuffer = romword(0x834e);		// address of data buffer
 				tmpFile.RecordsPerSector = rcpubyte(0x8350);// density
 				tmpFile.LengthSectors = rcpubyte(0x8351);	// number of sides
-			
-				debug_write("Format disk: drive %d, %d tracks, density %d, %d sides, VDP >%04X",
-					tmpFile.nDrive, tmpFile.NumberRecords, tmpFile.RecordsPerSector, tmpFile.LengthSectors, tmpFile.DataBuffer);
+
+				debug_write("Format disk: drive %d, %d tracks, density %d, %d sides, %s >%04X",
+					tmpFile.nDrive, tmpFile.NumberRecords, tmpFile.RecordsPerSector, tmpFile.LengthSectors, tmpFile.bUseCPU?"CPU":"VDP", tmpFile.DataBuffer);
                 tmpFile.Status = FLAG_OUTPUT;
+
+                // even Myarc doesn't have any use for this
+                if (tmpFile.bUseCPU) {
+                    debug_write("Can not specify CPU buffers for format.");
+					tmpFile.LastError = ERR_ILLEGALOPERATION;
+					// copy the error code into >8350 and >8351, zero LengthSectors so it will also record 0
+					// 8350 is done below
+					wcpubyte(0x8351, tmpFile.LastError);
+					// make up a fake size for apps that don't check
+					tmpFile.LengthSectors=9*tmpFile.NumberRecords*tmpFile.RecordsPerSector*tmpFile.LengthSectors;
+					if (tmpFile.LengthSectors == 0) tmpFile.LengthSectors=360;
+                    break;
+                }
 
 				// check for disk write protection
 				if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
@@ -1201,14 +1265,22 @@ void do_sbrlnk(int nOpCode) {
 			{
 				CString csNewFile;
 
+                // we do all the CPU access here, so the callee shouldn't need to worry
 				// rename a file - we are limited to 10 characters in this call
-				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
-				csNewFile = tmpFile.csName;
-				GetFilenameFromVDP(romword(0x8350), 10, &tmpFile);		// old filename
+                if (tmpFile.bUseCPU) {
+				    GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);		// new filename
+				    csNewFile = tmpFile.csName;
+				    GetFilenameFromCPU(romword(0x8350), 10, &tmpFile);		// old filename
+                } else {
+				    GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+				    csNewFile = tmpFile.csName;
+				    GetFilenameFromVDP(romword(0x8350), 10, &tmpFile);		// old filename
+                }
 
-				debug_write("Rename %s, drive %d, from %s to %s", 
+				debug_write("Rename %s, drive %d, from %s to %s (%s)", 
                             nOpCode==SBR_RENAMEDIR?"folder":"file",
-                            tmpFile.nDrive, (LPCSTR)tmpFile.csName, (LPCSTR)csNewFile);
+                            tmpFile.nDrive, (LPCSTR)tmpFile.csName, (LPCSTR)csNewFile,
+                            tmpFile.bUseCPU?"CPU":"VDP");
                 tmpFile.Status = FLAG_UPDATE;
 
 				// check for disk write protection
@@ -1245,13 +1317,17 @@ void do_sbrlnk(int nOpCode) {
 				tmpFile.RecordLength = rcpubyte(nInfo+7);	// record length
 				tmpFile.NumberRecords = romword(nInfo+8);	// number of records (WORD, Thierry's notes are a little confusing)
 
-				// get the filename from VDP (must be 10 since 10 char filenames won't be padded)
-				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);
+				// get the filename (must be 10 since 10 char filenames won't be padded)
+                if (tmpFile.bUseCPU) {
+                    GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);
+                } else {
+				    GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);
+                }
 
 				if (SBR_FILEIN == nOpCode) {
 					// check whether it is just an info request
 					isInfoRequest = (tmpFile.LengthSectors == 0);
-                    debug_write("SBR_FILEIN request on drive %d %s%s", tmpFile.nDrive, tmpFile.csName, isInfoRequest?" for info":"");
+                    debug_write("SBR_FILEIN request on drive %d %s%s (%s)", tmpFile.nDrive, tmpFile.csName, isInfoRequest?" for info":"", tmpFile.bUseCPU?"CPU":"VDP");
                     tmpFile.Status = FLAG_INPUT;
 					if (!pDriveType[tmpFile.nDrive]->ReadFileSectors(&tmpFile)) {
 						// write the error code into >8350 (done below)
@@ -1266,7 +1342,7 @@ void do_sbrlnk(int nOpCode) {
 						wrword  (nInfo+8, tmpFile.NumberRecords);
 					}
 				} else {
-                    debug_write("SBR_FILEOUT request on %s", tmpFile.csName);
+                    debug_write("SBR_FILEOUT request on %s (%s)", tmpFile.csName, tmpFile.bUseCPU?"CPU":"VDP");
                     tmpFile.Status = FLAG_OUTPUT;
 					// check for disk write protection
 					if (pDriveType[tmpFile.nDrive]->GetWriteProtect()) {
@@ -1299,13 +1375,27 @@ void do_sbrlnk(int nOpCode) {
                 // Why would you limit it that much AND waste that much space with
                 // fixed strings? Not to mention the matching code!
                 // 
+                // HOWEVER!! This working directory is **ONLY** used with the 
+                // mkdir, rmdir, and rename functions. What a fucking joke. I'm sorry
+                // I implemented any of it and polluted my filesystem code. >:(
+                // 
                 // This is a Pascal/BASIC string with a length byte - the only one.
                 // But since I'm still not supporting spaces, I suppose we can use
                 // the same old API.
-                int adr = romword(0x834e) & 0x3fff; // handle wraparound
-                int len = VDP[adr++];
-                adr &= 0x3fff;
-				GetFilenameFromVDP(adr, len, &tmpFile);		// new path
+                int adr;
+                int len;
+
+                if (tmpFile.bUseCPU) {
+                    adr = romword(0x834e);
+                    len = rcpubyte(adr++);
+                    adr &= 0xffff;
+				    GetFilenameFromCPU(adr, len, &tmpFile);		// new path
+                } else {
+                    adr = romword(0x834e) & 0x3fff; // handle wraparound
+                    len = VDP[adr++];
+                    adr &= 0x3fff;
+				    GetFilenameFromVDP(adr, len, &tmpFile);		// new path
+                }
 
                 // does it end with a period?
                 if (tmpFile.csName.Right(1) != ".") {
@@ -1324,7 +1414,7 @@ void do_sbrlnk(int nOpCode) {
 					break;
                 }
 
-                if (tmpFile.csName.Mid(4) != ".") {
+                if (tmpFile.csName.Mid(4,1) != ".") {
 					debug_write("New directory path '%s' does not start with 'DSKn.'", tmpFile.csName.GetString());
 					// write the error code into >8350 (done below)
 					tmpFile.LastError = ERR_BADATTRIBUTE;
@@ -1360,8 +1450,12 @@ void do_sbrlnk(int nOpCode) {
 				CString csNewFile;
 
 				// create a directory - we are limited to 10 characters in this call
-				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
-				debug_write("Create directory, drive %d, %s", tmpFile.nDrive, (LPCSTR)tmpFile.csName);
+                if (tmpFile.bUseCPU) {
+    				GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);		// new filename
+                } else {
+    				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+                }
+				debug_write("Create directory, drive %d, %s (%s)", tmpFile.nDrive, (LPCSTR)tmpFile.csName, tmpFile.bUseCPU?"CPU":"VDP");
                 tmpFile.Status = FLAG_UPDATE;
 
 				// check for disk write protection
@@ -1384,8 +1478,12 @@ void do_sbrlnk(int nOpCode) {
 				CString csNewFile;
 
 				// remove a directory - we are limited to 10 characters in this call
-				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
-				debug_write("Remove directory, drive %d, %s", tmpFile.nDrive, (LPCSTR)tmpFile.csName);
+                if (tmpFile.bUseCPU) {
+    				GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);		// new filename
+                } else {
+    				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+                }
+				debug_write("Remove directory, drive %d, %s (%s)", tmpFile.nDrive, (LPCSTR)tmpFile.csName, tmpFile.bUseCPU?"CPU":"VDP");
                 tmpFile.Status = FLAG_UPDATE;
 
 				// check for disk write protection

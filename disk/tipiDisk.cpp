@@ -126,6 +126,7 @@ extern CPU9900 * volatile pCurrentCPU;
 extern void do_dsrlnk(char *forceDevice);
 extern const char* getOpcode(int opcode);
 extern void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile);
+extern void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile);
 extern void setfileerror(FileInfo *pFile);
 extern BaseDisk *pDriveType[MAX_DRIVES];
 extern HWND myWnd;

@@ -2324,3 +2324,14 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 
 - All the extensions to the disk DSR broke the loading of it (I forgot to extend the load size), so CALL FILES didn't work and some of the new SBRLNK opcodes were dropped
 
+-----------------------------------------------
+
+24 Aug 2025
+
+- Added support for CPU RAM buffers for SBRLNK operations only on FIAD directories only
+- Fix setpath to affect only mkdir, rmdir and rename operations
+- I think the extensions for the HDFC are poorly thought out and won't be a huge supporter of them moving forward. Quite frankly, we should redo them for modern filesystems.
+
+
+
+

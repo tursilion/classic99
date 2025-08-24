@@ -84,6 +84,7 @@ typedef struct s_FILEINFO {
 	
 	// internal data
     bool bUseCPU;       // Myarc extension - use CPU memory instead of VDP
+    bool bUsesFolder;   // per operation - use the Myarc working folder
 	int nIndex;			// never meant to change, just for debug
 	int LastError;
 	bool bFree;
@@ -95,7 +96,6 @@ typedef struct s_FILEINFO {
 	int HeaderSize;		// varies per driver, only meant for FiadDisk
 	int nLocalData;		// 32-bits for the driver to use as it likes
 	CString csOptions;	// options string is always before the filename as "?x." - x may be longer though
-    unsigned char *pWorkData;   // address of a buffer to work in (currently always the same buffer)
 	unsigned char *pData;
 	// Format of pData - it is a buffer allocated dynamically
 	// It contains rows of data. Each row is RecordLength bytes long 

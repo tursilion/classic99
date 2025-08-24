@@ -6975,13 +6975,14 @@ void debug_write(char *s, ...)
 	if (0 == strcmp(buf, lastbuf)) {
 		return;
 	}
-	strcpy(lastbuf, buf);
-
-	// trim to the internal debug size
-	buf[DEBUGLEN-1]='\0';
 
 	// critical section needed to avoid conflict with the display code
 	EnterCriticalSection(&DebugCS);
+    
+    strcpy(lastbuf, buf);
+
+	// trim to the internal debug size
+	buf[DEBUGLEN-1]='\0';
 	
 	memcpy(&lines[0][0], &lines[1][0], (DEBUGLINES-1)*DEBUGLEN);			// scroll data
 	strncpy(&lines[DEBUGLINES-1][0], buf, DEBUGLEN);				        // copy in new line

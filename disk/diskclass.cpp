@@ -117,28 +117,6 @@ const char *szDiskTypes[] = {
     "TIPIsim",                  // TIPI sim
 };
 
-// This buffer is used by the file operations, and is valid
-// ONLY for the duration of that ONE operation. It's used to
-// abstract the interface between CPU and VDP RAM needed for
-// the Myarc API, which was copied by others. This way we
-// can centralize the memory access instead of needing to hack
-// every single operation. It'll slow things down a little
-// bit, but not notably on modern hardware, and the Classic99
-// disk is still way faster than the real thing anyway.
-// This is probably a good abstraction for moving the code
-// to V4 anyway, eventually.
-// Currently it's loaded into s_FILEINFO by the constructor
-// HOWEVER, this is not currently implemented. It is a maddeningly
-// inconsistent API. All the SBRLNK opcodes get 0x80 added. All the
-// non-SBRLNK opcodes get 0x40 added. The PAB buffer can be in CPU
-// if the address has 0x8000 set (and presumably that's the address
-// it must live at), but the PAB is /differently laid out/ in that
-// case. It's BS and I ain't doing it today.
-// Search for bUseCPU - I disabled the flag at the source, and
-// none of the actual operations support it yet.
-// Classic99v4 can just run actual DSRs instead.
-unsigned char DiskWorkBuffer[64*1024];
-
 //********************************************************
 // s_FILEINFO (FileInfo)
 //********************************************************
@@ -174,7 +152,7 @@ s_FILEINFO::s_FILEINFO() {
     initData = NULL;
     initDataSize = 0;
     bUseCPU = false;
-    pWorkData = DiskWorkBuffer; // DO NOT CHANGE THIS
+    bUsesFolder = false;
 	// warning: this is not atomic, but it will work here
 	nIndex=nCnt++;
 }
@@ -207,6 +185,7 @@ void s_FILEINFO::CopyFileInfo(FileInfo *p, bool bJustPAB) {
 	NumberRecords = p->NumberRecords;
 	
 	bUseCPU = p->bUseCPU;
+    bUsesFolder = p->bUsesFolder;
     LastError = p->LastError;
 	nCurrentRecord = p->nCurrentRecord;
 	nLocalData = p->nLocalData;
