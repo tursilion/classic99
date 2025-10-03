@@ -71,7 +71,7 @@ static uintptr_t readerThread;
 static volatile bool continuousRead = false;
 
 // VDP RAM for checking character patterns
-extern Byte VDP[];
+extern Byte *VDP;
 extern int PDT;
 
 // system quit flag

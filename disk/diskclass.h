@@ -57,6 +57,7 @@ typedef struct s_FILEINFO {
 	s_FILEINFO();
 	// DO NOT ADD A DESTRUCTOR WITHOUT REWORKING THE FIAD DIRECTORY CACHE
     // TODO: why not? What needs reworking? Is that an old comment?
+    // Possibly because the directory cache uses this object...!!
 
 	void CopyFileInfo(FileInfo *p, bool bJustPAB);
 	void SplitOptionsFromName();

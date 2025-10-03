@@ -65,5 +65,7 @@ public:
     // Class specific functions (as needed)
     virtual void DetectImageType(FileInfo *pFile);
     virtual bool BufferFiadFile(FileInfo *pFile);
+    virtual bool BufferUnknownFile(FileInfo *pFile);
+    virtual bool BufferIndexPage(FileInfo *pFile);
 };
 

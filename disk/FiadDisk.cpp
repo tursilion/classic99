@@ -1916,9 +1916,9 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 		*(pData++) = csTmp.GetLength();														// string length (strange, not very fixed length. My bug? TODO: probably this should always be 10 chars long)
 		memcpy(pData, (LPCSTR)csTmp, csTmp.GetLength());									// string
 		pData+=csTmp.GetLength();
-		pData=WriteAsFloat(pData,0);	// always 0											// 8 bytes
-		pData=WriteAsFloat(pData,1438);	// we lie and say 1440 sectors total (minus 2)		// 8 bytes
-		pData=WriteAsFloat(pData,1311);	// we lie and say 1311 sectors free (1440-2-127)	// 8 bytes
+		pData=WriteAsFloat(pData,0);	// always 0											// 9 bytes
+		pData=WriteAsFloat(pData,1438);	// we lie and say 1440 sectors total (minus 2)		// 9 bytes
+		pData=WriteAsFloat(pData,1311);	// we lie and say 1311 sectors free (1440-2-127)	// 9 bytes
 
 		// now the rest of the entries. 
 		// - Filename (an ascii string of upto 10 chars) 

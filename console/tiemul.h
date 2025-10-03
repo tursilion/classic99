@@ -227,7 +227,7 @@ extern int RecordFrame;								// Current frame recorded (currently we only writ
 extern int MaintainAspect;							// Flag for Aspect ratio
 extern int StretchMode;								// Setting for video stretching (STRETCH_xxx)
 extern int bUse5SpriteLimit;						// whether the sprite flicker is on
-extern Byte VDP[128*1024];							// Video RAM
+extern Byte *VDP;							// Video RAM
 extern int bF18AActive;
 extern int bF18Enabled;
 extern HANDLE Video_hdl[2];							// Handles for Display/Blit events

@@ -2523,34 +2523,39 @@ bool TipiWebDisk::TryOpenFile(FileInfo *pFile) {
 	lclInfo.CopyFileInfo(pFile, false);
 	DetectImageType(&lclInfo);
 
+    // TIPI per the docs will break up a binary file into whatever record size you
+    // asked for. So if the type is unknown, that's what we'll do
 	if (lclInfo.ImageType == IMAGE_UNKNOWN) {
-		debug_write("%s is an unknown file type - can not open.", (LPCSTR)lclInfo.csName);
-		pFile->LastError = ERR_BADATTRIBUTE;
-		return false;
-	}
-
-    // TODO: TIPI allows headerless files as DF128 - it never writes headerless files
-    // Looks like we need to delete this whole block and bring in the DF128 code from FiadDisk
-#if 0
-    // special case - a headerless file normally detects as DF128, but
-    // I'm going to allow software to open them as IF128 too.
-    // pFile is the request, lclInfo is the disk file
-    if (lclInfo.ImageType == IMAGE_IMG) {
-        if (((pFile->FileType & TIFILES_INTERNAL) == TIFILES_INTERNAL) && ((lclInfo.FileType & TIFILES_INTERNAL) == 0)) {
-            // it's a headerless file, which should be DF128, but the app wants IF128. Since there's
-            // no difference save the flag, we're going to allow it. ;)
-            debug_write("Changing headerless filetype to IF128 to match open request.");
-            lclInfo.FileType|=TIFILES_INTERNAL;
-            lclInfo.Status|=FLAG_INTERNAL;
+		debug_write("%s is an unknown file type - adapting to open request.", (LPCSTR)lclInfo.csName);
+        // program images can't be broken up
+        if (pFile->FileType&TIFILES_PROGRAM) {
+            debug_write("Program image request, can't parse.");
+    		pFile->LastError = ERR_FILEERROR;
+            return false;
         }
-    }
-#else
-    if (lclInfo.ImageType == IMAGE_IMG) {
-		debug_write("%s is missing TIFILES header - can not open.", (LPCSTR)lclInfo.csName);
-		pFile->LastError = ERR_BADATTRIBUTE;
-		return false;
+        // if they requested IV0, assume it's meant to be a long form directory, but set length 38 anyway
+        if ((pFile->FileType&TIFILES_INTERNAL) && ((pFile->FileType&TIFILES_VARIABLE)) && (pFile->RecordLength == 0)) {
+            pFile->RecordLength = 38;
+        }
+        // if they requested IF0, assume it's meant to be a directory and set IF38
+        if ((pFile->FileType&TIFILES_INTERNAL) && ((pFile->FileType&TIFILES_VARIABLE)==0) && (pFile->RecordLength == 0)) {
+            pFile->RecordLength = 38;
+        }
+		// fill in the information 
+		lclInfo.LengthSectors=(lclInfo.initDataSize+255)/256+1;
+		lclInfo.FileType=pFile->FileType;
+		lclInfo.RecordsPerSector=pFile->RecordsPerSector;
+		lclInfo.BytesInLastSector=lclInfo.initDataSize%256;
+		lclInfo.RecordLength=pFile->RecordLength;
+		lclInfo.NumberRecords=lclInfo.initDataSize/lclInfo.RecordLength;
+		// translate FileType to Status
+		lclInfo.Status = pFile->Status;
+        // do some fixup of the NumberRecords field
+		if (pFile->FileType & TIFILES_VARIABLE) {
+            // we don't actually know on variable files, but we aren't gonna care anyway
+            lclInfo.NumberRecords = lclInfo.LengthSectors;
+		}
 	}
-#endif
 
 	// Verify the parameters as a last step before we OK it all, but only on open
 	if ((pFile->OpCode == OP_OPEN) || (pFile->OpCode == OP_LOAD)) {
@@ -2692,9 +2697,9 @@ bool TipiWebDisk::Flush(FileInfo *pFile) {
 void TipiWebDisk::DetectImageType(FileInfo *pFile) {
 	unsigned char buf[512];		// buffer to read first block into
 
-    // TIPI only supports TIFILES and so will we
-    // otherwise we're just going to confuse ourselves...
-    // Anything else, including V9T9 and Text, will be unknown
+    // TIPI only supports TIFILES for LOAD
+    // Anything else is treated as a binary file, broken into
+    // records of the requested length, and accepted
     pFile->ImageType = IMAGE_UNKNOWN;
 
 	// data must exist
@@ -2751,7 +2756,7 @@ void TipiWebDisk::DetectImageType(FileInfo *pFile) {
 		return;
 	}
 
-	// no other match, just return default
+	// no other match, just return default - we'll let buffer deal with it
 	debug_write("Data could not be identified.");
 }
 
@@ -2783,7 +2788,14 @@ bool TipiWebDisk::BufferFile(FileInfo *pFile) {
 	// So really, all we do here is branch out to the correct function
 	switch (pFile->ImageType) {
 		case IMAGE_UNKNOWN:
-			debug_write("Attempting to buffer unknown file type %s, can't do it.", (LPCSTR)pFile->csName);
+            debug_write("Buffering unknown file type with record length %d", pFile->RecordLength);
+            { 
+                bool ret = BufferUnknownFile(pFile);
+                if (NULL != pFile->initData) free(pFile->initData);
+                pFile->initData = NULL;
+                pFile->initDataSize = 0;
+                return ret;
+            }
 			break;
 
 		case IMAGE_TIFILES:
@@ -2971,6 +2983,296 @@ bool TipiWebDisk::BufferFiadFile(FileInfo *pFile) {
 				pData += pFile->RecordLength;
 			}
 		}
+	}
+
+	debug_write("Memory read %d records", pFile->NumberRecords);
+	return true;
+}
+
+// This looks like an apache "Index of" page, so turn it into a TI directory IF38 format
+// Of course this will break when Apache changes their format, as they naturally will.
+bool TipiWebDisk::BufferIndexPage(FileInfo *pFile) {
+	char *pData;
+    char *pWork;
+    char *pLine;
+
+    if ((NULL == pFile->initData) || (pFile->RecordLength != 38)) {
+        debug_write("Nothing to buffer or wrong record length for directory.");
+        return false;
+    }
+    pWork = (char*)malloc(pFile->initDataSize+1);
+    if (NULL == pWork) {
+        debug_write("Failed to allocate buffer to work with index");
+        return false;
+    }
+    memcpy(pWork, pFile->initData, pFile->initDataSize);
+    pWork[pFile->initDataSize] = '\0';
+
+    // The lines we are looking for look like "<a href="NAME">NAME</a>
+    // They are preceded by links for sort order and "[PARENTDIR], which we can use as a hook
+    pLine = strstr(pWork, ">Parent Directory</a>");
+    if (NULL == pLine) {
+        debug_write("No records parsed as index.");
+        free(pWork);
+        return false;
+    }
+    // let's count up how many there are, old estimate was junk
+    pFile->NumberRecords = 0;
+    while (pLine != NULL) {
+        pLine = strstr(pLine, "a href=\"");
+        if (NULL == pLine) {
+            break;
+        }
+        ++pFile->NumberRecords;
+        ++pLine;
+    }
+
+    // now we have a better count, parse it again
+    pLine = strstr(pWork, ">Parent Directory</a>");
+    if (NULL == pLine) {
+        debug_write("Impossible failure on second pass. No records parsed as index.");
+        free(pWork);
+        return false;
+    }
+
+    // otherwise, just go ahead and break it up into records
+	// get a new buffer as well sized as we can figure
+	if (NULL != pFile->pData) {
+		free(pFile->pData);
+		pFile->pData=NULL;
+	}
+
+	// Datasize = (number of records+10) * (record size + 2)
+	// the +10 gives it a little room to grow
+	// the +2 gives room for a length word (16bit) at the beginning of each
+	// record, necessary because it may contain binary data with zeros
+    int actualRecords = pFile->NumberRecords;
+	pFile->nDataSize = (actualRecords+10) * (pFile->RecordLength + 2);
+	pFile->pData = (unsigned char*)malloc(pFile->nDataSize);
+
+	pData = (char*)pFile->pData;
+
+	// Record 0 contains:
+	// - Diskname (an ascii string of upto 10 chars).
+	// - The number zero.
+	// - The number of sectors on disk (minus 2 for the VIB and FDIR)
+	// - The number of free sectors on disk.
+    memset(pData, 0, pFile->RecordLength+2);
+
+	// DiskName - first 10 bytes - we provide the local path (first 10 chars of it)
+    *(unsigned short*)pData = pFile->RecordLength;
+	pData+=2;
+	*(pData++) = 10;                                        							// string length (strange, not very fixed length. My bug? TODO: probably this should always be 10 chars long)
+    for (int i=0; i<10; ++i) {                                                          // string
+        if (i>=pFile->csName.GetLength()) {
+            *(pData++) = ' ';
+        } else {
+            *(pData++) = pFile->csName[i];
+        }
+    }
+	pData=WriteAsFloat((char*)pData,0);	    // always 0											// 9 bytes
+	pData=WriteAsFloat((char*)pData,1438);	// we lie and say 1440 sectors total (minus 2)		// 9 bytes
+	pData=WriteAsFloat((char*)pData,1311);	// we lie and say 1311 sectors free (1440-2-127)	// 9 bytes
+    pFile->NumberRecords = 1;       // so far
+
+    // check filenames for testing code
+    int pcount = 0;
+	// we need to let the embedded code decide the terminating rule
+	for (int idx = 0; idx<actualRecords; ++idx) {
+        char namebuf[11];   // max length of a TI name, plus one for NUL
+        int nameidx;
+
+		// clear buffer
+		memset(pData, 0, pFile->RecordLength+2);
+
+        // find the name
+        pLine = strstr(pLine, "a href=\"");
+        if (NULL == pLine) {
+            // no more lines
+            break;
+        }
+        pLine += 8;
+        nameidx = 0;
+        while ((*pLine) && (*pLine != '\"')) {
+            namebuf[nameidx++] = *(pLine++);
+            if (nameidx >= sizeof(namebuf)-1) {
+                break;
+            }
+        }
+        namebuf[nameidx] = '\0';
+        // find the size
+        pLine = strstr(pLine, "<td align=\"right\">");  // date field
+        if (NULL == pLine) {
+            // no more lines
+            break;
+        }
+        pLine = strstr(pLine+1, "<td align=\"right\">");  // size field
+        if (NULL == pLine) {
+            // no more lines
+            break;
+        }
+        pLine += 18;
+        // now we might have a number, we might have a float plus "K", or "M", or "G", although the latter aren't useful to us
+        // we'll parse it inline, just for fun
+        int numbytes = 0;
+        int wholenum = 0;
+        while ((*pLine!='\0')&&(*pLine!=' ')&&(*pLine!='<')) {
+            // this is probably adequate for such a hack...
+            switch (*pLine) {
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                    numbytes = numbytes*10 + (*pLine-'0');
+                    break;
+                case 'K':
+                    if (wholenum > 0) {
+                        numbytes = (wholenum*10+numbytes)*100;
+                    } else {
+                        numbytes *= 1000;
+                    }
+                    break;
+                case 'M':
+                case 'G':
+                    numbytes = 65535;
+                    break;
+                case '.':
+                    // should only be 1 digit after...
+                    wholenum = numbytes;
+                    numbytes = 0;
+                    break;
+            }
+            ++pLine;
+        }
+        // now we need to convert the size to sectors. If we didn't max it out, assume there's a TIFILES header
+        if (numbytes == 65535) {
+            numbytes/=256;
+        } else {
+            // we assume the header is 128 bytes, but we need to add 1 for the index sector, so add 128
+            numbytes += 128;
+            numbytes = (numbytes+255)/256;
+        }
+        // now numsecs...
+
+        // now format an IF38 record. We may have to guess slightly on sizes but my slideshow needs something
+        // we can't determine types without opening them, so I'm going to lie and report everything is a program
+		// now the rest of the entries. 
+		// - Filename (an ascii string of upto 10 chars with ACTUAL length preceding it - no padding) 
+		// - Filetype: 1=D/F, 2=D/V, 3=I/F, 4=I/V, 5=Prog, 6=Subdir, 0=end of directory.
+		//   If the file is protected, this number is negative (-1=D/F, etc).
+		// - File size in sectors (including the FDR itself).
+		// - File record length (0 for programs).
+
+        *(unsigned short*)pData = pFile->RecordLength;
+	    pData+=2;
+	    *(pData++) = (char)strlen(namebuf);                              							// string length
+        for (unsigned int i=0; i<strlen(namebuf); ++i) {                                    // string
+            *(pData++) = namebuf[i];
+        }
+	    pData=WriteAsFloat((char*)pData,5);	        // always type 5 PROGRAM				// 9 bytes
+	    pData=WriteAsFloat((char*)pData,numbytes);	// length in sectors                    // 9 bytes
+	    pData=WriteAsFloat((char*)pData,0);	        // program files have no record length  // 9 bytes
+
+        // skip over the rest of the record
+        pData += 10-strlen(namebuf);
+        pFile->NumberRecords = idx+2;   // because of the special record 0
+	}
+
+    // and create a dummy end-of-directory record
+    *(unsigned short*)pData = pFile->RecordLength;
+	pData+=2;
+	*(pData++) = 10;                                        							// string length
+    for (unsigned int i=0; i<10; ++i) {                                                 // string
+        *(pData++) = ' ';
+    }
+	pData=WriteAsFloat((char*)pData,0);	        // always end           				// 9 bytes
+	pData=WriteAsFloat((char*)pData,0);	        // length in sectors                    // 9 bytes
+	pData=WriteAsFloat((char*)pData,0);	        // no record length          	        // 9 bytes
+
+    ++pFile->NumberRecords;
+
+    free(pWork);
+	debug_write("Directory Index read %d records", pFile->NumberRecords);
+	return true;
+}
+
+// Buffer a probable binary file as per the requested record length
+// As a special hack, if we get an Apache "index of" page and the
+// request was IF38, reformat it as a directory listing (no long filename support, though)
+// TIPI doesn't have this feature, I just needed it for testing something.
+bool TipiWebDisk::BufferUnknownFile(FileInfo *pFile) {
+	unsigned char *pData;
+    unsigned char *pOffset;
+
+    if (NULL == pFile->initData) {
+        debug_write("Nothing to buffer, failing.");
+        return false;
+    }
+
+    // check for an HTML document
+    if (0 == memcmp(pFile->initData, "<!DOCTYPE HTML PUBLIC", 21)) {
+        // check if it looks like an index page
+        char buf[256];
+        memset(buf, 0, sizeof(buf));
+        memcpy(buf, pFile->initData, min(256, pFile->initDataSize));
+        buf[sizeof(buf)-1]=0;   // force nul termination for string ops
+        if ((strstr(buf, "<title>Index of") != NULL) && (strstr(buf, "<h1>Index of") != NULL)) {
+            if (BufferIndexPage(pFile)) {
+                return true;
+            }
+            // otherwise, fall through and try a normal buffer
+        }
+    }
+
+    // otherwise, just go ahead and break it up into records
+	// get a new buffer as well sized as we can figure
+	if (NULL != pFile->pData) {
+		free(pFile->pData);
+		pFile->pData=NULL;
+	}
+
+	// Datasize = (number of records+10) * (record size + 2)
+	// the +10 gives it a little room to grow
+	// the +2 gives room for a length word (16bit) at the beginning of each
+	// record, necessary because it may contain binary data with zeros
+    int actualRecords = pFile->initDataSize / pFile->RecordLength;
+	pFile->nDataSize = (actualRecords+10) * (pFile->RecordLength + 2);
+	pFile->pData = (unsigned char*)malloc(pFile->nDataSize);
+
+    pOffset = pFile->initData;
+	pData = pFile->pData;
+
+	// we need to let the embedded code decide the terminating rule
+	for (int idx = 0; idx<actualRecords; ++idx) {
+		if (pOffset >= pFile->initData+pFile->initDataSize) {
+			debug_write("Premature EOF - truncating read at record %d.", idx);
+			pFile->NumberRecords = idx;
+			break;
+		}
+
+		// clear buffer
+		memset(pData, 0, pFile->RecordLength+2);
+
+		// read a fixed record
+    	*(unsigned short*)pData = pFile->RecordLength;
+		pData+=2;
+
+		if (pOffset+pFile->RecordLength >= pFile->initData+pFile->initDataSize) {
+			debug_write("Corrupt file - truncating read at record %d.", idx);
+			pFile->NumberRecords = idx;
+			break;
+		}
+
+        memcpy(pData, pOffset, pFile->RecordLength);
+        pOffset+=pFile->RecordLength;
+    	pData += pFile->RecordLength;
+        pFile->NumberRecords = idx+1;
 	}
 
 	debug_write("Memory read %d records", pFile->NumberRecords);

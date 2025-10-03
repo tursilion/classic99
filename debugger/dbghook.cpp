@@ -83,16 +83,23 @@
 // next bit indicates byte (0) or word (1) data (todo: only safe byte access today)
 // next bit is set if an error occurred with the request
 // next bit indicates whether to do a 'safe' access (1) or allow side effects (0)
+//
+// Might rethink all this. Shared memory is a ton faster, and then we'd only need
+// some way to access CRU and sound to own the machine.
 
 #include <WinSock2.h>
 #include <Windows.h>
 #include "..\console\tiemul.h"
 
 static SOCKET sock;
+extern Byte *VDP;
+extern Byte staticCPU[];
+HANDLE hMapVDP = NULL;
+HANDLE hMapCPU = NULL;
 
 void initDbgHook() {
 	sock = NULL;
-#if 0
+#if 1
 	// TODO: this must be configurable and must default to off, do not
 	// release with it on by default (potential security risk)
     sockaddr_in RecvAddr;

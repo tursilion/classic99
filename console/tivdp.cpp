@@ -257,7 +257,7 @@ int SDT;									// Sprite Descriptor Table
 int CTsize;									// Color Table size in Bitmap Mode
 int PDTsize;								// Pattern Descriptor Table size in Bitmap Mode
 
-Byte VDP[128*1024];							// Video RAM (16k, except for now we are faking the rest of the VDP address space for F18A (todo: only 18k on real chip))
+Byte *VDP = NULL;  /*[128*1024]*/			// Video RAM (16k, except for now we are faking the rest of the VDP address space for F18A (todo: only 18k on real chip))
 Byte SprColBuf[256][192];					// Sprite Collision Buffer
 Byte HeatMap[256*256*3];					// memory access heatmap (red/green/blue = CPU/VDP/GROM)
 int SprColFlag;								// Sprite collision flag
@@ -782,7 +782,7 @@ void VDPdisplay(int scanline)
 
 	int gfxline = scanline - 27;	// skip top border
 
-	if (redraw_needed) {
+	if (1) {
 		// count down scanlines to redraw
 		--redraw_needed;
 

@@ -149,7 +149,7 @@ extern int statusReadLine;
 extern int statusReadCount;
 // sams config
 extern int sams_enabled, sams_size;
-extern Byte staticCPU[0x10000];					// main memory for debugger
+extern Byte staticCPU[];					// main memory for debugger
 extern Word mapperRegisters[16];
 Byte ReadRawAMS(int address);
 void WriteRawAMS(int address, int value);

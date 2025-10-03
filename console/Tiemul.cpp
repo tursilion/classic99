@@ -253,7 +253,7 @@ Byte VDPMemInited[128*1024];				// track VDP mem
 bool g_bCheckUninit = false;				// track reads from uninitialized RAM
 bool nvRamUpdated = false;					// if cartridge RAM is written to (also needs an NVRAM type to be saved)
 
-extern Byte staticCPU[0x10000];				// main memory
+extern Byte staticCPU[];     				// main memory
 Byte *CPU2=NULL;				            // Cartridge space bank-switched (ROM >6000 space, 8k blocks, XB, 379, SuperSpace and MBX ROM), sized by xbmask
 Byte mbx_ram[1024];							// MBX cartridge RAM (1k)
 Byte ROMMAP[65536];							// Write-protect map of CPU space
@@ -1321,6 +1321,36 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
     InitializeCriticalSection(&TapeCS);
     InitializeCriticalSection(&csDisasm);
 
+    // setup VDP and staticCPU as shared memory
+    const int VDPSIZE = 128*1024;
+    const int CPUSIZE = 64*1024;
+    HANDLE hMapVDP = NULL;
+    HANDLE hMapCPU = NULL;
+
+    // now set up the shared memory - for now just VDP and CPU
+    // note that VDP beyond 18k is F18A register centric and probably won't work like you want anyway
+    hMapVDP = CreateFileMapping(
+        INVALID_HANDLE_VALUE,    // Use system paging file
+        NULL,                    // Default security
+        PAGE_READWRITE,          // Read/write access
+        0,                       // Maximum object size (high-order DWORD)
+        VDPSIZE,             // Maximum object size (low-order DWORD)
+        "Classic99VDPSharedMemory");      // Name of mapping object
+    if (hMapVDP != NULL) {
+        debug_write("Shared VDP as Classic99VDPSharedMemory");
+    }
+    VDP = (Byte*)MapViewOfFile(
+        hMapVDP ,                // Handle to mapping object
+        FILE_MAP_ALL_ACCESS,     // Read/write permission
+        0,
+        0,
+        VDPSIZE);
+    if (VDP == NULL) {
+        debug_write("VDP FAILED TO SHARE - mallocing.");
+        VDP = (Byte*)malloc(VDPSIZE);
+    }
+    // CPU memory is a bit too much of a mess for a simple share right now, maybe in V4
+
 	hInstance = hInst;
 	hPrevInstance=hInPrevInstance;
 
@@ -1826,6 +1856,12 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	ShutdownMemorySystem();
 	CloseDumpFiles();
+
+    // unmap files
+    UnmapViewOfFile(VDP);
+    UnmapViewOfFile(staticCPU);
+    CloseHandle(hMapVDP);
+    CloseHandle(hMapCPU);
 
 	// shutdown Winsock
 	WSACleanup();

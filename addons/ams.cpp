@@ -75,7 +75,7 @@ static MapperMode mapperMode = Map;				// Default to mapping addresses
 
 Word mapperRegisters[MaxMapperRegisters] = { 0 };
 static Byte systemMemory[MaxMapperPages * MaxPageSize] = { 0 };
-Byte staticCPU[0x10000] = { 0 };				// 64k for the base memory
+Byte staticCPU[0x10000] = { 0 };	            // 64k for the base memory
 
 static bool mapperRegistersEnabled = false;
 
