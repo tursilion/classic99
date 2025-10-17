@@ -217,10 +217,11 @@ void processDbgPackets() {
 		ret = recvfrom(sock, (char*)buf, sizeof(buf), 0, &recvaddr, &recvsize);
 		// walk through the data in buf. All entries should be 
 		if (SOCKET_ERROR == ret) {
-			if (WSAEWOULDBLOCK != WSAGetLastError()) {
+            int err = WSAGetLastError();
+            if ((err != WSAEWOULDBLOCK) && (err != WSAECONNRESET)) {
 				debug_write("Dbghook socket got code %d, closing", WSAGetLastError());
 				closesocket(sock);
-				sock = NULL;
+                initDbgHook();
 			}
 			break;
 		}

@@ -2991,6 +2991,7 @@ bool TipiWebDisk::BufferFiadFile(FileInfo *pFile) {
 
 // This looks like an apache "Index of" page, so turn it into a TI directory IF38 format
 // Of course this will break when Apache changes their format, as they naturally will.
+// TODO: Since I have the python script for the webserver, I think I can remove this hack...
 bool TipiWebDisk::BufferIndexPage(FileInfo *pFile) {
 	char *pData;
     char *pWork;
