@@ -199,7 +199,7 @@ static const unsigned char LoadPAB[] = {
 // get a file from the web and store in RAM
 // caller is responsible for freeing data
 // NULL on failure
-unsigned char *getWebFile(CString &filename, int &outSize) {
+unsigned char *getWebFile(CString &infilename, int &outSize) {
     // adapted from https://stackoverflow.com/questions/23038973/c-winhttp-get-response-header-and-body
     DWORD dwSize;
     DWORD dwDownloaded;
@@ -216,6 +216,12 @@ unsigned char *getWebFile(CString &filename, int &outSize) {
     int outPos = 0;
     outSize = 0;
 
+    // I don't think TIPI web pathnames get the fixup, but for directories I need to end with '/', not '.'
+    CString filename = infilename;
+    if (filename.Right(1) == ".") {
+        filename.SetAt(filename.GetLength()-1, '/');
+    }
+
     // Parse out pi.http[s] vs urix
     //
     // it's a URI request - if PI make sure it's http[s]
@@ -224,6 +230,7 @@ unsigned char *getWebFile(CString &filename, int &outSize) {
     CString url;
     CString tst = filename.Left(3);
 
+    // Check PI/ not PI. cause we already did the fixup
     if (tst.CompareNoCase("PI.") == 0) {
         if (filename.Mid(3, 4).CompareNoCase("http") != 0) {
             debug_write("Can't load from '%s'!", filename);
@@ -3264,8 +3271,9 @@ bool TipiWebDisk::BufferUnknownFile(FileInfo *pFile) {
     	*(unsigned short*)pData = pFile->RecordLength;
 		pData+=2;
 
-		if (pOffset+pFile->RecordLength >= pFile->initData+pFile->initDataSize) {
-			debug_write("Corrupt file - truncating read at record %d.", idx);
+		if (pOffset+pFile->RecordLength > pFile->initData+pFile->initDataSize) {
+			debug_write("Expected %d bytes but only %d left - truncating read at record %d.", pFile->RecordLength, 
+                                pFile->initData+pFile->initDataSize-pOffset, idx);
 			pFile->NumberRecords = idx;
 			break;
 		}
