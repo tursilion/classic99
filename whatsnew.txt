@@ -2332,6 +2332,22 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 - Fix setpath to affect only mkdir, rmdir and rename operations
 - I think the extensions for the HDFC are poorly thought out and won't be a huge supporter of them moving forward. Quite frankly, we should redo them for modern filesystems.
 
+-----------------------------------------------
 
+27 Oct 2025
 
+Small TIPI updates, big cartpack updates.
 
+- big updates to PI.HTTP interface (still not 100% - I can't get directories to work on the real hardware for some reason when I do what the docs /say/ should be happening, so I need to write some code to dump the records received by hardware and see what I did wrong.)
+- internal debug system enhanced - the UDP interface is now enabled and much more efficient. VRAM is available as shared memory. libti99ALL has been updated with a "Classic99" target and can take advantage of this.
+- Updated RXB2025 to fix some minor issues - see Rich
+- Updated Jewel and XB29GEM to Jewel7 (wtf - we updated the other files but not this one since Jewel4! Oops!)
+- Updated Super Space Acer to the 2024 ROM edition
+- Removed EPSGMOD demo and Megaman 2 Music Demo
+- Added Thunder Force III Music Tribute Demo
+- Added Don't Mess With Texas MegaDemo
+- Added HeroX
+- Added Stranger
+- Added Phoenix Wright Turnabout Storm game
+- Added Zombie MOTIF
+- rebuilt speech.dll with correct switches for XP

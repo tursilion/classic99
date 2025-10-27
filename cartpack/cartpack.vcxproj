@@ -331,9 +331,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="cartpack.def" />
-    <None Include="roms1.bin" />
-    <None Include="roms\ACERC.bin" />
-    <None Include="roms\ACERP.bin" />
     <None Include="roms\ALPINERC.BIN" />
     <None Include="roms\ALPINERG.BIN" />
     <None Include="roms\AMAZEG.BIN" />
@@ -343,28 +340,21 @@
     <None Include="roms\CarWarsG.Bin" />
     <None Include="roms\ChishlmC.Bin" />
     <None Include="roms\ChishlmG.Bin" />
-    <None Include="roms\DEMOG.BIN" />
-    <None Include="roms\DEMQ" />
     <None Include="roms\DiagnosG.Bin" />
     <None Include="roms\EA_Utils.bin" />
     <None Include="roms\EDIT1.BIN" />
     <None Include="roms\EPSGMODG.BIN" />
     <None Include="roms\fbForth200_9.bin" />
     <None Include="roms\FootbalG.Bin" />
+    <None Include="roms\HeroX_C.bin" />
     <None Include="roms\HomFDecG.Bin" />
     <None Include="roms\HustleG.Bin" />
     <None Include="roms\LOGOC.BIN" />
     <None Include="roms\LOGOG.BIN" />
+    <None Include="roms\MegaDemo8.bin" />
     <None Include="roms\MinChalG.Bin" />
     <None Include="roms\MiniMemC.Bin" />
     <None Include="roms\MiniMemG.Bin" />
-    <None Include="roms\mm2\DummyG.bin" />
-    <None Include="roms\mm2\TIMM2PIC_C" />
-    <None Include="roms\mm2\TIMM2PIC_P" />
-    <None Include="roms\mm2\timusic" />
-    <None Include="roms\mm2\timusid" />
-    <None Include="roms\mm2\timusie" />
-    <None Include="roms\mm2\timusif" />
     <None Include="roms\MunchMnC.Bin" />
     <None Include="roms\MunchMnG.Bin" />
     <None Include="roms\p1f00g_0000_f800.GRM" />
@@ -390,19 +380,17 @@
     <None Include="roms\ScottAdams\SORCERER" />
     <None Include="roms\ScottAdams\VOODOO" />
     <None Include="roms\ScottAdams\VOYAGE" />
-    <None Include="roms\SSALOAD.BIN" />
-    <None Include="roms\ssaram.bin" />
-    <None Include="roms\SSD.BIN" />
-    <None Include="roms\SSE.BIN" />
+    <None Include="roms\ssa8.bin" />
+    <None Include="roms\stranger32KB8.bin" />
     <None Include="roms\TE-IIC.BIN" />
     <None Include="roms\TE-IIG.BIN" />
+    <None Include="roms\TF3_8.bin" />
     <None Include="roms\TI-InvaC.Bin" />
     <None Include="roms\TI-InvaG.Bin" />
     <None Include="roms\TIEAG.BIN" />
     <None Include="roms\TIEXTC.BIN" />
     <None Include="roms\TIEXTD.BIN" />
     <None Include="roms\TIEXTG.BIN" />
-    <None Include="roms\TIPlayerC.BIN" />
     <None Include="roms\tiworkshop379.bin" />
     <None Include="roms\TOMBCITC.BIN" />
     <None Include="roms\TOMBCITG.BIN" />
@@ -417,6 +405,7 @@
     <None Include="roms\XB27_ROM_060315.bin" />
     <None Include="roms\XB29GEM_8.BIN" />
     <None Include="roms\XB29GEM_G.BIN" />
+    <None Include="roms\ZMOTIFC.bin" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="cartpack.rc" />

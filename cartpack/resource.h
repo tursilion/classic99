@@ -86,12 +86,19 @@
 #define IDR_FBFORTH                     345
 #define IDR_XB29GROM                    346
 #define IDR_XB29ROM                     347
+#define IDR_SSA2024                     354
+#define IDR_TF3                         356
+#define IDR_DMWTEXAS                    357
+#define IDR_HEROX                       358
+#define IDR_STRANGER                    359
+#define IDR_ZOMBIE                      360
+#define IDR_PWRIGHT                     361
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        352
+#define _APS_NEXT_RESOURCE_VALUE        362
 #define _APS_NEXT_COMMAND_VALUE         40001
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101

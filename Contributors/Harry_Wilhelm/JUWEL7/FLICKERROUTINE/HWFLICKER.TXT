@@ -1,0 +1,108 @@
+* Flicker for XB Sprites
+* This is NOT a final version, this will break disk access
+* (May work with Classic99's disk driver, but don't rely on it)
+*
+* -- PROOF OF CONCEPT ONLY --
+
+
+	DEF FLICK
+	DEF FLICKX
+* XB equates
+VMBR equ >202c
+VMBW equ >2024
+
+* sprite information
+SNEW equ >3F00			* output vdp address
+NEWMAX equ >3F40		* where it ends - must be same size as SMAX-SBASE
+SBASE equ >0300			* where XB writes sprite data
+SMAX equ >0370			* address where XB sprite data ends (28 sprites here)
+
+wp     DATA 0
+	DATA WP+6		preload R1
+	DATA 16		preload R2
+	BSS 16		* use a private workspace
+	DATA 0		R11  starts with SNEW
+REG12	DATA SBASE	>0300	R12
+REG13	DATA SMAX	>0370 (but lsb will be adjusted)	R13
+REG14	DATA >0300	  DATA		
+REG15	DATA 0		stores old interrupt hook
+*R15 not used	
+
+***************************************************	
+*turn on flicker routine
+	
+FLICK	LI R0,>0300
+	MOV R0,@REG14		start up with data = >0300
+	
+	AB @>837A,R0		Now 1=4,2=5,3=6,4=7
+	SRL R0,10		get rid of 1 and 2 bit
+	SLA R0,12		bak to msb and mpy x 4 now is in multiples of 4
+	
+	MOVB R0,@REG13+1	fix so routine only rolls what has to be rolled
+	MOVB R0,@NEWMA+3
+	
+	
+	
+	LI R0,INT1		address of interrupt routine
+	LI R1,>83C4
+	C R0,*R1		if eq then interrupt routine is already loaded
+	JEQ FLICK1
+	MOV *R1,@REG15	save current interrupt address
+	MOV R0,*R1		move the flicker routine to >83c4
+	
+	
+		
+	JMP FLICK1
+	
+************************************************
+*turn off flicker routine
+
+FLICKX MOV @REG15,@>83C4
+FLICK1	B @>006A
+
+******************************************
+	
+INT1	LWPI WP
+	li R11,SNEW			* output address
+	mov R14,r0		* current position in the rotation
+	
+*ILP	li r1,wp+6	this doesn't change		* use private R3-R10 (16 bytes = 4 sprites)
+*	li r2,16	this doesn't change,  always 16
+ILP	blwp @VMBR			* read XB sprite table
+	
+	A R2,R0			* write it rotated by 4 sprites
+	c r0,R13     SMAX			* are we at the end?
+	jne ISK
+	MOV R12,R0			* back to beginning of table
+	
+ISK	mov r0,R14		* save it
+	mov R11,r0			* output address
+	blwp @VMBW			* and write it
+	mov R14,r0		* get back original table, at next offset
+	
+	A R2,R11			* next output
+NEWMA	ci R11,NEWMAX		* are we done?
+	jne ILP				* loop if needed
+	
+	li r0,>d000			* write end of sprite table tag
+	movb r0,@>8c00		* relies on VDP address still being valid!
+	
+	mov R14,r0		* once more to update the base
+	A R2,R0			* 4 sprites later
+	c r0,R13   SMAX			* check for end
+	jne ISK2
+	MOV R12,R0			* wrap around if end
+	
+ISK2	mov r0,R14		* save it for next time
+	
+BACK	lwpi >83E0			* GPLWS, just in case
+	li r0,>fe85			* going to move SAL to >3F00 (disk buffers)
+	movb r0,*R15
+	swpb r0
+	movb r0,*R15
+	MOV @REG15,R12			will be either 0 or XB256 routine
+	B @>0AB4			finish up interrupt routine
+
+	
+	END
+	

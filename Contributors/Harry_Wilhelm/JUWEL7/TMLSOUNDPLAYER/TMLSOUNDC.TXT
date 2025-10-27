@@ -1,0 +1,111 @@
+*sound list player modified for compiler
+*R4 points to main sound table in cpu ram
+*R5 is coundown timer for main sound table
+*R6 points to 2nd sound table in cpu ram
+*r7 is countdown timer for 2nd sound table
+*r8 is old interrupt vector
+
+*PLAY sets up R4,R5 or R6,R7 and starts the interrupt routine
+
+*FE tells player to loop
+*FD 2nd sound list player
+*0 is goto
+
+*GPBUFF	EQU >1234
+*DTSTRT	EQU >3456
+*DTEND	EQU >5678
+*GET1	EQU >AAAA
+*RTN	EQU >BBBB
+*GPLLNK	EQU >222E
+
+*CALL LINK("PLAYHM",NAME)
+	TEXT 'PLAYHM'
+
+PLAYHM	LI R0,>83C4
+	LI R1,>3E1A		address of sound monitor in tml
+	C *R0,R1		has monitor already been loaded to >83c4?
+	JEQ ZYXW1		yep, go on
+	MOV *R0,@>3E7C+16		store old interrupt vector in R8 of ZYXW24
+	MOV R1,*R0		and set monitor as interrupt vector
+	
+ZYXW1	BL @GET1		pointer to string is in R6
+	LI R0,>2020
+	LI R3,GPBUFF+2
+	MOV R0,*R3+
+	MOV R0,*R3+
+	MOV R0,*R3		now buffer is filled with 6 spaces
+	
+	MOV *R6,R6		get address of string
+	MOVB *R6+,R2		length to msb R2
+	SRL R2,8		length is in R2
+	
+	LI R3,GPBUFF+2
+ZYXW2	MOVB *R6+,*R3+
+	DEC R2
+	JNE ZYXW2		read the string into buffer
+	
+	LI R1,DTSTRT		start of compiled hi mem def table 
+ZYXW3	CI R1,DTEND
+	JEQ ZYXW9		don't do error, just go back
+	
+	MOV R1,R0  
+	LI R2,GPBUFF+2 
+	C *R0+,*R2+  
+	JNE ZYXW10
+	C *R0+,*R2+ 
+	JNE ZYXW10 
+	C *R0+,*R2+  
+	JNE ZYXW10
+	
+	LI R1,>3E7C+8		R4 of ZYXW24
+	MOV *R0,R0
+	CB *R0,@>3E8E	if the byte is >FD then 2nd sound list player
+	JEQ ZYXW7
+		
+*here sound list is set to start up.
+	
+	LI R2,ZYXW30		bytes to silence sound generator
+	LI R3,>8400
+	MOVB *R2+,*R3
+	MOVB *R2+,*R3
+	MOVB *R2+,*R3
+	MOVB *R2,*R3		SOUND generator is now silenced
+	
+*Here we look for loops. since we are starting the sound list
+*any loops must be reset to starting values. Look through till we find
+*an FE or a 0
+	MOV R0,R2	cannot use indexed addressing in R0
+ZYXW4	MOVB *R2,R3	length of sound table or???
+	SRL R3,8
+	JEQ ZYXW8	does it point to a zero?, if so then done, go back
+	CI R3,>00FE
+	JEQ ZYXW6
+*ZYXW5 ro points to length byte.	
+ZYXW5	A R3,R2	add length to pointer 
+	INCT R2	add 2 more to get past duration
+	JMP ZYXW4
+
+ZYXW6	C *R2+,*R2+		add 4. will point to duration word, either msb or lsb
+	ANDI R2,>FFFE		make point to msb
+	MOVB @1(R2),*R2	reset the loop count
+	C *R2+,*R2+		add 4
+	JMP ZYXW4	
+	
+	
+	
+ZYXW7	INC R0			go 1 past the FD
+	C *R1+,*R1+		add 4 to r1 - now R1 points to R6
+ZYXW8	MOV R0,*R1+
+	CLR *R1
+	INC *R1
+ZYXW9	B @RTN
+	
+ZYXW10	AI R1,>0008 
+	JMP ZYXW3
+	
+ZYXW30	DATA >9FBF,>DFFF	bytes to silence sound generator
+
+*****************************************
+
+
+	

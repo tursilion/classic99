@@ -2486,7 +2486,7 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 		}
 	}
 
-	if ((TYPE_KEYS != pImg->nType) && (TYPE_OTHER != pImg->nType)) {
+	if (TYPE_OTHER != pImg->nType) {
 		if (NULL != pImg->dwImg) {
             HMODULE hModule = NULL;
 			hRsrc=FindResource(hModule, MAKEINTRESOURCE(pImg->dwImg), szFork);
@@ -2506,7 +2506,13 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
                 // we can't offer very good debug at the moment...
                 debug_write("Resource for selected module was not found.");
             }
-		} else {
+            // support keyboard resources
+            if (pImg->nType == TYPE_KEYS) {
+                // copy the data over to the filename
+                memcpy(pImg->szFileName, pData, sizeof(pImg->szFileName));
+                pImg->szFileName[sizeof(pImg->szFileName)-1] = '\0';    // just in case
+            }
+		} else if (pImg->nType != TYPE_KEYS) {
 			// It's a disk file. Worse, it may be a disk file with a header. 
 			// But we may be able to determine that.
 			if (strlen(pImg->szFileName) == 0) {

@@ -1,0 +1,231 @@
+*************************************************
+*MOVE ROUTINE IS AN EXTRA FOR fABRICE. EXPERIMENTAL!!!
+*************************************************
+*CALL LINK("MOVE",mode,start address,target address,#bytes)
+*mode 1 vdp to vdp   \
+*mode 2 vdp to cpu     same as
+*mode 3 cpu to vdp     XB 2.9
+*mode 4 cpu to cpu   /
+*mode 5 cpu to vdp with offset added
+*mode 6 vdp to cpu with offset subtracted
+
+
+*COMPILER USES WKSP AT >8300
+
+	
+MOVE	BL @GET4	pointers to numbers in R3,R4,R5,R6
+	MOV *R6,R9	number bytes in R9
+	MOV *R5,R8	move to address in R8
+	MOV *R4,R7	move from address in R7
+	MOV *R3,R6	mode to R6 (1-6)
+	LI R2,>8C02
+	CLR R0		normal offset is 0
+**********************************
+*vdp ram to vdp ram
+V2V	DEC R6		r6 will be 1 to 4
+	JNE V2C
+*R6 was 1
+	ORI R8,>4000
+V2V1	MOVB @WKSP+15,*R2
+	MOVB R7,*R2
+	INC R7
+	MOVB @>8800,R0
+	MOVB @WKSP+17,*R2	LSB of r6 to >8c02R2 contains >8c02
+	MOVB R8,*R2
+	INC R8
+	MOVB R0,@>8C00
+	DEC R9
+	JNE V2V1
+	JMP BKMOVE
+******************************	
+*vdp ram to cpu ram
+V2C	DEC R6
+	JNE C2V
+*R6 was 2
+V2C1	MOVB @WKSP+15,*R2
+	MOVB R7,*R2
+	NOP
+V2C2	MOVB @>8800,R1
+	S R0,R1		subtract the offset (0 or >60)
+	MOVB R1,*R8+
+	DEC R9
+	JNE V2C2
+	JMP BKMOVE	
+********************************
+*cpu ram to vdp ram
+C2V	DEC R6
+	JNE C2C
+*R6 was 3
+C2V1	ORI R8,>4000		set bit so we can write
+	MOVB @WKSP+17,*R2	LSB of r8 to >8c02R2 contains >8c02
+	MOVB R8,*R2
+C2V2	MOVB *R7+,R1
+	A R0,R1		add the offset (0 or >60)
+	MOVB R1,@>8C00
+	DEC R9
+	JNE C2V2
+	JMP BKMOVE
+*************************************
+*cpu ram to cpu ram
+C2C	DEC R6
+	JNE C2V60
+*R6 was 4
+C2C1	MOVB *R7+,*R8+
+	DEC R9
+	JNE C2C1
+BKMOVE	B @RTN				>006A
+***************************
+*modes 5 and 6 use >60 offset. 
+*mode 5=cpu to vdp with offset
+*mode 6=vdp to cpu with offset removed
+C2V60	LI R0,>6000
+	DEC R6
+	JNE V2C1		R6 was 6 for mode 6
+	JMP C2V1		R6 was 5 formode 5
+	
+	
+	
+***********************************************************************************	
+*compiled version of CALL STCR and CALL LDCR for cru access
+*routines are now built into XB 2.9 G.E.M.
+*CALL STCR(#bits,cru base,variable)
+*CALL LDCR(#bits,cru-base,value)
+************************************************************************
+STCR	LI R9,>0400
+	JMP LDCR1
+LDCR	CLR R9
+LDCR1	BL @GET3
+	MOV *R4,R2		number bits to R2
+	MOV *R5,R12		cru address to r12
+	A R12,R12		r12*2
+*r6 points to 3rd value
+	MOV R9,R9		
+	JEQ LDCR2
+	CLR *R6		doing STCR, so zero out value
+LDCR2	CI R2,8
+	JGT LDCR3
+	INC R6			point to lsb
+LDCR3	ANDI R2,>000F		now # bits is 0 to 15 (0=16 bits to move)
+	
+	SLA R2,6
+	SOC R2,R9
+	ORI R9,>3016
+	X R9
+	B @RTN			back to compiler
+	 
+*************************************
+*TURSI'S FLICKER ROUTINE
+*CALL LINK("FLICK") or CALL LINK("FLICKX")
+
+* Flicker for XB Sprites
+* This is NOT a final version, this will break disk access
+* (May work with Classic99's disk driver, but don't rely on it)
+*
+* -- PROOF OF CONCEPT ONLY --
+
+	
+	
+* XB equates
+
+* sprite information
+SNEW 	EQU >3F00			* output vdp address
+NEWMAX EQU >3F40		* where it ends - must be same size as SMAX-SBASE
+SBASE 	EQU >0300			* where XB writes sprite data
+SMAX 	EQU >0370			* address where XB sprite data ends (28 sprites here)
+	
+WP     DATA 0		* use a private workspace
+	DATA WP+6		preload R1
+	DATA 16		preload R2
+	BSS 16			will read 16 bytes at a time
+REG11	DATA 0		R11  starts with SNEW
+REG12	DATA SBASE	>0300	R12
+REG13	DATA SMAX	>0370 (but lsb will be adjusted)	R13
+REG14	DATA >0300	  DATA		
+REG15	DATA 0		stores old interrupt hook
+*R15 not used	
+	
+***************************************************	
+*turn on flicker routine
+	
+FLICK	LI R0,>0300
+	MOV R0,@REG14		start up with data = >0300
+	
+	AB @>837A,R0		Now 1=4,2=5,3=6,4=7
+	SRL R0,10		get rid of 1 and 2 bit
+	SLA R0,12		bak to msb and mpy x 4 now is in multiples of 4
+	
+	MOVB R0,@REG13+1	fix so routine only rolls what has to be rolled
+	MOVB R0,@NEWMA+3
+
+	LI R0,INT1		address of interrupt routine
+	LI R1,>83C4
+	C R0,*R1		if eq then interrupt routine is already loaded
+	JEQ FLICK1
+	MOV *R1,@REG15	save current interrupt address
+	MOV R0,*R1		move the flicker routine to >83c4
+	
+	
+		
+	JMP FLICK1
+	
+************************************************
+*turn off flicker routine
+
+FLICKX MOV @REG15,@>83C4
+FLICK1	B @RTN
+
+******************************************
+	
+INT1	LWPI WP
+	LI R11,SNEW			* output address
+	MOV R14,R0		* current position in the rotation
+	
+*ILP	LI R1,WP+6	this doesn't change		* use private R3-R10 (16 bytes = 4 sprites)
+*	LI R2,16	this doesn't change,  always 16
+ILP	BLWP @VMBR			* read XB sprite table
+	
+	A R2,R0			* write it rotated by 4 sprites
+	C R0,R13     SMAX			* are we at the end?
+	JNE ISK
+	MOV R12,R0			* back to beginning of table
+	
+ISK	MOV R0,R14		* save it
+	MOV R11,R0			* output address
+	BLWP @VMBW			* and write it
+	MOV R14,R0		* get back original table, at next offset
+	
+	A R2,R11			* next output
+NEWMA	CI R11,NEWMAX		* are we done?
+	JNE ILP				* loop if needed
+	
+	LI R0,>D000			* write end of sprite table tag
+	MOVB R0,@>8C00		* relies on VDP address still being valid!
+	
+	MOV R14,R0		* once more to update the base
+	A R2,R0			* 4 sprites later
+	C R0,R13   SMAX			* check for end
+	JNE ISK2
+	MOV R12,R0			* wrap around if end
+	
+ISK2	MOV R0,R14		* save it for next time
+	
+	LWPI >83E0			* GPLWS, just in case
+	LI R0,>FE85			* going to move SAL to >3F00 (disk buffers)
+	MOVB R0,*R15
+	SWPB R0
+	MOVB R0,*R15
+	MOV @REG15,R12			will be either 0 or XB256 routine
+	B @>0AB4			finish up interrupt routine
+
+
+	
+	
+	
+
+	
+
+
+
+	
+	
+

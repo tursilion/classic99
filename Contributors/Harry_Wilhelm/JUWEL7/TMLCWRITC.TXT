@@ -1,0 +1,42 @@
+*CWRITE FOR COMPILED THE MISSING LINK uses 86 bytes
+*********************
+CWRXZ0 C *R13,R15
+	JGT CWRXZ5
+WRITEC	BL @GET1		get pointer to pointer to string into r6
+	MOV *R6,R6		now r6 points to string
+	MOVB *R6+,R7		r7 has length byte in MSB	
+	SRL R7,8		r7 contains length of string
+			
+	LI R8,GPBUFF+1	
+	MOV R8,R2		r2 has pointer to gpbuff+1
+		
+CWRXZ1	MOVB *R6+,*R8+	here we move the string to gpbuff+1
+	DEC R7
+	JNE CWRXZ1
+	MOVB @CWRXZ3+3,*R8	end string in a zero
+
+	MOVB *R2+,R4		next 4 bytes set up the vdp write address
+	MOVB *R2+,@>8C02
+	ORI R4,>4000
+	MOVB R4,@>8C02	now vdp is set up and ready to write!
+
+
+CWRXZ2	MOVB *R2+,R5		Length to r5
+	JEQ CWRXZ0		back if length is zero
+	SRL R5,8
+	CI R5,128
+	JLT CWRXZ4
+	
+	ANDI R5,>007F
+CWRXZ3	MOVB *R2,@>8C00
+	DEC R5
+	JGT CWRXZ3
+	INC R2
+	JMP CWRXZ2
+	
+CWRXZ4	MOVB *R2+,@>8C00
+	DEC R5
+	JGT CWRXZ4
+	JMP CWRXZ2
+	
+CWRXZ5	B @RTN

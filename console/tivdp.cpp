@@ -496,6 +496,9 @@ void vdpReset(bool isCold) {
 		    int g = (F18APalette[idx]&0xf0)>>4;
 		    int b = (F18APalette[idx]&0xf);
 		    F18APalette[idx] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
+            // these also need to load into the VRAM, as that's where they are technically stored for the GPU
+            VDP[0x5000+idx*2+1]= (g<<4)|b;
+            VDP[0x5000+idx*2] = r;
 	    }
     }
     bF18AActive = false;

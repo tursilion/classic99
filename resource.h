@@ -40,7 +40,6 @@
 #define IDD_CARTDLG                     313
 #define IDR_CHARA1                      316
 #define IDR_EAUTILS                     318
-#define IDR_ROMS1                       319
 #define IDR_BASICHDR                    319
 #define IDD_DISKCFG                     320
 #define IDD_OPTGRAM                     322

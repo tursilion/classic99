@@ -1,0 +1,192 @@
+*sound list player modified for compiler
+*R4 points to main sound table in cpu ram
+*R5 is coundown timer for main sound table
+*R6 points to 2nd sound table in cpu ram
+*r7 is countdown timer for 2nd sound table
+*r8 is old interrupt vector
+
+*PLAY sets up R4,R5 or R6,R7 and starts the interrupt routine
+
+*FE tells player to loop
+*FD 2nd sound list player
+*0 is goto
+
+*GPBUFF	EQU >1234
+*DTSTRT	EQU >3456
+*DTEND	EQU >5678
+*GET1	EQU >AAAA
+*RTN	EQU >BBBB
+*GPLLNK	EQU >222E
+
+*CALL LINK("PLAYHM",NAME)
+	TEXT 'PLAYHM'
+
+PLAYHM	LI R0,>83C4
+	LI R1,ZYXW11
+	C *R0,R1		has monitor already been loaded to >83c4?
+	JEQ ZYXW1		yep, go on
+	MOV *R0,@ZYXW24+16		store old interrupt vector in R8 of ZYXW24
+	MOV R1,*R0		and set monitor as interrupt vector
+	
+ZYXW1	BL @GET1		pointer to string is in R6
+	LI R0,>2020
+	LI R3,GPBUFF+2
+	MOV R0,*R3+
+	MOV R0,*R3+
+	MOV R0,*R3		now buffer is filled with 6 spaces
+	
+	MOV *R6,R6		get address of string
+	MOVB *R6+,R2		length to msb R2
+	SRL R2,8		length is in R2
+	
+	LI R3,GPBUFF+2
+ZYXW2	MOVB *R6+,*R3+
+	DEC R2
+	JNE ZYXW2		read the string into buffer
+	
+	LI R1,DTSTRT		start of compiled hi mem def table 
+ZYXW3	CI R1,DTEND
+	JEQ ZYXW9		don't do error, just go back
+	
+	MOV R1,R0  
+	LI R2,GPBUFF+2 
+	C *R0+,*R2+  
+	JNE ZYXW10
+	C *R0+,*R2+ 
+	JNE ZYXW10 
+	C *R0+,*R2+  
+	JNE ZYXW10
+	
+	LI R1,ZYXW24+8		R4 of ZYXW24
+	MOV *R0,R0
+	CB *R0,@ZYXW25	if the byte is >FD then 2nd sound list player
+	JEQ ZYXW7
+		
+*here sound list is set to start up.
+	
+	LI R2,ZYXW30		bytes to silence sound generator
+	LI R3,>8400
+	MOVB *R2+,*R3
+	MOVB *R2+,*R3
+	MOVB *R2+,*R3
+	MOVB *R2,*R3		SOUND generator is now silenced
+	
+*Here we look for loops. since we are starting the sound list
+*any loops must be reset to starting values. Look through till we find
+*an FE or a 0
+	MOV R0,R2	cannot use indexed addressing in R0
+ZYXW4	MOVB *R2,R3	length of sound table or???
+	SRL R3,8
+	JEQ ZYXW8	does it point to a zero?, if so then done, go back
+	CI R3,>00FE
+	JEQ ZYXW6
+*ZYXW5 ro points to length byte.	
+ZYXW5	A R3,R2	add length to pointer 
+	INCT R2	add 2 more to get past duration
+	JMP ZYXW4
+
+ZYXW6	C *R2+,*R2+		add 4. will point to duration word, either msb or lsb
+	ANDI R2,>FFFE		make point to msb
+	MOVB @1(R2),*R2	reset the loop count
+	C *R2+,*R2+		add 4
+	JMP ZYXW4	
+	
+	
+	
+ZYXW7	INC R0			go 1 past the FD
+	C *R1+,*R1+		add 4 to r1 - now R1 points to R6
+ZYXW8	MOV R0,*R1+
+	CLR *R1
+	INC *R1
+ZYXW9	B @RTN
+	
+ZYXW10	AI R1,>0008 
+	JMP ZYXW3
+	
+ZYXW30	DATA >9FBF,>DFFF	bytes to silence sound generator
+
+*****************************************
+*the commented lines below tried to kill sound generators when XB loaded program broke
+*but the compiler kills the iinterrupt before that can happen
+*sounds are left hanging, but A+enter makes an error to kill sound
+
+*ZYXW11	LWPI ZYXW24	
+
+*ZYXW12	MOVB @XBEA5,R0	are we running in EA5?
+*	JNE ZYXW15		if NE running in EA5, so process sound list
+*	MOVB @>8344,R0
+*	JNE ZYXW15		program is running, so process sound list
+*	MOV R5,R5
+*	JEQ ZYXW13		if program stopped & main player off go back
+*	CLR R5			program stopped, clear main count timer
+	
+*	BLWP @GPLLNK
+*	DATA >0034		bad response - then clear sound chip
+*	CLR R7			player2 will end quickly anyway
+
+ZYXW13	LWPI >83E0
+	MOV @ZYXW24+16,R8
+	JEQ ZYXW14
+	B *R8			go to the stored interrupt
+ZYXW14	B *R11		go back from interrupt
+
+ZYXW11	LWPI ZYXW24		
+
+ZYXW15	MOV R5,R5
+	JEQ ZYXW22	is the countdown timer 0? if so then do sound list 2
+	DEC R5		decrement countdown timer
+	JNE ZYXW22	not down to zero, so do sound list 2
+	
+*here the countdown timer is down to zero, see what to do next
+ZYXW16 MOVB *R4+,R2	get number of bytes or instruction (FE or 0)
+	SRL R2,8	to LSB 
+	JEQ ZYXW18	
+	CI R2,>00FE
+	JEQ ZYXW18	goto handles for/next loops and goto
+*if it is not 0 or FE then it is a normal sound list with #bytes in r2	
+ZYXW17	MOVB *R4+,@>8400	send sound list to 9901
+	DEC R2
+	JNE ZYXW17
+	MOVB *R4+,R5		timer to r5
+	SRL R5,8		
+	JMP ZYXW22		new SL is playing, now check #2
+	
+ZYXW18	INC R4
+	ANDI R4,>FFFE		now r4 is on an even address
+	MOV R2,R2		r2 is either 0 or FE
+	JEQ ZYXW20
+	
+ZYXW19	AB @ZYXW18+4,@2(R4)    dec byte  @R4+2
+	JEQ ZYXW21
+ZYXW20	MOV *R4,R4
+	JMP ZYXW16		and load up the sound chip
+	
+ZYXW21	INCT R4
+	MOVB @1(R4),*R4	 reset counter
+	C *R4+,*R4+		point r4 to next sound in list
+	JMP ZYXW16
+
+**Second sound list processor - needs >fd as 1st byte
+ZYXW22	MOV R7,R7	countdown =0?
+	JEQ ZYXW13
+	DEC R7
+	JNE ZYXW13	if NE then still counting down
+	
+*here the coundown for SL2 has just reached 0
+	MOVB *R6+,R3	length byte or a zero to show list is done
+	JEQ ZYXW13 	if sound list is over then it ends in a zero
+*shouldn't need to check for special code, SLP2 doesn't use them	
+	SRL R3,8	counter to lsb
+ZYXW23	MOVB *R6+,@>8400
+	DEC R3
+	JNE ZYXW23
+	MOVB *R6+,R7
+	SRL R7,8	timer to r7
+	JMP ZYXW13
+
+	
+ZYXW24	DATA 0,0,0,0,0,0,0,0,0		only use r0 to r8
+ZYXW25	DATA >FDFF
+
+
+	
