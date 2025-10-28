@@ -148,8 +148,8 @@ extern int bShowKeyboard;
 extern int statusReadLine;
 extern int statusReadCount;
 // sams config
-extern int sams_enabled, sams_size;
-extern Byte staticCPU[];					// main memory for debugger
+extern int sams_pages;
+extern Byte staticCPU[];					    // 64k memory map, holds ROMs and scratchpad, all else is in AMS
 extern Word mapperRegisters[16];
 Byte ReadRawAMS(int address);
 void WriteRawAMS(int address, int value);
@@ -1278,7 +1278,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				    timer9901IntReq=0;
 				    wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
 				    init_kb();								// Reset keyboard emulation
-				    SetupSams(sams_enabled, sams_size);		// Prepare the AMS system
+				    if (!SetupSams(sams_pages)) {           // Prepare the AMS system
+                        fail("Can't allocate memory");
+                    }
 				    if (NULL != InitSid) {
 					    InitSid();							// reset the SID chip
 					    if (NULL != SetSidBanked) {		
@@ -2457,29 +2459,39 @@ INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						enableF10Menu = false;
 					}
 					{
-						// SAMS
-						int old_sams_enabled=sams_enabled;
-						int old_sams_size=sams_size;
+						// SAMS - if not standard, try to leave it alone
+						int old_sams_size=sams_pages;
 						if (IsDlgButtonChecked(hwnd, IDC_AMS_0K)) {
-							sams_enabled=0;
+							sams_pages=0;
 						}
 						if (IsDlgButtonChecked(hwnd, IDC_AMS_128K)) {
-							sams_enabled=1;
-							sams_size=0;
+							sams_pages=32;
 						}
 						if (IsDlgButtonChecked(hwnd, IDC_AMS_256K)) {
-							sams_enabled=1;
-							sams_size=1;
+							sams_pages=64;
 						}
 						if (IsDlgButtonChecked(hwnd, IDC_AMS_512K)) {
-							sams_enabled=1;
-							sams_size=2;
+							sams_pages=128;
 						}
 						if (IsDlgButtonChecked(hwnd, IDC_AMS_1024K)) {
-							sams_enabled=1;
-							sams_size=3;
+							sams_pages=256;
 						}
-						if ((sams_enabled!=old_sams_enabled)||(sams_size!=old_sams_size)) {
+						if (IsDlgButtonChecked(hwnd, IDC_AMS_2048K)) {
+							sams_pages=512;
+						}
+						if (IsDlgButtonChecked(hwnd, IDC_AMS_4096K)) {
+							sams_pages=1024;
+						}
+						if (IsDlgButtonChecked(hwnd, IDC_AMS_8192K)) {
+							sams_pages=2048;
+						}
+						if (IsDlgButtonChecked(hwnd, IDC_AMS_16384K)) {
+							sams_pages=4096;
+						}
+						if (IsDlgButtonChecked(hwnd, IDC_AMS_32768K)) {
+							sams_pages=8192;
+						}
+						if (sams_pages!=old_sams_size) {
 							// changing this in real time wipes memory, so don't do that!
 				            int ret=IDNO;
                             if (VerifyOpenFiles(hwnd)) {
@@ -2488,8 +2500,7 @@ INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							if (IDYES == ret) {
 								PostMessage(myWnd, WM_COMMAND, ID_FILE_RESET, 0);
 							} else {
-								sams_enabled=old_sams_enabled;
-								sams_size=old_sams_size;
+								sams_pages=old_sams_size;
 							}
 						}
 					}
@@ -2557,8 +2568,20 @@ INT_PTR CALLBACK OptionsBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 				CheckRadioButton(hwnd, IDC_THROTTLECPU, IDC_UNTHROTTLEALL, IDC_UNTHROTTLEALL);
 			}
 
-			// TODO: AMS configuration doesn't work right now anyway
-//			CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_1024K, sams_enabled?sams_size+IDC_AMS_128K:IDC_AMS_0K);
+            // load up the AMS configuration if possible
+            switch (sams_pages) {
+                case 0:     CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_0K); break;
+                case 32:    CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_128K); break;
+                case 64:    CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_256K); break;
+                case 128:   CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_512K); break;
+                case 256:   CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_1024K); break;
+                case 512:   CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_2048K); break;
+                case 1024:  CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_4096K); break;
+                case 2048:  CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_8192K); break;
+                case 4096:  CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_16384K); break;
+                case 8192:  CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, IDC_AMS_32768K); break;
+                default:    CheckRadioButton(hwnd, IDC_AMS_0K, IDC_AMS_32768K, 0); break;
+            }
 
 			SendDlgItemMessage(hwnd, IDC_JOY1LIST, CB_RESETCONTENT, 0, 0);
 			SendDlgItemMessage(hwnd, IDC_JOY2LIST, CB_RESETCONTENT, 0, 0);

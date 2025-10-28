@@ -315,7 +315,7 @@ void WriteAudioFrame(void *pData, int nLen);
 void CloseAVI();
 void ConfigAVI();
 void SaveScreenshot(bool bAuto, bool bFiltered);
-void SetupSams(int sams_mode, int sams_size);
+bool SetupSams(int sams_pages);
 
 int getCharsPerLine();
 char VDPGetChar(int x, int y, int width, int height);

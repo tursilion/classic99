@@ -147,10 +147,16 @@
 #define IDC_AMS_512K                    1090
 #define IDC_AMS_1024K                   1091
 #define IDC_PAUSE                       1092
+#define IDC_AMS_4096K                   1092
 #define IDC_STEP                        1093
+#define IDC_AMS_8192K                   1093
 #define IDC_FASTFORWARD                 1094
+#define IDC_AMS_16384K                  1094
 #define IDC_PLAY                        1095
+#define IDC_AMS_32768K                  1095
 #define IDC_BREAKHELP                   1096
+#define IDC_AMS_4096K2                  1096
+#define IDC_AMS_2048K                   1096
 #define IDC_FREEZE                      1097
 #define IDC_STEP_OVER                   1098
 #define IDC_LOADINT                     1099

@@ -93,7 +93,7 @@
 
 static SOCKET sock;
 extern Byte *VDP;
-extern Byte staticCPU[];
+extern Byte staticCPU[];    // 64k memory map, holds ROMs and scratchpad, all else is in AMS
 HANDLE hMapVDP = NULL;
 HANDLE hMapCPU = NULL;
 

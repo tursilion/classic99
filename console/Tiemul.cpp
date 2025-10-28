@@ -253,7 +253,7 @@ Byte VDPMemInited[128*1024];				// track VDP mem
 bool g_bCheckUninit = false;				// track reads from uninitialized RAM
 bool nvRamUpdated = false;					// if cartridge RAM is written to (also needs an NVRAM type to be saved)
 
-extern Byte staticCPU[];     				// main memory
+extern Byte staticCPU[];     				// 64k memory map, holds ROMs and scratchpad, all else is in AMS
 Byte *CPU2=NULL;				            // Cartridge space bank-switched (ROM >6000 space, 8k blocks, XB, 379, SuperSpace and MBX ROM), sized by xbmask
 Byte mbx_ram[1024];							// MBX cartridge RAM (1k)
 Byte ROMMAP[65536];							// Write-protect map of CPU space
@@ -387,8 +387,7 @@ int timer9901IntReq;								// And whether it is requesting an interrupt
 int keyboard=KEY_994A_PS2;							// keyboard map (0=99/4, 1=99/4A, 2=99/4A PS/2 (see enum in .h))
 int ps2keyboardok=1;								// whether to allow PS2 keyboards
 
-int sams_enabled = 1;								// memory type (0 = disabled, 1 SAMS enabled)
-int sams_size = 3;									// SAMS emulation memory size (0 = 128k, 1 = 256k, 2 = 512k, 3 = 1024k)
+int sams_pages = 256;								// SAMS emulation number of pages (size is n x 4k, 0=disabled, 256=1MB)
 
 int retrace_count=0;								// count on the 60hz timer
 
@@ -745,11 +744,37 @@ void ReadConfig() {
 			keyboard=KEY_994A;		// 99/4A without ps/2
 		}
 	}
-	// SAMS emulation
-	sams_enabled = GetPrivateProfileInt("emulation", "sams_enabled", sams_enabled, INIFILE);
 	// Read flag for SAMS memory size if selected
-	sams_size = GetPrivateProfileInt("emulation", "sams_size", sams_size, INIFILE);
-
+	sams_pages = GetPrivateProfileInt("emulation", "sams_pages", sams_pages, INIFILE);
+    // make sure valid and power of 2
+    if (sams_pages < 32) {
+        sams_pages = 0;
+    } else if (sams_pages < 64) {
+        sams_pages = 32;
+    } else if (sams_pages < 128) {
+        sams_pages = 64;
+    } else if (sams_pages < 256) {
+        sams_pages = 128;
+    } else if (sams_pages < 512) {
+        sams_pages = 256;
+    } else if (sams_pages < 1024) {
+        sams_pages = 512;
+    } else if (sams_pages < 2048) {
+        sams_pages = 1024;
+    } else if (sams_pages < 4096) {
+        sams_pages = 2048;
+    } else if (sams_pages < 8192) {
+        sams_pages = 4096;
+    } else if (sams_pages < 16384) {
+        sams_pages = 8192;
+    } else if (sams_pages < 32768) {
+        sams_pages = 16384;
+    } else if (sams_pages < 65536) {
+        sams_pages = 32768;
+    } else {
+        sams_pages = 65536;
+    }
+    
     // whether to use banked console GROMs - special case and no hardware exists today
 	bankedConsoleGROMs = GetPrivateProfileInt("emulation", "bankedConsoleGROMs",   bankedConsoleGROMs, INIFILE);
 
@@ -1090,8 +1115,7 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"emulation",	"system",				nSystem,					INIFILE);
 	WritePrivateProfileInt(		"emulation",	"slowdown_keyboard",	slowdown_keyboard,			INIFILE);
 	WritePrivateProfileInt(		"emulation",	"ps2keyboard",			ps2keyboardok,				INIFILE);
-	WritePrivateProfileInt(		"emulation",	"sams_enabled",			sams_enabled,				INIFILE);
-	WritePrivateProfileInt(		"emulation",	"sams_size",			sams_size,					INIFILE);
+	WritePrivateProfileInt(		"emulation",	"sams_pages",			sams_pages,					INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableAltF4",			enableAltF4,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableF10Menu",		enableF10Menu,				INIFILE);
 	WritePrivateProfileInt(		"emulation",	"enableINIWrite",		bEnableINIWrite,			INIFILE);
@@ -1196,33 +1220,12 @@ void SaveConfig() {
 }
 
 // convert config into meaningful values for AMS system
-void SetupSams(int sams_mode, int sams_size) {
-	EmulationMode emuMode = None;
-	AmsMemorySize amsSize = Mem128k;
-	
-	// TODO: We don't really NEED this translation layer, but we can remove it later.
-	if (sams_mode) {
-		// currently only SuperAMS, so if anything set use that
-		emuMode = Sams;
-
-		switch (sams_size) {
-		case 1:
-			amsSize = Mem256k;
-			break;
-		case 2:
-			amsSize = Mem512k;
-			break;
-		case 3:
-			amsSize = Mem1024k;
-			break;
-		default:
-			break;
-		}
-	}
-
-	SetAmsMemorySize(amsSize);
-	InitializeMemorySystem(emuMode);
-	SetMemoryMapperMode(Map);
+bool SetupSams(int sams_pages) {
+	if (!InitializeMemorySystem(sams_pages)) {
+        return false;
+    }
+	SetMemoryMapperMode(Passthrough);
+    return true;
 }
 
 void CloseDumpFiles() {
@@ -1322,6 +1325,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
     InitializeCriticalSection(&csDisasm);
 
     // setup VDP and staticCPU as shared memory
+    // TODO: staticCPU is just ROMs and scratchpad, AMS systemMemory is all dynamicRAM
     const int VDPSIZE = 128*1024;
     const int CPUSIZE = 64*1024;
     HANDLE hMapVDP = NULL;
@@ -1635,8 +1639,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	StretchMode=STRETCH_DX;		// dx
 	bUse5SpriteLimit=1;			// enable flicker by default
 	TVScanLines=1;				// on by default
-	sams_enabled=1;				// off by default
-	sams_size=3;				// 1MB by default when on (no reason not to use a large card)
+	sams_pages=256;				// 1MB by default when on (no reason not to use a large card)
 	nSystem=1;					// TI-99/4A
 	max_volume=80;				// percentage of maximum volume to use
 	CPUSpeechHalt=false;		// not halted for speech reasons
@@ -1716,7 +1719,9 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	cfg_cpf=max_cpf;
 
 	// set up SAMS emulation
-	SetupSams(sams_enabled, sams_size);
+	if (!SetupSams(sams_pages)) {
+        fail("Can't allocate memory");
+    }
 
 	// Load a dummy CPU ROM for the emu to spin on till we load something real
 	WriteMemoryBlock(0x0000, DummyROM, 6);
@@ -1854,14 +1859,14 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	fail("Normal Termination");
 	CloseHandle(hWakeupEvent);
 
-	ShutdownMemorySystem();
-	CloseDumpFiles();
+    CloseDumpFiles();
 
     // unmap files
     UnmapViewOfFile(VDP);
     UnmapViewOfFile(staticCPU);
     CloseHandle(hMapVDP);
     CloseHandle(hMapCPU);
+	ShutdownMemorySystem();
 
 	// shutdown Winsock
 	WSACleanup();
@@ -2899,11 +2904,17 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 
 			case TYPE_AMS:
 				// Force the AMS card to on (reset later will init it)
-				sams_enabled=1;
-				sams_size=3;
+                if (sams_pages == 0) {
+    				sams_pages=256;
+                }
 				// decode the RLE encoded data into the AMS memory block
 				// We use both words as the size value to get a 32-bit size
-				RestoreAMS((unsigned char*)pData, (pImg->nLoadAddr<<16)|nLen);
+                // this doesn't currently work right.. but let's at least not crash
+                if (pImg->nLoadAddr + nLen >= (sams_pages*4096)) {
+                    debug_write("%s doesn't fit in current AMS size, not loading.", pImg->szFileName);
+                } else {
+    				RestoreAMS((unsigned char*)pData, (pImg->nLoadAddr<<16)|nLen);
+                }
 				break;
 
 			case TYPE_KEYS:
@@ -4161,6 +4172,7 @@ void do1()
 
 			// some debug help for DSR overruns
 			// TODO: this is probably not quite right (AMS?), but should work for now
+            // All that is left in staticCPU is the ROMs and scratchpad
 			int top = (staticCPU[0x8370] << 8) + staticCPU[0x8371];
 			if (top != filesTopOfVram) {
 				if ((pCurrentCPU->GetPC() < 0x4000) || (pCurrentCPU->GetPC() > 0x5FFF)) {

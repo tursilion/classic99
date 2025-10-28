@@ -43,22 +43,6 @@ When >1E00 CRU Bit 1 is Set to 1, map a portion of the 12 bits in the page to th
 >401E - >F000 (available)
 */
 
-enum EmulationMode
-{
-	None,		// Original TI Mode (>0000 through >FFFF straight)
-	Ams,		// Original AMS (also known as AEMS) (not currently supported)
-	Sams,		// SouthWest 99er's Super AMS
-	Tams		// Thierry Nouspikel's (or Total) AMS (not currently supported)
-};
-
-enum AmsMemorySize
-{
-	Mem128k,	// 128k AMS/SAMS Card
-	Mem256k,	// 256k AMS/SAMS Card
-	Mem512k,	// 512k AMS/SAMS Card
-	Mem1024k	// 1024k AMS/SAMS Card
-};
-
 enum MapperMode
 {
 	Passthrough,		// Passthrough (Normal mapped >0000 through >FFFF 64k Address space)
@@ -66,9 +50,7 @@ enum MapperMode
 };
 
 /* AMS/SAMS initialization and shutdown */
-void InitializeMemorySystem(EmulationMode cardMode);
-void SetAmsMemorySize(AmsMemorySize size);
-EmulationMode MemoryEmulationMode();
+bool InitializeMemorySystem(int sams_pages);
 void ShutdownMemorySystem();
 
 /* Enable Mapper Mode, SAMS and Register Modification */
