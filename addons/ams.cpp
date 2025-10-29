@@ -98,8 +98,8 @@ bool InitializeMemorySystem(int sams_pages)
     }
     MaxMapperPages = sams_pages;
     if (MaxMapperPages == 0) {
-        // allocate 32k - TODO: someday, configure this on/off too
-        systemMemory = (Byte*)malloc(32768);
+        // allocate 64k - TODO: someday, configure this on/off too
+        systemMemory = (Byte*)malloc(64*1024);
     } else {
         systemMemory = (Byte*)malloc(MaxMapperPages * MaxPageSize);
     }
@@ -317,6 +317,13 @@ Byte ReadMemoryByte(Word address, READACCESSTYPE rmw)
             // check for non-mirrors mapper bytes - that may not work on real hardware
             if (!bWarnedMapper) {
                 if ((mapperRegisters[pageOffset]&0xff) != ((mapperRegisters[pageOffset]&0xff00)>>8)) {
+                    // The need to write the same byte in both bytes of the word to the
+                    // registers is likely caused by some cards having the mapper respond to
+                    // both even and odd addresses. In that case, whichever byte is written
+                    // last will take precedence. On the TI that would be the MSB, which is
+                    // why the example code I got was using that. (On the Geneve, though,
+                    // it'd end up being the LSB, which would make the desire to write the
+                    // same byte twice make sense - works on both).
                     bWarnedMapper = true;
                     debug_write("Warning: Non-mirrored mapper writes may not work on cards <=1MB (reg %d 0x%04X)", pageOffset, mapperRegisters[pageOffset]);
                 }
