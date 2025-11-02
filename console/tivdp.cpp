@@ -458,7 +458,12 @@ int gettables(int isLayer2)
 		CT=VDPREG[3]<<6;
 		/* Pattern Descriptor Table */
 		PDT=((VDPREG[4]&0x07)<<11);
-		CTsize=32;
+        if (VDPREG[1]&0x10) {
+            // text mode
+            CTsize = 0;
+        } else {
+    		CTsize=32;
+        }
 		PDTsize=2048;
 
         if (isLayer2) {
