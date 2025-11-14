@@ -196,7 +196,7 @@ HMODULE hCartPackDll;										// Handle to speech DLL
 struct CARTS* (*get_app_array)(void);                       // get the applications list
 struct CARTS* (*get_game_array)(void);                      // get the games list
 int (*get_app_count)(void);                                 // get the applications count
-int (*get_game_count)(void);                               // get the games count
+int (*get_game_count)(void);                                // get the games count
 
 // AppMode
 int bEnableAppMode = 0;                                     // whether to enable App Mode
@@ -977,6 +977,10 @@ skiprestofuser:
 	bScrambleMemory = GetPrivateProfileInt("debug","ScrambleRam",	bScrambleMemory, INIFILE) ? true : false;
 	bCorruptDSKRAM =  GetPrivateProfileInt("debug","CorruptDSKRAM",	bCorruptDSKRAM, INIFILE) ? true : false;
 	enableDebugOpcodes = GetPrivateProfileInt("debug", "enableDebugOpcodes", enableDebugOpcodes, INIFILE);
+    bEnableDebugger = GetPrivateProfileInt("debug","enableDebugger",	bEnableDebugger, INIFILE) ? true : false;
+    debuggerPort = GetPrivateProfileInt("debug","debugPort", debuggerPort, INIFILE);
+    bEnableDebugSharedMem = GetPrivateProfileInt("debug","enableDebugSharedMem",	bEnableDebugSharedMem, INIFILE) ? true : false;
+
 
 	// TV stuff
 	TVScanLines=	GetPrivateProfileInt("tvfilter","scanlines",		TVScanLines,	INIFILE);
@@ -1169,6 +1173,9 @@ void SaveConfig() {
 	WritePrivateProfileInt(		"debug",		"ScrambleRam",			bScrambleMemory,			INIFILE);
 	WritePrivateProfileInt(		"debug",		"CorruptDSKRAM",		bCorruptDSKRAM,				INIFILE);
 	WritePrivateProfileInt(		"debug",		"enableDebugOpcodes",	enableDebugOpcodes,			INIFILE);
+    WritePrivateProfileInt(     "debug",        "enableDebugger",	    bEnableDebugger,            INIFILE);
+    WritePrivateProfileInt(     "debug",        "debugPort",            debuggerPort,               INIFILE);
+    WritePrivateProfileInt(     "debug",        "enableDebugSharedMem",	bEnableDebugSharedMem,      INIFILE);
 
 	// TV stuff
 	double thue, tsat, tcont, tbright, tsharp;
@@ -1331,29 +1338,10 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
     HANDLE hMapVDP = NULL;
     HANDLE hMapCPU = NULL;
 
-    // now set up the shared memory - for now just VDP and CPU
-    // note that VDP beyond 18k is F18A register centric and probably won't work like you want anyway
-    hMapVDP = CreateFileMapping(
-        INVALID_HANDLE_VALUE,    // Use system paging file
-        NULL,                    // Default security
-        PAGE_READWRITE,          // Read/write access
-        0,                       // Maximum object size (high-order DWORD)
-        VDPSIZE,             // Maximum object size (low-order DWORD)
-        "Classic99VDPSharedMemory");      // Name of mapping object
-    if (hMapVDP != NULL) {
-        debug_write("Shared VDP as Classic99VDPSharedMemory");
-    }
-    VDP = (Byte*)MapViewOfFile(
-        hMapVDP ,                // Handle to mapping object
-        FILE_MAP_ALL_ACCESS,     // Read/write permission
-        0,
-        0,
-        VDPSIZE);
-    if (VDP == NULL) {
-        debug_write("VDP FAILED TO SHARE - mallocing.");
-        VDP = (Byte*)malloc(VDPSIZE);
-    }
-    // CPU memory is a bit too much of a mess for a simple share right now, maybe in V4
+    // to prevent potential crashes, allocate a VDP buffer.
+    // we'll redo it after reading configuration. I don't think
+    // it'll be racy, but safer this way.
+    VDP = (Byte*)malloc(VDPSIZE);
 
 	hInstance = hInst;
 	hPrevInstance=hInPrevInstance;
@@ -1648,10 +1636,6 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	pCPU->enableDebug=1;		// whether breakpoints affect CPU
 	pGPU->enableDebug=1;		// whether breakpoints affect GPU
 
-	// initialize debugger links
-	InitBug99();
-	initDbgHook();
-
 	// init disk DSR system
 	InitDiskDSR();
 
@@ -1664,6 +1648,50 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 
 	// Read configuration - uses above settings as default!
 	ReadConfig();
+
+    // initialize debugger links
+	InitBug99();
+	initDbgHook();
+
+    // now we can decide on shared memory
+    if ((bEnableDebugger) && (bEnableDebugSharedMem)) {
+        // setup VDP and staticCPU as shared memory
+        // TODO: staticCPU is just ROMs and scratchpad, AMS systemMemory is all dynamicRAM
+
+        // now set up the shared memory - for now just VDP
+        // note that VDP beyond 18k is F18A register centric and probably won't work like you want anyway
+        hMapVDP = CreateFileMapping(
+            INVALID_HANDLE_VALUE,    // Use system paging file
+            NULL,                    // Default security
+            PAGE_READWRITE,          // Read/write access
+            0,                       // Maximum object size (high-order DWORD)
+            VDPSIZE,             // Maximum object size (low-order DWORD)
+            "Classic99VDPSharedMemory");      // Name of mapping object
+        if (hMapVDP != NULL) {
+            if (GetLastError() == ERROR_ALREADY_EXISTS) {
+                debug_write("Another instance already shared memory, not mapping VDP.");
+                CloseHandle(hMapVDP);
+                hMapVDP = NULL;
+            } else {
+                debug_write("Shared VDP as Classic99VDPSharedMemory");
+                Byte *oldVDP = VDP;
+                VDP = (Byte*)MapViewOfFile(
+                    hMapVDP ,                // Handle to mapping object
+                    FILE_MAP_ALL_ACCESS,     // Read/write permission
+                    0,
+                    0,
+                    VDPSIZE);
+                if (VDP != NULL) {
+                    free(oldVDP);
+                } else {
+                    VDP = oldVDP;
+                    debug_write("VDP mapping failed, using standard buffer");
+                }
+            }
+        }
+        // CPU memory is a bit too much of a mess for a simple share right now, maybe in V4
+    }
+
 	// A little hacky, but rebuild the CPU using the new settings
 	pCPU->buildcpu();
 	pGPU->buildcpu();

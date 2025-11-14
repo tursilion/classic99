@@ -1,3 +1,4 @@
+
 //
 // (C) 2019 Mike Brent aka Tursi aka HarmlessLion.com
 // This software is provided AS-IS. No warranty
@@ -260,6 +261,10 @@ extern Byte DSR[16][16384];							// 16 CRU bases, up to 16k each (ROM >4000 spa
 extern Byte CPUMemInited[65536];					// not going to support AMS yet -- might switch to bits, but need to sort out AMS memory usage (16MB vs 1MB?)
 extern Byte VDPMemInited[128*1024];
 extern bool g_bCheckUninit;
+
+extern bool bEnableDebugger;                        // if true, open up the debugger port and shared memory if also active
+extern int debuggerPort;                            // UDP port to listen to for debugger
+extern bool bEnableDebugSharedMem;                  // if true, share memory locally (first emulator instance only, VDP only today)
 
 struct GROMType {
 	Byte GROM[65536];								// GROM space

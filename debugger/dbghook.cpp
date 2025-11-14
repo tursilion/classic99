@@ -39,7 +39,8 @@
 // All memory can be read or written. How the external tool
 // uses it is up to that tool. (This is mostly used by
 // me for testing external code that needs the hardware
-// handy ;) ).
+// handy ;) ). Must be manually enabled in Classic99.ini 
+// (EnableDebugger, DebuggerPort and EnableDebugSharedMem)
 //
 // Functions on port 0x9900
 // Packet is a simple type/address/data format:
@@ -96,14 +97,19 @@ extern Byte *VDP;
 extern Byte staticCPU[];    // 64k memory map, holds ROMs and scratchpad, all else is in AMS
 HANDLE hMapVDP = NULL;
 HANDLE hMapCPU = NULL;
+bool bEnableDebugger = false;                               // if true, open up the debugger port and shared memory if also active
+int debuggerPort = 0x9900;                                  // UDP port to listen to for debugger
+bool bEnableDebugSharedMem = false;                         // if true, share memory locally (first emulator instance only, VDP only today)
 
 void initDbgHook() {
 	sock = NULL;
-#if 1
-	// TODO: this must be configurable and must default to off, do not
-	// release with it on by default (potential security risk)
+
+    if (!bEnableDebugger) {
+        return;
+    }
+
     sockaddr_in RecvAddr;
-    int Port = 0x9900;
+    int Port = debuggerPort;
 
 	// create socket
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -135,7 +141,6 @@ void initDbgHook() {
 	}
 
 	debug_write("dbgHook listening on port 0x9900");
-#endif
 }
 
 void handleBreakpoint(unsigned char *buf, unsigned int p) {
