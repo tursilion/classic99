@@ -1,4 +1,4 @@
-399.084
+399.085
 
 Open source (but restrictive license) emulator including ROMs licensed by Texas Instruments - see [documentation](https://github.com/tursilion/classic99/raw/main/dist/Classic99%20Manual.pdf) for license and restrictions.
 

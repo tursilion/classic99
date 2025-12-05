@@ -3237,7 +3237,8 @@ CString captureScreen(int offset, char illegalByte) {
     for (int row = 0; row<24; ++row) {
         for (int col=0; col < stride; ++col) {
             int index = SIT+row*stride+col;
-            if (index >= sizeof(VDP)) { row=25; break; }   // check for unlikely overrun case
+            // VDP RAM, at least for display purposes, is 16384 bytes
+            if (index >= 16384) { row=25; break; }   // check for unlikely overrun case
             int c = VDP[index] + offset; 
             if ((c>=' ')&&(c < 127)) csout+=(char)c; else csout+=illegalByte;
         }
