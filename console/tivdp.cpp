@@ -679,7 +679,7 @@ int getCharsPerLine() {
 		return -1;
 	}
 
-	if (VDPREG[1] & 0x10)			// MODE BIT 2
+	if (VDPREG[1] & 0x10)			// MODE BIT 2 - text
 	{
 		if (reg0 & 0x02) {			// BITMAP MODE BIT
 			return -1;
@@ -692,13 +692,14 @@ int getCharsPerLine() {
 		}
 	}
 
-	if (VDPREG[1] & 0x08)			// MODE BIT 1
+	if (VDPREG[1] & 0x08)			// MODE BIT 1 - multicolor
 	{
 		return -1;
 	}
 
 	if (reg0 & 0x02) {			// BITMAP MODE BIT
-		return -1;
+        // we'll attempt to treat bitmap mode for the screen reader
+		return 32+128;
 	}
 
     return nCharsPerLine;
@@ -714,7 +715,7 @@ char VDPGetChar(int x, int y, int width, int height) {
 	int ch;
 	int nCharsPerLine=getCharsPerLine();
 
-    if (nCharsPerLine == -1) {
+    if ((nCharsPerLine == -1) || (nCharsPerLine&0x80)) {
         return -1;
     }
 
@@ -3224,22 +3225,73 @@ unsigned char getF18AStatus() {
 	return 0;
 }
 
-// captures a text or graphics mode screen (will NOT do bitmap, assuming graphics mode)
+// captures a text or graphics mode screen (some special cases for bitmap)
 CString captureScreen(int offset, char illegalByte) {
     CString csout;
     int stride = getCharsPerLine();
     if (stride == -1) {
         return "";
     }
+    bool bitmap = false;
+    if (stride & 0x80) {
+        bitmap = true;
+        offset = 0;
+        stride -= 128;
+    }
 
     gettables(0);
 
+    // we do a quick compare of the character set. if the ASCII characters 32-126
+    // have the same patterns as same + 128, then we assume its a doubled character
+    // set for color reasons and mask it to 7 bits
+    // WARNING: reduced bitmap mode color masking not tested
+    int mask = 0xff;    // do not mask
+    if (0 == memcmp(&VDP[PDT+32*8], &VDP[PDT+(32+128)*8], 95*8)) {
+        mask = 0x7f;
+    }
+
     for (int row = 0; row<24; ++row) {
+        // for bitmap, evaluate each third to see if it looks like ASCII
+        if (bitmap) {
+            if ((row == 0)||(row == 8)||(row == 16)) {
+                // but since it's bitmap, recheck the mask
+                if (row > 0) {
+                    if (0 == memcmp(&VDP[PDT+32*8+row*0x100], &VDP[PDT+(32+128)*8+row*0x100], 95*8)) {
+                        mask = 0x7f;
+                    } else {
+                        mask = 0xff;
+                    }
+                }
+
+                // check the next 8 rows
+                bool ok = true;
+                for (int i=0; i<8*stride; ++i) {
+                    int index = SIT+row*stride+i;
+                    int c = (VDP[index] + offset)&mask;
+                    if ((c < ' ') || (c > 126)) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) {
+                    // not ASCII, fill it in with spaces
+                    row += 7;
+                    for (int rr=0; rr<8; rr++) {
+                        for (int cc=0; cc<stride; cc++) {
+                            csout += illegalByte;
+                        }
+                    }
+                    continue;
+                }
+                // otherwise it's good, continue to read it
+            }
+        }
+
         for (int col=0; col < stride; ++col) {
             int index = SIT+row*stride+col;
             // VDP RAM, at least for display purposes, is 16384 bytes
             if (index >= 16384) { row=25; break; }   // check for unlikely overrun case
-            int c = VDP[index] + offset; 
+            int c = (VDP[index] + offset)&mask; 
             if ((c>=' ')&&(c < 127)) csout+=(char)c; else csout+=illegalByte;
         }
         csout+="\r\n";

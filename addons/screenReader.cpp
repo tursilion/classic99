@@ -197,22 +197,29 @@ bool initScreenReader() {
 // in cont mode, we check for diffs and screen scrolls, otherwise we don't
 CString fetchScreenBuffer(bool contMode) {
 	char newBuf[2080];	// for 80x26
+    bool bitmap = false;
 
 	// check if the screen is disabled - if so, all bets are off
 	int charsPerLine = getCharsPerLine();
 	if (charsPerLine == -1) {
 		return "";
 	}
+    if (charsPerLine & 0x80) {
+        bitmap = true;
+        charsPerLine -= 128;
+    }
 
 	// infer the screen offset - this is probably pretty hacky...
 	// but either 32 or 128 should be space... anything else is
 	// dunno!
 	int offset = 0;
-	if ((0 != memcmp(&VDP[PDT+(32*8)], "\0\0\0\0\0\0\0\0", 8)) &&
-		(0 == memcmp(&VDP[PDT+(128*8)], "\0\0\0\0\0\0\0\0", 8))) {
-		// 32 is NOT a space, but 128 IS
-		offset = -96;
-	}
+    if (!bitmap) {
+	    if ((0 != memcmp(&VDP[PDT+(32*8)], "\0\0\0\0\0\0\0\0", 8)) &&
+		    (0 == memcmp(&VDP[PDT+(128*8)], "\0\0\0\0\0\0\0\0", 8))) {
+		    // 32 is NOT a space, but 128 IS
+		    offset = -96;
+	    }
+    }
 
     // build an output string - unknown chars will be '.', Line ending is \r\n
     CString csOut;
@@ -248,7 +255,7 @@ CString fetchScreenBuffer(bool contMode) {
 		for (int c = 0; c < charsPerLine-2; ++c) {
 			int off = r*charsPerLine+c;
         	// strip anything repeated 3 or more times (most likely graphics)
-			if ((newBuf[off]!=0)&&(newBuf[off] != ' ')&&(newBuf[off] == newBuf[off+1]) && (newBuf[off] == newBuf[off+2])) {
+			if ((newBuf[off]!=0)&&(newBuf[off] != ' ')&&(newBuf[off] != '.')&&(newBuf[off] == newBuf[off+1]) && (newBuf[off] == newBuf[off+2])) {
 				// replace the whole string
 				char c = newBuf[off];
 				while (newBuf[off] == c) {
@@ -283,10 +290,13 @@ CString fetchScreenBuffer(bool contMode) {
 				char newchar = newBuf[off];
 				// we can't really tell if something is a letter or graphics, but, if
 				// we check for solid blocks we can at least filter out the master title page
-				if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
-					(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
-					newchar = ' ';
-				}
+                // but don't do this for bitmap - we assume the other filtering is enough
+                if (!bitmap) {
+				    if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
+					    (0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
+					    newchar = ' ';
+				    }
+                }
 				if ((newchar >= ' ') && (newchar < '~')) {
 					if ((newchar != ' ') || (lastchar !=  ' ')) {
 						csLine += newchar;
@@ -332,10 +342,13 @@ CString fetchScreenBuffer(bool contMode) {
 					int newchar = newBuf[idx];
 					// we can't really tell if something is a letter or graphics, but, if
 					// we check for solid blocks we can at least filter out the master title page
-					if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
-						(0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
-						newchar = ' ';
-					}
+                    // but don't do this for bitmap - we assume the other filtering is enough
+                    if (!bitmap) {
+					    if ((0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\0\0\0\0\0\0\0\0", 8)) ||
+						    (0 == memcmp(&VDP[(newchar-offset)*8+PDT], "\xff\xff\xff\xff\xff\xff\xff\xff", 8))) {
+						    newchar = ' ';
+					    }
+                    }
 					if ((newchar<=' ')||(newchar>='~')) {
 						addWord(word, newList, rowList, r);
 					} else {
@@ -451,21 +464,24 @@ bool GetContinuousRead() {
 
 // clear out the buffer and stop the current read out
 void ShutUp() {
-	EnterCriticalSection(&csSpeech);
-		while (!speechList.empty()) {
-			speechList.pop();
-		}
-		// try to skip off the end of the current sentence
-		ULONG cnt = 0;
-		pVoice->Skip(L"Sentence", 9999, &cnt);
-		if (cnt > 0) debug_write("Skipped %d sentences on shut up...", cnt);
-	LeaveCriticalSection(&csSpeech);
+    if (pVoice != NULL) {
+	    EnterCriticalSection(&csSpeech);
+		    while (!speechList.empty()) {
+			    speechList.pop();
+		    }
+		    // try to skip off the end of the current sentence
+		    ULONG cnt = 0;
+		    pVoice->Skip(L"Sentence", 9999, &cnt);
+		    if (cnt > 0) debug_write("Skipped %d sentences on shut up...", cnt);
+	    LeaveCriticalSection(&csSpeech);
+    }
 }
 
 // call this when the screen is cleared, and we will delete the diff buffer,
 // so that all text displayed is considered new.
 void ClearHistory() {
 	EnterCriticalSection(&csSpeech);
+        ShutUp();               // probably don't need what we were saying
 		dictionary.clear();		// since we are starting from scratch, we can wipe the dictionary
 		oldList.clear();
 	LeaveCriticalSection(&csSpeech);

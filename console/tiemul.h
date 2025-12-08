@@ -44,7 +44,7 @@
 #include <atlstr.h>
 
 // Defines
-#define VERSION "QI399.085"
+#define VERSION "QI399.086"
 #define DEBUGLEN 120
 #define DEBUGLINES 40
 
@@ -320,7 +320,7 @@ void WriteAudioFrame(void *pData, int nLen);
 void CloseAVI();
 void ConfigAVI();
 void SaveScreenshot(bool bAuto, bool bFiltered);
-bool SetupSams(int sams_pages);
+bool SetupSams(int sams_pages, bool bWarmboot);
 
 int getCharsPerLine();
 char VDPGetChar(int x, int y, int width, int height);

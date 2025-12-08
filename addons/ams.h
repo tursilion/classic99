@@ -50,7 +50,7 @@ enum MapperMode
 };
 
 /* AMS/SAMS initialization and shutdown */
-bool InitializeMemorySystem(int sams_pages);
+bool InitializeMemorySystem(int sams_pages, bool bWarm);
 void ShutdownMemorySystem();
 
 /* Enable Mapper Mode, SAMS and Register Modification */

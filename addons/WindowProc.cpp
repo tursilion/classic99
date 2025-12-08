@@ -69,6 +69,7 @@
 #include "..\disk\FiadDisk.h"
 #include "..\disk\ImageDisk.h"
 #include "..\disk\TICCDisk.h"
+#include "ams.h"
 #include "loadsave_brk.h"
 
 extern CPU9900 * volatile pCurrentCPU;
@@ -148,6 +149,9 @@ extern int bShowKeyboard;
 extern int statusReadLine;
 extern int statusReadCount;
 // sams config
+extern int MaxMapperPages;
+extern MapperMode mapperMode;
+extern bool mapperRegistersEnabled;
 extern int sams_pages;
 extern Byte staticCPU[];					    // 64k memory map, holds ROMs and scratchpad, all else is in AMS
 extern Word mapperRegisters[16];
@@ -1278,7 +1282,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				    timer9901IntReq=0;
 				    wrword(0x83c4,0);						// Console bug work around, make sure no user int is active
 				    init_kb();								// Reset keyboard emulation
-				    if (!SetupSams(sams_pages)) {           // Prepare the AMS system
+				    if (!SetupSams(sams_pages, bWarmBoot)) {           // Prepare the AMS system
                         fail("Can't allocate memory");
                     }
 				    if (NULL != InitSid) {
@@ -4832,7 +4836,10 @@ void DebugUpdateThread(void*) {
 				csOut+="\r\n";
 
 				// AMS - 16 registers up to 16-bits each (normally 8 though)
-				sprintf(buf1, "AMS\r\n %04X %04X %04X %04X %04X %04X %04X %04X\r\n",
+                sprintf(buf1, "AMS (Pages:%d Regs:%d Map:%d)\r\n",
+                        MaxMapperPages, mapperRegistersEnabled?1:0, (mapperMode == Map)?1:0);
+				csOut +=buf1;
+				sprintf(buf1, " %04X %04X %04X %04X %04X %04X %04X %04X\r\n",
 					mapperRegisters[0],mapperRegisters[1],mapperRegisters[2],mapperRegisters[3],
 					mapperRegisters[4],mapperRegisters[5],mapperRegisters[6],mapperRegisters[7]);
 				csOut +=buf1;

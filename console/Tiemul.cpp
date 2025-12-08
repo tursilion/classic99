@@ -1227,8 +1227,8 @@ void SaveConfig() {
 }
 
 // convert config into meaningful values for AMS system
-bool SetupSams(int sams_pages) {
-	if (!InitializeMemorySystem(sams_pages)) {
+bool SetupSams(int sams_pages, bool bWarm) {
+	if (!InitializeMemorySystem(sams_pages, bWarm)) {
         return false;
     }
 	SetMemoryMapperMode(Passthrough);
@@ -1747,7 +1747,7 @@ int WINAPI WinMain( HINSTANCE hInst, HINSTANCE hInPrevInstance, LPSTR lpCmdLine,
 	cfg_cpf=max_cpf;
 
 	// set up SAMS emulation
-	if (!SetupSams(sams_pages)) {
+	if (!SetupSams(sams_pages, false)) {
         fail("Can't allocate memory");
     }
 
@@ -5578,12 +5578,15 @@ void wvdpbyte(Word x, Byte c)
 				++lastVideoCount;
 				// TODO: for some reason when entering TI BASIC, it only does 767 on the ALL and then starts reading?
 				if (lastVideoCount >= 767) {
-					ScreenReader::ClearHistory();
+                    if (ScreenReader::GetContinuousRead()) {
+			    		ScreenReader::ClearHistory();
+                    }
 					lastVideoCount = 0;
 				}
 			}
 		} else {
 			lastVideoByte = c;
+            lastVideoCount = 0;
 		}
 
 		// verified on hardware
@@ -5650,7 +5653,9 @@ void wVDPreg(Byte r, Byte v)
 	// update to detect it.
 	if ((r == 1)&&((v&0x40)==0)) {
 		// screen blank
-		ScreenReader::ClearHistory();
+        if (ScreenReader::GetContinuousRead()) {
+    		ScreenReader::ClearHistory();
+        }
 	}
 
 	// for the F18A GPU, copy it to RAM

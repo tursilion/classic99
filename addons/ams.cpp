@@ -56,20 +56,19 @@
 // Now RXB 2020 on you can use these pages but in Documents it states that is not a good idea.
 // I do believe devices like TIPI and some others do use some of these pages like 0 and 1 but not entirely sure this is the case.
 
-
 // define sizes for memory arrays 
-static int MaxMapperPages	    = 256;      // MUST be a power of 2
+int MaxMapperPages	    = 256;      // MUST be a power of 2
 static const int MaxPageSize	= 0x1000;	// 4k
 
 // define sizes for register arrays
 static const int MaxMapperRegisters = 0x10;
 
-static MapperMode mapperMode = Passthrough;		// Default to not mapping addresses
+MapperMode mapperMode = Passthrough;		// Default to not mapping addresses
 Word mapperRegisters[MaxMapperRegisters] = { 0 };
-Byte *systemMemory;                             // can be huge, so malloc it
+Byte *systemMemory=NULL;                        // can be huge, so malloc it
 Byte staticCPU[0x10000] = { 0 };	            // 64k memory map, holds ROMs and scratchpad, all else is in AMS systemMemory
 
-static bool mapperRegistersEnabled = false;
+bool mapperRegistersEnabled = false;
 static bool bWarnedMapper = false;
 
 // references into C99
@@ -79,7 +78,7 @@ extern bool bWarmBoot;
 extern struct _break BreakPoints[];
 extern int nBreakPoints;
 
-bool InitializeMemorySystem(int sams_pages)
+bool InitializeMemorySystem(int sams_pages, bool bWarm)
 {
     // if you get stupid, you get 1MB
     // nobody has tested over 32MB (8192 pages)
@@ -92,22 +91,19 @@ bool InitializeMemorySystem(int sams_pages)
         debug_write("WARNING: Classic software may not work with AMS >1MB");
     }
 
-    if (NULL != systemMemory) {
-        // in case the size changed, reallocate - we should get the same block back otherwise
-        free(systemMemory);
-    }
     MaxMapperPages = sams_pages;
+    int memsize = MaxMapperPages * MaxPageSize;
     if (MaxMapperPages == 0) {
         // allocate 64k - TODO: someday, configure this on/off too
-        systemMemory = (Byte*)malloc(64*1024);
+        memsize = 64*1024;
+        systemMemory = (Byte*)realloc(systemMemory, memsize);
     } else {
-        systemMemory = (Byte*)malloc(MaxMapperPages * MaxPageSize);
+        systemMemory = (Byte*)realloc(systemMemory, memsize);
     }
     if (NULL == systemMemory) {
-        debug_write("Unable to allocate %dk for system memory, abort!", MaxMapperPages * MaxPageSize / 1024);
+        debug_write("Unable to allocate %dk for system memory, abort!", memsize / 1024);
         return false;
     }
-    memset(systemMemory, 0, MaxMapperPages * MaxPageSize);
 
 	// 3. Set up initial register values for pass-through and map modes with default page numbers
 	for (int reg = 0; reg < MaxMapperRegisters; reg++)
@@ -116,8 +112,9 @@ bool InitializeMemorySystem(int sams_pages)
         mapperRegisters[reg] = 0;
 	}
 
-	if (!bWarmBoot) {
-		memrnd(systemMemory, MaxMapperPages * MaxPageSize);
+	if (!bWarm) {
+		memrnd(systemMemory, memsize);
+        memrnd(staticCPU, sizeof(staticCPU));
 	}
 
     // re-enable the warning on reset
