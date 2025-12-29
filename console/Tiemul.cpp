@@ -7463,6 +7463,11 @@ void DoMemoryDump() {
 			}
 			fclose(fp);
 		}
+		fp=fopen("GROMDUMP.BIN", "wb");
+		if (NULL != fp) {
+			fwrite(GROMBase[0].GROM, 1, 65536, fp);
+			fclose(fp);
+		}
 		debug_write("Dumped memory to MEMDUMP.BIN and VDPDUMP.BIN");
 	}
 }
