@@ -4713,6 +4713,7 @@ void wcpubyte(Word x, Byte c)
 					if ((BreakPoints[idx].Data>0)&&(BreakPoints[idx].Data<10)) {
 						if (NULL != DumpFile[BreakPoints[idx].Data]) {
 							fputc(c, DumpFile[BreakPoints[idx].Data]);
+                            //fprintf(DumpFile[BreakPoints[idx].Data], "%04X: %02X\n", x, c);
 						}
 					}
 				}

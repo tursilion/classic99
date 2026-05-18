@@ -180,7 +180,7 @@ Word BStatusLookup[256];
 #define FormatI { Td=(in&0x0c00)>>10; Ts=(in&0x0030)>>4; D=(in&0x03c0)>>6; S=(in&0x000f); B=(in&0x1000)>>12; fixS(); }
 #define FormatII { D=(in&0x00ff); }
 #define FormatIII { Td=0; Ts=(in&0x0030)>>4; D=(in&0x03c0)>>6; S=(in&0x000f); B=0; fixS(); }
-#define FormatIV { D=(in&0x03c0)>>6; Ts=(in&0x0030)>>4; S=(in&0x000f); B=(D<9); fixS(); }           // No destination (CRU ops)
+#define FormatIV { D=(in&0x03c0)>>6; if (D==0) D=16; Ts=(in&0x0030)>>4; S=(in&0x000f); B=(D<9); fixS(); }   // No destination (CRU ops)
 #define FormatV { D=(in&0x00f0)>>4; S=(in&0x000f); S=WP+(S<<1); }
 #define FormatVI { Ts=(in&0x0030)>>4; S=in&0x000f; B=0; fixS(); }                                   // No destination (single argument instructions)
 #define FormatVII {}                                                                                // no argument
@@ -1760,8 +1760,7 @@ void CPU9900::op_ldcr()
     // TODO: E/A says the source address is always even - check if that is true even
     // on a byte transfer?
 
-    FormatIV;
-    if (D==0) D=16;     // this also makes the timing of (0=52 cycles) work - 2*16=32+20=52
+    FormatIV;       // D==0 becomes D=16. This also makes the timing of (0=52 cycles) work - 2*16=32+20=52
     x1=(D<9 ? RCPUBYTE(S) : ROMWORD(S));    // read source
   
     x3=1;
@@ -1858,7 +1857,6 @@ void CPU9900::op_stcr()
     // Source address is even if a word transfer, byte address if 1-8 bits.
 
     FormatIV;
-    if (D==0) D=16;
     x1=0; x3=1;
   
     cruBase=(ROMWORD(WP+24)>>1)&0xfff;  // read R12

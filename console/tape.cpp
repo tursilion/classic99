@@ -57,7 +57,7 @@ static const int TapeSampleRate = 16000;  // we resample to this, unsigned byte
 static const int cutoff = 0x12;          // at what cutoff do we treat it as a 1?
 
 // from the rest of the emulator - even though we do this I doubt the
-// tape will work at any speed but normal....
+// tape will work at any speed but normal.... (actually it does work faster in overdrive, surprisingly)
 extern int max_cpf, hzRate;
 extern double nDACLevel;
 extern CRITICAL_SECTION TapeCS;
@@ -235,14 +235,14 @@ void LoadTape() {
     fclose(fp);
 
     // read the header...
-    if ((buf[0]!='R')||(buf[1]!='I')|(buf[2]!='F')|(buf[3]!='F')) {
+    if ((buf[0]!='R')||(buf[1]!='I')||(buf[2]!='F')||(buf[3]!='F')) {
         LeaveCriticalSection(&TapeCS);
         debug_write("WAV is missing RIFF header.");
         MessageBox(myWnd, "WAV missing RIFF header, not using...", "Classic99 Error", MB_OK);
         free(buf);
         return;
     }
-    if ((buf[8]!='W')||(buf[9]!='A')|(buf[10]!='V')|(buf[11]!='E')) {
+    if ((buf[8]!='W')||(buf[9]!='A')||(buf[10]!='V')||(buf[11]!='E')) {
         LeaveCriticalSection(&TapeCS);
         debug_write("WAV is missing WAVE header.");
         MessageBox(myWnd, "WAV missing WAVE header, not using...", "Classic99 Error", MB_OK);
@@ -250,7 +250,7 @@ void LoadTape() {
         return;
     }
     // technically, this can be elsewhere...
-    if ((buf[12]!='f')||(buf[13]!='m')|(buf[14]!='t')|(buf[15]!=' ')) {
+    if ((buf[12]!='f')||(buf[13]!='m')||(buf[14]!='t')||(buf[15]!=' ')) {
         LeaveCriticalSection(&TapeCS);
         debug_write("WAV is missing fmt header.");
         MessageBox(myWnd, "WAV missing fmt header, not using...", "Classic99 Error", MB_OK);
