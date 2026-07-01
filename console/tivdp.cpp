@@ -2439,6 +2439,10 @@ void DrawSprites(int scanline)
 			pat=pat&0xfc;				// if double-sized, it must be a multiple of 4
 		}
 		col=VDP[curSAL]&0xf;			// sprite color 
+        if (bF18AActive) {
+            // not used if it's an ECM sprite
+            col |= (VDPREG[0x18]&0x30); // already shifted correctly
+        }
 	
 		if (VDP[curSAL++]&0x80)	{		// early clock
 			xx-=32;
