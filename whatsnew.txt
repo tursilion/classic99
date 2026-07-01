@@ -2351,3 +2351,11 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 - Added Phoenix Wright Turnabout Storm game
 - Added Zombie MOTIF
 - rebuilt speech.dll with correct switches for XP
+
+-----------------------------------------------
+
+1 Jul 2026
+
+- bugfix - fix F18A reset and re-lock
+- add palette index for non-ECM F18A sprites
+
