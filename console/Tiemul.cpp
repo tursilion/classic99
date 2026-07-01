@@ -5335,14 +5335,19 @@ void wvdpbyte(Word x, Byte c)
 				int nData = VDPADD&0xff;
 
 				if (bF18Enabled) {
-					if ((nReg == 57) && (nData == 0x1c)) {
+					if (nReg == 57) {
 						// F18A unlock sequence? Supposed to be twice but for now we'll just take equal
 						// TODO: that's hacky and it's wrong. Fix it. 
-						if (VDPREG[nReg] == nData) {	// but wait -- isn't this already verifying twice? TODO: Double-check procedure
+						if ((VDPREG[nReg] == nData) && (nData == 0x1c)) {
 							bF18AActive = true;
 							debug_write("F18A Enhanced registers unlocked.");
 						} else {
 							VDPREG[nReg] = nData;
+                            // TODO: also hacky and wrong - writing anything else should relock? TEST THIS ON HARDWARE
+                            if (bF18AActive) {
+                                debug_write("F18A Enhanced registers re-locked.");
+                            }
+                            bF18AActive = false;
 						}
 						return;
 					}
@@ -5401,8 +5406,8 @@ void wvdpbyte(Word x, Byte c)
                         // 0x20 - trigger GPU on VSYNC
                         // 0x40 - trigger GPU on HSYNC
                         // 0x80 - reset VDP registers to poweron defaults (DONE)
-                        if (nReg & 0x80) {
-                            debug_write("Resetting F18A registers");
+                        if (nData & 0x80) {
+                            debug_write("Resetting and locking F18A registers");
                             vdpReset(false);
                         }
                     }
