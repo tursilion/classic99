@@ -2548,7 +2548,12 @@ bool TipiWebDisk::TryOpenFile(FileInfo *pFile) {
         if ((pFile->FileType&TIFILES_INTERNAL) && ((pFile->FileType&TIFILES_VARIABLE)==0) && (pFile->RecordLength == 0)) {
             pFile->RecordLength = 38;
         }
-		// fill in the information 
+        if (pFile->RecordLength == 0) {
+            // if it's still zero, then assume DV and set 80 for TI text
+            pFile->RecordLength = 80;
+        }
+
+        // fill in the information 
 		lclInfo.LengthSectors=(lclInfo.initDataSize+255)/256+1;
 		lclInfo.FileType=pFile->FileType;
 		lclInfo.RecordsPerSector=pFile->RecordsPerSector;
@@ -2560,7 +2565,7 @@ bool TipiWebDisk::TryOpenFile(FileInfo *pFile) {
         // do some fixup of the NumberRecords field
 		if (pFile->FileType & TIFILES_VARIABLE) {
             // we don't actually know on variable files, but we aren't gonna care anyway
-            lclInfo.NumberRecords = lclInfo.LengthSectors;
+            lclInfo.NumberRecords = lclInfo.LengthSectors-1;    // don't include the info sector
 		}
 	}
 
@@ -3249,7 +3254,7 @@ bool TipiWebDisk::BufferUnknownFile(FileInfo *pFile) {
 	// the +10 gives it a little room to grow
 	// the +2 gives room for a length word (16bit) at the beginning of each
 	// record, necessary because it may contain binary data with zeros
-    int actualRecords = pFile->initDataSize / pFile->RecordLength;
+    int actualRecords = (pFile->initDataSize+pFile->RecordLength-1) / pFile->RecordLength;
 	pFile->nDataSize = (actualRecords+10) * (pFile->RecordLength + 2);
 	pFile->pData = (unsigned char*)malloc(pFile->nDataSize);
 
@@ -3267,16 +3272,34 @@ bool TipiWebDisk::BufferUnknownFile(FileInfo *pFile) {
 		// clear buffer
 		memset(pData, 0, pFile->RecordLength+2);
 
-		// read a fixed record
+		// normally expecting fixed records, but if the user allowed variable then allow that
+        // TODO: I don't know if TIPI allows that? Need to check.
     	*(unsigned short*)pData = pFile->RecordLength;
 		pData+=2;
 
-		if (pOffset+pFile->RecordLength > pFile->initData+pFile->initDataSize) {
-			debug_write("Expected %d bytes but only %d left - truncating read at record %d.", pFile->RecordLength, 
-                                pFile->initData+pFile->initDataSize-pOffset, idx);
-			pFile->NumberRecords = idx;
-			break;
-		}
+        if (pFile->FileType & TIFILES_VARIABLE) {
+		    if (pOffset+pFile->RecordLength > pFile->initData+pFile->initDataSize) {
+                // not enough data left to fill the final record, so make it smaller
+                int realSize = pFile->initData+pFile->initDataSize-pOffset;
+                pData-=2;   // go back to the header
+                *(unsigned short*)pData = realSize; // WARNING: You can't append after this!
+		        pData+=2;
+
+                // now copy the data inline
+                memcpy(pData, pOffset, realSize);
+                pOffset+=realSize;
+    	        pData += realSize;
+                pFile->NumberRecords = idx+1;
+                break;
+		    }
+        } else {
+		    if (pOffset+pFile->RecordLength > pFile->initData+pFile->initDataSize) {
+			    debug_write("Expected %d bytes but only %d left - truncating read at record %d.", pFile->RecordLength, 
+                                    pFile->initData+pFile->initDataSize-pOffset, idx);
+			    pFile->NumberRecords = idx;
+			    break;
+		    }
+        }
 
         memcpy(pData, pOffset, pFile->RecordLength);
         pOffset+=pFile->RecordLength;
@@ -3284,7 +3307,7 @@ bool TipiWebDisk::BufferUnknownFile(FileInfo *pFile) {
         pFile->NumberRecords = idx+1;
 	}
 
-	debug_write("Memory read %d records", pFile->NumberRecords);
+	debug_write("Memory read %d records", actualRecords);
 	return true;
 }
 

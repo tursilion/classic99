@@ -6675,10 +6675,15 @@ int CheckJoysticks(Word ad, int col) {
 				if ((installedJoysticks&(1<<(device-JOYSTICKID1))) == 0) {
 					return 1;
 				}
+                if (joyGetNumDevs() < device+1) {
+                    debug_write("Joystick device %d not installed, disabling.", device);
+                    installedJoysticks&=~(1<<(device-JOYSTICKID1));
+                }
 
 				memset(&myJoy, 0, sizeof(myJoy));
 				myJoy.dwSize=sizeof(myJoy);
 				myJoy.dwFlags=JOY_RETURNALL | JOY_USEDEADZONE;
+
 				MMRESULT joyret = joyGetPosEx(device, &myJoy);
 				if (JOYERR_NOERROR == joyret) {
 					// TODO: we do all this work to calculate both axes plus the buttons, but we only
