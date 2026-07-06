@@ -67,6 +67,8 @@
 // 0x21 - network variables - https://github.com/jedimatt42/tipi/wiki/Extension-NetVar
 // 0x22 - TCP - https://github.com/jedimatt42/tipi/wiki/Extension-TCP
 // 0x23 - UDP - https://github.com/jedimatt42/tipi/wiki/Extension-UDP
+// 0x24 - TLS - https://github.com/jedimatt42/tipi/wiki/Extension-TLS (omg why?)
+// 0x25 - LOG - https://github.com/jedimatt42/tipi/wiki/Extension-LOG
 
 // This TIPI Sim will install at CRU >1200
 //
@@ -110,6 +112,9 @@
 #include <WS2tcpip.h>
 #include <windows.h>
 #include <winhttp.h>
+#include <Security.h>
+#include <WinCrypt.h>
+#include <schannel.h>
 #include <stdio.h>
 #include <io.h>
 #include <atlstr.h>
@@ -155,6 +160,17 @@ unsigned char *rxMessageBuf = NULL; // data storage - size may vary
 int rxMessageLen = 0;               // current message size (not necessarily the full buffer size)
 SOCKET sock[256] = { 0 };           // up to 256 sockets are allowed (here, I share them)
 
+struct TlsState {
+    bool active = false;
+    CtxtHandle ctx;       // security context
+    bool handshakeDone = false;
+    SecPkgContext_StreamSizes streamSizes;
+};
+SCHANNEL_CRED credData = {0};
+CredHandle g_cred;      // client credentials
+TlsState tls[256];
+bool tlsInitialized = false;
+
 bool callTipi();
 bool dsrTipi();
 bool dsrUri(int x);
@@ -177,6 +193,8 @@ bool handleMouse(unsigned char *buf, int len);
 bool handleNetvars(unsigned char *buf, int len);
 bool handleTcp(unsigned char *buf, int len);
 bool handleUdp(unsigned char *buf, int len);
+bool handleTls(unsigned char *buf, int len);
+bool handleLog(unsigned char *buf, int len);
 
 bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile));
 bool bufferWebFile(FileInfo *pFile);
@@ -195,6 +213,318 @@ static const unsigned char LoadPAB[] = {
     0x20, 0x06, // max size 0x2006 (8k+EA5 header)
     0x00, 0x00  // BIAS, name length
 };
+
+// ---- TLS stuff - this probably could all be moved to its own file ----
+// ---- (and maybe even used in other apps!)
+// TLS setup function - yeah, openssl is a lot easier, but trying to
+// avoid third party libraries... this is a fuckton of work for a function
+// that sends a couple hundred bytes at a time...
+bool initTlsGlobal()
+{
+    credData.dwVersion = SCHANNEL_CRED_VERSION;
+    credData.dwFlags =
+        SCH_CRED_NO_DEFAULT_CREDS |
+        SCH_CRED_MANUAL_CRED_VALIDATION;   // matches Python's "unverified" TLS
+#ifdef SP_PROT_TLS1_3_CLIENT
+    credData.grbitEnabledProtocols =
+        SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_3_CLIENT;
+#else
+    // might need to update my windows lib...
+    credData.grbitEnabledProtocols =
+        SP_PROT_TLS1_2_CLIENT;
+#endif
+
+    TimeStamp ts;
+
+    SECURITY_STATUS sc = AcquireCredentialsHandle(
+        NULL,
+        UNISP_NAME,
+        SECPKG_CRED_OUTBOUND,
+        NULL,
+        &credData,
+        NULL,
+        NULL,
+        &g_cred,
+        &ts
+    );
+
+    if (sc != SEC_E_OK) {
+        debug_write("TLS init failed with code 0x%x", sc);
+    } else {
+        debug_write("Global TLS initialization okay");
+    }
+
+    return (sc == SEC_E_OK);
+}
+
+// set up the TLS connection after the TCP connect is done
+bool tlsHandshake(int index, const char* hostname)
+{
+    char hostBuf[256];
+    strncpy(hostBuf, hostname, sizeof(hostBuf));
+    hostBuf[sizeof(hostBuf)-1] = 0;
+
+    tls[index].active = true;
+    tls[index].handshakeDone = false;
+    memset(&tls[index].ctx, 0, sizeof(CtxtHandle));
+
+    DWORD ctxReq =
+        ISC_REQ_SEQUENCE_DETECT |
+        ISC_REQ_REPLAY_DETECT   |
+        ISC_REQ_CONFIDENTIALITY |
+        ISC_REQ_ALLOCATE_MEMORY |
+        ISC_REQ_USE_SUPPLIED_CREDS |
+        ISC_REQ_STREAM;
+
+    DWORD ctxAttr = 0;
+    TimeStamp ts;
+
+    // first call: no input
+    SecBuffer outBuf;
+    SecBufferDesc outDesc;
+    outBuf.BufferType = SECBUFFER_TOKEN;
+    outBuf.cbBuffer   = 0;
+    outBuf.pvBuffer   = NULL;
+    outDesc.ulVersion = SECBUFFER_VERSION;
+    outDesc.cBuffers  = 1;
+    outDesc.pBuffers  = &outBuf;
+
+    SECURITY_STATUS sc = InitializeSecurityContext(
+        &g_cred,
+        NULL,
+        (SEC_CHAR*)hostBuf,
+        ctxReq,
+        0,
+        0,
+        NULL,
+        0,
+        &tls[index].ctx,
+        &outDesc,
+        &ctxAttr,
+        &ts
+    );
+
+    if (FAILED(sc) && sc != SEC_I_CONTINUE_NEEDED) {
+        debug_write("TLS init failed initial code 0x%x", sc);
+        return false;
+    }
+
+    if (outBuf.cbBuffer && outBuf.pvBuffer)
+    {
+        send(sock[index], (char*)outBuf.pvBuffer, outBuf.cbBuffer, 0);
+        FreeContextBuffer(outBuf.pvBuffer);
+    }
+
+    // running encrypted buffer
+    char  encBuf[8192];
+    DWORD encLen = 0;
+
+    while (!tls[index].handshakeDone)
+    {
+        // read more if we have no data or ISC asked for more
+        int r = recv(sock[index], encBuf + encLen, sizeof(encBuf) - encLen, 0);
+        if (r <= 0) {
+            debug_write("TLS init recv failed code %d", r);
+            return false;
+        }
+
+        encLen += r;
+
+        SecBuffer inBufs[2];
+        SecBufferDesc inDesc;
+        inBufs[0].BufferType = SECBUFFER_TOKEN;
+        inBufs[0].cbBuffer   = encLen;
+        inBufs[0].pvBuffer   = encBuf;
+        inBufs[1].BufferType = SECBUFFER_EMPTY;
+        inBufs[1].cbBuffer   = 0;
+        inBufs[1].pvBuffer   = NULL;
+
+        inDesc.ulVersion = SECBUFFER_VERSION;
+        inDesc.cBuffers  = 2;
+        inDesc.pBuffers  = inBufs;
+
+        outBuf.BufferType = SECBUFFER_TOKEN;
+        outBuf.cbBuffer   = 0;
+        outBuf.pvBuffer   = NULL;
+        outDesc.pBuffers  = &outBuf;
+
+        sc = InitializeSecurityContext(
+            &g_cred,
+            &tls[index].ctx,
+            (SEC_CHAR*)hostBuf,
+            ctxReq,
+            0,
+            0,
+            &inDesc,
+            0,
+            NULL,
+            &outDesc,
+            &ctxAttr,
+            &ts
+        );
+
+        if (sc == SEC_E_OK)
+        {
+            tls[index].handshakeDone = true;
+        }
+        else if (sc == SEC_I_CONTINUE_NEEDED)
+        {
+            if (outBuf.cbBuffer && outBuf.pvBuffer)
+            {
+                send(sock[index], (char*)outBuf.pvBuffer, outBuf.cbBuffer, 0);
+                FreeContextBuffer(outBuf.pvBuffer);
+            }
+        }
+        else if (sc == SEC_E_INCOMPLETE_MESSAGE)
+        {
+            // need more data: keep encBuf as-is, loop to recv again
+            continue;
+        }
+        else
+        {
+            debug_write("TLS init data failed code 0x%x", sc);
+            return false;
+        }
+
+        // handle SECBUFFER_EXTRA: preserve leftover bytes for next call
+        if (inBufs[1].BufferType == SECBUFFER_EXTRA)
+        {
+            DWORD extra = inBufs[1].cbBuffer;
+            memmove(encBuf, (char*)encBuf + (encLen - extra), extra);
+            encLen = extra;
+        }
+        else
+        {
+            encLen = 0;
+        }
+    }
+
+    // we're successful, get the encryption notes
+    SecPkgContext_StreamSizes sizes;
+    sc = QueryContextAttributes(
+        &tls[index].ctx,
+        SECPKG_ATTR_STREAM_SIZES,
+        &sizes
+    );
+    if (sc != SEC_E_OK) {
+        // handle error
+    }
+    tls[index].streamSizes = sizes;  // store in your TlsState
+
+    debug_write("Socket %d successful TLS handshake", index);
+    return true;
+}
+
+// write encrypted data to a TLS connection
+bool tlsWrite(int index, const unsigned char* data, int len)
+{
+    const auto& sizes = tls[index].streamSizes;
+
+    // enforce maximum message size
+    if (len > (int)sizes.cbMaximumMessage)
+        len = sizes.cbMaximumMessage;  // or chunk in a loop
+
+    // single contiguous buffer: header + data + trailer
+    int total = sizes.cbHeader + len + sizes.cbTrailer;
+    std::vector<unsigned char> out(total);
+
+    SecBuffer bufs[4];
+    SecBufferDesc desc;
+
+    // header
+    bufs[0].BufferType = SECBUFFER_STREAM_HEADER;
+    bufs[0].pvBuffer   = out.data();
+    bufs[0].cbBuffer   = sizes.cbHeader;
+
+    // data
+    bufs[1].BufferType = SECBUFFER_DATA;
+    bufs[1].pvBuffer   = out.data() + sizes.cbHeader;
+    bufs[1].cbBuffer   = len;
+    memcpy(bufs[1].pvBuffer, data, len);
+
+    // trailer
+    bufs[2].BufferType = SECBUFFER_STREAM_TRAILER;
+    bufs[2].pvBuffer   = out.data() + sizes.cbHeader + len;
+    bufs[2].cbBuffer   = sizes.cbTrailer;
+
+    // unused
+    bufs[3].BufferType = SECBUFFER_EMPTY;
+    bufs[3].pvBuffer   = nullptr;
+    bufs[3].cbBuffer   = 0;
+
+    desc.ulVersion = SECBUFFER_VERSION;
+    desc.cBuffers  = 4;
+    desc.pBuffers  = bufs;
+
+    SECURITY_STATUS sc = EncryptMessage(&tls[index].ctx, 0, &desc, 0);
+    if (sc != SEC_E_OK) {
+        debug_write("TLS encryption failed, code 0x%x", sc);
+        return false;
+    }
+
+    // send header + encrypted data + trailer
+    int toSend = bufs[0].cbBuffer + bufs[1].cbBuffer + bufs[2].cbBuffer;
+    int sent   = send(sock[index], (const char*)out.data(), toSend, 0);
+    return (sent == toSend);
+}
+
+// read encrypted data from a TLS connection
+int tlsRead(int index, unsigned char* out, int maxOut)
+{
+    char encBuf[4096];
+    int r = recv(sock[index], encBuf, sizeof(encBuf), 0);
+    if (r <= 0) {
+        return 0;
+    }
+
+    SecBuffer secBuf[4];
+    SecBufferDesc secDesc;
+
+    secBuf[0].BufferType = SECBUFFER_DATA;
+    secBuf[0].cbBuffer = r;
+    secBuf[0].pvBuffer = encBuf;
+
+    secBuf[1].BufferType = SECBUFFER_EMPTY;
+    secBuf[2].BufferType = SECBUFFER_EMPTY;
+    secBuf[3].BufferType = SECBUFFER_EMPTY;
+
+    secDesc.ulVersion = SECBUFFER_VERSION;
+    secDesc.cBuffers = 4;
+    secDesc.pBuffers = secBuf;
+
+    SECURITY_STATUS sc = DecryptMessage(&tls[index].ctx, &secDesc, 0, NULL);
+    if (sc != SEC_E_OK) {
+        debug_write("TLS decryption may have failed, code 0x%x", sc);
+        return 0;
+    }
+
+    // Decrypted data is in SECBUFFER_DATA or SECBUFFER_EXTRA
+    for (int i = 0; i < 4; i++)
+    {
+        if (secBuf[i].BufferType == SECBUFFER_DATA)
+        {
+            int copyLen = min(maxOut, (int)secBuf[i].cbBuffer);
+            memcpy(out, secBuf[i].pvBuffer, copyLen);
+            return copyLen;
+        }
+    }
+
+    return 0;
+}
+
+// close a TLS connection - ALWAYS use this in case the user mixes APIs, it will handle both
+void tlsClose(int index)
+{
+    if (tls[index].active) {
+        ApplyControlToken(&tls[index].ctx, NULL);
+        tls[index].active = false;
+    }
+
+    shutdown(sock[index], SD_BOTH);
+    closesocket(sock[index]);
+    sock[index] = INVALID_SOCKET;
+}
+// ---- end of TLS code -----
 
 // get a file from the web and store in RAM
 // caller is responsible for freeing data
@@ -1436,6 +1766,10 @@ bool handleSendMsg(unsigned char *buf, int len) {
         return handleTcp(buf, len);
     case 0x23:  // UDP
         return handleUdp(buf, len);
+    case 0x24:  // TLS
+        return handleTls(buf, len);
+    case 0x25:  // LOG
+        return handleLog(buf, len);
     default:
         // TODO: what does TIPI do with an unknown extension?
         return false;
@@ -2064,9 +2398,8 @@ bool handleTcp(unsigned char *buf, int len) {
             bool ret = true;
 
             // probably paranoid...
-            shutdown(sock[index], SD_BOTH);
-            closesocket(sock[index]);
-            sock[index] = INVALID_SOCKET;
+            // ensures even in cross API use we are safe
+            tlsClose(index);
 
             // parse the remote string
             CString hostname;
@@ -2105,9 +2438,8 @@ bool handleTcp(unsigned char *buf, int len) {
         // TODO; THIS IS WRONG. UNBIND NEEDS TO RELEASE ALL SOCKETS THAT ACCEPT CREATED. Maybe
         // not critical, though... CLOSE is still valid on ACCEPTed sockets.
     case 0x02:  // close
-        shutdown(sock[index], SD_BOTH);
-        closesocket(sock[index]);
-        sock[index] = INVALID_SOCKET;
+        // ensures even in cross API use we are safe
+        tlsClose(index);
         resizeBuffer(1);
         rxMessageBuf[0] = 255;
         break;
@@ -2131,7 +2463,7 @@ bool handleTcp(unsigned char *buf, int len) {
 
     case 0x04:  // read
         if (len < 5) {
-            debug_write("UDP read command string too short");
+            debug_write("TCP read command string too short");
             rxMessageLen = 0;
         } else {
             int rxSize = buf[3]*256 + buf[4];
@@ -2147,9 +2479,8 @@ bool handleTcp(unsigned char *buf, int len) {
             bool ret = true;
 
             // probably paranoid...
-            shutdown(sock[index], SD_BOTH);
-            closesocket(sock[index]);
-            sock[index] = INVALID_SOCKET;
+            // ensures even in cross API use we are safe
+            tlsClose(index);
 
             // parse the local string
             CString hostname;
@@ -2272,7 +2603,7 @@ bool handleTcp(unsigned char *buf, int len) {
         break;
 
     default:
-        debug_write("Unknown UDP command >%02X", cmd);
+        debug_write("Unknown TCP command >%02X", cmd);
         return false;
     }
 
@@ -2296,9 +2627,8 @@ bool handleUdp(unsigned char *buf, int len) {
             bool ret = true;
 
             // probably paranoid...
-            shutdown(sock[index], SD_BOTH);
-            closesocket(sock[index]);
-            sock[index] = INVALID_SOCKET;
+            // ensures even in cross API use we are safe
+            tlsClose(index);
 
             // parse the remote string
             CString hostname;
@@ -2371,9 +2701,8 @@ bool handleUdp(unsigned char *buf, int len) {
         break;
 
     case 0x02:  // close
-        shutdown(sock[index], SD_BOTH);
-        closesocket(sock[index]);
-        sock[index] = INVALID_SOCKET;
+        // ensures even in cross API use we are safe
+        tlsClose(index);
         resizeBuffer(1);
         rxMessageBuf[0] = 255;
         break;
@@ -2425,6 +2754,137 @@ bool handleUdp(unsigned char *buf, int len) {
         return false;
     }
 
+    return true;
+}
+
+bool handleTls(unsigned char *buf, int len) {
+    // https://github.com/jedimatt42/tipi/wiki/Extension-TLS
+    if (len < 3) {
+        debug_write("Illegal TLS access, missing data, len %d", len);
+        return false;
+    }
+
+    int index = buf[1]; // handle byte - caller specifies
+    int cmd = buf[2];   // what to do
+
+    // init encryption system
+    if (!tlsInitialized) {
+        if (!initTlsGlobal()) {
+            debug_write("Failed to initialize TLS system - failing.");
+            return false;
+        }
+        tlsInitialized = true;
+    }
+
+    switch (cmd) {
+    case 0x01:  // open
+        {
+            // data expected is a string: hostname:port
+            bool ret = true;
+
+            // probably paranoid...
+            // ensures even in cross API use we are safe
+            tlsClose(index);
+
+            // parse the remote string
+            CString hostname;
+            CString port;
+            int idx = 3;
+            while (idx<len) {
+                if ((buf[idx]==':') || (buf[idx]=='\0')) break;
+                hostname += buf[idx++];
+            }
+            if (buf[idx] == ':') {
+                ++idx;
+                while (idx<len) {
+                    if (buf[idx]=='\0') break;
+                    port += buf[idx++];
+                }
+            }
+            
+            sock[index] = connectTCP(hostname.GetString(), port.GetString());
+            if (INVALID_SOCKET == sock[index]) {
+                ret = false;
+            } else {
+                if (!tlsHandshake(index, hostname.GetString())) {
+                    debug_write("Failed to manage TLS handshake - fail.");
+                    ret = false;
+                }
+            }
+
+            resizeBuffer(1);
+            if (ret) {
+                rxMessageBuf[0] = 255;
+            } else {
+                rxMessageBuf[0] = 0;
+            }
+        }
+        break;
+
+    case 0x02:  // close
+        tlsClose(index);
+        resizeBuffer(1);
+        rxMessageBuf[0] = 255;
+        break;
+
+    case 0x03:  // write
+        {
+            int tosend = len-3;
+            unsigned char *ptr = buf+3;
+            bool ret = true;
+            resizeBuffer(1);
+
+            ret = tlsWrite(index, ptr, tosend);
+
+            if (ret) {
+                rxMessageBuf[0] = 255;
+            } else {
+                rxMessageBuf[0] = 0;
+            }
+        }
+        break;
+
+    case 0x04:  // read
+        if (len < 5) {
+            debug_write("TLS read command string too short");
+            rxMessageLen = 0;
+        } else {
+            int rxSize = buf[3]*256 + buf[4];
+            resizeBuffer(rxSize);
+            rxMessageLen = tlsRead(index, rxMessageBuf, rxSize);
+        }
+        break;
+
+    default:
+        debug_write("Unknown TLS command >%02X", cmd);
+        return false;
+    }
+
+    return true;
+}
+
+bool handleLog(unsigned char *buf, int len) {
+    if (len < 2) {
+        debug_write("Illegal LOG access, missing data, len %d", len);
+        return false;
+    }
+
+    // just dump the bytes to the log system - max 1024 chars
+    // filter out non-ascii
+    char outbuf[1024];
+
+    if (len > sizeof(outbuf)-1) {
+        len = sizeof(outbuf)-1;
+    }
+    memset(outbuf, 0, sizeof(outbuf));
+    for (int i=1; i<len; ++i) {
+        if (isprint(buf[i])) {
+            outbuf[i] = buf[i];
+        } else {
+            outbuf[i] = '.';
+        }
+    }
+    debug_write("%s", outbuf);
     return true;
 }
 

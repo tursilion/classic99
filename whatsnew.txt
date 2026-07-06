@@ -2359,3 +2359,15 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 - bugfix - fix F18A reset and re-lock
 - add palette index for non-ECM F18A sprites
 
+-----------------------------------------------
+
+5 Jul 2026
+
+- crash fix for Windows mapped joystick being unplugged
+- crash fix for opening a TIPI webpage for read in variable mode
+
+-----------------------------------------------
+
+6 Jul 2026
+
+- added support for TIPI raw TLS and raw LOG calls 0x24 and 0x25
