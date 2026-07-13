@@ -1836,11 +1836,11 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 			goto error;
 		}
 
-        if (pFile->RecordLength == 254) {
+        if ((pFile->RecordLength == 254) && (bEnableLongFilenames)) {
 			// If opened for a record length of 254, then allow long records (if configured)
             // BASIC lets us change the returned record length and it deals with it, so this works and won't be accidentally
             // triggered by someone
-            if ((bEnableLongFilenames) && ((pFile->Status & FLAG_TYPEMASK)==FLAG_INTERNAL)) {
+            if ((pFile->Status & FLAG_TYPEMASK) == FLAG_INTERNAL) {
                 // Internal/fixed is correct, update the record length to actual
 				pFile->RecordLength = LONG_FILENAME_RECORDS;
                 debug_write("Attempting to open for long filenames with record length %d", pFile->RecordLength);
