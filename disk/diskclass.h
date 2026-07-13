@@ -132,6 +132,7 @@ enum {
 #define ERR_READPASTEOF		5
 #define ERR_DEVICEERROR		6
 #define ERR_FILEERROR		7
+#define ERR_NOERR_UPDATEPAB 0x1000      // no error occured, but please update PAB. only used in OPEN right now for record length.
 
 // Status enums for PAB - these go into FileInfo::Status and come from the user
 #define FLAG_TYPEMASK		(FLAG_VARIABLE|FLAG_INTERNAL)

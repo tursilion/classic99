@@ -1191,23 +1191,23 @@ bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile)) {
 
 	// copy the PAB data into the tmpFile struct
 	tmpFile.PABAddress = PAB;
-	tmpFile.OpCode = VDP[PAB++];							// 0
+	tmpFile.OpCode = VDP[PAB++];							// 0    Opcode is the command to execute
 	PAB&=0x3FFF;
-	tmpFile.Status = VDP[PAB++];							// 1
+	tmpFile.Status = VDP[PAB++];							// 1    Status contains flags on input, return error code on output
 	PAB&=0x3FFF;
-	tmpFile.DataBuffer = (VDP[PAB]<<8) | VDP[PAB+1];		// 2,3
+	tmpFile.DataBuffer = (VDP[PAB]<<8) | VDP[PAB+1];		// 2,3  address in VDP for data
 	PAB+=2;
 	PAB&=0x3FFF;
-	tmpFile.RecordLength = VDP[PAB++];						// 4
+	tmpFile.RecordLength = VDP[PAB++];						// 4    file open record length
 	PAB&=0x3FFF;
-	tmpFile.CharCount = VDP[PAB++];							// 5
+	tmpFile.CharCount = VDP[PAB++];							// 5    size of buffer on input, bytes read on return (if read)
 	PAB&=0x3FFF;
-	tmpFile.RecordNumber = (VDP[PAB]<<8) | VDP[PAB+1];		// 6,7	It's not relative vs sequential, it's variable (not used) vs fixed (used)
-	PAB+=2;
+	tmpFile.RecordNumber = (VDP[PAB]<<8) | VDP[PAB+1];		// 6,7	Record number for fixed, size to read/write if LOAD/SAVE
+	PAB+=2;                                                 //      It's not relative vs sequential, it's variable (not used) vs fixed (used)
 	PAB&=0x3FFF;
-	tmpFile.ScreenOffset = VDP[PAB++];						// 8
+	tmpFile.ScreenOffset = VDP[PAB++];						// 8    Only used in BASIC, and probably only in TP and CSx
 	PAB&=0x3FFF;
-	int nLen = VDP[PAB++];  								// 9
+	int nLen = VDP[PAB++];  								// 9    Filename length (filename follows)
     // don't skip anything, so we have the full path (PI.HTTP://xxx, URI1.xxx, PI.CONFIG, PI.STATUS)
     GetFilenameFromVDP(PAB, nLen, &tmpFile);
 

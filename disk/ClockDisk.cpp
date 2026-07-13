@@ -54,7 +54,7 @@
 // From the Corcomp manual, you can read as:
 // INPUT #1:A$,B$,C$
 // and get: day of the week (1-7), date (mm/DD/yy) and time (hh:MM:ss)
-// You can also sent the clock with PRINT:
+// You can also set the clock with PRINT:
 // PRINT #1:"d,mm/DD/yy,hh:MM:ss"
 // hh is a 24-hr clock.
 // The records do not track, you always read or write all three values.
@@ -277,7 +277,7 @@ bool ClockDisk::Read(FileInfo *pFile) {
 	//buf[0]++;					// clock uses 1-7 for days, not 0-6 like strftime
 	//							   NOT TRUE! Apparently the CorComp manual was wrong ;)
 
-	pFile->CharCount = strlen(buf);	
+	pFile->CharCount = min(pFile->RecordLength, strlen(buf));
 
 	// sanity test
 	if (pFile->DataBuffer + pFile->CharCount > 0x4000) {

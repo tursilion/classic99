@@ -74,6 +74,7 @@ FiadDisk::FiadDisk() {
     bSubDirApi = true;
 
 	nCachedDrive=-1;
+    bCachedExtended = false;
 	pCachedFiles=NULL;
 	tCachedTime=(time_t)0;
 	nCachedCount=0;
@@ -302,7 +303,7 @@ CString FiadDisk::BuildFilename(FileInfo *pFile) {
             // is no conflict on the swap
             if (pFile->csName[idx] == '/') csLocalFile.SetAt(idx, '.');
             if (pFile->csName[idx] == '\\') csLocalFile.SetAt(idx, '.');
-            if (pFile->csName[idx] == '.') csLocalFile.SetAt(idx, '\\');
+            if (pFile->csName[idx] == '.') csLocalFile.SetAt(idx, '\\');    // TI to host - host is windows, okay
         }
     }
 
@@ -1786,7 +1787,7 @@ void FiadDisk::WriteFileHeader(FileInfo *pFile, FILE *fp) {
 }
 
 #define SHORT_FILENAME_RECORDS	38
-#define LONG_FILENAME_RECORDS 254
+#define LONG_FILENAME_RECORDS 60
 
 // Open a file with a particular mode, creating it if necessary
 FileInfo *FiadDisk::Open(FileInfo *pFile) {
@@ -1829,54 +1830,52 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 		char *pData, *pStart;
 
 		// read directory!
-		if ((pFile->Status & FLAG_MODEMASK) != FLAG_INPUT) {
+        if ((pFile->Status & FLAG_MODEMASK) != FLAG_INPUT) {
 			debug_write("Can't open directory for anything but input");
 			pFile->LastError = ERR_ILLEGALOPERATION;
 			goto error;
 		}
-		// check for 0, map to actual size (38 normally!)
-		if (pFile->RecordLength == 0) {
-			// If opened for variable length, then allow long records (if configured)
-			if ((bEnableLongFilenames) && (pFile->Status & FLAG_VARIABLE)) {
+
+        if (pFile->RecordLength == 254) {
+			// If opened for a record length of 254, then allow long records (if configured)
+            // BASIC lets us change the returned record length and it deals with it, so this works and won't be accidentally
+            // triggered by someone
+            if ((bEnableLongFilenames) && ((pFile->Status & FLAG_TYPEMASK)==FLAG_INTERNAL)) {
+                // Internal/fixed is correct, update the record length to actual
 				pFile->RecordLength = LONG_FILENAME_RECORDS;
-			} else {
-				pFile->RecordLength = SHORT_FILENAME_RECORDS;
+                debug_write("Attempting to open for long filenames with record length %d", pFile->RecordLength);
+                // this is hacky, but it's to force the base class to write the correct length back to the PAB
+                pFile->LastError = ERR_NOERR_UPDATEPAB;
 			}
+        } else if (pFile->RecordLength == 0) {
+            // check for 0, map to actual size (38 normally!)
+       		if ((bEnableLongFilenames) && (pFile->Status & FLAG_VARIABLE)) {
+				debug_write("IV0 long filenames have been deprecated. Please use IF254 instead.");
+				pFile->LastError = ERR_BADATTRIBUTE;
+				goto error;
+            }
+    		pFile->RecordLength = SHORT_FILENAME_RECORDS;
 		} else {
-			// only legal /explicit/ value is 38 (you may not specify 254)
+			// only other legal /explicit/ value is 38
 			if (pFile->RecordLength != SHORT_FILENAME_RECORDS) {
-				debug_write("Record length must be 0 or 38 (requested %d)", pFile->RecordLength);
+				debug_write("Record length must be 0, 38 or 254 (requested %d)", pFile->RecordLength);
 				pFile->LastError = ERR_BADATTRIBUTE;
 				goto error;
 			}
 		}
 
 		// final checks, validate the open type against the record length
-		// at this point, we must have either IV/254 (long filenames) or IF/38 (short)
+		// at this point, we must have either IF/xxx (long filenames) or IF/38 (short)
 		// we can use the record length after this point to figure which one we have
-		if (pFile->RecordLength == SHORT_FILENAME_RECORDS) {
-			// it MUST be IF/38 then
-			if ((pFile->Status & FLAG_TYPEMASK) != FLAG_INTERNAL) {
-				debug_write("Regular directory must be IF38");
-				pFile->LastError = ERR_BADATTRIBUTE;
-				goto error;
-			}
-		} else if (pFile->RecordLength == LONG_FILENAME_RECORDS) {
-			// it MUST be IV/254 then
-			if ((pFile->Status & FLAG_TYPEMASK) != (FLAG_INTERNAL | FLAG_VARIABLE)) {
-				debug_write("Long filename directory must be IV254");
-				pFile->LastError = ERR_BADATTRIBUTE;
-				goto error;
-			}
-		} else {
-			debug_write("Unacceptable record length %d for directory - pass 0 for default.", pFile->RecordLength);
+		if ((pFile->Status & FLAG_TYPEMASK) != FLAG_INTERNAL) {
+			debug_write("Directory must be Internal/Fixed");
 			pFile->LastError = ERR_BADATTRIBUTE;
 			goto error;
 		}
 
 		// Well, it's good then, buffer and format the directory records
 		FileInfo *Filenames = NULL;
-		pFile->NumberRecords = GetDirectory(pFile, Filenames);
+		pFile->NumberRecords = GetDirectory(pFile, Filenames, ((bAllowMore127Files) && (pFile->RecordLength == LONG_FILENAME_RECORDS)));
 		if (Filenames == NULL) {
 			// disk error of some sort
 			debug_write("Could not get directory.");
@@ -1889,11 +1888,6 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 			free(pFile->pData);
 			pFile->pData=NULL;
 		}
-
-		// sadly we can't make /this/ directory support longer names either,
-		// because most applications that use it either hardcode the 38 or
-		// they assume the filename is always 10 characters long. We can
-		// return the short filename though! :)
 
 		// for fixed length fields we know how much memory we need
 		// we add two records - one for record 0, one for the terminator
@@ -1911,6 +1905,10 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 		// DiskName - first 10 bytes - we provide the local path (last 10 chars of it)
 		pStart=pData;
 		csTmp = GetDiskName();
+        if (csTmp.GetLength()+28 > pFile->RecordLength) {
+            // 28 bytes of fixed data
+            csTmp.Truncate(pFile->RecordLength-28);
+        }
 		*(unsigned short*)pData = (unsigned short)pFile->RecordLength;						// record length (2 bytes)
 		pData+=2;
 		*(pData++) = csTmp.GetLength();														// string length (strange, not very fixed length. My bug? TODO: probably this should always be 10 chars long)
@@ -1932,8 +1930,16 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 
 			memset(pData, 0, pFile->RecordLength+2);
 			csTmp = Filenames[idx].csName;
+            
+            // sanity to make sure we fit the record
+            if (csTmp.GetLength()+28 > pFile->RecordLength) {
+                // 28 bytes of fixed data
+                csTmp.Truncate(pFile->RecordLength-28);
+            }
+
+            // now the default handling
 			if (pFile->RecordLength == SHORT_FILENAME_RECORDS) {
-				csTmp = csTmp.Left(10);
+				csTmp = csTmp.Left(10); // works even if already shorter
 #if 0
 				// don't pad the string - even though it's supposedly fixed 38 bytes,
 				// the disk controller doesn't pad the fields (so it can be less!)
@@ -1943,7 +1949,7 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 				}
 #endif
 			} else {
-				csTmp = csTmp.Left(127);		// variable. arbitrary size, but a good max. SCSI limits to 40 for the full path!
+				csTmp= csTmp.Left(32);		// variable. arbitrary size, but a good max. SCSI limits to 40 for the full path!
 			}
 			*(unsigned short*)pData = (unsigned short)pFile->RecordLength;					// record length (my structure)
 			pData+=2;
@@ -2289,12 +2295,12 @@ bool FiadDisk::ReadVIB(FileInfo *pFile) {
 	return true;
 }
 
-// Get a list of the files in the current directory (up to 127, unless bMoreThan127Files is set)
+// Get a list of the files in the current directory (up to 127, unless bExtendedListing is set)
 // returns the count of files, and an allocated array at Filenames
 // The array is a list of FileInfo objects
 // Caller must free Filenames!
 // To reduce thrashing, we track the last used directory for 15 seconds :)
-int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
+int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames, bool bExtendedListing) {
 	int n;
 	HANDLE fsrc;
 	WIN32_FIND_DATA myDat;
@@ -2335,6 +2341,7 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 	// check cache first
 	if ((nCachedDrive == pFile->nDrive) &&
         (csCachedPath == csDirectory) &&
+        (bCachedExtended == bExtendedListing) && 
 		(pCachedFiles != NULL) &&
 		(time(NULL) < tCachedTime+15)) {
 			// just replay the cache
@@ -2401,9 +2408,13 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
                 }
 
 				n++;
-				if ((n>126) && (!bAllowMore127Files)) {
-					break;
-				}
+                // even with extended, we can expect some TI software to misbehave with
+                // more than 32767 records. You mad man!
+                if (bExtendedListing) {
+                    if (n>32766) break;
+                } else {
+                    if (n>126) break;
+                }
 
 				// else, allocate the next entry
 				FileInfo* pTmp = (FileInfo*)realloc(Filenames, sizeof(FileInfo)*(n+1));	// get one more
@@ -2422,6 +2433,7 @@ int FiadDisk::GetDirectory(FileInfo *pFile, FileInfo *&Filenames) {
 	pCachedFiles=(FileInfo*)malloc(_msize(Filenames));
 	memcpy(pCachedFiles, Filenames, _msize(Filenames));
 	nCachedDrive=pFile->nDrive;
+    bCachedExtended = bExtendedListing;
 	time(&tCachedTime);
     csCachedPath = csDirectory;
 	nCachedCount = n;
@@ -2521,7 +2533,7 @@ bool FiadDisk::ReadSector(FileInfo *pFile) {
 	} else {
 		/* other sector */
 		FileInfo *Filenames = NULL;
-		int nCnt = GetDirectory(pFile, Filenames);
+		int nCnt = GetDirectory(pFile, Filenames, false);   // can't do more than 127 files in this mode
 		if (Filenames == NULL) {
 			// disk error of some sort
 			debug_write("Could not get directory.");
@@ -2924,7 +2936,7 @@ bool FiadDisk::SetSubDir(FileInfo *pFile) {
             // is no conflict on the swap
             if (pFile->csName[idx] == '/') m_csCurrentFolder.SetAt(idx, '.');
             if (pFile->csName[idx] == '\\') m_csCurrentFolder.SetAt(idx, '.');
-            if (pFile->csName[idx] == '.') m_csCurrentFolder.SetAt(idx, '\\');
+            if (pFile->csName[idx] == '.') m_csCurrentFolder.SetAt(idx, '\\');  // TI to host, host is Windows, okay
         }
     }
 

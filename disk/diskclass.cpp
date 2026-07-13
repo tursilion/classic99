@@ -447,7 +447,7 @@ bool BaseDisk::Read(FileInfo *pFile) {
 	}
 
 	// We don't need to worry much about whether it's variable or fixed here
-	pFile->CharCount = *(unsigned short*)pDat;
+	pFile->CharCount = min(pFile->RecordLength, *(unsigned short*)pDat);
 	pDat+=2;
 
 	// sanity test

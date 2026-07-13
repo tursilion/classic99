@@ -2371,3 +2371,15 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 6 Jul 2026
 
 - added support for TIPI raw TLS and raw LOG calls 0x24 and 0x25
+
+-----------------------------------------------
+
+13 Jul 2026
+
+- changed the long filename definition in directories to require an
+  open of IF254. Added some sanity checks in the disk system
+- verified that >127 files returned in a directory applies only to LFN open
+- capped TI filename length at 32 characters per file
+
+(the 'white paper' is also updated to reflect all this)
+

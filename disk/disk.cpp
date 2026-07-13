@@ -639,13 +639,13 @@ void do_dsrlnk(char *forceDevice) {
 			// We don't care on a CLOSE request
 			if (tmpFile.OpCode != OP_CLOSE) {
 				if ((pWorkFile->Status&FLAG_TYPEMASK) != (tmpFile.Status&FLAG_TYPEMASK)) {
-					debug_write("File mode/status does not match open file for DSK%d.%s (0x%02X vs 0x%02X)", nDrive, (LPCSTR)tmpFile.csName, pWorkFile->Status&0x1f, tmpFile.Status&0x1f);
+					debug_write("File mode/status does not match open file for DSK%d.%s (Act 0x%02X vs Req 0x%02X)", nDrive, (LPCSTR)tmpFile.csName, pWorkFile->Status&0x1f, tmpFile.Status&0x1f);
 					pWorkFile->LastError = ERR_BADATTRIBUTE;
 					setfileerror(pWorkFile);
 					return;
 				}
 				if (pWorkFile->RecordLength != tmpFile.RecordLength) {
-					debug_write("File record length does not match open file for DSK%d.%s (%d vs %d)", nDrive, (LPCSTR)tmpFile.csName, pWorkFile->RecordLength, tmpFile.RecordLength);
+					debug_write("File record length does not match open file for DSK%d.%s (Act %d vs Req %d)", nDrive, (LPCSTR)tmpFile.csName, pWorkFile->RecordLength, tmpFile.RecordLength);
 					pWorkFile->LastError = ERR_BADATTRIBUTE;
 					setfileerror(pWorkFile);
 					return;
@@ -694,8 +694,13 @@ void do_dsrlnk(char *forceDevice) {
 				} else {
 					// if the user didn't specify a RecordLength in the PAB, we should do that now
                     // TODO: why am I missing pWorkFile, tmpFile, and pNewFile in here...?
-					if ((VDP[pWorkFile->PABAddress+4] == 0) && (pNewFile->RecordLength != 0)) {
+					if (((VDP[pWorkFile->PABAddress+4] == 0) && (pNewFile->RecordLength != 0)) ||
+                        (pNewFile->LastError == ERR_NOERR_UPDATEPAB))
+                    {
 						VDP[pWorkFile->PABAddress+4]=pNewFile->RecordLength;
+                        if (pNewFile->LastError == ERR_NOERR_UPDATEPAB) {
+                            pNewFile->LastError = ERR_NOERROR;
+                        }
 					}
 
 					// ALWAYS performs a rewind operation , which has this effect (should be zeroes)
@@ -1552,7 +1557,7 @@ bool TryLoadMagicImage(FileInfo *pFile) {
 /////////////////////////////////////////////////////////////////////////
 void setfileerror(FileInfo *pFile) {
 	debug_write("Setting file error %d on file buffer %d", pFile->LastError, pFile->nIndex);
-//	VDP[pFile->PABAddress+1] &= 0x1f;						// no errors (program must clear this - confirmed by TI spec)
+//	VDP[pFile->PABAddress+1] &= 0x1f;						// no errors (program must clear this - confirmed by TI spec - but can they clear it when it's needed to open?)
 	VDP[pFile->PABAddress+1] |= pFile->LastError<<5;		// file error
 	// Only set COND on non-existant DSR - confirmed by TI spec
 	// In an error case we need to release the object - programs generally won't close it

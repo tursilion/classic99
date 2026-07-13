@@ -104,7 +104,7 @@ public:
 	bool FlushFiad(FileInfo *pFile);
 	void WriteFileHeader(FileInfo *pFile, FILE *fp);
 	bool ReadVIB(FileInfo *pFile);
-	int  GetDirectory(FileInfo *pFile, FileInfo *&Filenames);
+	int  GetDirectory(FileInfo *pFile, FileInfo *&Filenames, bool bExtendedDirectory);
 	bool ReadFDR(FileInfo *pFile, FileInfo *Filenames);
 	const char* GetAttributes(int nType);
 
@@ -131,6 +131,7 @@ public:
 	// directory cache
 	int nCachedDrive;
 	FileInfo *pCachedFiles;
+    bool bCachedExtended;
 	time_t tCachedTime;
     CString csCachedPath;
 	int nCachedCount;
