@@ -1,3 +1,5 @@
+// TODO: the loaders (like CALL TIPI) need to set up the default E/A environment, clear RAM, turn off sprites, etc
+
 // TODO: after the second time you capture the mouse, the windows mouse
 // is not hidden and you can see it jittering in the middle of the screen.
 // Fix the hide/show thing.
@@ -130,8 +132,8 @@
 extern CPU9900 * volatile pCurrentCPU;
 extern void do_dsrlnk(char *forceDevice);
 extern const char* getOpcode(int opcode);
-extern void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile);
-extern void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile);
+extern void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile, bool bLongFilenameSupport);
+extern void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile, bool bLongFilenameSupport);
 extern void setfileerror(FileInfo *pFile);
 extern BaseDisk *pDriveType[MAX_DRIVES];
 extern HWND myWnd;
@@ -893,6 +895,46 @@ bool callTipi() {
     // always get a chance to do it, so just fake it here
     nCurrentDSR = -1;
 
+    // TIPI uses the scratchpad loader (?), so set up the system as it does
+    // Set the VDP registers
+    for (int i=0; i<8; ++i) {
+        VDPREG[i] = "\x00\xe0\x01\x0e\x01\x06\x00\xf3"[i];
+    }
+    // Clear most of VDP ram
+    memset(&VDP[0x300], 0, 0xd00);
+    // load the character sets - we'll use the same vector approach in case the GROMs change
+    {
+        // lowercase
+        int gplb = ((GROMBase[0].GROM[0x4a]*256 + GROMBase[0].GROM[0x4b]) & 0x1fff) + 3;                   // branch vector instruction
+        int gpltab = GROMBase[0].GROM[gplb]*256 + GROMBase[0].GROM[gplb+1]; // actual table address from inside the function
+        int vdpadd = 0x0b00;
+        for (int i=0; i<0x1f; ++i) {
+            // 31 chars for lowercase
+            VDP[vdpadd++] = 0;  // need to pad cause the ROM only has 7 of the 8 bytes
+            memcpy(&VDP[vdpadd], &GROMBase[0].GROM[gpltab], 7);     // 7 bytes on 4a, only 6 on 4 but scratchloader doesn't support that
+            vdpadd += 7;
+            gpltab += 7;
+        }
+        // uppercase
+        gplb = (GROMBase[0].GROM[0x18] & 0x1fff) + 3;                   // branch vector instruction
+        gpltab = GROMBase[0].GROM[gplb]*256 + GROMBase[0].GROM[gplb+1]; // actual table address from inside the function
+        vdpadd = 0x0900;
+        for (int i=0; i<0x40; ++i) {
+            // 64 chars for uppercase
+            VDP[vdpadd++] = 0;  // need to pad cause the ROM only has 7 of the 8 bytes
+            memcpy(&VDP[vdpadd], &GROMBase[0].GROM[gpltab], 7);     // 7 bytes on 4a, only 6 on 4 but scratchloader doesn't support that
+            vdpadd += 7;
+            gpltab += 7;
+        }
+    }
+    
+    // copyright and cursors
+    memcpy(&VDP[0x850], "\x3c\x42\x99\xa1\xa1\x99\x42\x3c", 8);
+    memcpy(&VDP[0x8f0], "\x70\x70\x70\x70\x70\x70\x70\x70\x00\x7e\x42\x42\x42\x42\x7e\x00", 16);
+    
+    // color table
+    memset(&VDP[0x380], 0x13, 32);
+
     // load the file - TODO: does TIPI load through VDP or straight to CPU?
     // if file fails to load, reset
     // It's a bit wasteful to loop here.. but this is concept...
@@ -905,7 +947,7 @@ nextfile:
         unsigned char tmpVDP[16384];
         unsigned char tmpCPU[256];
         
-        // backup VDP
+        // backup VDP (todo: Why?)
         memcpy(tmpVDP, VDP, 16384);
         for (int idx=0; idx<256; ++idx) {
             tmpCPU[idx] = GetSafeCpuByte(idx+0x8300, 0);
@@ -1209,7 +1251,7 @@ bool tipiDsrLnk(bool (*bufferCode)(FileInfo *pFile)) {
 	PAB&=0x3FFF;
 	int nLen = VDP[PAB++];  								// 9    Filename length (filename follows)
     // don't skip anything, so we have the full path (PI.HTTP://xxx, URI1.xxx, PI.CONFIG, PI.STATUS)
-    GetFilenameFromVDP(PAB, nLen, &tmpFile);
+    GetFilenameFromVDP(PAB, nLen, &tmpFile, false);
 
 	// somewhat annoying, but we need to try and keep the FileType (TIFILES) and Status (PAB)
 	// in sync, so map Status over

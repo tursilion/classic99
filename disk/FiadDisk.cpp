@@ -1846,7 +1846,11 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
                 debug_write("Attempting to open for long filenames with record length %d", pFile->RecordLength);
                 // this is hacky, but it's to force the base class to write the correct length back to the PAB
                 pFile->LastError = ERR_NOERR_UPDATEPAB;
-			}
+			} else {
+                debug_write("Long filename requested (length 254) but not internal/fixed");
+				pFile->LastError = ERR_BADATTRIBUTE;
+				goto error;
+            }
         } else if (pFile->RecordLength == 0) {
             // check for 0, map to actual size (38 normally!)
        		if ((bEnableLongFilenames) && (pFile->Status & FLAG_VARIABLE)) {
@@ -1858,7 +1862,7 @@ FileInfo *FiadDisk::Open(FileInfo *pFile) {
 		} else {
 			// only other legal /explicit/ value is 38
 			if (pFile->RecordLength != SHORT_FILENAME_RECORDS) {
-				debug_write("Record length must be 0, 38 or 254 (requested %d)", pFile->RecordLength);
+				debug_write("Record length must be 0 or 38(requested %d)", pFile->RecordLength);
 				pFile->LastError = ERR_BADATTRIBUTE;
 				goto error;
 			}

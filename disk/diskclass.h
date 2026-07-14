@@ -368,7 +368,10 @@ public:
 	// No return beyond error code required
 	virtual bool DeleteDirectory(FileInfo *pFile) { return unsupported(pFile); }
 
-	// public base functions
+	// whether a device supports long filenames by https://docs.google.com/document/d/1zIMDd9gv5xTAa3ym_YcFc3FqLxDTFGIvHcY3xMVVEaw/edit
+    virtual bool GetSupportsLongFilenames() { return false; }
+
+    // public base functions
 	bool GetWriteProtect() { return bWriteProtect; }
 
 	// functions for internal use

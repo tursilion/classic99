@@ -36,7 +36,7 @@
 uint32_t   RGBtoYUV[16777216];
 uint32_t   YUV1, YUV2;
 
-inline int abs(int x) { return (x<0)?-x:x; }
+//inline int abs(int x) { return (x<0)?-x:x; }
 
 HQX_API void HQX_CALLCONV hqxInit(void)
 {

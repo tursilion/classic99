@@ -80,6 +80,7 @@ public:
 //	virtual bool GetStatus(FileInfo *pFile) override;			// base class ok
 
     virtual bool IsSubDirSupported() override { return bSubDirApi; }  // must override for it to work
+    virtual bool GetSupportsLongFilenames() override { return bEnableLongFilenames; }
 
     // SBRLNK opcodes (files is handled by shared handler)
 	virtual bool ReadSector(FileInfo *pFile) override;

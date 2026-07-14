@@ -139,8 +139,8 @@ void do_files(int n);
 void do_dsrlnk(char *forceDevice);
 void do_sbrlnk(int nOpCode);
 void setfileerror(FileInfo *pFile);
-void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile);
-void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile);
+void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilenameSupport);
+void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilenameSupport);
 extern Byte GetSafeCpuByte(int x, int bank);
 void WriteMemoryByte(Word address, Byte value, bool allowWrite);
 
@@ -547,7 +547,8 @@ void do_dsrlnk(char *forceDevice) {
         }
 		PAB&=0x3FFF;
 	}
-	GetFilenameFromVDP(PAB, nLen, &tmpFile);
+    // whether or not long filenames are supported, the sbrlnk syntax is not
+	GetFilenameFromVDP(PAB, nLen, &tmpFile, false);
 
 	// somewhat annoying, but we need to try and keep the FileType (TIFILES) and Status (PAB)
 	// in sync, so map Status over
@@ -941,15 +942,19 @@ void do_dsrlnk(char *forceDevice) {
 }
 
 // helper function to get csName from VDP
-void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile) {
+void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilenameSupport) {
     if (pFile->bUseCPU) {
         // I don't WANT to do this, but I don't want it to break either
         debug_write("Internal consistency error in Classic99 fetching filename from VDP");
-        GetFilenameFromCPU(nName, nMax, pFile);
+        GetFilenameFromCPU(nName, nMax, pFile, bSbrLongFilenameSupport);
         return;
     }
 
 	// get the filename from VDP
+    // if bSbrLongFilenameSupport is false (default), then we count up to nMax, first space ends it
+    // if it is true, then if the first character is a space, we set nMax to the next byte, and then continue from there.
+    // we still stop at the first space, that should address an empty buffer as long as it's properly padded
+    // if it's not - we could read garbage but we should survive.
 	pFile->csName = "";
 	for (int idx=0; idx<nMax; idx++) {
 		// wraparound address
@@ -957,6 +962,16 @@ void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile) {
 			nName-=0x4000;
 		}
 		if (VDP[nName] == ' ') {
+            if ((bSbrLongFilenameSupport) && (idx == 0) && (nMax == 10)) {
+                // this could be a long filename
+                ++nName;
+		        while (nName >= 0x4000) {
+			        nName-=0x4000;
+		        }
+                nMax = VDP[nName];
+                continue;
+            }
+            // otherwise, end the name search
 			break;
 		}
 		if (VDP[nName] & 0x80) {
@@ -978,11 +993,11 @@ void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile) {
 }
 
 // helper function to get csName from CPU. Thanks Myarc.
-void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile) {
+void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilenameSupport) {
     if (!pFile->bUseCPU) {
         // I don't WANT to do this, but I don't want it to break either
         debug_write("Internal consistency error in Classic99 fetching filename from CPU");
-        GetFilenameFromVDP(nName, nMax, pFile);
+        GetFilenameFromVDP(nName, nMax, pFile, bSbrLongFilenameSupport);
         return;
     }
 
@@ -995,6 +1010,16 @@ void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile) {
 		}
         Byte c = rcpubyte(nName);
 		if (c == ' ') {
+            if ((bSbrLongFilenameSupport) && (idx == 0) && (nMax == 10)) {
+                // this could be a long filename
+                ++nName;
+		        while (nName >= 0x10000) {
+			        nName-=0x10000;
+		        }
+                nMax = rcpubyte(nName);
+                continue;
+            }
+            // otherwise, end the name search
 			break;
 		}
 		if (c & 0x80) {
@@ -1233,7 +1258,7 @@ void do_sbrlnk(int nOpCode) {
 				// This is baloney, we need to build the filename here. But this isn't implemented yet anyway
 				// Passing the address isn't right. :) Build it in csName. That's what the debug uses!
 				// (must be max 10 since 10 char filenames won't be padded)
-				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);	// address of filename in VDP - padded with spaces 
+				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());	// address of filename in VDP - padded with spaces 
 				tmpFile.OpCode = romword(0x834d);		// 0 - unprotect, 0xff - protect
                 tmpFile.Status = FLAG_UPDATE;
 
@@ -1273,13 +1298,13 @@ void do_sbrlnk(int nOpCode) {
                 // we do all the CPU access here, so the callee shouldn't need to worry
 				// rename a file - we are limited to 10 characters in this call
                 if (tmpFile.bUseCPU) {
-				    GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);		// new filename
+				    GetFilenameFromCPU(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new filename
 				    csNewFile = tmpFile.csName;
-				    GetFilenameFromCPU(romword(0x8350), 10, &tmpFile);		// old filename
+				    GetFilenameFromCPU(romword(0x8350), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// old filename
                 } else {
-				    GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+				    GetFilenameFromVDP(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new filename
 				    csNewFile = tmpFile.csName;
-				    GetFilenameFromVDP(romword(0x8350), 10, &tmpFile);		// old filename
+				    GetFilenameFromVDP(romword(0x8350), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// old filename
                 }
 
 				debug_write("Rename %s, drive %d, from %s to %s (%s)", 
@@ -1324,9 +1349,9 @@ void do_sbrlnk(int nOpCode) {
 
 				// get the filename (must be 10 since 10 char filenames won't be padded)
                 if (tmpFile.bUseCPU) {
-                    GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);
+                    GetFilenameFromCPU(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());
                 } else {
-				    GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);
+				    GetFilenameFromVDP(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());
                 }
 
 				if (SBR_FILEIN == nOpCode) {
@@ -1394,12 +1419,12 @@ void do_sbrlnk(int nOpCode) {
                     adr = romword(0x834e);
                     len = rcpubyte(adr++);
                     adr &= 0xffff;
-				    GetFilenameFromCPU(adr, len, &tmpFile);		// new path
+				    GetFilenameFromCPU(adr, len, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new path
                 } else {
                     adr = romword(0x834e) & 0x3fff; // handle wraparound
                     len = VDP[adr++];
                     adr &= 0x3fff;
-				    GetFilenameFromVDP(adr, len, &tmpFile);		// new path
+				    GetFilenameFromVDP(adr, len, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new path
                 }
 
                 // does it end with a period?
@@ -1456,9 +1481,9 @@ void do_sbrlnk(int nOpCode) {
 
 				// create a directory - we are limited to 10 characters in this call
                 if (tmpFile.bUseCPU) {
-    				GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);		// new filename
+    				GetFilenameFromCPU(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new filename
                 } else {
-    				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+    				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new filename
                 }
 				debug_write("Create directory, drive %d, %s (%s)", tmpFile.nDrive, (LPCSTR)tmpFile.csName, tmpFile.bUseCPU?"CPU":"VDP");
                 tmpFile.Status = FLAG_UPDATE;
@@ -1484,9 +1509,9 @@ void do_sbrlnk(int nOpCode) {
 
 				// remove a directory - we are limited to 10 characters in this call
                 if (tmpFile.bUseCPU) {
-    				GetFilenameFromCPU(romword(0x834e), 10, &tmpFile);		// new filename
+    				GetFilenameFromCPU(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new filename
                 } else {
-    				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile);		// new filename
+    				GetFilenameFromVDP(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());		// new filename
                 }
 				debug_write("Remove directory, drive %d, %s (%s)", tmpFile.nDrive, (LPCSTR)tmpFile.csName, tmpFile.bUseCPU?"CPU":"VDP");
                 tmpFile.Status = FLAG_UPDATE;
