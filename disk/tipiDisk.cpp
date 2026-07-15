@@ -898,7 +898,7 @@ bool callTipi() {
     // TIPI uses the scratchpad loader (?), so set up the system as it does
     // Set the VDP registers
     for (int i=0; i<8; ++i) {
-        VDPREG[i] = "\x00\xe0\x01\x0e\x01\x06\x00\xf3"[i];
+        VDPREG[i] = "\x00\xe0\x00\x0e\x01\x06\x00\xf3"[i];
     }
     // Clear most of VDP ram
     memset(&VDP[0x300], 0, 0xd00);
