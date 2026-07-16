@@ -2870,6 +2870,7 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool isDir) {
         return false;
     }
 
+    // TODO: I don't think we've ever detected the image type...
     if (pFile->ImageType == IMAGE_V9T9) {
         debug_write("Refusing to rename V9T9 file %s", csFileName.GetString());
 		pFile->LastError = ERR_DEVICEERROR;
@@ -2887,7 +2888,7 @@ bool FiadDisk::RenameFile(FileInfo *pFile, const char *szNewFile, bool isDir) {
 		    return false;
         }
     } else {
-        debug_write("%s could not be verified, errno %d", csFileName.GetString(), errno);
+        debug_write("%s could not be identified, errno %d", csFileName.GetString(), errno);
 		pFile->LastError = ERR_DEVICEERROR;
 		return false;
     }

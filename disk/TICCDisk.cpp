@@ -395,14 +395,14 @@ void TICCDisk::readsectorwrap() {
 	debug_write("Sector read: TICC drive %d, sector %d, VDP >%04X", lclFile.nDrive, lclFile.RecordNumber, lclFile.DataBuffer);
 	if (!ReadSector(&lclFile)) {
 		// write the error code into >8350 (done below)
-		// wcpubyte(0x8350, tmpFile.LastError);
+		// setsbrerror(&tmpFile);
 	}
 
+    // These are the TI disk controller's job, not ours
 	// fill in the return data
-	wrword(0x834a, lclFile.RecordNumber);
-
+	//wrword(0x834a, lclFile.RecordNumber);
 	// store the error code before exit
-	wcpubyte(0x8350, lclFile.LastError);	// should still be 0 if no error occurred
+	//setsbrerror(&lclFile);	// should still be 0 if no error occurred
 }
 
 void TICCDisk::writesectorwrap() {
@@ -425,13 +425,13 @@ void TICCDisk::writesectorwrap() {
 	debug_write("Sector write: TICC drive %d, sector %d, VDP >%04X", lclFile.nDrive, lclFile.RecordNumber, lclFile.DataBuffer);
 	if (!WriteSector(&lclFile)) {
 		// write the error code into >8350 (done below)
-		// wcpubyte(0x8350, tmpFile.LastError);
+		// setsbrerror(&tmpFile);
 	}
 
+    // These are the TI disk controller's job, not ours
 	// fill in the return data
-	wrword(0x834a, lclFile.RecordNumber);
-
-	// store the error code before exit
-	wcpubyte(0x8350, lclFile.LastError);	// should still be 0 if no error occurred
+	//wrword(0x834a, lclFile.RecordNumber);
+    // store the error code before exit
+	//setsbrerror(&lclFile);	// should still be 0 if no error occurred
 }
 

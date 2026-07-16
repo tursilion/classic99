@@ -139,6 +139,7 @@ void do_files(int n);
 void do_dsrlnk(char *forceDevice);
 void do_sbrlnk(int nOpCode);
 void setfileerror(FileInfo *pFile);
+void setsbrerror(FileInfo *pFile);
 void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilenameSupport);
 void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilenameSupport);
 extern Byte GetSafeCpuByte(int x, int bank);
@@ -968,7 +969,8 @@ void GetFilenameFromVDP(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilen
 		        while (nName >= 0x4000) {
 			        nName-=0x4000;
 		        }
-                nMax = VDP[nName];
+                nMax = VDP[nName]+1;    // +1 to account for the space we are indexing now
+                ++nName;
                 continue;
             }
             // otherwise, end the name search
@@ -1016,7 +1018,8 @@ void GetFilenameFromCPU(int nName, int nMax, FileInfo *pFile, bool bSbrLongFilen
 		        while (nName >= 0x10000) {
 			        nName-=0x10000;
 		        }
-                nMax = rcpubyte(nName);
+                nMax = rcpubyte(nName)+1;    // +1 to account for the space we are indexing now
+                ++nName;
                 continue;
             }
             // otherwise, end the name search
@@ -1059,7 +1062,8 @@ void do_sbrlnk(int nOpCode) {
 		// call files doesn't use a specific drive, so check it here
 		do_files(-(rcpubyte(0x834c)));
 		// we don't have an error code for this one, even if it was bad!
-		wcpubyte(0x8350, ERR_NOERROR);
+        tmpFile.LastError = ERR_NOERROR;
+		setsbrerror(&tmpFile);
 		return;
 	}
 
@@ -1079,14 +1083,14 @@ void do_sbrlnk(int nOpCode) {
         // set up for CPU buffers
         //debug_write("CPU buffers not supported on SBRLNK unit >%02X", tmpFile.nDrive);
 		//tmpFile.LastError=ERR_DEVICEERROR;
-		//wcpubyte(0x8350, tmpFile.LastError);
+		//setsbrerror(&tmpFile);
 		//return;
 	}
 
 	if ((tmpFile.nDrive < 0) || (tmpFile.nDrive >= MAX_DRIVES) || (NULL == pDriveType[tmpFile.nDrive])) {
 		debug_write("SBRLNK call to invalid drive %d", tmpFile.nDrive);
 		tmpFile.LastError=ERR_DEVICEERROR;
-		wcpubyte(0x8350, tmpFile.LastError);
+		setsbrerror(&tmpFile);
 		return;
 	}
 	if (DISK_TICC == pDriveType[tmpFile.nDrive]->GetDiskType()) {
@@ -1094,7 +1098,7 @@ void do_sbrlnk(int nOpCode) {
         if (tmpFile.bUseCPU) {
             debug_write("TI Disk Controller does not support RAM buffers!");
 		    tmpFile.LastError=ERR_DEVICEERROR;
-		    wcpubyte(0x8350, tmpFile.LastError);
+		    setsbrerror(&tmpFile);
 		    return;
 	    }
         // No need to check bSubDirApi here, it doesn't have one
@@ -1109,7 +1113,7 @@ void do_sbrlnk(int nOpCode) {
         // this is an unsupported opcode on this device
         debug_write("SBRLNK >%02X: CPU buffers not supported on drive %d (enable subdir api)", nOpCode, tmpFile.nDrive);
 		tmpFile.LastError=ERR_ILLEGALOPERATION;
-		wcpubyte(0x8350, tmpFile.LastError);
+		setsbrerror(&tmpFile);
 		return;
     }
 
@@ -1122,7 +1126,7 @@ void do_sbrlnk(int nOpCode) {
             // this is an unsupported opcode on this device
             debug_write("SBRLNK >%02X not supported on drive %d", nOpCode, tmpFile.nDrive);
 		    tmpFile.LastError=ERR_ILLEGALOPERATION;
-		    wcpubyte(0x8350, tmpFile.LastError);
+		    setsbrerror(&tmpFile);
 		    return;
         }
     }
@@ -1133,7 +1137,7 @@ void do_sbrlnk(int nOpCode) {
             // this is an unsupported opcode on this device
             debug_write("SetPath SBRLNK not supported on drive %d", tmpFile.nDrive);
 		    tmpFile.LastError=ERR_ILLEGALOPERATION;
-		    wcpubyte(0x8350, tmpFile.LastError);
+		    setsbrerror(&tmpFile);
 		    return;
         }
     }
@@ -1173,7 +1177,7 @@ void do_sbrlnk(int nOpCode) {
                     tmpFile.Status = FLAG_INPUT;
 					if (!pDriveType[tmpFile.nDrive]->ReadSector(&tmpFile)) {
 						// write the error code into >8350 (done below)
-						// wcpubyte(0x8350, tmpFile.LastError);
+						// setsbrerror(&tmpFile);
 					}
 				} else {
 					debug_write("Sector write: drive %d, sector %d, %s >%04X", tmpFile.nDrive, tmpFile.RecordNumber, tmpFile.bUseCPU?"CPU":"VDP", tmpFile.DataBuffer);
@@ -1189,7 +1193,7 @@ void do_sbrlnk(int nOpCode) {
 
 					if (!pDriveType[tmpFile.nDrive]->WriteSector(&tmpFile)) {
 						// write the error code into >8350 (done below)
-						// wcpubyte(0x8350, tmpFile.LastError);
+						// setsbrerror(&tmpFile);
 					}
 				}
 
@@ -1240,8 +1244,8 @@ void do_sbrlnk(int nOpCode) {
 				if (!pDriveType[tmpFile.nDrive]->FormatDisk(&tmpFile)) {
 					// copy the error code into >8350 and >8351, zero LengthSectors so it will also record 0
 					// 8350 is done below
-					//wcpubyte(0x8350, tmpFile.LastError);
-					wcpubyte(0x8351, tmpFile.LastError);
+					//setsbrerror(&tmpFile);
+					wcpubyte(0x8351, tmpFile.LastError<<5);
 					// make up a fake size for apps that don't check
 					tmpFile.LengthSectors=9*tmpFile.NumberRecords*tmpFile.RecordsPerSector*tmpFile.LengthSectors;
 					if (tmpFile.LengthSectors == 0) tmpFile.LengthSectors=360;
@@ -1276,12 +1280,12 @@ void do_sbrlnk(int nOpCode) {
 					if (tmpFile.OpCode) {
 						debug_write("Protect file %s", tmpFile.csName);
 						if (!pDriveType[tmpFile.nDrive]->ProtectFile(&tmpFile)) {
-							//wcpubyte(0x8350, tmpFile.LastError);
+							//setsbrerror(&tmpFile);
 						}
 					} else {
 						debug_write("Unprotect file %s", tmpFile.csName);
 						if (!pDriveType[tmpFile.nDrive]->UnProtectFile(&tmpFile)) {
-							//wcpubyte(0x8350, tmpFile.LastError);
+							//setsbrerror(&tmpFile);
 						}
 					}
 				}
@@ -1323,7 +1327,7 @@ void do_sbrlnk(int nOpCode) {
 
 				if (!pDriveType[tmpFile.nDrive]->RenameFile(&tmpFile, csNewFile, nOpCode == SBR_RENAMEDIR)) {
 					// write the error code into >8350 (done below)
-					// wcpubyte(0x8350, tmpFile.LastError);
+					// setsbrerror(&tmpFile);
 				}
 			}
 			break;
@@ -1347,7 +1351,7 @@ void do_sbrlnk(int nOpCode) {
 				tmpFile.RecordLength = rcpubyte(nInfo+7);	// record length
 				tmpFile.NumberRecords = romword(nInfo+8);	// number of records (WORD, Thierry's notes are a little confusing)
 
-				// get the filename (must be 10 since 10 char filenames won't be padded)
+				// get the filename
                 if (tmpFile.bUseCPU) {
                     GetFilenameFromCPU(romword(0x834e), 10, &tmpFile, pDriveType[tmpFile.nDrive]->GetSupportsLongFilenames());
                 } else {
@@ -1361,9 +1365,10 @@ void do_sbrlnk(int nOpCode) {
                     tmpFile.Status = FLAG_INPUT;
 					if (!pDriveType[tmpFile.nDrive]->ReadFileSectors(&tmpFile)) {
 						// write the error code into >8350 (done below)
-						// wcpubyte(0x8350, tmpFile.LastError);
+						// setsbrerror(&tmpFile);
 					} else if (isInfoRequest) {
 						// fill in the return data
+                        debug_write("Writing info to >%04X (skipping first 2 bytes, 10 total)", nInfo);
 						wrword  (nInfo+2, tmpFile.LengthSectors);	// info block
 						wcpubyte(nInfo+4, tmpFile.FileType);
 						wcpubyte(nInfo+5, tmpFile.RecordsPerSector);
@@ -1371,6 +1376,19 @@ void do_sbrlnk(int nOpCode) {
 						wcpubyte(nInfo+7, tmpFile.RecordLength);
 						wrword  (nInfo+8, tmpFile.NumberRecords);
 					}
+                    
+                    // error or not, do this
+                    if (!isInfoRequest) {
+                        // This is actually a 16 bit word in the TI disk controller, that's why 0x834c is zeroed
+	    			    wcpubyte(0x834c, 0);						// always zero the drive index
+                        if (tmpFile.LastError == ERR_NOERROR) {
+		    		        wcpubyte(0x834d, tmpFile.LengthSectors);	// sectors read/written (TODO: not sure, but I don't think this is zeroed as per Fred's doc - test)
+                        } else {
+                            // not necessarily correct, but it needs to be something
+		    		        wcpubyte(0x834d, 0);
+                        }
+                    }
+
 				} else {
                     debug_write("SBR_FILEOUT request on %s (%s)", tmpFile.csName, tmpFile.bUseCPU?"CPU":"VDP");
                     tmpFile.Status = FLAG_OUTPUT;
@@ -1384,12 +1402,20 @@ void do_sbrlnk(int nOpCode) {
 
 					if (!pDriveType[tmpFile.nDrive]->WriteFileSectors(&tmpFile)) {
 						// write the error code into >8350 (done below)
-						// wcpubyte(0x8350, tmpFile.LastError);
+						// setsbrerror(&tmpFile);
 					}
-				}
 
-				wcpubyte(0x834c, 0);						// always zero the drive index
-				wcpubyte(0x834d, tmpFile.LengthSectors);	// sectors read/written
+                    // error or not, do this
+                    // This is actually a 16 bit word in the TI disk controller, that's why 0x834c is zeroed
+	    			wcpubyte(0x834c, 0);						// always zero the drive index
+                    if (tmpFile.LastError == ERR_NOERROR) {
+		    		    wcpubyte(0x834d, tmpFile.LengthSectors);	// sectors read/written (TODO: not sure, but I don't think this is zeroed as per Fred's doc - test)
+                    } else {
+                        // not necessarily correct, but it needs to be something
+		    		    wcpubyte(0x834d, 0);
+                    }
+
+				}
 			}
 			break;
 
@@ -1409,7 +1435,7 @@ void do_sbrlnk(int nOpCode) {
                 // mkdir, rmdir, and rename functions. What a fucking joke. I'm sorry
                 // I implemented any of it and polluted my filesystem code. >:(
                 // 
-                // This is a Pascal/BASIC string with a length byte - the only one.
+                // This is a Pascal/BASIC string with a length byte - THE ONLY STRING THAT IS.
                 // But since I'm still not supporting spaces, I suppose we can use
                 // the same old API.
                 int adr;
@@ -1470,7 +1496,7 @@ void do_sbrlnk(int nOpCode) {
                 // in theory we already checked IsSubDirSupported()
 				if (!pDriveType[tmpFile.nDrive]->SetSubDir(&tmpFile)) {
 					// write the error code into >8350 (done below)
-					// wcpubyte(0x8350, tmpFile.LastError);
+					// setsbrerror(&tmpFile);
 				}
 			}
             break;
@@ -1498,7 +1524,7 @@ void do_sbrlnk(int nOpCode) {
 
 				if (!pDriveType[tmpFile.nDrive]->CreateDirectory(&tmpFile)) {
 					// write the error code into >8350 (done below)
-					// wcpubyte(0x8350, tmpFile.LastError);
+					// setsbrerror(&tmpFile);
 				}
 			}
             break;
@@ -1526,7 +1552,7 @@ void do_sbrlnk(int nOpCode) {
 
 				if (!pDriveType[tmpFile.nDrive]->DeleteDirectory(&tmpFile)) {
 					// write the error code into >8350 (done below)
-					// wcpubyte(0x8350, tmpFile.LastError);
+					// setsbrerror(&tmpFile);
 				}
 			}
             break;
@@ -1538,7 +1564,7 @@ void do_sbrlnk(int nOpCode) {
 	}
 
 	// store the error code before exit
-	wcpubyte(0x8350, tmpFile.LastError);	// should still be 0 if no error occurred
+	setsbrerror(&tmpFile);	// should still be 0 if no error occurred
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1582,7 +1608,7 @@ bool TryLoadMagicImage(FileInfo *pFile) {
 /////////////////////////////////////////////////////////////////////////
 void setfileerror(FileInfo *pFile) {
 	debug_write("Setting file error %d on file buffer %d", pFile->LastError, pFile->nIndex);
-//	VDP[pFile->PABAddress+1] &= 0x1f;						// no errors (program must clear this - confirmed by TI spec - but can they clear it when it's needed to open?)
+	//VDP[pFile->PABAddress+1] &= 0x1f;						// no errors (TODO: program must clear this - confirmed by TI spec - but can they clear it when it's needed to open?)
 	VDP[pFile->PABAddress+1] |= pFile->LastError<<5;		// file error
 	// Only set COND on non-existant DSR - confirmed by TI spec
 	// In an error case we need to release the object - programs generally won't close it
@@ -1601,6 +1627,14 @@ void setfileerror(FileInfo *pFile) {
 			pFile->bFree = true;
 		}
 	}
+}
+
+/////////////////////////////////////////////////////////////////////////
+// Set the error code in >8350 - use this instead of writing directly
+/////////////////////////////////////////////////////////////////////////
+void setsbrerror(FileInfo *pFile) {
+	debug_write("Setting SBRLNK error %d", pFile->LastError);
+	wcpubyte(0x8350, pFile->LastError<<5);		// file error
 }
 
 ///////////////////////////////////////////////////////////////////////
