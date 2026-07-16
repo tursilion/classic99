@@ -2389,3 +2389,10 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 
 - added long filename support to the SBRLNK functions (still needs testing)
 - added memory prepare to CALL TIPI loads (same setup as scratchpad loader)
+
+-----------------------------------------------
+
+16 Jul 2026
+
+- bug fixes to SBR long filename support
+
