@@ -252,6 +252,7 @@ void HandleTICCSector() {
 		TICCDisk *disk = (TICCDisk*)pDriveType[nDrive];
 
         if (checkTIDiskSize(disk, nDrive)) {
+            wcpubyte(0x8350, 0);    // clear error return byte - important to prevent spurious errors
 		    if (rcpubyte(0x834d)) {
 			    disk->readsectorwrap();
 		    } else {

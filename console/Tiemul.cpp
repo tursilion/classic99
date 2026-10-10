@@ -4234,7 +4234,7 @@ void do1()
 			// has been incremented to the next instruction (IE: we just incremented the
 			// repeat counter). If so, we only allow the increment at a much slower rate
 			// based on the interrupt timer (for real time slowdown).
-			// This doesn't work in XB!
+			// This doesn't work in XB! TODO IF THIS DOESN'T WORK ANYWHERE WE SHOULD REMOVE IT. NEED A PCODE FIX TOO.
 			if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x2a62)) {
 				if ((ticks%10) != 0) {
 					WriteMemoryByte(0x830D, ReadMemoryByte(0x830D, ACCESS_FREE) - 1, false);
