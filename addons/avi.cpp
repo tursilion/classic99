@@ -46,6 +46,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "..\console\tivdp_pico9918.h"
+#include "..\resource.h"
+
 PAVIFILE myAvi;																// pointer to AVI handle
 PAVISTREAM myStream;														// pointer to AVI Stream
 PAVISTREAM myAudioStream;													// pointer to AVI Stream
@@ -64,6 +67,11 @@ extern unsigned int *framedata;											// data to write (in words, each is 1 
 extern int Recording;
 extern int AudioSampleRate;
 extern HWND myWnd;
+
+// latched at InitAvi - an AVI stream cannot change frame size part way through
+static unsigned int *aviSource = NULL;
+static int aviWidth = 0;
+static int aviHeight = 0;
 
 extern int InitAvi(bool bWithAudio);
 extern void WriteFrame();
@@ -93,6 +101,16 @@ int InitAvi(bool bWithAudio)
 	AVIFileInit();																// init AVI library
 	
 	bUsingAudio = bWithAudio;
+
+	if ((p9918Active()) && (NULL != p9918framedata)) {
+		aviSource = p9918framedata;
+		aviWidth  = P9918_WIDTH;
+		aviHeight = P9918_HEIGHT;
+	} else {
+		aviSource = framedata;
+		aviWidth  = 256+16;
+		aviHeight = 192+16;
+	}
 	debug_write("AVI: %s, Audio %dHz, %sabled", AVIFileName, AudioSampleRate, bWithAudio?"En":"Dis");
 
 	ret=AVIFileOpen(&myAvi, AVIFileName, OF_CREATE | OF_WRITE, NULL);			// open and create the file
@@ -194,8 +212,8 @@ int InitAvi(bool bWithAudio)
 	}
 
 	bi.biSize=sizeof(bi);
-	bi.biWidth=256+16;
-	bi.biHeight=192+16;
+	bi.biWidth=aviWidth;
+	bi.biHeight=aviHeight;
 	bi.biPlanes=1;
 	bi.biBitCount=32;
 	bi.biCompression=BI_RGB;
@@ -251,7 +269,7 @@ int InitAvi(bool bWithAudio)
 	frame=0;
 	audioframe=0;
 
-	if (NULL == framedata)
+	if (NULL == aviSource)
 	{
 		CloseAVI();
 		LeaveCriticalSection(&csAVI);
@@ -272,13 +290,22 @@ void WriteFrame()
 
 	EnterCriticalSection(&csAVI);
 
+	// the engine can change under us, and the stream size cannot follow it. Stopping
+	// through the menu handler is what puts the window title back
+	unsigned int *live = ((p9918Active()) && (NULL != p9918framedata)) ? p9918framedata : framedata;
+	if ((NULL != aviSource) && (aviSource != live)) {
+		debug_write("AVI: VDP engine changed, stopping recording");
+		PostMessage(myWnd, WM_COMMAND, ID_VIDEO_STOPRECORDING, 0);
+		LeaveCriticalSection(&csAVI);
+		return;
+	}
+
 	// write a frame to the AVI
 	// Try every frame ;)
-	if ((myStream) && (framedata))
+	if ((myStream) && (aviSource))
 	{
-		// frame is 272*208
-		len=226304;		//	272x208x4 (32-bit)
-		data=ICSeqCompressFrame(&myComp, 0, framedata, &key, &len);						// compress the frame
+		len=aviWidth*aviHeight*4;		// 32-bit
+		data=ICSeqCompressFrame(&myComp, 0, aviSource, &key, &len);						// compress the frame
 		if (NULL != data) {
 			HRESULT ret = AVIStreamWrite(myStream, frame++, 1, data, len, NULL, NULL, NULL);	// write 1 frame
 			if (ret != 0) {
@@ -290,7 +317,7 @@ void WriteFrame()
 	}
 	else
 	{
-		debug_write("Can't write frame (myStream: 0x%08X, framedata: 0x%08X", myStream, framedata);
+		debug_write("Can't write frame (myStream: 0x%08X, framedata: 0x%08X", myStream, aviSource);
 		CloseAVI();
 	}
 	

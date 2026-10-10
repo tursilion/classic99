@@ -73,6 +73,7 @@
 #include <vector>
 #include "tiemul.h"
 #include "cpu9900.h"
+#include "tivdp_pico9918.h"
 #include "..\addons\F18A.h"
 #include "..\resource.h"
 
@@ -3701,12 +3702,19 @@ void GPUF18A::WRWORD(Word dest, Word val) {
 
 Word GPUF18A::GetSafeWord(int x, int) {
     // bank is irrelevant
+    if (p9918Active()) {
+        return (GetSafeByte(x & 0xfffe, 0) << 8) | GetSafeByte((x & 0xfffe) + 1, 0);
+    }
     return ROMWORD(x);
 }
 
 // Read a byte withOUT triggering the hardware - for monitoring
 Byte GPUF18A::GetSafeByte(int x, int) {
     // bank is irrelevant
+    // the core's GPU sees a flat 64k; RCPUBYTE would answer >Bxxx with the status byte
+    if (p9918Active()) {
+        return VDP[x & 0xffff];
+    }
     return RCPUBYTE(x);
 }
 

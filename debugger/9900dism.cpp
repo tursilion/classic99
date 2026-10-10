@@ -414,7 +414,9 @@ int Dasm9900 (char *buffer, int pc, int bank)
 	myPC = pc;
 	OP = RDOP(myPC, bank); myPC+=2;
 
-	if (pCurrentCPU == pGPU) {
+	// bank too, the signal RDOP reads the memory through: pCurrentCPU is never pGPU
+	// under pico9918-core
+	if ((pCurrentCPU == pGPU) || (-1 == bank)) {
 		offset=32;
 	} else {
 		offset=0;

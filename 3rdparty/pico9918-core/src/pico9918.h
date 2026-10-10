@@ -1,0 +1,674 @@
+/**
+ * \file
+ * \brief pico9918-core - core interface
+ *
+ * Copyright (c) 2021 Troy Schrapel
+ *
+ * This code is licensed under the MIT license
+ *
+ * https://github.com/visrealm/pico9918-core
+ */
+
+#ifndef _PICO9918_H
+#define _PICO9918_H
+
+/* ------------------------------------------------------------------
+ * LINKAGE MODES:
+ *
+ * Default (nothing defined):    using pico9918-core as a DLL
+ * PICO9918_COMPILING_DLL:       compiling pico9918-core as a DLL
+ * PICO9918_STATIC:              linking pico9918-core statically
+ */
+
+/* C linkage under a C++ consumer, plain extern under C. Every mode below carries it: a
+   __declspec on its own leaves the name mangled, so a C++ host links against nothing. */
+#ifdef __cplusplus
+#define PICO9918_LINKAGE extern "C"
+#else
+#define PICO9918_LINKAGE extern
+#endif
+
+#if __EMSCRIPTEN__
+#include <emscripten.h>
+/* Opt-in: a blanket KEEPALIVE overrides the host's -sEXPORTED_FUNCTIONS and pins
+   everything those entry points reach, pico9918_gpu_loop's while(1) included. */
+#ifndef PICO9918_WASM_KEEPALIVE
+#define PICO9918_WASM_KEEPALIVE 0
+#endif
+#if PICO9918_WASM_KEEPALIVE
+#define PICO9918_DLLEXPORT EMSCRIPTEN_KEEPALIVE PICO9918_LINKAGE
+#else
+#define PICO9918_DLLEXPORT PICO9918_LINKAGE
+#endif
+#define PICO9918_DLLEXPORT_CONST PICO9918_LINKAGE
+#elif PICO9918_COMPILING_DLL
+#define PICO9918_DLLEXPORT PICO9918_LINKAGE __declspec(dllexport)
+#elif defined WIN32 && !defined PICO9918_STATIC
+#define PICO9918_DLLEXPORT PICO9918_LINKAGE __declspec(dllimport)
+#else
+/** \brief the linkage every public entry point carries - see LINKAGE MODES above */
+#define PICO9918_DLLEXPORT PICO9918_LINKAGE
+#endif
+
+/** \brief cross-TU linkage for what is not public API, so a DLL or wasm build exports none of it */
+#define PICO9918_INTERNAL PICO9918_LINKAGE
+
+#ifndef PICO9918_DLLEXPORT_CONST
+#define PICO9918_DLLEXPORT_CONST PICO9918_DLLEXPORT
+#endif
+
+#include "pico9918_build_config.h"
+
+/* The instance mode comes from the generated header, not from the consumer's own flags:
+ * it changes the calling convention of nearly every entry point below, and C symbols
+ * carry no argument types, so a disagreement would link clean and then call wrongly.
+ * A consumer may still state it - that is what the library's own build does - but it
+ * has to agree with the archive. */
+#ifndef PICO9918_SINGLE_INSTANCE
+#define PICO9918_SINGLE_INSTANCE PICO9918_BUILD_SINGLE_INSTANCE
+#elif (PICO9918_SINGLE_INSTANCE != 0) != (PICO9918_BUILD_SINGLE_INSTANCE != 0)
+#error "PICO9918_SINGLE_INSTANCE disagrees with the archive - drop it and let pico9918_build_config.h supply it"
+#endif
+
+/* INST_ONLY_ARG is `void`, not empty: an empty parameter list is a declaration
+ * without a prototype, which clang rejects under -Wstrict-prototypes and C23
+ * gives a different meaning. INST_ARG stays empty - it is always followed by
+ * real parameters. */
+#if PICO9918_SINGLE_INSTANCE
+#define PICO9918_INST_ARG           /**< declare the instance ahead of other parameters */
+#define PICO9918_INST_ONLY_ARG void /**< declare the instance as the only parameter */
+#define PICO9918_INST               /**< pass the instance ahead of other arguments */
+#define PICO9918_INST_ONLY          /**< pass the instance as the only argument */
+#else
+#define PICO9918_INST_ARG      pico9918_t *tms9918, /**< declare the instance ahead of other parameters */
+#define PICO9918_INST_ONLY_ARG pico9918_t* tms9918  /**< declare the instance as the only parameter */
+#define PICO9918_INST          tms9918,             /**< pass the instance ahead of other arguments */
+#define PICO9918_INST_ONLY     tms9918              /**< pass the instance as the only argument */
+#endif
+
+/* The integration layer's host callbacks - config-applied, config-reload, flash and
+ * config-save - always carry their instance and a `void* userdata`, and their setters
+ * take the instance like every other entry point. One registration shared between two
+ * VDPs cannot say which of them is calling, which forces a host holding two into
+ * globals of its own.
+ *
+ * Only the STORAGE differs by build: per instance where there can be more than one, a
+ * file static where there is exactly one. The types are below, once the instance type
+ * exists to name; each setter is in its own module's header.
+ */
+
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+
+/** \brief a VDP instance. Opaque: the layout is private to the library */
+struct pico9918_s;
+typedef struct pico9918_s pico9918_t;
+
+typedef void (*pico9918_config_applied_fn)(pico9918_t* tms9918, void* userdata);
+typedef void (*pico9918_config_reload_fn)(pico9918_t* tms9918, void* userdata);
+typedef void (*pico9918_gpu_flash_fn)(pico9918_t* tms9918, void* userdata);
+typedef void (*pico9918_gpu_config_save_fn)(pico9918_t* tms9918, uint8_t* config, uint8_t key,
+                                            void* userdata);
+typedef bool (*pico9918_gpu_step_fn)(pico9918_t* tms9918, uint16_t pc, void* userdata);
+
+/** \brief the display modes the VDP can be in, TMS9918A modes and F18A alike */
+typedef enum
+{
+  TMS_MODE_GRAPHICS_I,
+  TMS_MODE_GRAPHICS_II,
+  TMS_MODE_TEXT,
+  TMS_MODE_MULTICOLOR,
+  TMS_MODE_TEXT80,
+#ifdef PICO9918_V9938_BASE /* V9938 base scaffold (additive to pico9918-core) */
+  TMS_MODE_V9938_G3,
+  TMS_MODE_V9938_G4,
+  TMS_MODE_V9938_G5,
+  TMS_MODE_V9938_G6,
+  TMS_MODE_V9938_G7,
+#endif
+  TMS_MODE_COUNT,
+} pico9918_mode_t;
+
+#if PICO9918_BUILD_RUNTIME_CHIP
+
+/**
+ * \brief which chip an instance answers as
+ *
+ * A capability ladder, ordered least to most, so one value compares them all.
+ *
+ *   TMS9918   the pre-A part. It does not decode M3, so it has no Graphics II.
+ *   TMS9918A  adds Graphics II. The unlock write is still refused, so the register file
+ *             stays eight wide, there is no GPU to start, and the enhanced renderer
+ *             folds away exactly as it does on a locked device.
+ *   F18A      unlockable: the full register file, the enhanced modes and the GPU. None
+ *             of the PICO9918's own extensions - a real F18A has no config port and no
+ *             overlays - and it identifies as a real one in SR1.
+ *   PICO9918  an F18A plus this board's extensions: the VR58/59 config port, the
+ *             firmware-update register, and the splash and diagnostics overlays.
+ *   PRO       the RP2350 board: 80-column text at a byte a pixel, which brings the tile
+ *             palette select, ECM and the bitmap layer to TEXT80, and its own splash. It
+ *             answers software the same way a PICO9918 does - SR1 reads 0xE8 for both,
+ *             so nothing probing for the chip can tell the tiers apart.
+ *
+ * One behaviour runs the other way, because it is a quirk rather than a capability: the
+ * two TMS9918s drive DRAM, so R1's 4K/16K bit moves where a CPU-side access lands. The
+ * F18A has SRAM and the bit means nothing to it.
+ *
+ * Declared only where the library was built PICO9918_RUNTIME_CHIP=ON, which a board
+ * does not: what the build fixes either way is the memory map, and a firmware that is
+ * one chip has nothing to select. See PICO9918_BUILD_RUNTIME_CHIP.
+ */
+typedef enum
+{
+  PICO9918_CHIP_TMS9918      = 0, /**< a pre-A TMS9918: a TMS9918A without Graphics II */
+  PICO9918_CHIP_TMS9918A     = 1, /**< a TMS9918A: locked, no GPU, no extensions */
+  PICO9918_CHIP_F18A         = 2, /**< an F18A: unlock, enhanced renderer, GPU */
+  PICO9918_CHIP_PICO9918     = 3, /**< an F18A plus the PICO9918's own extensions */
+  PICO9918_CHIP_PICO9918_PRO = 4, /**< a PICO9918 PRO: 8bpp 80-column text, its own splash */
+} pico9918_chip_t;
+
+/**
+ * \brief the highest personality this build can be, and what a new instance is
+ *
+ * The ceiling is PRO only where the build carries the wide 80-column line, because that
+ * is a buffer width rather than a runtime choice: PICO9918_TEXT80_8BPP doubles the
+ * scanline buffer, so a narrow build has nowhere to put the pixels. Ask for PRO there
+ * and pico9918_set_chip clamps to PICO9918, which is the contract it already states -
+ * read pico9918_chip() back to find out which you got.
+ */
+#if PICO9918_BUILD_TEXT80_8BPP
+#define PICO9918_CHIP_MAX PICO9918_CHIP_PICO9918_PRO
+#else
+#define PICO9918_CHIP_MAX PICO9918_CHIP_PICO9918
+#endif
+
+#endif // PICO9918_BUILD_RUNTIME_CHIP
+
+/** \brief the sixteen TMS9918 colours, in palette-index order */
+typedef enum
+{
+  TMS_TRANSPARENT = 0,
+  TMS_BLACK,
+  TMS_MED_GREEN,
+  TMS_LT_GREEN,
+  TMS_DK_BLUE,
+  TMS_LT_BLUE,
+  TMS_DK_RED,
+  TMS_CYAN,
+  TMS_MED_RED,
+  TMS_LT_RED,
+  TMS_DK_YELLOW,
+  TMS_LT_YELLOW,
+  TMS_DK_GREEN,
+  TMS_MAGENTA,
+  TMS_GREY,
+  TMS_WHITE,
+} pico9918_color_t;
+
+/** \brief the eight TMS9918 registers, by number and by what each one holds */
+typedef enum
+{
+  TMS_REG_0 = 0,
+  TMS_REG_1,
+  TMS_REG_2,
+  TMS_REG_3,
+  TMS_REG_4,
+  TMS_REG_5,
+  TMS_REG_6,
+  TMS_REG_7,
+  TMS_NUM_REGISTERS,
+  TMS_REG_NAME_TABLE        = TMS_REG_2,
+  TMS_REG_COLOR_TABLE       = TMS_REG_3,
+  TMS_REG_PATTERN_TABLE     = TMS_REG_4,
+  TMS_REG_SPRITE_ATTR_TABLE = TMS_REG_5,
+  TMS_REG_SPRITE_PATT_TABLE = TMS_REG_6,
+  TMS_REG_FG_BG_COLOR       = TMS_REG_7,
+
+  /* The accessors take all 64 registers. A locked device decodes only the eight above,
+     so everything below needs the F18A personality unlocked first. */
+  PICO9918_REG_NAME_TABLE2      = 10, /**< tile layer 2 name table base */
+  PICO9918_REG_COLOR_TABLE2     = 11, /**< tile layer 2 colour table base */
+  PICO9918_REG_STATUS_SELECT    = 15, /**< which status register S1 reads back, and the counter controls */
+  PICO9918_REG_HORZ_INT_LINE    = 19, /**< scanline the horizontal interrupt fires on */
+  PICO9918_REG_PALETTE_SELECT   = 24, /**< sub-palette for sprites and each tile layer */
+  PICO9918_REG_T2_HSCROLL       = 25, /**< tile layer 2 horizontal scroll */
+  PICO9918_REG_T2_VSCROLL       = 26, /**< tile layer 2 vertical scroll */
+  PICO9918_REG_T1_HSCROLL       = 27, /**< tile layer 1 horizontal scroll */
+  PICO9918_REG_T1_VSCROLL       = 28, /**< tile layer 1 vertical scroll */
+  PICO9918_REG_PAGE_SIZE        = 29, /**< scroll page sizes, and the ECM pattern plane stride */
+  PICO9918_REG_MAX_SCAN_SPRITES = 30, /**< sprites drawn per scanline before the limit bites */
+  PICO9918_REG_BML_CONTROL      = 31, /**< bitmap layer enable, priority, transparency, fat pixels */
+  PICO9918_REG_BML_BASE         = 32, /**< bitmap layer base address, in 64-byte units */
+  PICO9918_REG_BML_X            = 33, /**< bitmap layer left edge */
+  PICO9918_REG_BML_TOP_ROW      = 34, /**< bitmap layer top row */
+  PICO9918_REG_BML_WIDTH        = 35, /**< bitmap layer width in pixels */
+  PICO9918_REG_BML_HEIGHT       = 36, /**< bitmap layer height in rows */
+  PICO9918_REG_PALETTE_CONTROL  = 47, /**< palette data port mode, auto-increment and index */
+  PICO9918_REG_VRAM_INC         = 48, /**< signed VRAM address increment per access */
+  PICO9918_REG_ENHANCED1        = 49, /**< tile layer 2, 30-row mode, ECM levels, real Y */
+  PICO9918_REG_ENHANCED2        = 50, /**< GPU triggers, per-position attributes, layer priority */
+  PICO9918_REG_MAX_SPRITES      = 51, /**< sprites processed per frame before the scan stops */
+  PICO9918_REG_GPU_PC_MSB       = 54, /**< GPU program counter, high byte */
+  PICO9918_REG_GPU_PC_LSB       = 55, /**< GPU program counter, low byte - writing it also starts the GPU */
+  PICO9918_REG_GPU_CONTROL      = 56, /**< GPU load and trigger */
+  PICO9918_REG_UNLOCK           = 57, /**< 0x1c twice unlocks the F18A personality; any other value locks */
+  PICO9918_REG_CONFIG_INDEX     = 58, /**< PICO9918 only: which configuration byte R59 addresses */
+  PICO9918_REG_CONFIG_VALUE     = 59, /**< PICO9918 only: the configuration byte R58 selected */
+  PICO9918_REG_FLASH_CONTROL    = 63, /**< PICO9918 only: flash operation control */
+} pico9918_register_t;
+
+/**
+ * \brief the status registers, by number and by what each one reports
+ *
+ * Which one a status read returns is selected by the low four bits of R15, so all but
+ * the first need the F18A personality unlocked. The counters are pairs, low byte first.
+ */
+typedef enum
+{
+  PICO9918_SR_STATUS       = 0,  /**< the TMS9918A status: interrupt, 5th sprite, collision, sprite number */
+  PICO9918_SR_IDENT        = 1,  /**< chip identity, blanking, and the scanline interrupt flag */
+  PICO9918_SR_GPU          = 2,  /**< GPU running and its status byte */
+  PICO9918_SR_RASTER_LINE  = 3,  /**< the line currently being drawn */
+  PICO9918_SR_NANOS_LSB    = 4,  /**< nanosecond counter, low byte. Always 0 here: no 10ns source */
+  PICO9918_SR_NANOS_MSB    = 5,  /**< nanosecond counter, high bits. Always 0 here */
+  PICO9918_SR_MICROS_LSB   = 6,  /**< microsecond counter, low byte */
+  PICO9918_SR_MICROS_MSB   = 7,  /**< microsecond counter, high bits */
+  PICO9918_SR_MILLIS_LSB   = 8,  /**< millisecond counter, low byte */
+  PICO9918_SR_MILLIS_MSB   = 9,  /**< millisecond counter, high bits */
+  PICO9918_SR_SECONDS_LSB  = 10, /**< second counter, low byte */
+  PICO9918_SR_SECONDS_MSB  = 11, /**< second counter, high byte */
+  PICO9918_SR_CONFIG_VALUE = 12, /**< PICO9918 only: the configuration byte R58 selected */
+  PICO9918_SR_TEMPERATURE  = 13, /**< PICO9918 only: core temperature, as degrees C times four */
+  PICO9918_SR_VERSION      = 14, /**< the F18A feature level, as major and minor nibbles */
+  PICO9918_SR_REG_VALUE    = 15, /**< the register value latched when the VRAM address was set */
+} pico9918_status_register_t;
+
+/** \brief status register 0 bits. The low five are the sprite number */
+#define PICO9918_SR0_INT        0x80 /**< end of frame reached. Cleared by reading SR0 */
+#define PICO9918_SR0_5S         0x40 /**< more sprites on a line than the limit allows */
+#define PICO9918_SR0_COLLISION  0x20 /**< two sprites overlapped on an opaque pixel */
+#define PICO9918_SR0_SPRITE_NUM 0x1f /**< the fifth sprite's number, or the highest seen */
+
+/** \brief status register 1 bits. The high three are the chip identity */
+#define PICO9918_SR1_HF    0x01 /**< the line in R19 was reached. Cleared by reading SR1 */
+#define PICO9918_SR1_BLANK 0x02 /**< the raster is in blanking */
+
+/** \brief register 0 bits: mode selection and the external VDP input.
+ * The three modes register 1 selects are 0 here, so a mode is the pair of writes. */
+#define TMS_R0_MODE_GRAPHICS_I  0x00 /**< Graphics I - no bit of its own in R0 */
+#define TMS_R0_MODE_GRAPHICS_II 0x02 /**< Graphics II - the only mode R0 selects */
+#define TMS_R0_MODE_MULTICOLOR  0x00 /**< Multicolor - selected in R1 */
+#define TMS_R0_MODE_TEXT        0x00 /**< 40-column text - selected in R1 */
+#define TMS_R0_MODE_TEXT_80     0x04 /**< 80-column text, with R1's text mode. The F18A's M4 */
+#define TMS_R0_EXT_VDP_ENABLE   0x01 /**< take video from the external VDP input */
+#define TMS_R0_EXT_VDP_DISABLE  0x00 /**< ignore the external VDP input */
+#define TMS_R0_DOUBLE_ROWS      0x08 /**< PICO9918 only: twice the rows, drawn interlaced. Sprites stay low-res */
+#define TMS_R0_INT_SCANLINE     0x10 /**< assert /INT when the raster reaches the line in R19. The F18A's IE1 */
+
+/** \brief register 1 bits: VRAM size, blanking, interrupt, mode and sprite size */
+#define TMS_R1_RAM_16K          0x80 /**< 16KB of VRAM */
+#define TMS_R1_RAM_4K           0x00 /**< 4KB of VRAM */
+#define TMS_R1_DISP_BLANK       0x00 /**< blank the display; the border still draws */
+#define TMS_R1_DISP_ACTIVE      0x40 /**< render the active display */
+#define TMS_R1_INT_ENABLE       0x20 /**< assert /INT at end of frame */
+#define TMS_R1_INT_DISABLE      0x00 /**< leave /INT alone */
+#define TMS_R1_MODE_GRAPHICS_I  0x00 /**< Graphics I - no bit of its own in R1 */
+#define TMS_R1_MODE_GRAPHICS_II 0x00 /**< Graphics II - selected in R0 */
+#define TMS_R1_MODE_MULTICOLOR  0x08 /**< Multicolor */
+#define TMS_R1_MODE_TEXT        0x10 /**< 40-column text */
+#define TMS_R1_SPRITE_8         0x00 /**< 8x8 sprite patterns */
+#define TMS_R1_SPRITE_16        0x02 /**< 16x16 sprite patterns */
+#define TMS_R1_SPRITE_MAG1      0x00 /**< sprites drawn at their pattern size */
+#define TMS_R1_SPRITE_MAG2      0x01 /**< sprites drawn at twice their pattern size */
+
+/* The F18A register bits worth naming. Every one of these needs the F18A personality
+   unlocked, R0's M4 included, and each mask names the field's position, not a value. */
+
+/** \brief register 24 bits: the sub-palette each layer takes */
+#define PICO9918_R24_SPRITE_PS 0x30 /**< sprite palette select */
+#define PICO9918_R24_TILE_PS   0x0f /**< tile palette select, layer 2 high and layer 1 low */
+#define PICO9918_R24_TILE2_PS  0x0c /**< tile layer 2 palette select */
+#define PICO9918_R24_TILE1_PS  0x03 /**< tile layer 1 palette select */
+
+/** \brief register 29 fields: scroll page sizes, and the stride between ECM pattern planes */
+#define PICO9918_R29_SPRITE_STRIDE 0xc0 /**< sprite pattern plane stride, 0x800 >> n */
+#define PICO9918_R29_PAGE2_HORZ    0x20 /**< tile layer 2 scrolls across two pages */
+#define PICO9918_R29_PAGE2_VERT    0x10 /**< tile layer 2 scrolls down two pages */
+#define PICO9918_R29_TILE_STRIDE   0x0c /**< tile pattern plane stride, 0x800 >> n */
+#define PICO9918_R29_PAGE1_HORZ    0x02 /**< tile layer 1 scrolls across two pages */
+#define PICO9918_R29_PAGE1_VERT    0x01 /**< tile layer 1 scrolls down two pages */
+
+/** \brief register 31 bits: the bitmap layer */
+#define PICO9918_R31_BML_ENABLE   0x80 /**< draw the bitmap layer */
+#define PICO9918_R31_BML_PRIORITY 0x40 /**< bitmap layer above the tile layers */
+#define PICO9918_R31_BML_TRANSP   0x20 /**< pixel value 0 is transparent */
+#define PICO9918_R31_BML_FAT      0x10 /**< two bits a pixel, drawn double width */
+#define PICO9918_R31_BML_PS       0x0f /**< bitmap layer palette select */
+
+/** \brief register 47 bits: the palette data port */
+#define PICO9918_R47_DATA_PORT 0x80 /**< route data port writes to palette RAM */
+#define PICO9918_R47_AUTO_INC  0x40 /**< step the palette index after each entry */
+#define PICO9918_R47_INDEX     0x3f /**< first palette index to write */
+
+/** \brief register 49 bits: tile layer 2, row count, and the enhanced colour modes */
+#define PICO9918_R49_TILE2_ENABLE 0x80 /**< draw tile layer 2 */
+#define PICO9918_R49_ROW30        0x40 /**< 30 rows of tiles rather than 24 */
+#define PICO9918_R49_ECM_TILE     0x30 /**< tile ECM level field */
+#define PICO9918_R49_ECM_TILE_1   0x10 /**< tiles take one bitplane, two colours */
+#define PICO9918_R49_ECM_TILE_2   0x20 /**< tiles take two bitplanes, four colours */
+#define PICO9918_R49_ECM_TILE_3   0x30 /**< tiles take three bitplanes, eight colours */
+#define PICO9918_R49_Y_REAL       0x08 /**< sprite Y is the real row, not row minus one */
+#define PICO9918_R49_ECM_SPRITE   0x03 /**< sprite ECM level field */
+#define PICO9918_R49_ECM_SPRITE_1 0x01 /**< sprites take one bitplane, two colours */
+#define PICO9918_R49_ECM_SPRITE_2 0x02 /**< sprites take two bitplanes, four colours */
+#define PICO9918_R49_ECM_SPRITE_3 0x03 /**< sprites take three bitplanes, eight colours */
+
+/** \brief register 50 bits: GPU triggers and the remaining layer controls */
+#define PICO9918_R50_RESET       0x80 /**< reset the VDP */
+#define PICO9918_R50_GPU_HSYNC   0x40 /**< trigger the GPU every scanline */
+#define PICO9918_R50_GPU_VSYNC   0x20 /**< trigger the GPU every frame */
+#define PICO9918_R50_TILE1_OFF   0x10 /**< stop drawing tile layer 1 */
+#define PICO9918_R50_REPORT_MAX  0x08 /**< S0's sprite number reports the highest seen */
+#define PICO9918_R50_VSCANLINES  0x04 /**< F18A only: dim every second raster line */
+#define PICO9918_R50_POS_ATTR    0x02 /**< tile attributes come per position, not per tile */
+#define PICO9918_R50_T2_PRIORITY 0x01 /**< tile layer 2 above tile layer 1 */
+
+/** \brief register 56 bit: the GPU trigger */
+#define PICO9918_R56_GPU_RUN 0x01 /**< 1 starts the GPU, 0 loads the PC without starting */
+
+/** \brief the value register 57 takes, twice in a row, to unlock */
+#define PICO9918_R57_UNLOCK 0x1c /**< low two bits ignored; any other value locks again */
+
+/** \brief register 15 bits: the counter controls, and which status register S1 reads */
+#define PICO9918_R15_COUNTER_RESET 0x40 /**< reset the frame/scanline counters */
+#define PICO9918_R15_COUNTER_SNAP  0x20 /**< latch the counters for reading */
+#define PICO9918_R15_COUNTER_EN    0x10 /**< let the counters run */
+#define PICO9918_R15_STATUS_NUM    0x0f /**< which status register S1 reads back */
+
+#define TMS9918_PIXELS_X 256 /**< active display width, every mode */
+#define TMS9918_PIXELS_Y 384 /**< tallest active display any mode reaches; a TMS9918A draws 192 */
+
+
+/* PUBLIC INTERFACE
+ * ---------------------------------------- */
+
+#if PICO9918_SINGLE_INSTANCE
+
+/** \brief initialize the TMS9918 library in single-instance mode */
+PICO9918_DLLEXPORT
+void pico9918_init(void);
+
+/** \brief the implicit instance - the base the PICO9918_MAP_* offsets index */
+PICO9918_DLLEXPORT
+pico9918_t* pico9918_instance(void);
+
+#else
+
+/**
+ * \brief create a new TMS9918
+ *
+ * NOTE - multi-instance limitations. Instances are independent for bus
+ * access, VRAM, registers and status. Rendering is not fully independent:
+ *
+ *  - Rendering is NOT re-entrant. The scanline path uses file-scope scratch
+ *    (row bit masks, background fill), so pico9918_scan_line must never be
+ *    in flight for two instances at once. Render one at a time; alternating
+ *    between instances is fine.
+ *  - Three pieces of state are shared that arguably should not be: the
+ *    cached display mode, the active mode-ops pointer, and the expanded
+ *    palette LUT. Each reflects whichever instance last touched it, so an
+ *    instance whose mode or palette differs from the previous renderer's may
+ *    produce one stale scanline after a switch.
+ *
+ * Driving a single instance - the overwhelmingly common case - is unaffected.
+ */
+PICO9918_DLLEXPORT
+pico9918_t* pico9918_new(void);
+
+#endif
+
+/**
+ * \brief bytes an instance occupies, for a versioned save/restore
+ *
+ * The layout is private and differs between builds, so a stored snapshot is only
+ * loadable back into a library of the same size and build config.
+ */
+PICO9918_DLLEXPORT
+size_t pico9918_instance_size(void);
+
+/**
+ * \brief is the F18A unlock latch set?
+ *
+ * Neither R57's stored byte nor pico9918_chip() answers this: the latter says "could be
+ * unlocked", so a locked F18A looks like it has a scanline interrupt source.
+ */
+PICO9918_DLLEXPORT
+bool pico9918_unlocked(PICO9918_INST_ONLY_ARG);
+
+/* map window offsets from the instance base. pico9918_debug_region() gives the shape */
+#define PICO9918_MAP_PRAM      0x5000 ///< palette RAM, 64 entries of RGB444
+#define PICO9918_MAP_REGISTERS 0x6000 ///< the register file, VR0-VR63
+#define PICO9918_MAP_SCANLINE  0x7000 ///< the current scanline, then the blanking flag
+#define PICO9918_MAP_STATUS    0xB000 ///< the status registers, SR0-SR15
+
+#if PICO9918_BUILD_LAYER_MASK
+/* what pico9918_debug_set_suppress() keeps off the picture. Every bit suppresses */
+#define PICO9918_SUPPRESS_SPRITES     0x01 ///< sprite pixels, in every mode and ECM depth
+#define PICO9918_SUPPRESS_TILE1       0x02 ///< tile layer 1, text rows included
+#define PICO9918_SUPPRESS_TILE2       0x04 ///< tile layer 2
+#define PICO9918_SUPPRESS_BITMAP      0x08 ///< the F18A bitmap layer
+#define PICO9918_SUPPRESS_GM2_COLOUR  0x10 ///< locked Graphics II: ignore the colour table
+#define PICO9918_SUPPRESS_GM2_PATTERN 0x20 ///< locked Graphics II: ignore the pattern table
+#define PICO9918_SUPPRESS_BLANKING    0x40 ///< draw the active display though R1 bit 6 says blank
+#endif
+
+#if PICO9918_BUILD_RUNTIME_CHIP
+
+/**
+ * \brief select which chip this instance answers as
+ *
+ * Clamped to PICO9918_CHIP_MAX, so a request the build cannot honour comes back as the
+ * highest it can rather than as a half-honoured one - read pico9918_chip() to find out
+ * which you got. Stepping down to a personality that CANNOT UNLOCK AT ALL relocks the
+ * device, because the register file it would otherwise leave visible is not one a
+ * TMS9918A has. Stepping between two personalities that can both unlock leaves the latch
+ * alone, so this is not "stepping down relocks" in general - read pico9918_unlocked().
+ *
+ * A reset preserves it: the personality is the chip on the board, not state the bus can
+ * clear. A new instance starts at PICO9918_CHIP_MAX, which is what a consumer that never
+ * calls this keeps.
+ *
+ * Stepping to a personality that has no settings block also takes R30 to that chip's own
+ * scanline sprite limit - four on a TMS9918 or TMS9918A, which have no register to raise
+ * it with. One that HAS a settings block keeps whatever the block last applied, so this
+ * and pico9918_config_apply_now() may be called in either order.
+ */
+PICO9918_DLLEXPORT
+void pico9918_set_chip(PICO9918_INST_ARG pico9918_chip_t chip);
+
+/** \brief which chip this instance answers as */
+PICO9918_DLLEXPORT
+pico9918_chip_t pico9918_chip(PICO9918_INST_ONLY_ARG);
+
+#endif // PICO9918_BUILD_RUNTIME_CHIP
+
+/** \brief reset the TMS9918 */
+PICO9918_DLLEXPORT
+void pico9918_reset(PICO9918_INST_ONLY_ARG);
+
+/** \brief destroy a TMS9918 and release everything it owns */
+PICO9918_DLLEXPORT
+void pico9918_destroy(PICO9918_INST_ONLY_ARG);
+
+/**
+ * \brief write an address (mode = 1) to the tms9918 - the data byte DB0 -> DB7
+ *
+ * The port is a two-byte latch, and the SECOND byte says which pair it was: bit 7 set
+ * writes a register, and the first byte was its value; bit 7 clear sets the VRAM
+ * address, low byte first, with bit 14 of the address selecting a write rather than a
+ * read. Both orders put the payload first and the selector second.
+ *
+ * pico9918_util.h already writes both sequences down - pico9918_write_register_value()
+ * and pico9918_set_address_read() / _write(). Prefer them to open-coding a pair: the
+ * order is easy to reverse, and reversing it addresses a different register rather
+ * than failing.
+ *
+ * A pair is not atomic, and the latch is per instance rather than per caller. Inject a
+ * write from outside the guest's own stream while the guest is between its two bytes
+ * and the injected first byte completes the GUEST's pair as its selector, leaving the
+ * injected selector to be read as the next value: both writes land somewhere neither
+ * caller asked for. An out-of-band caller has to know the guest is at rest.
+ */
+PICO9918_DLLEXPORT
+void pico9918_write_addr(PICO9918_INST_ARG uint8_t data);
+
+/** \brief write data (mode = 0) to the tms9918 - the data byte DB0 -> DB7 */
+PICO9918_DLLEXPORT
+void pico9918_write_data(PICO9918_INST_ARG uint8_t data);
+
+/** \brief read from the status register */
+PICO9918_DLLEXPORT
+uint8_t pico9918_read_status(PICO9918_INST_ONLY_ARG);
+
+/** \brief read from the status register without resetting it */
+PICO9918_DLLEXPORT
+uint8_t pico9918_peek_status(PICO9918_INST_ONLY_ARG);
+
+/** \brief read data (mode = 0) from the tms9918 */
+PICO9918_DLLEXPORT
+uint8_t pico9918_read_data(PICO9918_INST_ONLY_ARG);
+
+/** \brief read data (mode = 0) without incrementing the address pointer */
+PICO9918_DLLEXPORT
+uint8_t pico9918_read_data_no_inc(PICO9918_INST_ONLY_ARG);
+
+
+/**
+ * \brief true if the device is asserting /INT
+ *
+ * Two independent sources, either sufficient: SR0's frame flag under R1's enable, and
+ * SR1's scanline flag under R0's. Reading one status register clears its own source and
+ * re-derives this, so the pin holds while the other stands.
+ *
+ * Neither source is gated on the F18A unlock, as on the part: a device that relocks keeps
+ * interrupting on a scanline it armed while unlocked. One that has never unlocked cannot
+ * arm that source at all, so it has only the frame one.
+ */
+PICO9918_DLLEXPORT
+bool pico9918_interrupt_status(PICO9918_INST_ONLY_ARG);
+
+/** \brief the host's /INT hook: called whenever the library drives the line */
+typedef void (*pico9918_interrupt_fn)(pico9918_t* instance, bool active, void* userdata);
+
+/**
+ * \brief register the host's /INT hook, so a host need not poll
+ *
+ * Fires on every pin write, not on a level change; a host wanting edges compares against
+ * its own last value. It does NOT fire from pico9918_reset(), whose tail order is the
+ * caller's, so re-derive from pico9918_interrupt_status() after one.
+ */
+PICO9918_DLLEXPORT
+void pico9918_set_interrupt_callback(PICO9918_INST_ARG pico9918_interrupt_fn cb, void* userdata);
+
+/** \brief set the interrupt flag */
+PICO9918_DLLEXPORT
+void pico9918_interrupt_set(PICO9918_INST_ONLY_ARG);
+
+/** \brief set the status flags */
+PICO9918_DLLEXPORT
+void pico9918_set_status(PICO9918_INST_ARG uint8_t status);
+
+/**
+ * \brief the widest active line this build renders, in bytes
+ *
+ * From the width the library was COMPILED at, not the includer's flags: an 8bpp
+ * 80-column build renders two bytes a pixel, and a consumer that derived this from its
+ * own flags would get half of what the renderer writes. pico9918_line_bytes() is the
+ * runtime answer for one line; this is the widest any mode here reaches.
+ */
+#define PICO9918_SCANLINE_BYTES_MAX \
+  (PICO9918_BUILD_TEXT80_8BPP ? TMS9918_PIXELS_X * 2 : TMS9918_PIXELS_X)
+
+/**
+ * \brief the library's line buffer size - the active pixels plus the eight bytes past
+ * them that a fine-h-scrolled tile layer's last quad can reach
+ *
+ * The allocation, where PICO9918_SCANLINE_BYTES_MAX is the picture inside it.
+ */
+#define PICO9918_SCANLINE_BUFFER_SIZE (PICO9918_SCANLINE_BYTES_MAX + 8)
+
+/**
+ * \brief generate a scanline
+ *
+ * Read it back with pico9918_line_source and pico9918_line_bytes: how wide a
+ * line is and which buffer holds it are both properties of the mode and the
+ * build, so the library owns the memory.
+ */
+PICO9918_DLLEXPORT
+uint8_t pico9918_scan_line(PICO9918_INST_ARG uint16_t y);
+
+/**
+ * \brief return a register value
+ *
+ * The guest's view, so a LOCKED device decodes three address bits and nothing more:
+ * reg 30 reads R6, exactly as a write to it would land on R6. To read the register a
+ * locked device cannot address - what a debugger or a register pane wants - use
+ * pico9918_debug_reg(), which exists to publish exactly that.
+ */
+PICO9918_DLLEXPORT
+uint8_t pico9918_reg_value(PICO9918_INST_ARG pico9918_register_t reg);
+
+/**
+ * \brief return a status register value, without the side effects of reading it
+ *
+ * The whole status file, non-destructively: no flag is cleared, no sprite number is
+ * restored and /INT is left where it is - none of which is true of
+ * pico9918_read_status(), which is the guest's destructive read of whichever register
+ * R15 selects.
+ *
+ * NOT masked the way pico9918_reg_value() is. A locked device has no three-bit status
+ * address to model: R15 is above the registers it admits, so a locked guest can reach
+ * SR0 and nothing else. The mask here is the width of R15's own select field.
+ */
+PICO9918_DLLEXPORT
+uint8_t pico9918_status_value(PICO9918_INST_ARG pico9918_status_register_t reg);
+
+
+/** \brief return a value from vram */
+PICO9918_DLLEXPORT
+uint8_t pico9918_vram_value(PICO9918_INST_ARG uint16_t addr);
+
+
+/** \brief check the BLANK flag */
+PICO9918_DLLEXPORT
+bool pico9918_display_enabled(PICO9918_INST_ONLY_ARG);
+
+
+/** \brief the current display mode */
+PICO9918_DLLEXPORT
+pico9918_mode_t pico9918_display_mode(PICO9918_INST_ONLY_ARG);
+
+/**
+ * \brief how many bytes of the line the current mode fills: 256, or 512 for
+ * unlocked 80-column text on a board built with the 8bpp tier
+ */
+PICO9918_DLLEXPORT
+uint32_t pico9918_line_bytes(PICO9918_INST_ONLY_ARG);
+
+/**
+ * \brief where the scanline just generated actually is - the arbitration
+ * buffer, or a tile layer's own buffer on a line that needed no compositing
+ *
+ * Valid until the next scanline, and the only way to read the line back.
+ * Always word-aligned, so it can be read a word at a time.
+ */
+PICO9918_DLLEXPORT
+const uint8_t* pico9918_line_source(PICO9918_INST_ONLY_ARG);
+
+/** \brief a default palette value, 0x0rgb */
+PICO9918_DLLEXPORT
+uint16_t pico9918_default_palette(int index);
+
+#endif // _PICO9918_H

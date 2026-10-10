@@ -94,6 +94,7 @@ The reset also changes VR54 and VR55, but they are *not* loaded to the GPU PC (p
 #include "..\2xSaI\2xSaI.h"
 #include "..\FilterDLL\sms_ntsc.h"
 #include "cpu9900.h"
+#include "tivdp_pico9918.h"
 
 // 16-bit 0rrrrrgggggbbbbb values
 //int TIPALETTE[16]={ 
@@ -275,6 +276,7 @@ DDSURFACEDESC2 CurrentDDSD;					// current back buffer settings
 typedef HRESULT (WINAPI* LPDIRECTDRAWCREATEEX )( GUID FAR * lpGuid, LPVOID  *lplpDD, REFIID  iid,IUnknown FAR *pUnkOuter );
 
 int FilterMode=0;							// Current filter mode
+int nParkedFilterMode=-1;					// the filter pico9918-core is holding for us, or -1
 int nDefaultScreenScale=1;					// default screen scale multiplier
 int nXSize=256, nYSize=192;					// custom sizing
 int TVFiltersAvailable=0;					// Depends on whether we can load the Filter DLL
@@ -322,6 +324,7 @@ BITMAPINFO myInfo2;							// Bitmapinfo header for the DIB functions
 BITMAPINFO myInfo32;						// Bitmapinfo header for the DIB functions
 BITMAPINFO myInfoTV;						// Bitmapinfo header for the DIB functions
 BITMAPINFO myInfo80Col;						// Bitmapinfo header for the DIB functions
+BITMAPINFO myInfoP9918;						// Bitmapinfo header for the pico9918-core 640x480 frame
 HDC tmpDC;									// Temporary DC for StretchBlt to work from
 
 int redraw_needed;							// redraw flag
@@ -414,13 +417,16 @@ int gettables(int isLayer2)
 		// disable bitmap for 99/4
 		reg0&=~0x02;
 	}
-	if (!bEnable80Columns) {
+	// the core does 80 columns itself - and captureScreen() calls this even then
+	const bool allow80 = (0 != bEnable80Columns) || (p9918Active());
+
+	if (!allow80) {
 		// disable 80 columns if not enabled
 		reg0&=~0x04;
 	}
 
 	/* Screen Image Table */
-	if ((bEnable80Columns) && (reg0 & 0x04)) {
+	if ((allow80) && (reg0 & 0x04)) {
 		// in 80-column text mode, the two LSB are some kind of mask that we here ignore - the rest of the register is larger
 		// The 9938 requires that those bits be set to 11, therefore, the F18A treats 11 and 00 both as 00, but treats
 		// 01 and 10 as their actual values. (Okay, that is a bit weird.) That said, the F18A still only honours the least
@@ -509,8 +515,11 @@ void vdpReset(bool isCold) {
 		    int b = (F18APalette[idx]&0xf);
 		    F18APalette[idx] = (r<<20)|(r<<16)|(g<<12)|(g<<8)|(b<<4)|b;	// double up each palette gun, suggestion by Sometimes99er
             // these also need to load into the VRAM, as that's where they are technically stored for the GPU
-            VDP[0x5000+idx*2+1]= (g<<4)|b;
-            VDP[0x5000+idx*2] = r;
+            // the core seeds its own
+            if (!p9918Active()) {
+                VDP[0x5000+idx*2+1]= (g<<4)|b;
+                VDP[0x5000+idx*2] = r;
+            }
 	    }
     }
     bF18AActive = false;
@@ -529,6 +538,9 @@ void vdpReset(bool isCold) {
 	VDPREG[1]=0;							// VDP registers 0/1 cleared on reset per datasheet
     VDPREG[0x33]=32;                        // F18A sprites to process
     VDPREG[0x1e]=4;                         // maximum sprites per line
+
+    // last - engaging re-points VDP[] and syncs the shadows above from it
+    p9918Reset(isCold);
 }
 
 ////////////////////////////////////////////////////////////
@@ -619,6 +631,10 @@ void VDPmain()
 
 	memcpy(&myInfo80Col, &myInfo, sizeof(myInfo));
 	myInfo80Col.bmiHeader.biWidth=512+16;
+
+	memcpy(&myInfoP9918, &myInfo, sizeof(myInfo));
+	myInfoP9918.bmiHeader.biWidth=P9918_WIDTH;
+	myInfoP9918.bmiHeader.biHeight=P9918_HEIGHT;
 
 	myDC=GetDC(myWnd);
 	tmpDC=CreateCompatibleDC(myDC);
@@ -965,8 +981,10 @@ void updateVDP(int cycleCount)
 	while (newCycles > cyclesPerLine) {
 		++vdpscanline;
 		if (vdpscanline == 192+27) {
-			// set the vertical interrupt
-			VDPS|=VDPS_INT;
+			// set the vertical interrupt (pico9918-core raises its own)
+			if (!p9918Active()) {
+				VDPS|=VDPS_INT;
+			}
 			end_of_frame = 1;
 			statusFrameCount++;
 			if (logAudio) writeAudioLogState();
@@ -974,27 +992,36 @@ void updateVDP(int cycleCount)
 			vdpscanline = 0;
 			SetEvent(BlitEvent);
 		}
-		// update the GPU
-		// first GPU scanline is first line of active display
-		// the blanking is not quite right. We expect the scanline
-		// to be set before the line is buffered, and blank to
-		// be set after it's cached. Since the GPU doesn't really
-		// interleave, we always set blanking true and play with
-		// the scanline so it works. TODO: fix that
-		int gpuScanline = vdpscanline - 27;		// this value is correct for scanline pics
 
-		if (gpuScanline < 0) gpuScanline+=262;
-		if ((gpuScanline > 255)||(gpuScanline < 0)) {
-			VDP[0x7000]=255;
+		if (p9918Active()) {
+			// the core renders the blanking lines too, so every line goes to it
+			p9918Scanline();
+			if (vdpscanline < 192+27+24) {
+				--redraw_needed;
+			}
 		} else {
-			VDP[0x7000]=gpuScanline;
-		}
-		VDP[0x7001] = 0x01;		// hblank OR vblank
+			// update the GPU
+			// first GPU scanline is first line of active display
+			// the blanking is not quite right. We expect the scanline
+			// to be set before the line is buffered, and blank to
+			// be set after it's cached. Since the GPU doesn't really
+			// interleave, we always set blanking true and play with
+			// the scanline so it works. TODO: fix that
+			int gpuScanline = vdpscanline - 27;		// this value is correct for scanline pics
 
-		// are we off the screen?
-		if (vdpscanline < 192+27+24) {
-			// nope, we can process this one
-			VDPdisplay(vdpscanline);
+			if (gpuScanline < 0) gpuScanline+=262;
+			if ((gpuScanline > 255)||(gpuScanline < 0)) {
+				VDP[0x7000]=255;
+			} else {
+				VDP[0x7000]=gpuScanline;
+			}
+			VDP[0x7001] = 0x01;		// hblank OR vblank
+
+			// are we off the screen?
+			if (vdpscanline < 192+27+24) {
+				// nope, we can process this one
+				VDPdisplay(vdpscanline);
+			}
 		}
 		newCycles -= cyclesPerLine;
 
@@ -1996,7 +2023,8 @@ void doBlit()
 	if ((MaintainAspect) && (StretchMode != STRETCH_NONE)) {
 		// make sure it fits the window and is 4:3 (1.33333)
 		// Since our borders are not 100%, 1.30 is a better match
-		const double DesiredRatio = 1.30;
+		// the core's own VGA field is exactly 4:3
+		const double DesiredRatio = (p9918Active()) ? (4.0/3.0) : 1.30;
 		double ratio = (double)(rect1.right - rect1.left) / (rect1.bottom - rect1.top);
 		if (ratio < 1.3) {
 			// screen is too narrow, need to make shorter to fit
@@ -2017,6 +2045,16 @@ void doBlit()
 		}
 	}
 
+
+	// The core's whole 640x480 frame goes out as it is - the filters below are
+	// built around the 272x208 buffer, which the core's picture does not fit, so
+	// they are greyed out while it is engaged (see UpdateFilterMenu).
+	if (p9918Active() && (NULL != p9918framedata)) {
+		StretchDIBits(myDC, rect1.left, rect1.top, rect1.right-rect1.left, rect1.bottom-rect1.top, 0, 0, P9918_WIDTH, P9918_HEIGHT, p9918framedata, &myInfoP9918, 0, SRCCOPY);
+		ReleaseDC(myWnd, myDC);
+		LeaveCriticalSection(&VideoCS);
+		return;
+	}
 
 	// TODO: hacky city - 80-column mode doesn't filter or anything, cause we'd have to change ALL the stuff below.
 	if ((bEnable80Columns)&&(VDPREG[0]&0x04)&&(VDPREG[1]&0x10)) {
@@ -2810,6 +2848,61 @@ HRESULT WINAPI myCallBack(LPDDSURFACEDESC2 ddSurface, LPVOID pData) {
 }
 
 ////////////////////////////////////////////////////////////
+// The buffer the Classic99 renderer fills - the filter's
+// size alone. The core does not pass through here.
+////////////////////////////////////////////////////////////
+static void GetFilterSize(int *pWidth, int *pHeight) {
+	switch (FilterMode) {
+		case 0:		// none
+			*pWidth = 256+16;
+			*pHeight = 192+16;
+			break;
+
+		case 4:		// TV
+			*pWidth = TV_WIDTH;
+			*pHeight = 384+29;
+			break;
+
+		case 5:		// hq4x
+			*pWidth = (256+16)*4;
+			*pHeight = (192+16)*4;
+			break;
+
+		default:	// others (*2)
+			*pWidth = 512+32;
+			*pHeight = 384+29;
+			break;
+	}
+}
+
+////////////////////////////////////////////////////////////
+// The surface size Change Size and the aspect fit work in.
+// On demand, not latched.
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+// How far up VDP[] the debugger may look. 16k of VRAM, plus
+// the F18A's 2k of GPU RAM - or, under the core, the whole
+// 64k the GPU addresses: palette, registers, status and the
+// workspace are all up there.
+////////////////////////////////////////////////////////////
+int GetDebugVDPSize() {
+	if (p9918Active()) return 0x10000;
+	if (bF18Enabled) return 0x4800;
+	return 0x4000;
+}
+
+void GetSurfaceSize(int *pWidth, int *pHeight) {
+	// the core scans out its own frame, at its own size
+	if (p9918Active()) {
+		*pWidth = P9918_WIDTH;
+		*pHeight = P9918_HEIGHT;
+		return;
+	}
+
+	GetFilterSize(pWidth, pHeight);
+}
+
+////////////////////////////////////////////////////////////
 // Setup DirectDraw, with the requested fullscreen mode
 // In order for Fullscreen to work, only the main thread
 // may call this function!
@@ -2921,26 +3014,13 @@ void SetupDirectDraw(bool fullscreen) {
 		ZeroMemory(&CurrentDDSD, sizeof(CurrentDDSD));
 		CurrentDDSD.dwSize=sizeof(CurrentDDSD);
 		CurrentDDSD.dwFlags=DDSD_HEIGHT | DDSD_WIDTH;
-		switch (FilterMode) {
-			case 0:		// none
-				CurrentDDSD.dwWidth=256+16;
-				CurrentDDSD.dwHeight=192+16;
-				break;
-
-			case 4:		// TV
-				CurrentDDSD.dwWidth=TV_WIDTH;
-				CurrentDDSD.dwHeight=384+29;
-				break;
-
-			case 5:		// hq4x
-				CurrentDDSD.dwWidth=(256+16)*4;
-				CurrentDDSD.dwHeight=(192+16)*4;
-				break;
-
-			default:	// others (*2)
-				CurrentDDSD.dwWidth=512+32;
-				CurrentDDSD.dwHeight=384+29;
-				break;
+		{
+			// sizing this to the core's frame leaves an oversized surface behind
+			// when the core is dropped, and nothing draws into it meanwhile
+			int w, h;
+			GetFilterSize(&w, &h);
+			CurrentDDSD.dwWidth=w;
+			CurrentDDSD.dwHeight=h;
 		}
 
 		if (lpdd->CreateSurface(&CurrentDDSD, &ddsBack, NULL) !=DD_OK) {
@@ -3099,7 +3179,12 @@ void SaveScreenshot(bool bAuto, bool bFiltered) {
 		int nX, nY, nBits;
 		unsigned char *pBuf;
 
-		if (bFiltered) {
+		if ((p9918Active()) && (NULL != p9918framedata)) {
+			nX=P9918_WIDTH;
+			nY=P9918_HEIGHT;
+			pBuf=(unsigned char*)p9918framedata;
+			nBits=32;
+		} else if (bFiltered) {
 			switch (FilterMode) {
 			case 0:		// none
 				nX=256+16;

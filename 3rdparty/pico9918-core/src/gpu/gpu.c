@@ -1,0 +1,716 @@
+/**
+ * \file
+ * \brief pico9918-core - GPU Implementation
+ *
+ * Copyright (c) 2021 Troy Schrapel
+ *
+ * This code is licensed under the MIT license
+ *
+ * https://github.com/visrealm/pico9918-core
+ *
+ * Purpose: TMS9900 GPU glue code (adapted from pico9918/src/gpu/gpu.c)
+ *
+ * Credits: JasonACT (AtariAge)
+ *
+ */
+
+#include "gpu.h"
+/* the private instance layout: this TU reaches TMS_REGISTER/TMS_STATUS and the
+   struct directly, and the public GPU header does not supply them */
+#include "impl/pico9918_priv.h"
+#include "pico9918_config.h" /* PICO9918_CONF_* action keys */
+
+#include <string.h> /* memcpy */
+
+/* -------------------------------------------------------------------------
+ * Platform-specific includes
+ * ---------------------------------------------------------------------- */
+#ifdef PICO_BUILD
+#include "pico/stdlib.h"
+#include "hardware/structs/mpu.h"
+#include "hardware/sync.h"
+#include <hardware/flash.h>
+#include "pico.h" /* PICO_RP2040 */
+#endif
+
+#include "tms9900.h"
+#include "impl/platform.h" /* PICO9918_HOST_TIME_US */
+
+#if PICO9918_BUILD_DEBUG_API
+#include "pico9918_debug.h" /* pico9918_debug_gpu_step_n, defined here for the hook */
+#endif
+
+#if PICO9918_BUILD_STEP_CALLBACK && !(PICO9918_BUILD_DEBUG_API && defined(TMS9900_STEP_HOOK))
+#error "PICO9918_BUILD_STEP_CALLBACK needs PICO9918_DEBUG_API and the interpreter's step hook"
+#endif
+
+#if !PICO9918_GPU_BUDGETED
+/* run9900() implemented in platform/thumb9900_{m0,m33}.S */
+extern uint16_t run9900(uint8_t* memory, uint16_t pc, uint16_t wp, uint8_t* regx38);
+#else
+#if defined(TMS9900_WATCH_WRITES)
+static void gpuDmaWatch(uint8_t* vram, uint32_t addr);
+#endif
+
+#if PICO9918_BUILD_DEBUG_API && defined(TMS9900_STEP_HOOK)
+/* What one slice runs under. It carries the instance because the two sources below do not */
+typedef struct
+{
+  pico9918_gpu_step_fn fn;
+  void* userdata;
+  pico9918_t* inst;
+} gpu_step_ctx_t;
+
+/* Live for one pico9918_debug_gpu_step_n call, which is what lets a breakpoint list be
+   an argument to a run rather than a pair of fields on every instance. */
+static struct
+{
+  pico9918_gpu_step_fn fn;
+  void* userdata;
+} gpuStep;
+
+static bool gpuStepHook(Tms9900Cpu* cpu)
+{
+  const gpu_step_ctx_t* const ctx = (const gpu_step_ctx_t*)cpu->onStepData;
+
+  return ctx->fn(ctx->inst, (uint16_t)cpu->pc, ctx->userdata);
+}
+
+/* The call's callback wins over the instance's, so a pane pacing its own slice does not
+   fight the standing one. A slice the LIBRARY paced can only ever have the instance's,
+   having no call of its own to carry one. */
+static bool gpuStepResolve(PICO9918_INST_ARG gpu_step_ctx_t* out)
+{
+  out->inst     = tms9918;
+  out->fn       = gpuStep.fn;
+  out->userdata = gpuStep.userdata;
+
+#if PICO9918_BUILD_STEP_CALLBACK
+  if (!out->fn)
+  {
+    out->fn       = tms9918->stepFn;
+    out->userdata = tms9918->stepUserdata;
+  }
+#endif
+
+  return out->fn != NULL;
+}
+#endif
+
+static uint16_t run9900Budget(PICO9918_INST_ARG uint8_t* mem, uint16_t pc, uint16_t* wp,
+                              uint8_t* r38, uint32_t budget, uint16_t* st, bool* outOfBudget,
+                              bool f18aMemory)
+{
+  Tms9900Cpu cpu;
+  tms9900_init(&cpu, mem, r38, pc, *wp);
+  cpu.f18aMemory = f18aMemory;
+#if defined(TMS9900_WATCH_WRITES)
+  cpu.onWrite      = gpuDmaWatch;
+  cpu.onWriteMask  = ~(uint32_t)0x1F;
+  cpu.onWriteMatch = 0x8000;
+#endif
+#if PICO9918_BUILD_DEBUG_API && defined(TMS9900_STEP_HOOK)
+  /* a local, so a nested or concurrent slice cannot take this one's callback with it */
+  gpu_step_ctx_t ctx;
+  if (gpuStepResolve(PICO9918_INST &ctx))
+  {
+    cpu.onStepData = &ctx;
+    cpu.onStep     = gpuStepHook;
+  }
+#endif
+  cpu.st = *st;
+  const uint16_t next = run9900_budget_c(&cpu, budget, outOfBudget);
+  *st                 = cpu.st;
+  *wp                 = cpu.wp;
+  return next;
+}
+#endif
+
+/* -------------------------------------------------------------------------
+ * Config keys used to request config actions (save / forced save / pending
+ * confirm / pending cancel). Semantics are owned by the host - the GPU loop
+ * just detects a set key, clears it and notifies the host via the config
+ * callback.
+ * ---------------------------------------------------------------------- */
+static const uint8_t configActionKeys[] = {PICO9918_CONF_SAVE_TO_FLASH, PICO9918_CONF_SAVE_FORCED, PICO9918_CONF_PENDING_CONFIRM,
+                                           PICO9918_CONF_PENDING_CANCEL};
+
+/* -------------------------------------------------------------------------
+ * Callbacks (registered by the host application)
+ * ---------------------------------------------------------------------- */
+/* pico9918.h carries why only the storage differs between the two builds */
+#if PICO9918_SINGLE_INSTANCE
+static struct
+{
+  pico9918_gpu_flash_fn fn;
+  void* userdata;
+} gpuFlash;
+
+static struct
+{
+  pico9918_gpu_config_save_fn fn;
+  void* userdata;
+} gpuConfigSave;
+#define GPU_FLASH_CB       gpuFlash
+#define GPU_CONFIG_SAVE_CB gpuConfigSave
+#else
+#define GPU_FLASH_CB       tms9918->gpuFlash
+#define GPU_CONFIG_SAVE_CB tms9918->gpuConfigSave
+#endif
+
+void pico9918_gpu_set_flash_callback(PICO9918_INST_ARG pico9918_gpu_flash_fn cb, void* userdata)
+{
+  GPU_FLASH_CB.fn       = cb;
+  GPU_FLASH_CB.userdata = userdata;
+}
+
+/** \brief see the header. The request itself, which SR2 bit 7 cannot distinguish. */
+bool pico9918_gpu_flash_pending(PICO9918_INST_ONLY_ARG)
+{
+  return tms9918->flash != 0;
+}
+
+void pico9918_gpu_set_config_save_callback(PICO9918_INST_ARG pico9918_gpu_config_save_fn cb, void* userdata)
+{
+  GPU_CONFIG_SAVE_CB.fn       = cb;
+  GPU_CONFIG_SAVE_CB.userdata = userdata;
+}
+
+/* SR2, which the flash operation shares with the GPU:
+ *   bit  7   busy
+ *   bits 6-5 retry count
+ *   bits 4-2 result (pico9918_flash_result_t)
+ *   bits 1-0 progress */
+void pico9918_gpu_flash_complete(PICO9918_INST_ARG pico9918_flash_result_t result)
+{
+  TMS_STATUS(tms9918, PICO9918_SR_GPU) =
+    (uint8_t)((TMS_STATUS(tms9918, PICO9918_SR_GPU) & ~0x9c) | ((result & 7) << 2));
+  TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) = 0;
+}
+
+static inline void gpuFlashFire(PICO9918_INST_ONLY_ARG)
+{
+  /* TRAP: taken before dispatch, not after. An erase runs for milliseconds and a
+     request arriving inside one must re-arm rather than be cleared by the completion
+     that follows it. */
+  tms9918->flash = 0;
+
+  if (GPU_FLASH_CB.fn)
+    GPU_FLASH_CB.fn(tms9918, GPU_FLASH_CB.userdata);
+  else
+    pico9918_gpu_flash_complete(PICO9918_INST PICO9918_FLASH_ERR_UNSUPPORTED);
+}
+
+static inline void gpuConfigSaveFire(PICO9918_INST_ARG uint8_t key)
+{
+  if (GPU_CONFIG_SAVE_CB.fn)
+    GPU_CONFIG_SAVE_CB.fn(tms9918, tms9918->config, key, GPU_CONFIG_SAVE_CB.userdata);
+}
+
+/* -------------------------------------------------------------------------
+ * Hard-fault handler (triggered by MPU for GPU DMA and palette writes)
+ * ---------------------------------------------------------------------- */
+#ifdef PICO_BUILD
+static int didFault = 0;
+
+void isr_hardfault(void)
+{
+  didFault                    = 1;
+  TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) = 0; /* Stop the GPU */
+  mpu_hw->ctrl                = 0; /* Turn off memory protection - all models */
+}
+#endif /* PICO_BUILD */
+
+/* -------------------------------------------------------------------------
+ * Run a GPU DMA job
+ * ---------------------------------------------------------------------- */
+
+/* A transfer that runs off an end of the map. The engine's address register is 16 bits so
+   it comes back at the other end, which a pointer walk cannot do and no correct program
+   asks for - so this stays out of line rather than unrolling into the caller. */
+static PICO9918_NOINLINE void dmaWrapped(uint8_t* vram, uint32_t src, uint32_t dst,
+                                         uint32_t width, uint32_t height, int32_t pitch,
+                                         int32_t srcInc, int32_t dstInc)
+{
+  uint16_t s = (uint16_t)src;
+  uint16_t d = (uint16_t)dst;
+  for (uint32_t y = 0; y < height; ++y)
+  {
+    uint16_t rs = s, rd = d;
+    for (uint32_t x = 0; x < width; ++x, rs += srcInc, rd += dstInc) vram[rd] = vram[rs];
+    if (srcInc) s += (uint16_t)pitch;
+    d += (uint16_t)pitch;
+  }
+}
+
+static void triggerGpuDma(uint8_t* vram)
+{
+  const uint32_t srcVramAddr = __builtin_bswap16(*(uint16_t*)(vram + 0x8000));
+  const uint32_t dstVramAddr = __builtin_bswap16(*(uint16_t*)(vram + 0x8002));
+
+  /* zero is 256 in both: the engine loads the register into a counter that stops at one */
+  const uint32_t width  = vram[0x8004] ? vram[0x8004] : 256;
+  const uint32_t height = vram[0x8005] ? vram[0x8005] : 256;
+  const uint32_t stride = vram[0x8006];
+  const uint32_t params = vram[0x8007];
+
+  const int32_t  dstInc = (params & 0x02) ? -1 : 1;
+  const int32_t  srcInc = (params & 0x01) ? 0 : dstInc;
+  const uint32_t wm1    = width - 1;
+
+  /* TRAP: the row pitch is not the stride register, and zero does not mean 256 here. The
+     engine forms one eight-bit signed difference from stride and width, then adds it in
+     place of the last step of every row - so a stride that difference overflows walks the
+     transfer backwards, which caps a usable stride at (width - 1) + 127. */
+  const uint32_t diffByte = ((dstInc < 0) ? wm1 - stride : stride - wm1) & 0xff;
+  const int32_t  diff     = (diffByte & 0x80) ? (int32_t)diffByte - 256 : (int32_t)diffByte;
+  const int32_t  pitch    = (int32_t)wm1 * dstInc + diff;
+
+  /* how far a transfer reaches either side of its start, each axis counting whichever way it runs */
+  const int32_t row  = (int32_t)wm1 * dstInc;
+  const int32_t col  = (int32_t)(height - 1) * pitch;
+  const int32_t back = (row < 0 ? row : 0) + (col < 0 ? col : 0);
+  const int32_t fwd  = (row > 0 ? row : 0) + (col > 0 ? col : 0);
+
+  const int32_t dstLo = (int32_t)dstVramAddr + back, dstHi = (int32_t)dstVramAddr + fwd;
+  const int32_t srcLo = (int32_t)srcVramAddr + back, srcHi = (int32_t)srcVramAddr + fwd;
+
+  if (dstLo < 0 || dstHi > 0xFFFF || (srcInc && (srcLo < 0 || srcHi > 0xFFFF)))
+  {
+    dmaWrapped(vram, srcVramAddr, dstVramAddr, width, height, pitch, srcInc, dstInc);
+  }
+  else if (srcInc == 0)
+  {
+    /* a row holds the same bytes from either end, so a fill runs forwards either way */
+    uint8_t*      d     = vram + dstVramAddr - (dstInc < 0 ? wm1 : 0);
+    const uint8_t value = vram[srcVramAddr];
+    for (uint32_t y = 0; y < height; ++y, d += pitch) memset(d, value, width);
+  }
+  else if (dstLo > srcHi || srcLo > dstHi)
+  {
+    /* nothing read is ever written, so the direction the engine took does not show */
+    uint8_t* s = vram + srcVramAddr - (dstInc < 0 ? wm1 : 0);
+    uint8_t* d = vram + dstVramAddr - (dstInc < 0 ? wm1 : 0);
+    for (uint32_t y = 0; y < height; ++y, s += pitch, d += pitch) memcpy(d, s, width);
+  }
+  else
+  {
+    uint8_t* s = vram + srcVramAddr;
+    uint8_t* d = vram + dstVramAddr;
+    for (uint32_t y = 0; y < height; ++y, s += pitch, d += pitch)
+    {
+      uint8_t* rs = s;
+      uint8_t* rd = d;
+      for (uint32_t x = 0; x < width; ++x, rs += srcInc, rd += dstInc) *rd = *rs;
+    }
+  }
+
+  *(uint16_t*)(vram + 0x8008) = 0;
+}
+
+#if defined(TMS9900_WATCH_WRITES)
+/*
+ * The MPU's job, done in software. Region 0 guards 32 bytes at 0x8000 and its
+ * handler reads the trigger, so this is the same test at the same moment - which
+ * is what lets a program start a transfer and carry straight on.
+ */
+static void gpuDmaWatch(uint8_t* vram, uint32_t addr)
+{
+  (void)addr; /* onWriteMask/Match already select the port, so only it arrives */
+  if (vram[0x8008]) triggerGpuDma(vram);
+}
+#endif
+
+/* -------------------------------------------------------------------------
+ * MPU guards (Pico only). Region 0 covers the GPU DMA port, region 1 the
+ * palette - a GPU palette write has no other way of announcing itself.
+ * ---------------------------------------------------------------------- */
+#ifdef PICO_BUILD
+volatile uint8_t pico9918_gpu_palette_guard_off = 0;
+
+/* Fault on writes to a range; reads still pass. The range must not cross a 256-byte
+   boundary, which the instance's own 256-byte alignment is what guarantees. */
+static void PICO9918_IN_FLASH_FUNC(guard)(uint32_t region, void* a, uint32_t bytes)
+{
+  uintptr_t addr = (uintptr_t)a;
+#if PICO_RP2040
+  uint32_t base  = addr & (uint)~0xff;
+  uint32_t first = (addr - base) >> 5;
+  uint32_t last  = (addr + bytes - 1 - base) >> 5;
+  uint32_t srd   = ~(((1u << (last - first + 1)) - 1u) << first) & 0xffu;
+
+  mpu_hw->rbar = base | M0PLUS_MPU_RBAR_VALID_BITS | region;
+  mpu_hw->rasr = 1 | (0x07 << 1) | (srd << 8) | 0x15000000; /* 256 bytes, privileged RO, XN */
+#else
+  mpu_hw->rnr  = region;
+  mpu_hw->rbar = (addr & (uint)~31u) | (2u << M33_MPU_RBAR_AP_LSB) | M33_MPU_RBAR_XN_BITS;
+  mpu_hw->rlar = ((addr + bytes - 1) & (uint)~31u) | M33_MPU_RLAR_EN_BITS;
+#endif
+}
+
+static void __not_in_flash_func(guardEnable)(uint32_t region, bool on)
+{
+  mpu_hw->rnr = region;
+#if PICO_RP2040
+  if (on)
+    mpu_hw->rasr |= M0PLUS_MPU_RASR_ENABLE_BITS;
+  else
+    mpu_hw->rasr &= ~M0PLUS_MPU_RASR_ENABLE_BITS;
+#else
+  if (on)
+    mpu_hw->rlar |= M33_MPU_RLAR_EN_BITS;
+  else
+    mpu_hw->rlar &= ~M33_MPU_RLAR_EN_BITS;
+#endif
+}
+
+/* the flag goes up before the region drops; the other order lets an interrupt
+   re-arm and clear it, leaving the guard down with nothing to notice */
+static void __not_in_flash_func(gpuPaletteFault)(PICO9918_INST_ONLY_ARG)
+{
+  tms9918->palDirty = 1;
+
+  uint32_t save           = save_and_disable_interrupts();
+  pico9918_gpu_palette_guard_off = 1;
+  guardEnable(1, false);
+  restore_interrupts(save);
+}
+
+void __not_in_flash_func(pico9918_gpu_rearm_palette_guard)(PICO9918_INST_ONLY_ARG)
+{
+  if (tms9918->palDirty) return;
+
+  pico9918_gpu_palette_guard_off = 0;
+  guardEnable(1, true);
+  tms9918->palDirty = 1;
+}
+#endif /* PICO_BUILD */
+
+/* -------------------------------------------------------------------------
+ * Core GPU execution (non-inlined for stack safety)
+ * ---------------------------------------------------------------------- */
+static PICO9918_NOINLINE bool volatileHack(PICO9918_INST_ARG uint32_t budget)
+{
+  bool running     = false;
+  bool outOfBudget = false;
+#if PICO9918_GPU_BUDGETED
+  /* TRAP: keying this off the arming register write instead leaks a workspace into the
+     next program, because everything else that sets restart also means "start". */
+  tms9918->gpuWp = pico9918_gpu_wp(PICO9918_INST_ONLY);
+#endif
+  tms9918->restart = 0;
+  if ((tms9918->gpuAddress & 1) == 0) /* Odd addresses crash the RP2040 */
+  {
+    uint16_t lastAddress = tms9918->gpuAddress;
+
+#ifdef PICO_BUILD
+  restart:
+#endif
+    TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) = 1;
+    TMS_STATUS(tms9918, PICO9918_SR_GPU) |= 0x80; /* Running */
+
+#ifdef PICO_BUILD
+#if PICO_RP2040
+    mpu_hw->ctrl = M0PLUS_MPU_CTRL_PRIVDEFENA_BITS | M0PLUS_MPU_CTRL_ENABLE_BITS;
+#else
+    mpu_hw->ctrl = M33_MPU_CTRL_PRIVDEFENA_BITS | M33_MPU_CTRL_ENABLE_BITS;
+#endif
+#endif /* PICO_BUILD */
+
+#if PICO9918_GPU_BUDGETED
+    lastAddress = run9900Budget(PICO9918_INST tms9918->vram.bytes, lastAddress, &tms9918->gpuWp,
+                                &TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL), budget, &tms9918->gpuStatus,
+                                &outOfBudget, !PICO9918_GPU_FLAT_MEM(tms9918));
+#else
+    (void)budget;
+    lastAddress =
+      run9900(tms9918->vram.bytes, lastAddress, 0xFFFE, &TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL));
+#endif
+
+#ifdef PICO_BUILD
+    mpu_hw->ctrl = 0; /* Turn off memory protection - all models */
+#endif
+
+    if (TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) & 1)
+    {
+      tms9918->gpuAddress = lastAddress;
+      tms9918->restart    = 0;
+      running             = outOfBudget;
+    }
+#ifdef PICO_BUILD
+    if (didFault)
+    {
+      didFault = 0;
+      if (tms9918->vram.bytes[0x8008])
+        triggerGpuDma(tms9918->vram.bytes);
+      else if (!pico9918_gpu_palette_guard_off)
+        gpuPaletteFault(PICO9918_INST_ONLY);
+      goto restart;
+    }
+#endif
+  }
+  if (running) return true;
+
+  TMS_STATUS(tms9918, PICO9918_SR_GPU) &= ~0x80; /* Stopped */
+  TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) = 0;
+  return false;
+}
+
+/* -------------------------------------------------------------------------
+ * Public API
+ * ---------------------------------------------------------------------- */
+
+/*
+ * Initialize the TMS9900 GPU
+ */
+void pico9918_gpu_init(PICO9918_INST_ONLY_ARG)
+{
+#ifdef PICO_BUILD
+#if !PICO_RP2040
+  mpu_hw->mair[0] = 0x44; /* normal non-cacheable, so a guarded read stays an ordinary load */
+#endif
+  guard(0, &(tms9918->vram.bytes[0x8000]), 32);
+  guard(1, tms9918->vram.map.pram, 64 * sizeof(*tms9918->vram.map.pram));
+#endif
+#if PICO9918_GPU_BUDGETED
+  tms9918->gpuWp = PICO9918_GPU_WORKSPACE;
+#endif
+}
+
+/*
+ * Cross-core, unguarded by design. Written by pico9918_gpu_loop (core 0 on Pico)
+ * and read + reset from the frame/overlay side (core 1) via pico9918_gpu_time /
+ * pico9918_gpu_reset_time. volatile so the compiler cannot cache or reorder the
+ * accesses across the core boundary; the remaining race is a lost update of one
+ * sample window, which is tolerable for a statistics readout.
+ */
+static volatile bool reportedBack  = true;
+static volatile uint32_t gpuTimeUs = 0;
+
+/*
+ * Return GPU CPU time in microseconds.
+ */
+uint32_t pico9918_gpu_time(uint32_t totalTime)
+{
+  if (!reportedBack) return totalTime;
+  return gpuTimeUs;
+}
+
+/*
+ * Reset internal GPU time accumulator.
+ */
+void pico9918_gpu_reset_time(void)
+{
+  gpuTimeUs = 0;
+}
+
+/*
+ * One service pass. Split out of pico9918_gpu_loop so a host without a core to
+ * spare can run a GPU program and get control back.
+ */
+void pico9918_gpu_step(PICO9918_INST_ONLY_ARG)
+{
+  if (tms9918->restart)
+  {
+    reportedBack      = false;
+    uint32_t gpuStart = PICO9918_HOST_TIME_US();
+    volatileHack(PICO9918_INST 0);
+    gpuTimeUs += PICO9918_HOST_TIME_US() - gpuStart;
+  }
+  reportedBack = true;
+
+  if (tms9918->flash)
+  {
+    gpuFlashFire(PICO9918_INST_ONLY);
+  }
+
+  for (int i = 0; i < (int)(sizeof(configActionKeys) / sizeof(configActionKeys[0])); ++i)
+  {
+    const uint8_t key = configActionKeys[i];
+    if (tms9918->config[key])
+    {
+      tms9918->config[key] = 0;
+      gpuConfigSaveFire(PICO9918_INST key);
+    }
+  }
+}
+
+/** \brief see the header. The address a slice resumes from; odd means not running. */
+PICO9918_DLLEXPORT
+uint16_t pico9918_gpu_pc(PICO9918_INST_ONLY_ARG)
+{
+  return tms9918->gpuAddress;
+}
+
+/** \brief see the header. Where the registers are now, which LWPI can have moved. */
+PICO9918_DLLEXPORT
+uint16_t pico9918_gpu_wp(PICO9918_INST_ONLY_ARG)
+{
+#if PICO9918_GPU_BUDGETED
+  const uint8_t armed = tms9918->restart;
+
+  return (armed && armed != PICO9918_GPU_RESUMING) ? PICO9918_GPU_WORKSPACE : tms9918->gpuWp;
+#else
+  return PICO9918_GPU_WORKSPACE;
+#endif
+}
+
+/** \brief see the header. The whole map the GPU addresses, workspace overflow included. */
+PICO9918_DLLEXPORT
+uint32_t pico9918_gpu_mem_size(void)
+{
+  return (uint32_t)sizeof(((pico9918_t*)0)->vram);
+}
+
+/** \brief see the header. A byte of that map, or 0 past the end of it. */
+PICO9918_DLLEXPORT
+uint8_t pico9918_gpu_mem_value(PICO9918_INST_ARG uint32_t addr)
+{
+  if (addr >= pico9918_gpu_mem_size()) return 0;
+
+  /* not vram.bytes: that array stops at 0xFFFF and the workspace overflow is past it */
+  return ((const uint8_t*)&tms9918->vram)[addr];
+}
+
+/** \brief see the header. R0-R15 as words at the workspace the program is using. */
+PICO9918_DLLEXPORT
+uint16_t pico9918_gpu_reg_value(PICO9918_INST_ARG uint8_t reg)
+{
+  const uint32_t at = pico9918_gpu_wp(PICO9918_INST_ONLY) + ((uint32_t)(reg & 0x0f) << 1);
+
+  return (uint16_t)((pico9918_gpu_mem_value(PICO9918_INST at) << 8) |
+                    pico9918_gpu_mem_value(PICO9918_INST at + 1));
+}
+
+/** \brief see the header. The status between instructions, where one paces them. */
+PICO9918_DLLEXPORT
+uint16_t pico9918_gpu_status(PICO9918_INST_ONLY_ARG)
+{
+  /* stored in the cores' low-byte layout, published where STST puts it */
+  return (uint16_t)(tms9918->gpuStatus << 8);
+}
+
+/*
+ * The same pass, but capped, for a host that has only the one thread.
+ *
+ * The cap is what lets a caller interleave: a program that waits on the scanline at
+ * >7000 cannot finish until something advances it, and nothing can while the core is
+ * inside run9900. Returning with the PC kept is what makes the next call carry on.
+ */
+bool pico9918_gpu_step_n(PICO9918_INST_ARG uint32_t instructions)
+{
+  bool running = false;
+
+  if (tms9918->restart)
+  {
+    reportedBack      = false;
+    uint32_t gpuStart = PICO9918_HOST_TIME_US();
+    running           = volatileHack(PICO9918_INST instructions);
+    gpuTimeUs += PICO9918_HOST_TIME_US() - gpuStart;
+
+    /* volatileHack clears it on the way in, so put it back for the next slice */
+    if (running) tms9918->restart = PICO9918_GPU_RESUMING;
+  }
+  reportedBack = !running;
+
+  if (tms9918->flash)
+  {
+    gpuFlashFire(PICO9918_INST_ONLY);
+  }
+
+  for (int i = 0; i < (int)(sizeof(configActionKeys) / sizeof(configActionKeys[0])); ++i)
+  {
+    const uint8_t key = configActionKeys[i];
+    if (tms9918->config[key])
+    {
+      tms9918->config[key] = 0;
+      gpuConfigSaveFire(PICO9918_INST key);
+    }
+  }
+
+  return running;
+}
+
+#if PICO9918_BUILD_DEBUG_API
+
+/** \brief see pico9918_debug.h. The same slice, watched between instructions. */
+PICO9918_DLLEXPORT
+bool pico9918_debug_gpu_step_n(PICO9918_INST_ARG uint32_t instructions, pico9918_gpu_step_fn cb,
+                               void* userdata)
+{
+#if defined(TMS9900_STEP_HOOK)
+  gpuStep.fn       = cb;
+  gpuStep.userdata = userdata;
+
+  const bool running = pico9918_gpu_step_n(PICO9918_INST instructions);
+
+  gpuStep.fn = NULL;
+
+  return running;
+#else
+  (void)cb;
+  (void)userdata;
+
+  return pico9918_gpu_step_n(PICO9918_INST instructions);
+#endif
+}
+
+#endif
+
+/*
+ * GPU main loop - runs indefinitely, call from a dedicated core/thread.
+ */
+void pico9918_gpu_loop(PICO9918_INST_ONLY_ARG)
+{
+  while (1)
+  {
+    pico9918_gpu_step(PICO9918_INST_ONLY);
+  }
+}
+
+/*
+ * Instructions a scanline, from a rate. Never zero while a rate is set: a slice of
+ * nothing would arm the GPU and never advance it, which is worse than running it too
+ * fast. Sixty fields of 240 lines until the first pico9918_frame_end says otherwise -
+ * the shape every mode is within a factor of two of.
+ */
+#define GPU_SLICE_FROM_IPS(ips, lines, hz) ((uint32_t)((ips) / ((lines) * (hz))) + 1u)
+
+void pico9918_gpu_set_clock(PICO9918_INST_ARG uint32_t instructionsPerSecond)
+{
+#if PICO9918_GPU_BUDGETED
+  tms9918->gpuIps   = instructionsPerSecond;
+  tms9918->gpuSlice = instructionsPerSecond ? GPU_SLICE_FROM_IPS(instructionsPerSecond, 240u, 60u) : 0u;
+#else
+  /* refused, not honoured: a hand-written Thumb core runs to completion */
+  (void)tms9918;
+  (void)instructionsPerSecond;
+#endif
+}
+
+#if PICO9918_GPU_BUDGETED
+
+/* Re-derived per frame, because a mode change moves both the line count and, on a
+   50Hz machine, the rate. Called from pico9918_frame_end. */
+void pico9918_gpu_note_frame(PICO9918_INST_ARG uint32_t lines, float frameRateHz)
+{
+  if (!tms9918->gpuIps || !lines || frameRateHz < 1.0f) return;
+
+  tms9918->gpuSlice = GPU_SLICE_FROM_IPS(tms9918->gpuIps, lines, (uint32_t)frameRateHz);
+}
+
+/*
+ * One slice, for the library's own two service points: the register write that arms a
+ * program, and each scanline while one is still running.
+ *
+ * Gated on the unlock rather than the personality: a program can only be armed on an
+ * unlocked device, and stepping one down clears that flag - so this is also what stops
+ * a program armed as an F18A from running on as a TMS9918A, which pico9918_set_chip
+ * deliberately leaves to whoever runs the GPU.
+ */
+void pico9918_gpu_run_slice(PICO9918_INST_ONLY_ARG)
+{
+  if (PICO9918_UNLOCKED(tms9918)) pico9918_gpu_step_n(PICO9918_INST tms9918->gpuSlice);
+}
+
+#endif
