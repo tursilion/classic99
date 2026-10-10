@@ -62,6 +62,7 @@
 #include "..\resource.h"
 #include "..\console\tiemul.h"
 #include "..\console\cpu9900.h"
+#include "..\console\tivdp_pico9918.h"
 #include "..\addons\makecart.h"
 #include "..\addons\screenReader.h"
 #include "..\keyboard\kb.h"
@@ -74,6 +75,7 @@
 
 extern CPU9900 * volatile pCurrentCPU;
 extern CPU9900 *pCPU, *pGPU;
+extern bool bDebugGpuFocus;
 extern const char *szDefaultWindowText;
 extern bool bIgnoreConsoleBreakpointHits;
 extern HDC tmpDC;
@@ -253,6 +255,107 @@ void ConfigureDisk(HWND hwnd, int nDiskNum);
 INT_PTR CALLBACK DiskBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 int EmitDebugLine(char cPrefix, struct history obj, CString &csOut, int &lines);
 void UpdateUserCartMRU();
+
+// menu order and P9918_CHIP_* order differ, so no id arithmetic
+static int VdpChipFromMenuId(int id) {
+	switch (id) {
+		case ID_VDPCHIP_TMS9918:  return P9918_CHIP_TMS9918;
+		case ID_VDPCHIP_TMS9918A: return P9918_CHIP_TMS9918A;
+		case ID_VDPCHIP_F18A:     return P9918_CHIP_F18A;
+		case ID_VDPCHIP_PICO9918: return P9918_CHIP_PICO9918;
+		case ID_VDPCHIP_PICO9918PRO: return P9918_CHIP_PICO9918_PRO;
+	}
+	return P9918_CHIP_F18A;
+}
+
+static int VdpChipMenuId(int chip) {
+	switch (chip) {
+		case P9918_CHIP_TMS9918:  return ID_VDPCHIP_TMS9918;
+		case P9918_CHIP_TMS9918A: return ID_VDPCHIP_TMS9918A;
+		case P9918_CHIP_F18A:     return ID_VDPCHIP_F18A;
+		case P9918_CHIP_PICO9918: return ID_VDPCHIP_PICO9918;
+		case P9918_CHIP_PICO9918_PRO: return ID_VDPCHIP_PICO9918PRO;
+	}
+	return ID_VDPCHIP_F18A;
+}
+
+// The filters assume the 272x208 buffer, which the core's 640x480 field is not.
+// Ids in FilterMode order.
+static void UpdateFilterMenu(HMENU hMenu, UINT flags) {
+	const bool core = p9918Active();
+
+	for (int id = ID_VIDEO_FILTERMODE_NONE; id <= ID_VIDEO_FILTERMODE_HQ4X; ++id) {
+		EnableMenuItem(hMenu, id, flags);
+	}
+
+	// greying it is also what keeps its handler from turning the TV filter back on
+	EnableMenuItem(hMenu, ID_OPTIONS_TV, flags);
+
+	// lParam 1 - an engine change does not get to take the user's window size
+	if (core) {
+		if (nParkedFilterMode < 0) {
+			nParkedFilterMode = FilterMode;
+			SendMessage(myWnd, WM_COMMAND, ID_VIDEO_FILTERMODE_NONE, 1);
+		}
+	} else if (nParkedFilterMode >= 0) {
+		const int restore = nParkedFilterMode;
+		nParkedFilterMode = -1;
+		SendMessage(myWnd, WM_COMMAND, ID_VIDEO_FILTERMODE_NONE+restore, 1);
+	}
+}
+
+// Nothing here reaches the core; the Layers items do, through p9918SyncLayers.
+static void UpdateClassic99OnlyMenu(HMENU hMenu, UINT flags) {
+	static const int ids[] = {
+		ID_VIDEO_FLICKER,
+		ID_VIDEO_INTERLEAVEGPU,
+		ID_VIDEO_ENABLE80COLUMNHACK,
+		ID_VIDEO_ENABLE128KHACK,
+	};
+
+	for (int idx = 0; idx < (int)(sizeof(ids)/sizeof(ids[0])); ++idx) {
+		EnableMenuItem(hMenu, ids[idx], flags);
+	}
+}
+
+static void UpdateVdpEngineMenu(bool silent) {
+	static bool wasPending = false;
+
+	p9918ReconcileChip();
+
+	HMENU hMenu = GetMenu(myWnd);
+	if (NULL == hMenu) return;
+
+	CheckMenuRadioItem(hMenu, ID_VDPENGINE_CLASSIC99, ID_VDPENGINE_PICO9918CORE,
+					   bUsePico9918 ? ID_VDPENGINE_PICO9918CORE : ID_VDPENGINE_CLASSIC99,
+					   MF_BYCOMMAND);
+
+	// id range, low to high - the menu is in a different order
+	CheckMenuRadioItem(hMenu, ID_VDPCHIP_TMS9918A, ID_VDPCHIP_PICO9918PRO,
+					   VdpChipMenuId(nVdpChip), MF_BYCOMMAND);
+
+	// Only the core can be a PICO9918 or a pre-A.
+	UINT coreOnly = MF_BYCOMMAND | (bUsePico9918 ? MF_ENABLED : (MF_DISABLED | MF_GRAYED));
+	EnableMenuItem(hMenu, ID_VDPCHIP_PICO9918,    coreOnly);
+	EnableMenuItem(hMenu, ID_VDPCHIP_PICO9918PRO, coreOnly);
+	EnableMenuItem(hMenu, ID_VDPCHIP_TMS9918,     coreOnly);
+
+
+	UINT engineOnly = MF_BYCOMMAND | (p9918Active() ? (MF_DISABLED | MF_GRAYED) : MF_ENABLED);
+	UpdateFilterMenu(hMenu, engineOnly);
+	UpdateClassic99OnlyMenu(hMenu, engineOnly);
+
+	// once per transition, not on every click
+	bool pending = p9918SettingsPending();
+	if ((!silent) && (pending) && (!wasPending)) {
+		MessageBox(myWnd, "The VDP engine and chip change on the next reset (Ctrl+Alt+= or File->Reset).\n\n"
+						  "pico9918-core renders a full 640x480 VGA frame the way the board does, so the 80 column "
+						  "hack and the 128k hack do not apply to it, and the F18A GPU runs inside the core rather "
+						  "than in the Classic99 debugger.",
+				   "Classic99", MB_OK);
+	}
+	wasPending = pending;
+}
 
 // checks for open files. Returns true to continue or false to abort
 bool VerifyOpenFiles(HWND hwnd) {
@@ -1199,7 +1302,8 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 								"hq4x code by Maxim Stepin\n"\
 								"Shay Green for the TV Filter\n"\
 								"Keyboard map by Ron Reuter - www.mainbyte.com\n"\
-								"RamusM for the ECM sprite handling\n\n"\
+								"RamusM for the ECM sprite handling\n"\
+								"Troy Schrapel (visrealm) - pico9918-core VDP engine\n\n"\
 								"tursi@harmlesslion.com\n"\
 								"http://harmlesslion.com/software/classic99", 
 						VERSION);
@@ -1312,6 +1416,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				    memset(nDSRBank, 0, sizeof(nDSRBank));
 				    doLoadInt=false;						// no pending LOAD
 				    vdpReset(true);	    					// TODO: should move these vars into the reset function
+				    UpdateVdpEngineMenu(true);
 				    vdpaccess=0;							// No VDP address writes yet 
 				    vdpwroteaddress=0;						// timer after a VDP address write to allow time to fetch
 				    vdpscanline=0;
@@ -1400,6 +1505,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					bDisableBlank=true;
 					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBLANKING, MF_CHECKED);
 				} 
+				p9918SyncLayers();
 				redraw_needed=REDRAW_LINES;
 				break;
 
@@ -1411,6 +1517,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					bDisableSprite=true;
 					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLESPRITES, MF_CHECKED);
 				} 
+				p9918SyncLayers();
 				redraw_needed=REDRAW_LINES;
 				break;
 
@@ -1422,6 +1529,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					bDisableBackground=true;
 					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBACKGROUND, MF_CHECKED);
 				} 
+				p9918SyncLayers();
 				redraw_needed=REDRAW_LINES;
 				break;
 
@@ -1433,6 +1541,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					bDisableColorLayer=true;
 					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBITMAPCOLORLAYER, MF_CHECKED);
 				} 
+				p9918SyncLayers();
 				redraw_needed=REDRAW_LINES;
 				break;
 
@@ -1444,6 +1553,7 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					bDisablePatternLayer=true;
 					CheckMenuItem(GetMenu(myWnd), ID_LAYERS_DISABLEBITMAPPATTERNLAYER, MF_CHECKED);
 				} 
+				p9918SyncLayers();
 				redraw_needed=REDRAW_LINES;
 				break;
 
@@ -1530,17 +1640,6 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 				break;
 
-			case ID_VIDEO_ENABLEF18A:
-				if (1 != lParam) {
-					bF18Enabled=bF18Enabled?0:1;
-				}
-				if (bF18Enabled) {
-					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_ENABLEF18A, MF_CHECKED);
-				} else {
-					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_ENABLEF18A, MF_UNCHECKED);
-				}
-				break;
-
 			case ID_VIDEO_INTERLEAVEGPU:
 				if (1 != lParam) {
 					bInterleaveGPU=bInterleaveGPU?0:1;
@@ -1562,6 +1661,25 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				} else {
 					CheckMenuItem(GetMenu(myWnd), ID_VIDEO_ENABLE80COLUMNHACK, MF_UNCHECKED);
 				}
+				break;
+
+			case ID_VDPENGINE_CLASSIC99:
+			case ID_VDPENGINE_PICO9918CORE:
+				if (1 != lParam) {
+					bUsePico9918 = (LOWORD(wParam) == ID_VDPENGINE_PICO9918CORE) ? 1 : 0;
+				}
+				UpdateVdpEngineMenu(1 == lParam);
+				break;
+
+			case ID_VDPCHIP_TMS9918:
+			case ID_VDPCHIP_TMS9918A:
+			case ID_VDPCHIP_F18A:
+			case ID_VDPCHIP_PICO9918:
+			case ID_VDPCHIP_PICO9918PRO:
+				if (1 != lParam) {
+					nVdpChip = VdpChipFromMenuId(LOWORD(wParam));
+				}
+				UpdateVdpEngineMenu(1 == lParam);
 				break;
 
 			case ID_VIDEO_SHOWFPS:
@@ -1744,14 +1862,14 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_CPUTHROTTLING_CPUOVERDRIVE:
 				ThrottleMode = THROTTLE_OVERDRIVE;
-				max_cpf=cfg_cpf;
+				if (lParam != 1) max_cpf=cfg_cpf;   // lParam(1) means internal message, don't change
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
 				break;
 
 			case ID_CPUTHROTTLING_SYSTEMMAXIMUM:
 				ThrottleMode = THROTTLE_SYSTEMMAXIMUM;
-				max_cpf=cfg_cpf;
+				if (lParam != 1) max_cpf=cfg_cpf;   // lParam(1) means internal message, don't change
 				SetSoundVolumes();		// unmute in case it was in slow mode
 				PostMessage(myWnd, WM_COMMAND, ID_OPTIONS_CPUTHROTTLING, 1);
 				break;
@@ -1941,10 +2059,12 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_CHANGESIZE_1X:
 				{
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
 					GetWindowRect(myWnd, &myrect);
 					GetClientRect(myWnd, &myrect2);
-					myrect.right = myrect.left + CurrentDDSD.dwWidth + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
-					myrect.bottom = myrect.top + CurrentDDSD.dwHeight + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
+					myrect.right = myrect.left + sw + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
+					myrect.bottom = myrect.top + sh + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
@@ -1960,7 +2080,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 				// repeat it once only - this accounts for the menu changing from 1 to 2 lines and back
 				if (lParam != 99) {
-					if ((myrect2.right-myrect2.left != CurrentDDSD.dwWidth) || (myrect2.bottom-myrect2.top != CurrentDDSD.dwHeight)) {
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
+					if ((myrect2.right-myrect2.left != sw) || (myrect2.bottom-myrect2.top != sh)) {
 						PostMessage(myWnd, WM_COMMAND, ID_CHANGESIZE_1X, 99);
 					}
 				}
@@ -1972,10 +2094,12 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_CHANGESIZE_2X:
 				{
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
 					GetWindowRect(myWnd, &myrect);
 					GetClientRect(myWnd, &myrect2);
-					myrect.right = myrect.left + CurrentDDSD.dwWidth*2 + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
-					myrect.bottom = myrect.top + CurrentDDSD.dwHeight*2 + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
+					myrect.right = myrect.left + sw*2 + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
+					myrect.bottom = myrect.top + sh*2 + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
@@ -1991,7 +2115,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 				// repeat it once only - this accounts for the menu changing from 1 to 2 lines and back
 				if (lParam != 99) {
-					if ((myrect2.right-myrect2.left != CurrentDDSD.dwWidth*2) || (myrect2.bottom-myrect2.top != CurrentDDSD.dwHeight*2)) {
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
+					if ((myrect2.right-myrect2.left != sw*2) || (myrect2.bottom-myrect2.top != sh*2)) {
 						PostMessage(myWnd, WM_COMMAND, ID_CHANGESIZE_2X, 99);
 					}
 				}
@@ -2003,10 +2129,12 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_CHANGESIZE_3X:
 				{
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
 					GetWindowRect(myWnd, &myrect);
 					GetClientRect(myWnd, &myrect2);
-					myrect.right = myrect.left + CurrentDDSD.dwWidth*3 + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
-					myrect.bottom = myrect.top + CurrentDDSD.dwHeight*3 + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
+					myrect.right = myrect.left + sw*3 + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
+					myrect.bottom = myrect.top + sh*3 + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
@@ -2022,7 +2150,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 				// repeat it once only - this accounts for the menu changing from 1 to 2 lines and back
 				if (lParam != 99) {
-					if ((myrect2.right-myrect2.left != CurrentDDSD.dwWidth*3) || (myrect2.bottom-myrect2.top != CurrentDDSD.dwHeight*3)) {
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
+					if ((myrect2.right-myrect2.left != sw*3) || (myrect2.bottom-myrect2.top != sh*3)) {
 						PostMessage(myWnd, WM_COMMAND, ID_CHANGESIZE_3X, 99);
 					}
 				}
@@ -2034,10 +2164,12 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			case ID_CHANGESIZE_4X:
 				{
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
 					GetWindowRect(myWnd, &myrect);
 					GetClientRect(myWnd, &myrect2);
-					myrect.right = myrect.left + CurrentDDSD.dwWidth*4 + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
-					myrect.bottom = myrect.top + CurrentDDSD.dwHeight*4 + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
+					myrect.right = myrect.left + sw*4 + ((myrect.right - myrect.left)-(myrect2.right - myrect2.left));
+					myrect.bottom = myrect.top + sh*4 + ((myrect.bottom - myrect.top)-(myrect2.bottom - myrect2.top));
 					MoveWindow(myWnd, myrect.left, myrect.top, myrect.right-myrect.left, myrect.bottom-myrect.top, true);
 				}
 
@@ -2053,7 +2185,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 				// repeat it once only - this accounts for the menu changing from 1 to 2 lines and back
 				if (lParam != 99) {
-					if ((myrect2.right-myrect2.left != CurrentDDSD.dwWidth*4) || (myrect2.bottom-myrect2.top != CurrentDDSD.dwHeight*4)) {
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
+					if ((myrect2.right-myrect2.left != sw*4) || (myrect2.bottom-myrect2.top != sh*4)) {
 						PostMessage(myWnd, WM_COMMAND, ID_CHANGESIZE_4X, 99);
 					}
 				}
@@ -2254,7 +2388,9 @@ LONG_PTR FAR PASCAL myproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					myrect.bottom -= i1;
 					myrect.top = myrect.bottom - myrect2.bottom;
 
-					double ratio=(double)CurrentDDSD.dwHeight / (double)CurrentDDSD.dwWidth;
+					int sw, sh;
+					GetSurfaceSize(&sw, &sh);
+					double ratio=(double)sh / (double)sw;
 					
 					height=(float)((myrect.right - myrect.left) * ratio);
 					height-=(myrect.bottom - myrect.top);
@@ -2945,6 +3081,10 @@ const char *FormatBreakpoint(int idx) {
                 // nothing to do here
                 break;
 
+			case BREAK_GPUPC:
+				szTmp[pos++]='V';
+				break;
+
 			case BREAK_ACCESS:
 				szTmp[pos++]='*';
 				break;
@@ -3213,11 +3353,11 @@ bool AddBreakpoint(char *buf1) {
                 nData &= 0xff;
 			}
 			break;
-		case 'V':	// VDP memory =
+		case 'V':	// VDP memory =, or the GPU's PC without one
 			nType=BREAK_EQUALS_VDP;
 			pTmp=strchr(buf1, '=');
 			if (NULL == pTmp) {
-				nType=BREAK_NONE;
+				nType=BREAK_GPUPC;
 			} else {
 				if (1 != sscanf(pTmp+1, "%x", &nData)) {
 					nType=BREAK_NONE;
@@ -3314,7 +3454,7 @@ bool AddBreakpoint(char *buf1) {
 
 				case BREAK_WRITEVDP:
 				case BREAK_READVDP:
-					if ((A>0x47ff) || (B>0x47ff)) {
+					if ((A >= GetDebugVDPSize()) || (B >= GetDebugVDPSize())) {
 						nType = BREAK_NONE;		// out of range for VDP RAM
 					}
 					break;
@@ -3380,6 +3520,11 @@ void UpdateMakeMenu(HWND hwnd, int enable) {
 	HMENU menu=GetMenu(hwnd);
 	if (menu != NULL) {
 		EnableMenuItem(menu, ID_MAKE_SAVEPROGRAM, MF_BYCOMMAND | (enable?MF_ENABLED:MF_GRAYED));
+
+		UINT gpuStep = MF_BYCOMMAND | (p9918Active() ? MF_ENABLED : (MF_DISABLED | MF_GRAYED));
+		EnableMenuItem(menu, ID_DEBUG_STEPGPU,     gpuStep);
+		EnableMenuItem(menu, ID_DEBUG_STEPGPUOVER, gpuStep);
+
 		DrawMenuBar(hwnd);
 	}
 }
@@ -3993,7 +4138,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									if ((bIsReg) && (x > 7)) {
 										MessageBox(hwnd, "Out of range for VDP registers", "Classic99 Debugger", MB_ICONSTOP);
 										ok=IDNO;
-									} else if (x > 0x47FF) {
+									} else if (x >= GetDebugVDPSize()) {
 										MessageBox(hwnd, "Out of range for VDP address", "Classic99 Debugger", MB_ICONSTOP);
 										ok=IDNO;
 									}
@@ -4096,7 +4241,12 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 									case MEMVDP:		// VDP again
 										if (bIsReg) {
 											// it's a register
-											VDPREG[x] = y;
+											// VDPREG[] is only a shadow under the core
+											if (p9918Active()) {
+												p9918DbgWriteReg((unsigned char)x, (unsigned char)y);
+											} else {
+												VDPREG[x] = y;
+											}
 
 											if (x==7)
 											{	/* color of screen, set color 0 (trans) to match */
@@ -4111,7 +4261,7 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 											}
 										} else {
                                             if (byte) {
-    											VDP[x] = y;
+    											p9918DbgWriteMem(x, (unsigned char)y);
                                             } else {
                                                 // parse the string and write each byte...
 							                    char *p=strchr(buf,'=');
@@ -4127,10 +4277,10 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
                                                     }
                                                     p+=2;
 
-                                                    VDP[x] = y;
+                                                    p9918DbgWriteMem(x, (unsigned char)y);
 
                                                     ++x;
-                                                    if (x>=0x47ff) {
+                                                    if (x >= GetDebugVDPSize()-1) {
                                                         // no wraparound
                                                         break;
                                                     }
@@ -4224,6 +4374,14 @@ INT_PTR CALLBACK DebugBoxProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 
 				case ID_DEBUG_STEPOVER:
 					DoStepOver();
+					break;
+
+				case ID_DEBUG_STEPGPU:
+					DoStepGpu();
+					break;
+
+				case ID_DEBUG_STEPGPUOVER:
+					DoStepGpuOver();
 					break;
 
 				case ID_DEBUG_NORMALSPEED:
@@ -4477,13 +4635,16 @@ void DebugUpdateThread(void*) {
 			continue;
 		}
 
+		// pGPU's PC never moves under the core, so it cannot say whether this changed
+		const int nGPC = p9918Active() ? (int)p9918DbgGpuPC() : pGPU->GetPC();
+
 		// Helps a bit -- not much can change unless the PC does ;)
-		if ((nOldCPC == pCPU->GetPC()) && (nOldGPC == pGPU->GetPC()) && (nOldMemType == nMemType) && (0 == memcmp(szOldMemory, szTopMemory, sizeof(szOldMemory)))) {
+		if ((nOldCPC == pCPU->GetPC()) && (nOldGPC == nGPC) && (nOldMemType == nMemType) && (0 == memcmp(szOldMemory, szTopMemory, sizeof(szOldMemory)))) {
 			continue;
 		}
 
 		nOldCPC=pCPU->GetPC();
-		nOldGPC=pGPU->GetPC();
+		nOldGPC=nGPC;
 		nOldMemType=nMemType;
 
 		// Debug window
@@ -4518,31 +4679,41 @@ void DebugUpdateThread(void*) {
                                 memcpy(Distmp, Disasm, sizeof(Disasm));
                             LeaveCriticalSection(&csDisasm);
 
+							// no history: the core's GPU never goes through do1()
+							const bool gpuView = p9918Active() && bDebugGpuFocus;
+
 							// show line with bank only for multi-bank cartridges
 							// we want to generate a few extra lines to guarantee the cursor is stable
 							int precount = DEBUGLINES*2/3;
-							for (idx=precount-10; idx<DEBUGLINES; idx++) {
-                                // This assumes the GPU can never execute at >6000
-								if ((xb)&&((Distmp[idx].pc & 0xE000) == 0x6000)) {
-									EmitDebugLine('b', Distmp[idx], csOut, nLineCnt);
-								} else {
-									EmitDebugLine(' ', Distmp[idx], csOut, nLineCnt);
+							if (!gpuView) {
+								for (idx=precount-10; idx<DEBUGLINES; idx++) {
+									// This assumes the GPU can never execute at >6000
+									if ((xb)&&((Distmp[idx].pc & 0xE000) == 0x6000)) {
+										EmitDebugLine('b', Distmp[idx], csOut, nLineCnt);
+									} else {
+										EmitDebugLine(' ', Distmp[idx], csOut, nLineCnt);
+									}
+								}
+								while (nLineCnt > precount) {
+									// most likely at least a few
+									int nPos = csOut.Find('\n');
+									if (nPos == -1) break;
+									csOut = csOut.Mid(nPos+1);
+									nLineCnt--;
 								}
 							}
-							while (nLineCnt > precount) {
-								// most likely at least a few
-								int nPos = csOut.Find('\n');
-								if (nPos == -1) break;
-								csOut = csOut.Mid(nPos+1);
-								nLineCnt--;
-							}
 
-							myHist.pc = pCurrentCPU->GetPC();
-							if (pCurrentCPU == pCPU) {
-								myHist.bank = xbBank;
-							} else {
-								// GPU
+							if (gpuView) {
+								myHist.pc = p9918DbgGpuPC();
 								myHist.bank = -1;
+							} else {
+								myHist.pc = pCurrentCPU->GetPC();
+								if (pCurrentCPU == pCPU) {
+									myHist.bank = xbBank;
+								} else {
+									// GPU
+									myHist.bank = -1;
+								}
 							}
 							myHist.cycles = 0;
 
@@ -4621,23 +4792,13 @@ void DebugUpdateThread(void*) {
 									tmpPC=GetSafeCpuByte(WP+c, xbBank)*256 + GetSafeCpuByte(WP+c+1, xbBank);
 								}
 							}
-							if (bF18Enabled) {
-								// extra 2k of GPU memory
-								while (tmpPC > 0x47ff) tmpPC-=0x4800;
-							} else {
-								while (tmpPC > 0x3fff) tmpPC-=0x4000;
-							}
+							while (tmpPC >= GetDebugVDPSize()) tmpPC-=GetDebugVDPSize();
 							for (idx2=0; idx2<34; idx2++) {
 								sprintf(buf1, "%04X: ", tmpPC);
 								strcpy(buf3, "");
 								for (idx=0; idx<8; idx++) {
 									c=VDP[tmpPC++];
-									if (bF18Enabled) {
-										// extra 2k of GPU memory
-										while (tmpPC > 0x47ff) tmpPC-=0x4800;
-									} else {
-										while (tmpPC > 0x3fff) tmpPC-=0x4000;
-									}
+									while (tmpPC >= GetDebugVDPSize()) tmpPC-=GetDebugVDPSize();
 									sprintf(buf2, "%02X ", c);
 									strcat(buf1, buf2);
                                     c -= nDebugHexOffset;
@@ -4818,6 +4979,36 @@ void DebugUpdateThread(void*) {
 				csOut+=buf1;
 
 				csOut+="\r\n";
+
+				if (p9918Active()) {
+					if (!p9918DbgGpuArmed()) {
+						csOut+="  GPU: idle\r\n";
+					} else {
+						unsigned int gst = p9918DbgGpuStatus();
+						sprintf(buf1, "  GPU: PC %04X   ST %04X  %s %s %s %s %s\r\n",
+								p9918DbgGpuPC(), gst,
+								(gst&BIT_LGT)?"LGT":"   ", (gst&BIT_AGT)?"AGT":"   ", (gst&BIT_EQ)?"EQ":"  ",
+								(gst&BIT_C)?"C":" ", (gst&BIT_OV)?"OV":"  ");
+						csOut+=buf1;
+
+						for (idx=0; idx<8; idx++) {
+							sprintf(buf1, " GR%2d  %04X  GR%2d  %04X\r\n",
+									idx, p9918DbgGpuReg((unsigned char)idx),
+									idx+8, p9918DbgGpuReg((unsigned char)(idx+8)));
+							csOut+=buf1;
+						}
+					}
+
+					// the status file - VDPS only holds SR0
+					csOut+=" SR   ";
+					for (idx=0; idx<8; idx++) {
+						sprintf(buf1, "%02X ", p9918DbgStatus((unsigned char)idx));
+						csOut+=buf1;
+					}
+					csOut+="\r\n";
+
+					csOut+="\r\n";
+				}
 
                 // CRU
                 sprintf(buf1, " 9901 %04X %04X %04X %c %c %c %c\r\n",

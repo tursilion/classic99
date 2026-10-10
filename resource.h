@@ -397,7 +397,6 @@
 #define ID_DEBUG_BREAKONILLEGALOPCODE   40149
 #define ID_FILE_WARMRESET               40150
 #define ID_VIDEO_ENABLE128KHACK         40151
-#define ID_VIDEO_ENABLEF18A             40152
 #define ID_DISK_CORRUPTDSKRAM           40153
 #define ID_VIDEO_INTERLEAVEGPU          40154
 #define ID_FILE_ERASEUBERGROM           40155
@@ -431,13 +430,22 @@
 #define ID_FILE_READMAPFILE             40201
 #define ID_VIEW_COPYLEFTPANETOCLIPBOARD 40202
 #define ID_VIEW_COPYRIGHTPANETOCLIPBOARD 40203
+#define ID_VDPENGINE_CLASSIC99          40204
+#define ID_VDPENGINE_PICO9918CORE       40205
+#define ID_VDPCHIP_TMS9918A             40206
+#define ID_VDPCHIP_F18A                 40207
+#define ID_VDPCHIP_PICO9918             40208
+#define ID_VDPCHIP_TMS9918              40209
+#define ID_VDPCHIP_PICO9918PRO          40210
+#define ID_DEBUG_STEPGPU                40211
+#define ID_DEBUG_STEPGPUOVER            40212
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        356
-#define _APS_NEXT_COMMAND_VALUE         40204
+#define _APS_NEXT_COMMAND_VALUE         40213
 #define _APS_NEXT_CONTROL_VALUE         1278
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

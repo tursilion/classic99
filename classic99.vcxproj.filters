@@ -25,6 +25,54 @@
     <ClCompile Include="console\tivdp.cpp">
       <Filter>console</Filter>
     </ClCompile>
+    <ClCompile Include="console\tivdp_pico9918.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
+    <ClCompile Include="console\tivdp_pico9918_debug.cpp">
+      <Filter>console</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_util.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_config.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_palette.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_frame.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\overlay\splash.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\overlay\diag.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\gpu\gpu.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\gpu\tms9900.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_debug.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_font.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_splash.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_splash_pro.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_f18a_badge.c">
+      <Filter>pico9918-core</Filter>
+    </ClCompile>
     <ClCompile Include="console\Tiemul.cpp">
       <Filter>console</Filter>
     </ClCompile>
@@ -125,6 +173,9 @@
       <Filter>addons</Filter>
     </ClInclude>
     <ClInclude Include="console\tiemul.h">
+      <Filter>console</Filter>
+    </ClInclude>
+    <ClInclude Include="console\tivdp_pico9918.h">
       <Filter>console</Filter>
     </ClInclude>
     <ClInclude Include="console\sound.h">
@@ -305,6 +356,9 @@
     </Filter>
     <Filter Include="roms\makecart">
       <UniqueIdentifier>{b82ab3f7-a217-474c-bccb-4a009e26dce5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pico9918-core">
+      <UniqueIdentifier>{0adfd412-3693-58d3-a304-ea32ee58da31}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

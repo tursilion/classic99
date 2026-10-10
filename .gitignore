@@ -277,3 +277,5 @@ __pycache__/
 # tools/**
 # !tools/packages.config
 
+# left over from when pico9918-core was a submodule with its CMake build in the tree
+/3rdparty/build/

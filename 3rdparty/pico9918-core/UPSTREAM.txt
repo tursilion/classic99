@@ -1,0 +1,12 @@
+pico9918-core, vendored into Classic99
+
+VENDORED by 3rdparty/update-pico9918-core.py - do not edit here.
+Changes belong upstream; this tree is replaced wholesale on the next fetch.
+
+  origin    https://github.com/visrealm/pico9918-core.git
+  revision  1944f45a5f945f66c57e73e624f9ca2861fa312e
+  version   1.3.0
+
+Only the part Classic99 compiles. The tests, examples and bindings are
+upstream, and so is the CMake build - this tree is built by classic99.vcxproj
+and nothing else.

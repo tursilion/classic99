@@ -775,6 +775,100 @@
       <AdditionalIncludeDirectories>console</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
+  <!--
+    pico9918-core compiles into Classic99 directly - its sources are listed below.
+    The library's CMake build also generates a build-config header, a version
+    header and the overlay image arrays; those are generated once by
+    3rdparty\update-pico9918-core.py and committed under 3rdparty\pico9918-core-gen,
+    so building Classic99 needs neither CMake nor Python.
+
+    The library needs _Static_assert and _Alignof, which MSVC only has under
+    /std:c11 - a flag that does not exist before VS2019 16.8, while this project
+    builds v141_xp. 3rdparty\pico9918_msvc_c89.h supplies both and disables
+    itself on a toolset that has them, so the sources build either way.
+
+    PICO9918_STATIC is the one library option MSBuild has to repeat. The rest are
+    recorded in the generated pico9918_build_config.h, which rejects a consumer
+    that disagrees - so do not add them here, rerun the script instead.
+  -->
+  <PropertyGroup>
+    <Pico9918Src>$(MSBuildThisFileDirectory)3rdparty\pico9918-core</Pico9918Src>
+    <Pico9918Gen>$(MSBuildThisFileDirectory)3rdparty\pico9918-core-gen</Pico9918Gen>
+    <Pico9918Compat>$(MSBuildThisFileDirectory)3rdparty\pico9918_msvc_c89.h</Pico9918Compat>
+    <!-- the set the library's own build turns off, so it is not held here to
+         diagnostics it is not written to satisfy -->
+    <Pico9918Warnings>4244;4245;4459;4456;4100;4018;4146;4324;4127</Pico9918Warnings>
+  </PropertyGroup>
+  <Target Name="CheckPico9918Core" BeforeTargets="ClCompile">
+    <Error Condition="!Exists('$(Pico9918Src)\src\pico9918.c')"
+           Text="pico9918-core sources are missing - run: python 3rdparty\update-pico9918-core.py --fetch" />
+    <Error Condition="!Exists('$(Pico9918Gen)\pico9918_build_config.h')"
+           Text="pico9918-core generated files are missing - run: python 3rdparty\update-pico9918-core.py" />
+  </Target>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(Pico9918Src)\src;$(Pico9918Gen);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>PICO9918_STATIC;PICO9918_ASSET_PIXEL_SIZE=2;TMS9900_STEP_HOOK=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_util.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_config.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_palette.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_frame.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\overlay\splash.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\overlay\diag.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\gpu\gpu.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\gpu\tms9900.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core\src\pico9918_debug.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_font.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_splash.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_splash_pro.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="3rdparty\pico9918-core-gen\overlay\bmp_f18a_badge.c">
+      <ForcedIncludeFiles>$(Pico9918Compat);%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <DisableSpecificWarnings>$(Pico9918Warnings);%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+  </ItemGroup>
   <ItemGroup>
     <ClCompile Include="addons\F18A.cpp" />
     <ClCompile Include="addons\gigaFlash.cpp">
@@ -849,6 +943,8 @@
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='ReleaseArm64|x64'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='ReleaseArm64|ARM'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
+    <ClCompile Include="console\tivdp_pico9918.cpp" />
+    <ClCompile Include="console\tivdp_pico9918_debug.cpp" />
     <ClCompile Include="addons\WindowProc.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -1001,6 +1097,7 @@
     <ClInclude Include="console\cpu9900.h" />
     <ClInclude Include="console\sound.h" />
     <ClInclude Include="console\tiemul.h" />
+    <ClInclude Include="console\tivdp_pico9918.h" />
     <ClInclude Include="debugger\dbghook.h" />
     <ClInclude Include="disk\cf7Disk.h" />
     <ClInclude Include="disk\ramdisk.h" />

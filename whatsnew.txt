@@ -2402,3 +2402,12 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 
 - updated TAIPAN in cartpack
 - VDP addressing fixes for bad register sets that I had no idea I didn't already have in there ;)
+
+-----------------------------------------------
+
+24 Sep 2026
+
+- added pico9918-core as a selectable VDP engine (Video->Engine), and the chip it
+  answers as (Video->VDP) - thanks to Troy Schrapel (visrealm)
+- the F18A/PICO9918 GPU inside that engine is debuggable - a V prefix on a breakpoint
+  breaks on its PC, shift+F2 steps it, shift+F3 steps over a call

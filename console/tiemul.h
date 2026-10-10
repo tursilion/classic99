@@ -43,6 +43,8 @@
 
 #include <atlstr.h>
 
+#include "tivdp_pico9918.h"		// for VDPINT below
+
 // Defines
 #define VERSION "QI399.092"
 #define DEBUGLEN 120
@@ -115,7 +117,8 @@ enum {
     BREAK_WRITEAMS,
     BREAK_EQUALS_AMS,
     BREAK_WP,
-    BREAK_ST
+    BREAK_ST,
+    BREAK_GPUPC
 };
 
 // reserved calibration data - you can hack the INI for better control
@@ -215,7 +218,8 @@ extern int F18APaletteRegisterNo;					// F18A Palette register number
 extern int F18APaletteRegisterData;					// F18A Temporary storage of data written to palette register
 extern int F18APalette[];							// 64 F18A palette registers
 // RasmusM added end
-#define VDPINT ((VDPS&VDPS_INT) && (VDPREG[1]&0x20))	// VDP hardware interrupt pin and mask
+// VDP hardware interrupt pin and mask - the core has a second source and reconciles its own
+#define VDPINT (p9918Active() ? p9918InterruptPin() : ((VDPS&VDPS_INT) && (VDPREG[1]&0x20)))
 extern Word VDPADD;									// VDP Address counter
 extern int vdpaccess;								// VDP access counter
 extern int vdpwroteaddress;
@@ -235,6 +239,7 @@ extern HANDLE Video_hdl[2];							// Handles for Display/Blit events
 extern unsigned int *framedata;						// The actual pixel data
 extern unsigned int *framedata2;					// Filtered frame data
 extern int FilterMode;								// Current filter mode
+extern int nParkedFilterMode;						// the filter pico9918-core is holding for us, or -1 (see UpdateFilterMenu)
 extern int nDefaultScreenScale;						// default screen scaling multiplier
 extern int nXSize, nYSize;							// custom sizing
 
@@ -349,6 +354,8 @@ void doBlit(void);
 void RenderFont(void);
 void DrawSprites(int scanline);
 void SetupDirectDraw(bool fullscreen);
+void GetSurfaceSize(int *pWidth, int *pHeight);
+int GetDebugVDPSize();
 void takedownDirectDraw();
 int ResizeBackBuffer(int w, int h);
 void UpdateHeatVDP(int Address);
@@ -490,6 +497,8 @@ void verifyCallFiles();
 
 void DoPause();
 void DoStep();
+void DoStepGpu();
+void DoStepGpuOver();
 void DoStepOver();
 void DoPlay();
 void DoFastForward();

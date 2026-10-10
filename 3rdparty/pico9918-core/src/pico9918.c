@@ -1,0 +1,3627 @@
+/**
+ * \file
+ * \brief pico9918-core - Core interface
+ *
+ * Copyright (c) 2021 Troy Schrapel
+ *
+ * This code is licensed under the MIT license
+ *
+ * https://github.com/visrealm/pico9918-core
+ *
+ */
+
+
+#include "impl/pico9918_priv.h"
+/* pico9918_gpu_service: the register writes below are where a GPU program is armed,
+   and a host that handed the library the GPU wants it run there. */
+#include "impl/pico9918_gpu_priv.h"
+#include "overlay/splash.h" /* pico9918_reset re-arms the splash, as a host reset does */
+
+#include <string.h>
+
+
+/* The mode emitters stay out of pico9918_scan_line. That function is well past the Thumb-1 b.n
+   reach, so anything added to it relaxes branches and shuffles registers inside whichever emitters
+   are inlined there. Keeping them out of line costs nothing on either board. */
+#define EMITTER_NOINLINE PICO9918_NOINLINE
+
+#ifdef PICO_BUILD
+/* The DMA channel numbers are compile-time macros in the pico platform header, not
+   variables here: an extern channel number costs three instructions at every access.
+   The copy channel's two configs do live here. */
+PICO9918_COPY_STATE()
+#else
+/* Off-target the fills and the copy are plain structs. */
+pico9918_fill32_t pico9918_fill_border = {NULL, 0};
+pico9918_fill32_t pico9918_fill_masks  = {NULL, 0};
+pico9918_fill32_t pico9918_fill_line   = {NULL, 0};
+pico9918_copy32_t pico9918_copy       = {NULL, NULL, 0};
+#endif
+
+/* not .scratch_x: that is where the fill writes */
+PICO9918_SECTION_SCRATCH_Y(buffer) static uint32_t bg;
+
+/* Where a scanline is arbitrated: the fill, the sprites, the bitmap layer and the composite all land
+   here. Its own bank, so the fill writes it from `bg`'s and a caller reads it against striped SRAM. */
+static PICO9918_SECTION_SCRATCH_X(buffer) uint8_t __aligned(4) scanlineBuffer[SCANLINE_BUFFER_BYTES];
+
+
+/* Declared on the impl surface, with the TEXT80_WIDE_ROW macro and the inline readers that go
+   with it, so the frame module does not call across the TU boundary for them every line. */
+pico9918_mode_t pico9918_cached_mode = TMS_MODE_GRAPHICS_I;
+
+/* Configured and claimed once, before the host brings up anything that shares the
+   DMA. Defined below, next to the tables it fills. */
+void initLookups(void);
+
+#if PICO9918_SINGLE_INSTANCE
+
+// VRAM is intentionally never zeroed at boot (pico9918_reset() below
+// leaves it alone - matches real TMS9918 hardware, whose VRAM content is
+// undefined at power-on); every other field is explicitly written by
+// pico9918_reset()/vdpRegisterReset() before anything reads it - so this
+// doesn't need the crt0 .bss zero-fill, and skipping it saves boot time.
+//
+// The 256-byte alignment is required: the GPU guards vram.bytes[0x8000] and
+// the palette with MPU regions that are whole 256-byte pages, and neither
+// range may cross a page boundary. A 256-aligned instance is what fixes where
+// inside its page each range lands.
+static pico9918_t __aligned(256) PICO9918_UNINITIALIZED(tms9918Inst);
+
+/* const so the instance address is a link-time constant rather than a pointer the
+   emitters have to load and keep live: every field offset then folds into its own
+   literal, which is what makes vram's offset within the struct cost nothing. */
+pico9918_t* const tms9918 = &tms9918Inst;
+
+/** \brief initialize the TMS9918 library in single-instance mode */
+PICO9918_DLLEXPORT
+void __time_critical_func(pico9918_init)(void)
+{
+  tms9918->vdpBase = PICO9918_BASE_TMS9918;
+#if PICO9918_BUILD_RUNTIME_CHIP
+  pico9918_set_chip(PICO9918_INST PICO9918_CHIP_MAX);
+#endif
+  initLookups();
+  pico9918_reset(PICO9918_INST_ONLY);
+}
+
+/** \brief see the header. The same pointer every implicit-instance entry point uses. */
+PICO9918_DLLEXPORT pico9918_t* pico9918_instance(void)
+{
+  return tms9918;
+}
+
+#else
+
+#include <stdlib.h>
+
+/** \brief create a new TMS9918 */
+PICO9918_DLLEXPORT pico9918_t* pico9918_new(void)
+{
+  pico9918_t* tms9918 = (pico9918_t*)calloc(1, sizeof(pico9918_t));
+  if (tms9918 != NULL)
+  {
+    tms9918->vdpBase = PICO9918_BASE_TMS9918; /* see pico9918_init */
+#if PICO9918_BUILD_RUNTIME_CHIP
+    pico9918_set_chip(tms9918, PICO9918_CHIP_MAX);
+#endif
+    initLookups();
+    pico9918_reset(tms9918);
+  }
+
+  return tms9918;
+}
+
+#endif
+
+/** \brief see the header. What a versioned save/restore copies from the instance base. */
+PICO9918_DLLEXPORT size_t pico9918_instance_size(void)
+{
+  return sizeof(pico9918_t);
+}
+
+/** \brief see the header. The latch itself, not the personality that could set it. */
+PICO9918_DLLEXPORT bool pico9918_unlocked(PICO9918_INST_ONLY_ARG)
+{
+  return PICO9918_UNLOCKED(tms9918);
+}
+
+/* host /INT hook - see the header for the contract; only the storage differs by build */
+#if PICO9918_SINGLE_INSTANCE
+static struct
+{
+  pico9918_interrupt_fn fn;
+  void* userdata;
+} interruptCb;
+#define INTERRUPT_CB interruptCb
+#else
+#define INTERRUPT_CB tms9918->interrupt
+#endif
+
+PICO9918_DLLEXPORT void pico9918_set_interrupt_callback(PICO9918_INST_ARG pico9918_interrupt_fn cb,
+                                                        void* userdata)
+{
+  INTERRUPT_CB.fn       = cb;
+  INTERRUPT_CB.userdata = userdata;
+}
+
+/** \brief see impl. What the desktop PICO9918_HOST_SET_INT expands to. */
+void pico9918_interrupt_dispatch(PICO9918_INST_ARG bool active)
+{
+  if (INTERRUPT_CB.fn) INTERRUPT_CB.fn(tms9918, active, INTERRUPT_CB.userdata);
+}
+
+/* Here rather than beside the macros: pico9918.h reaches neither PICO9918_STATIC_ASSERT
+   nor the private map type. */
+PICO9918_STATIC_ASSERT(offsetof(pico9918_mem_map_t, pram) == PICO9918_MAP_PRAM,
+                       "PICO9918_MAP_PRAM does not match the memory map");
+PICO9918_STATIC_ASSERT(offsetof(pico9918_mem_map_t, registers) == PICO9918_MAP_REGISTERS,
+                       "PICO9918_MAP_REGISTERS does not match the memory map");
+PICO9918_STATIC_ASSERT(offsetof(pico9918_mem_map_t, scanline) == PICO9918_MAP_SCANLINE,
+                       "PICO9918_MAP_SCANLINE does not match the memory map");
+PICO9918_STATIC_ASSERT(offsetof(pico9918_mem_map_t, status) == PICO9918_MAP_STATUS,
+                       "PICO9918_MAP_STATUS does not match the memory map");
+
+
+static const pico9918_mode_t r1Modes[] = {TMS_MODE_GRAPHICS_I, TMS_MODE_MULTICOLOR, TMS_MODE_TEXT,
+                                          TMS_MODE_GRAPHICS_I};
+
+static inline pico9918_mode_t tmsMode(pico9918_t* tms9918)
+{
+  /* The pre-A part leaves M3 undecoded, so the bit selects nothing and M1/M2 still do. */
+  if ((TMS_REGISTER(tms9918, TMS_REG_0) & TMS_R0_MODE_GRAPHICS_II) && PICO9918_GM2(tms9918))
+  {
+    return TMS_MODE_GRAPHICS_II;
+  }
+  /* An F18A honours M4 while still locked, so the test is the personality, not the lock. */
+  else if (PICO9918_M4(tms9918))
+  {
+    return TMS_MODE_TEXT80;
+  }
+  else
+  {
+    return r1Modes[(TMS_REGISTER(tms9918, TMS_REG_1) & (TMS_R1_MODE_MULTICOLOR | TMS_R1_MODE_TEXT)) >> 3];
+  }
+}
+
+/** \brief sprite size (8 or 16) */
+static inline uint8_t tmsSpriteSize(pico9918_t* tms9918)
+{
+  return TMS_REGISTER(tms9918, TMS_REG_1) & TMS_R1_SPRITE_16 ? 16 : 8;
+}
+
+/** \brief sprite size (0 = 1x, 1 = 2x) */
+static inline bool tmsSpriteMag(pico9918_t* tms9918)
+{
+  return TMS_REGISTER(tms9918, TMS_REG_1) & TMS_R1_SPRITE_MAG2;
+}
+
+/** \brief name table base address */
+static inline uint16_t tmsNameTableAddr(pico9918_t* tms9918)
+{
+  return (TMS_REGISTER(tms9918, TMS_REG_NAME_TABLE) & 0x0f) << 10;
+}
+
+/** \brief name table base address */
+static inline uint16_t tmsNameTable2Addr(pico9918_t* tms9918)
+{
+  return (TMS_REGISTER(tms9918, PICO9918_REG_NAME_TABLE2) & 0x0f) << 10;
+}
+
+/** \brief color table base address */
+static inline uint16_t tmsColorTableAddr(pico9918_t* tms9918)
+{
+  const uint8_t mask = (pico9918_cached_mode == TMS_MODE_GRAPHICS_II) ? 0x80 : 0xff;
+
+  return (TMS_REGISTER(tms9918, TMS_REG_COLOR_TABLE) & mask) << 6;
+}
+
+/** \brief color table base address */
+static inline uint16_t tmsColorTable2Addr(pico9918_t* tms9918)
+{
+  const uint8_t mask = (pico9918_cached_mode == TMS_MODE_GRAPHICS_II) ? 0x80 : 0xff;
+
+  return (TMS_REGISTER(tms9918, PICO9918_REG_COLOR_TABLE2) & mask) << 6;
+}
+
+/** \brief pattern table base address */
+static inline uint16_t tmsPatternTableAddr(pico9918_t* tms9918)
+{
+  const uint8_t mask = (pico9918_cached_mode == TMS_MODE_GRAPHICS_II) ? 0x04 : 0x07;
+
+  return (TMS_REGISTER(tms9918, TMS_REG_PATTERN_TABLE) & mask) << 11;
+}
+
+/** \brief sprite attribute table base address */
+static inline uint16_t tmsSpriteAttrTableAddr(pico9918_t* tms9918)
+{
+  return (TMS_REGISTER(tms9918, TMS_REG_SPRITE_ATTR_TABLE) & 0x7f) << 7;
+}
+
+/** \brief sprite pattern table base address */
+static inline uint16_t tmsSpritePatternTableAddr(pico9918_t* tms9918)
+{
+  return (TMS_REGISTER(tms9918, TMS_REG_SPRITE_PATT_TABLE) & 0x07) << 11;
+}
+
+/** \brief background color */
+static inline pico9918_color_t tmsMainBgColor(pico9918_t* tms9918)
+{
+  return TMS_REGISTER(tms9918, TMS_REG_FG_BG_COLOR) & 0x0f;
+}
+
+/** \brief foreground color */
+static inline pico9918_color_t tmsMainFgColor(pico9918_t* tms9918)
+{
+  const pico9918_color_t c = (pico9918_color_t)(TMS_REGISTER(tms9918, TMS_REG_FG_BG_COLOR) >> 4);
+  return c == TMS_TRANSPARENT ? tmsMainBgColor(tms9918) : c;
+}
+
+/** \brief foreground color */
+static inline pico9918_color_t tmsFgColor(pico9918_t* tms9918, uint8_t colorByte)
+{
+  const pico9918_color_t c = (pico9918_color_t)(colorByte >> 4);
+  return c == TMS_TRANSPARENT ? tmsMainBgColor(tms9918) : c;
+}
+
+/** \brief background color */
+static inline pico9918_color_t tmsBgColor(pico9918_t* tms9918, uint8_t colorByte)
+{
+  const pico9918_color_t c = (pico9918_color_t)(colorByte & 0x0f);
+  return c == TMS_TRANSPARENT ? tmsMainBgColor(tms9918) : c;
+}
+
+
+// default palette 0xARGB
+static const uint16_t defaultPalette[] = {
+  //-- Palette 0, default TMS9918A palette
+  0x0000, 0xF000, 0xF2C3, 0xF5D6, 0xF54F, 0xF76F, 0xFD54, 0xF4EF, 0xFF54, 0xFF76, 0xFDC3, 0xFED6, 0xF2B2,
+  0xFC5C, 0xFCCC, 0xFFFF,
+  //-- Palette 1, ECM1 (0 index is always 000) version of palette 0
+  0x0000, 0xF2C3, 0xF000, 0xF54F, 0xF000, 0xFD54, 0xF000, 0xF4EF, 0xF000, 0xFCCC, 0xF000, 0xFDC3, 0xF000,
+  0xFC5C, 0xF000, 0xFFFF,
+  //-- Palette 2, CGA colors
+  0x0000, 0xF00A, 0xF0A0, 0xF0AA, 0xFA00, 0xFA0A, 0xFA50, 0xFAAA, 0xF555, 0xF55F, 0xF5F5, 0xF5FF, 0xFF55,
+  0xFF5F, 0xFFF5, 0xFFFF,
+  //-- Palette 3, ECM1 (0 index is always 000) version of palette 2
+  0x0000, 0xF555, 0xF000, 0xF00A, 0xF000, 0xF0A0, 0xF000, 0xF0AA, 0xF000, 0xFA00, 0xF000, 0xFA0A, 0xF000,
+  0xFA50, 0xF000, 0xFFFF};
+
+static PICO9918_NOINLINE void vdpRegisterReset(pico9918_t* tms9918)
+{
+  tms9918->isUnlocked  = false;
+  tms9918->restart     = 0;
+  tms9918->unlockCount = 0;
+  tms9918->lockedMask  = 0x07;
+  memset(&TMS_REGISTER(tms9918, TMS_REG_0), 0, TMS_REGISTERS);
+  TMS_REGISTER(tms9918, TMS_REG_1)                     = 0x40;
+  TMS_REGISTER(tms9918, TMS_REG_3)                     = 0x10;
+  TMS_REGISTER(tms9918, TMS_REG_4)                     = 0x01;
+  TMS_REGISTER(tms9918, TMS_REG_5)                     = 0x0A;
+  TMS_REGISTER(tms9918, TMS_REG_6)                     = 0x02;
+  TMS_REGISTER(tms9918, TMS_REG_7)                     = 0xF2;
+  TMS_REGISTER(tms9918, PICO9918_REG_MAX_SCAN_SPRITES) = PICO9918_SCAN_SPRITE_LIMIT(tms9918);
+  TMS_REGISTER(tms9918, PICO9918_REG_VRAM_INC)         = 1;               // vram address increment register
+  TMS_REGISTER(tms9918, PICO9918_REG_MAX_SPRITES)      = MAX_SPRITES;     // Sprites to process
+  TMS_REGISTER(tms9918, PICO9918_REG_GPU_PC_MSB)       = 0x40;
+}
+
+
+#if PICO9918_BUILD_RUNTIME_CHIP
+
+/** \brief the feature bits a personality answers to - the ladder, in one place */
+static uint8_t chipFeatures(pico9918_chip_t chip)
+{
+  switch (chip)
+  {
+    case PICO9918_CHIP_PICO9918_PRO:
+      return PICO9918_FEAT_UNLOCK | PICO9918_FEAT_CONFIG | PICO9918_FEAT_OVERLAY |
+             PICO9918_FEAT_BITMAP | PICO9918_FEAT_WIDE_T80 | PICO9918_FEAT_GPU_RAM;
+    case PICO9918_CHIP_PICO9918:
+      return PICO9918_FEAT_UNLOCK | PICO9918_FEAT_CONFIG | PICO9918_FEAT_OVERLAY |
+             PICO9918_FEAT_BITMAP | PICO9918_FEAT_GPU_RAM;
+    case PICO9918_CHIP_F18A: return PICO9918_FEAT_UNLOCK | PICO9918_FEAT_BITMAP | PICO9918_FEAT_WIDE_T80;
+    case PICO9918_CHIP_TMS9918A: return PICO9918_FEAT_BITMAP | PICO9918_FEAT_VRAM_4K;
+    default: return PICO9918_FEAT_VRAM_4K;
+  }
+}
+
+/** \brief select which chip this instance answers as */
+PICO9918_DLLEXPORT void pico9918_set_chip(PICO9918_INST_ARG pico9918_chip_t chip)
+{
+  /* unsigned, so a value below the bottom of the ladder clamps here too rather than being stored */
+  if ((unsigned)chip > (unsigned)PICO9918_CHIP_MAX)
+  {
+    chip = PICO9918_CHIP_MAX;
+  }
+
+  tms9918->chip     = (uint8_t)chip;
+  tms9918->features = chipFeatures(chip);
+
+  /* only a personality with no settings block takes its limit here - the block owns VR30 */
+  if (!PICO9918_HAS(tms9918, PICO9918_FEAT_CONFIG))
+  {
+    TMS_REGISTER(tms9918, PICO9918_REG_MAX_SCAN_SPRITES) = PICO9918_SCAN_SPRITE_LIMIT(tms9918);
+  }
+
+#if !PICO9918_NO_SPLASH
+  pico9918_splash_select_pro(chip == PICO9918_CHIP_PICO9918_PRO);
+#endif
+
+  /* The wide line is a different palette layout, so the tier is a palette change */
+  tms9918->palDirty = 1;
+
+  /* the new personality either seeds its effects from the block or lets go of them */
+  tms9918->configDirty    = true;
+  tms9918->configVdpDirty = true;
+
+  if (!PICO9918_HAS(tms9918, PICO9918_FEAT_UNLOCK))
+  {
+    tms9918->isUnlocked         = false;
+    tms9918->unlockCount        = 0;
+    tms9918->lockedMask         = 0x07;
+    TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) = 0;
+  }
+
+  TMS_STATUS(tms9918, PICO9918_SR_IDENT) = PICO9918_SR1_ID(tms9918);
+}
+
+/** \brief which chip this instance answers as */
+PICO9918_DLLEXPORT pico9918_chip_t pico9918_chip(PICO9918_INST_ONLY_ARG)
+{
+  return (pico9918_chip_t)tms9918->chip;
+}
+
+#endif // PICO9918_BUILD_RUNTIME_CHIP
+
+/** \brief reset the new TMS9918 */
+PICO9918_DLLEXPORT void __time_critical_func(pico9918_reset)(PICO9918_INST_ONLY_ARG)
+{
+  tms9918->regWriteStage0Value = 0;
+  tms9918->currentAddress      = 0;
+  tms9918->gpuAddress          = 0xFFFF; // "Odd" don't start value
+  tms9918->regWriteStage       = 0;
+
+  tms9918->palWriteStage       = 0;
+  tms9918->palWriteStage0Value = 0;
+  tms9918->flash               = 0;
+  memset(&TMS_STATUS(tms9918, PICO9918_SR_STATUS), 0, TMS_STATUS_REGISTERS);
+  pico9918_frame_reset_int_impl(PICO9918_INST_ONLY);
+  TMS_STATUS(tms9918, PICO9918_SR_IDENT)   = PICO9918_SR1_ID(tms9918);
+  TMS_STATUS(tms9918, PICO9918_SR_VERSION) = 0x1A; // Version
+  tms9918->readAheadBuffer = 0;
+
+  vdpRegisterReset(tms9918);
+  TMS_REGISTER(tms9918, TMS_REG_1) = 0x00; // turn display off
+  TMS_REGISTER(tms9918, TMS_REG_7) = 0x00;
+  pico9918_cached_mode               = TMS_MODE_GRAPHICS_I;
+
+  // set up default palettes (arm is little-endian, tms9900 is big-endian)
+  for (int i = 0; i < sizeof(defaultPalette) / sizeof(uint16_t); ++i)
+  {
+    tms9918->vram.map.pram[i] = __builtin_bswap16(defaultPalette[i]);
+  }
+
+  /* row-30 progressive has no border line, so nothing else invalidates the derived LUT */
+  tms9918->palDirty = 1;
+
+  pico9918_frame_reset_count_impl(PICO9918_INST_ONLY);
+  pico9918_splash_reset();
+
+  /* ram intentionally left in unknown state */
+}
+
+
+/**
+ * \brief destroy a TMS9918
+ *
+ * tms9918: tms9918 object to destroy / clean up
+ */
+PICO9918_DLLEXPORT void __time_critical_func(pico9918_destroy)(PICO9918_INST_ONLY_ARG)
+{
+#if !PICO9918_SINGLE_INSTANCE
+  free(tms9918);
+  tms9918 = NULL;
+#endif
+}
+
+/**
+ * \brief write an address (mode = 1) to the tms9918
+ *
+ * data: the data (DB0 -> DB7) to send
+ */
+PICO9918_DLLEXPORT void __time_critical_func(pico9918_write_addr)(PICO9918_INST_ARG uint8_t data)
+{
+  pico9918_write_addr_impl(PICO9918_INST data);
+}
+
+/** \brief read from the status register */
+PICO9918_DLLEXPORT uint8_t __time_critical_func(pico9918_read_status)(PICO9918_INST_ONLY_ARG)
+{
+  return pico9918_read_status_impl(PICO9918_INST_ONLY);
+}
+
+/** \brief read from the status register without resetting it */
+PICO9918_DLLEXPORT uint8_t __time_critical_func(pico9918_peek_status)(PICO9918_INST_ONLY_ARG)
+{
+  return pico9918_peek_status_impl(PICO9918_INST_ONLY);
+}
+
+/**
+ * \brief write data (mode = 0) to the tms9918
+ *
+ * data: the data (DB0 -> DB7) to send
+ */
+PICO9918_DLLEXPORT void __time_critical_func(pico9918_write_data)(PICO9918_INST_ARG uint8_t data)
+{
+  pico9918_write_data_impl(PICO9918_INST data);
+}
+
+
+/** \brief read data (mode = 0) from the tms9918 */
+PICO9918_DLLEXPORT uint8_t __time_critical_func(pico9918_read_data)(PICO9918_INST_ONLY_ARG)
+{
+  return pico9918_read_data_impl(PICO9918_INST_ONLY);
+}
+
+/** \brief read data (mode = 0) from the tms9918 */
+PICO9918_DLLEXPORT uint8_t __time_critical_func(pico9918_read_data_no_inc)(PICO9918_INST_ONLY_ARG)
+{
+  return pico9918_read_data_no_inc_impl(PICO9918_INST_ONLY);
+}
+
+/** \brief return true if both INT status and INT control set */
+PICO9918_DLLEXPORT bool __time_critical_func(pico9918_interrupt_status)(PICO9918_INST_ONLY_ARG)
+{
+  return pico9918_interrupt_status_impl(PICO9918_INST_ONLY);
+}
+
+/** \brief raise the INT status flag */
+PICO9918_DLLEXPORT void __time_critical_func(pico9918_interrupt_set)(PICO9918_INST_ONLY_ARG)
+{
+  pico9918_interrupt_set_impl(PICO9918_INST_ONLY);
+}
+
+/** \brief set status flag */
+PICO9918_DLLEXPORT
+void __time_critical_func(pico9918_set_status)(PICO9918_INST_ARG uint8_t status)
+{
+  pico9918_set_status_impl(PICO9918_INST status);
+}
+
+static const uint32_t zeroWord = 0;
+
+/* Sprites and the bitmap layer are always on the 256-pixel grid, so their masks are one
+   bit per grid pixel whatever the mode. A tile layer's own line is not: 80 columns at eight bits a
+   pixel are 512 pixels and want a bit for each, which is what lets a layer be selected per pixel.
+   The two are different lengths *and* different units, and the same function must not take both. */
+typedef uint32_t BitMask[9];
+typedef uint32_t TileMask[SCANLINE_MASK_WORDS];
+
+/* A mask walked one `<<= 1` a pixel has to be unsigned: shifting a negative signed value left is
+   undefined, and a compiler may then fold the sign test away. `-fsanitize=shift-base` catches it. */
+#define MASK_NEXT_PIXEL 0x80000000u
+
+
+/* one object, so the per-scanline clear is a single transfer and the layout cannot drift */
+static PICO9918_SECTION_SCRATCH_X(lookup) struct
+{
+  BitMask rowBits;                  /* pixel mask */
+  BitMask rowTransparentSpriteBits; /* transparent sprite pixels */
+  BitMask rowSpriteBits;            /* collision mask */
+} __aligned(4) rowMasks;
+
+/** \brief Test and update the sprite collision mask. */
+static inline uint32_t tmsTestCollisionMask(const uint32_t xPos, const uint32_t spritePixels,
+                                            const uint32_t spriteWidth)
+{
+  uint32_t rowSpriteBitsWord    = xPos >> 5;
+  uint32_t rowSpriteBitsWordBit = xPos & 0x1f;
+
+  uint32_t validPixels =
+    (~rowMasks.rowSpriteBits[rowSpriteBitsWord]) & (spritePixels >> rowSpriteBitsWordBit);
+  rowMasks.rowSpriteBits[rowSpriteBitsWord] |= validPixels;
+  validPixels <<= rowSpriteBitsWordBit;
+
+  rowSpriteBitsWordBit = 32 - rowSpriteBitsWordBit;
+  if (rowSpriteBitsWordBit < spriteWidth)
+  {
+    uint32_t right = (~rowMasks.rowSpriteBits[++rowSpriteBitsWord]) & (spritePixels << rowSpriteBitsWordBit);
+    rowMasks.rowSpriteBits[rowSpriteBitsWord] |= right;
+    validPixels |= (right >> rowSpriteBitsWordBit);
+  }
+
+  return validPixels;
+}
+
+
+/** \brief set the transparent sprite mask. */
+static inline void tmsSetTransparentSpriteMask(const uint32_t xPos, const uint32_t spritePixels,
+                                               const uint32_t spriteWidth)
+{
+  uint32_t rowSpriteBitsWord    = xPos >> 5;
+  uint32_t rowSpriteBitsWordBit = xPos & 0x1f;
+
+  rowMasks.rowTransparentSpriteBits[rowSpriteBitsWord] |= spritePixels >> rowSpriteBitsWordBit;
+
+  rowSpriteBitsWordBit = 32 - rowSpriteBitsWordBit;
+  if (rowSpriteBitsWordBit < spriteWidth)
+  {
+    rowMasks.rowTransparentSpriteBits[rowSpriteBitsWord + 1] |= spritePixels << rowSpriteBitsWordBit;
+  }
+}
+
+
+/** \brief Clear the row pixels bit mask. */
+static inline void tmsClearRowBitsMask(const uint32_t xPos, const uint32_t tilePixels,
+                                       const uint32_t tileWidth, BitMask rowBitsMask)
+{
+  uint32_t rowBitsWord    = xPos >> 5;
+  uint32_t rowBitsWordBit = xPos & 0x1f;
+
+  uint32_t validPixels = tilePixels >> rowBitsWordBit;
+  rowBitsMask[rowBitsWord] &= ~validPixels;
+
+  rowBitsWordBit = 32 - rowBitsWordBit;
+  if (rowBitsWordBit < tileWidth)
+  {
+    ++rowBitsWord;
+    uint32_t right = (tilePixels << rowBitsWordBit);
+    rowBitsMask[rowBitsWord] &= ~right;
+  }
+}
+
+/** \brief Update the row pixels bit mask (aligned - no word boundary crossing). */
+static inline void tmsUpdateRowBitsMaskAligned(const uint32_t xPos, const uint32_t tilePixels,
+                                               BitMask rowBitsMask)
+{
+  rowBitsMask[xPos >> 5] |= tilePixels >> (xPos & 0x1f);
+}
+
+/** \brief Test against the row pixels bit mask (aligned - no word boundary crossing). */
+static inline uint32_t tmsTestRowBitsMaskAligned(const uint32_t xPos, const uint32_t tilePixels,
+                                                 const BitMask rowBitsMask)
+{
+  return tilePixels & ~(rowBitsMask[xPos >> 5] << (xPos & 0x1f));
+}
+
+/* Out of line on purpose: two calls a line, and inlined it puts a second copy of the whole
+   straight-line word copy into the scanline body, which costs the board more than the call. */
+static PICO9918_NOINLINE void tmsCopyAlignMask(TileMask dstMask, const TileMask srcMask, int pixelShift)
+{
+  if (pixelShift == 0)
+  {
+    /* straight-line, not a loop: -O3 rewrites the loop form into a bootrom memcpy call */
+    dstMask[0] = srcMask[0];
+    dstMask[1] = srcMask[1];
+    dstMask[2] = srcMask[2];
+    dstMask[3] = srcMask[3];
+    dstMask[4] = srcMask[4];
+    dstMask[5] = srcMask[5];
+    dstMask[6] = srcMask[6];
+    dstMask[7] = srcMask[7];
+    dstMask[8] = srcMask[8];
+#if SCANLINE_MASK_WORDS > 9
+    dstMask[9]  = srcMask[9];
+    dstMask[10] = srcMask[10];
+    dstMask[11] = srcMask[11];
+    dstMask[12] = srcMask[12];
+    dstMask[13] = srcMask[13];
+    dstMask[14] = srcMask[14];
+    dstMask[15] = srcMask[15];
+    dstMask[16] = srcMask[16];
+#endif
+    return;
+  }
+
+  if (pixelShift > 0)
+  {
+    // Right shift - carry flows left to right (low to high index)
+    uint32_t carry = 0;
+    for (int i = 0; i < SCANLINE_MASK_WORDS; i++) // LOW to HIGH
+    {
+      uint32_t word = srcMask[i];
+      dstMask[i]    = (word >> pixelShift) | carry;
+      carry         = word << (32 - pixelShift);
+    }
+  }
+  else
+  {
+    // Left shift - carry flows right to left (high to low index)
+    pixelShift     = -pixelShift;
+    uint32_t carry = 0;
+    for (int i = SCANLINE_MASK_WORDS - 1; i >= 0; i--) // HIGH to LOW
+    {
+      uint32_t word = srcMask[i];
+      dstMask[i]    = (word << pixelShift) | carry;
+      carry         = word >> (32 - pixelShift);
+    }
+  }
+}
+
+/* The tile2 mask's trip home. Unshifted it is a copy out and straight back, and nothing
+   between the two writes either mask - the row emitters touch layerSelectionMask only on a
+   tile2 pass - so there is nothing to bring home. Under any scroll the round trip nets a
+   shift of -t2Scroll and loses the bits it carries off the end, so it must run.
+
+   The test lives here rather than at the call site because the scanline body is at the size
+   where one more branch in it re-plans the whole function. */
+static PICO9918_NOINLINE void tmsRestoreAlignMask(TileMask dstMask, const TileMask srcMask,
+                                                  int pixelShift, int otherShift)
+{
+  if (pixelShift | otherShift) tmsCopyAlignMask(dstMask, srcMask, pixelShift);
+}
+
+
+/** \brief Test and update the row pixels bit mask. */
+static inline uint32_t tmsTestRowBitsMask(const uint32_t xPos, const uint32_t tilePixels,
+                                          const uint32_t tileWidth, const bool update, const bool test,
+                                          const bool testColl)
+{
+  uint32_t rowBitsWord    = xPos >> 5;
+  uint32_t rowBitsWordBit = xPos & 0x1f;
+
+  uint32_t validPixels = tilePixels >> rowBitsWordBit;
+  if (testColl) validPixels &= ~rowMasks.rowSpriteBits[rowBitsWord];
+  if (test) validPixels &= ~rowMasks.rowBits[rowBitsWord];
+  if (update) rowMasks.rowBits[rowBitsWord] |= validPixels;
+  if (test || testColl) validPixels <<= rowBitsWordBit;
+
+  rowBitsWordBit = 32 - rowBitsWordBit;
+  if (rowBitsWordBit < tileWidth)
+  {
+    ++rowBitsWord;
+    uint32_t right = (tilePixels << rowBitsWordBit);
+
+    if (testColl) right &= ~rowMasks.rowSpriteBits[rowBitsWord];
+    if (test) right &= ~rowMasks.rowBits[rowBitsWord];
+
+    if (update) rowMasks.rowBits[rowBitsWord] |= right;
+    if (test || testColl) validPixels |= (right >> rowBitsWordBit);
+  }
+
+  return (test || testColl) ? validPixels : tilePixels;
+}
+
+
+/* lookup for combining ecm nibbles, returning 4 pixels.
+ *
+ * Deliberately a full table in striped SRAM. Plane 3 only ever lands in bit 2 of a pixel and
+ * nothing else does at any level (the palette note below), so a 256-entry two-plane table plus a
+ * 16-entry plane 3 mask would give the same words in a fraction of the space. That was built and
+ * rejected: it costs a load and an OR on every ECM3 quad, and the tile path takes far more lookups
+ * a line than sprites do. Revisit it only when something else needs the room. It cannot live in
+ * .scratch_x either way - core 1's stack has the top half of that bank.
+ */
+/* Every entry is written by ecmLookupInit() before `lookupsReady` is ever set, so it does not
+   need the crt0 .bss zero-fill either. */
+static uint32_t __aligned(8) PICO9918_UNINITIALIZED(ecmLookup)[16 * 16 * 16];
+
+static uint8_t PICO9918_IN_FLASH_FUNC(ecmByte)(bool h, bool m, bool l)
+{
+  return (h << 2) | (m << 1) | l;
+}
+
+/* lookup from bit planes: 333322221111 to merged palette values for four pixels
+ * NOTE: The left-most pixel is stored in the least significant byte of the result
+ *       because it's more efficient to offload them that way
+ */
+static void PICO9918_IN_FLASH_FUNC(ecmLookupInit)(void)
+{
+  for (uint16_t i = 0; i < 16 * 16 * 16; ++i)
+  {
+    ecmLookup[i] =
+      (ecmByte(i & 0x800, i & 0x080, i & 0x008)) | (ecmByte(i & 0x400, i & 0x040, i & 0x004) << 8) |
+      (ecmByte(i & 0x200, i & 0x020, i & 0x002) << 16) | (ecmByte(i & 0x100, i & 0x010, i & 0x001) << 24);
+  }
+}
+
+/* random note about how palettes are applied:
+ * PR Address bit: 0 1 2 3 4 5
+ * --------------------------------------
+ * original mode: ps0 ps1 cs0 cs1 cs2 cs3
+ * 1-bit (ECM1) : ps0 cs0 cs1 cs2 cs3 px0
+ * 2-bit (ECM2) : cs0 cs1 cs2 cs3 px1 px0
+ * 3-bit (ECM3) : cs0 cs1 cs2 px2 px1 px0
+*/
+
+
+/*
+ * to generate the doubled pixels required when the sprite MAG flag is set,
+ * use a lookup table. generate the doubledBits lookup table when we need it
+ * using doubledBitsNibble.
+ */
+static uint8_t __aligned(4) doubledBitsNibble[16] = {0x00, 0x03, 0x0c, 0x0f, 0x30, 0x33, 0x3c, 0x3f,
+                                                     0xc0, 0xc3, 0xcc, 0xcf, 0xf0, 0xf3, 0xfc, 0xff};
+
+/* lookup for doubling pixel patterns in mag mode */
+static PICO9918_SECTION_SCRATCH_X(lookup) uint16_t __aligned(4) doubledBits[256];
+static void PICO9918_IN_FLASH_FUNC(doubledBitsInit)(void)
+{
+  for (int i = 0; i < 256; ++i)
+  {
+    doubledBits[i] = (doubledBitsNibble[(i & 0xf0) >> 4] << 8) | doubledBitsNibble[i & 0x0f];
+  }
+}
+
+/* reversed bits in a byte */
+static PICO9918_SECTION_SCRATCH_X(lookup) uint8_t __aligned(4) reversedBits[256];
+
+static uint8_t PICO9918_IN_FLASH_FUNC(reverseBits)(uint8_t byte)
+{
+  byte = (byte & 0xf0) >> 4 | (byte & 0x0f) << 4;
+  byte = (byte & 0xcc) >> 2 | (byte & 0x33) << 2;
+  return (byte & 0xaa) >> 1 | (byte & 0x55) << 1;
+}
+
+/* the same reversal a text cell wants: six bits, so the two pixels it never shows fall off the
+   bottom and the mirror lands back at bit 7. Folding the shift into the table saves a shift and a
+   truncation on each of the three planes and the mask - paid only by a flipped cell, and a row of
+   those is the most expensive row a text mode has. */
+static PICO9918_SECTION_SCRATCH_X(lookup) uint8_t __aligned(4) reversedBits6[256];
+
+static void PICO9918_IN_FLASH_FUNC(reversedBitsInit)(void)
+{
+  for (int i = 0; i < 256; ++i)
+  {
+    reversedBits[i]  = reverseBits(i);
+    reversedBits6[i] = reverseBits(i) << 2;
+  }
+}
+
+/* a 6-bit palette index applied to all four bytes of a uint32_t, which is one multiply and wants no
+   table at all.
+
+   Spelling it as a multiply is what makes that true. Left to itself GCC expands the constant
+   multiply into a run of shifts and adds, because materialising the constant that way costs nothing
+   - the right call for a cold caller and the wrong one for three hot ones. `mul` rather than
+   `muls`: GCC wraps inline asm in `.syntax divided`, where the Thumb-1 multiply takes two operands
+   and always sets the flags. The C arm keeps the host build and the init-time constant folding at
+   ecm0PaletteInit. */
+static inline uint32_t repeatedPalette(const uint32_t index)
+{
+#ifdef PICO_BUILD
+  uint32_t repeated = index;
+  __asm__("mul %0, %1" : "+l"(repeated) : "l"(0x01010101u));
+  return repeated;
+#else
+  return index * 0x01010101u;
+#endif
+}
+
+/* The same value, except that colour 0 of each sub-palette holds what a tile writes where it draws
+   nothing - so this one cannot be arithmetic. ECM0 tiles index it, and transparency then costs them
+   no test: `pal` is always a multiple of 16, so those four entries are exactly the zero colours. */
+static PICO9918_SECTION_SCRATCH_X(lookup) uint32_t __aligned(4) ecm0Palette[64];
+
+static void PICO9918_IN_FLASH_FUNC(ecm0PaletteInit)(void)
+{
+  for (int i = 0; i < 64; ++i)
+  {
+    ecm0Palette[i] = repeatedPalette(i);
+  }
+}
+
+/* What a tile layer writes where it draws nothing. Hardware marks a zero tile colour as not-a-pixel
+   and falls through to the backdrop; our layer buffer carries no such bit, so the backdrop colour
+   goes in directly. The exception is a non-priority bitmap layer, where zero is the composite's own
+   transparency marker and letting the layer show through matters more. Decided once per scanline. */
+static uint32_t transparentPixels[2];
+
+/* a lookup from a 4-bit mask to a word of 8-bit masks (reversed byte order) */
+static PICO9918_SECTION_SCRATCH_X(lookup) uint32_t __aligned(4) maskExpandNibbleToWordRev[16] = {
+  0x00000000, 0xff000000, 0x00ff0000, 0xffff0000, 0x0000ff00, 0xff00ff00, 0x00ffff00, 0xffffff00,
+  0x000000ff, 0xff0000ff, 0x00ff00ff, 0xffff00ff, 0x0000ffff, 0xff00ffff, 0x00ffffff, 0xffffffff};
+
+/* A 2bpp bitmap-layer nibble as its two pixels, low byte leftmost. Two of these make one
+   source byte's four pixels into one output word, which is the whole point.
+     nibble  pixels      value
+     0b00_00  0, 0       0x0000
+     0b01_10  1, 2       0x0201
+     0b11_11  3, 3       0x0303 */
+static PICO9918_SECTION_SCRATCH_X(lookup) uint16_t __aligned(4) bmlExpand2bpp[16] = {
+  0x0000, 0x0100, 0x0200, 0x0300, 0x0001, 0x0101, 0x0201, 0x0301,
+  0x0002, 0x0102, 0x0202, 0x0302, 0x0003, 0x0103, 0x0203, 0x0303};
+
+bool lookupsReady = false;
+void PICO9918_IN_FLASH_FUNC(initLookups)(void)
+{
+  if (lookupsReady) return;
+
+  PICO9918_DMA_CLAIM();
+
+  ecmLookupInit();
+  doubledBitsInit();
+  reversedBitsInit();
+  ecm0PaletteInit();
+
+  /* every fill is configured here: one triggered before a lazy init reached it would run unconfigured */
+  PICO9918_FILL32_INIT(PICO9918_FILL_LINE, &bg);
+  PICO9918_FILL32_SET_COUNT(PICO9918_FILL_LINE, TMS9918_PIXELS_X / 4);
+
+  PICO9918_FILL32_INIT(PICO9918_FILL_MASKS, &zeroWord);
+  PICO9918_FILL32_SET_COUNT(PICO9918_FILL_MASKS, sizeof(rowMasks) / sizeof(uint32_t));
+
+  PICO9918_FILL32_INIT(PICO9918_FILL_BORDER, &pico9918_border_bg);
+
+  PICO9918_COPY_INIT(PICO9918_COPY);
+
+  lookupsReady = true;
+}
+
+/* a tile plane's byte split into its two quads: the high nibble - the cell's left four pixels - at
+ * bit 16, the low nibble at bit 0. Three of these OR together into one accumulator holding both of
+ * the cell's ecmLookup indices, `index >> 16` and `(uint16_t)index`.
+ */
+static inline uint32_t ecmSplitQuads(const uint32_t patt)
+{
+  return (patt | (patt << 12)) & 0x000f000fu;
+}
+
+/* the index into ecmLookup for four sprite pixels, from the three left-aligned plane words: each
+ * plane's top nibble is this quad's bit for that plane, `sb0` being plane 1. The tile path's `patt`
+ * numbers them the other way, plane 3 first, and indexes the same table.
+ *
+ * Not for correctness - the planes above `ecm` are zero and only ever shifted - but for shape:
+ * `ecm` is a scanline invariant, so GCC unswitches the emit loops on it and each level gets a
+ * straight-line body with the unused planes' terms dead.
+ */
+static inline uint32_t calculateEcmIndex(const uint32_t ecm, const uint32_t sb0, const uint32_t sb1,
+                                         const uint32_t sb2)
+{
+  uint32_t ecmIndex = 0;
+  switch (ecm)
+  {
+  case 3:
+    ecmIndex = sb2 >> 28;
+    // fallthrough
+  case 2:
+    ecmIndex = (ecmIndex << 4) | (sb1 >> 28);
+    // fallthrough
+  default: ecmIndex = (ecmIndex << 4) | (sb0 >> 28);
+  }
+  return ecmIndex;
+}
+
+static inline void loadSpriteData(const uint8_t* vram, uint32_t* spriteBits, uint32_t pattOffset,
+                                  uint32_t* pattMask, const uint32_t ecm, const uint32_t ecmOffset,
+                                  const bool flipX, const bool sprite16)
+{
+  int i = 0;
+  do // do-while since behavior for ecm=0 and ecm==1 is the same
+  {
+    uint32_t patt = vram[pattOffset];
+    if (flipX) patt = reversedBits[patt];
+    uint32_t bits = patt << ((flipX && sprite16) ? 16 : 24);
+
+    if (sprite16)
+    {
+      patt = vram[pattOffset + PATTERN_BYTES * 2];
+      if (flipX) patt = reversedBits[patt];
+      bits |= patt << (flipX ? 24 : 16);
+    }
+    spriteBits[i] = bits;
+    *pattMask |= bits;
+    pattOffset += ecmOffset;
+  } while (++i < ecm);
+}
+
+
+/* The sprites this scanline draws, in list order. Each carries its attribute with the row inside
+   the pattern in place of the y, which the drawing pass does not need - the collect pass has the
+   whole word in a register for the zero test anyway, so keeping it spares that pass three reads of
+   VRAM, which shares its bank with the DMA and the PIO. The index is only ever read to report a
+   fifth sprite, so it sits apart rather than widening the record every sprite pays for. */
+static PICO9918_SECTION_SCRATCH_X(lookup) uint32_t spriteAttrRows[MAX_SPRITES];
+static PICO9918_SECTION_SCRATCH_X(lookup) uint8_t spriteIndices[MAX_SPRITES];
+
+/**
+ * \brief Which sprites this scanline draws at all, and where in each pattern it starts.
+ *
+ * The y tests want the scanline, the wrap threshold and the table bounds. The drawing pass wants
+ * the ECM settings, the palette and the pattern table. Neither wants the other's, and together
+ * they are more than the eight registers hold - so the list is walked once here and the drawing
+ * pass reads a row at a time instead of carrying both sets through every sprite.
+ */
+static uint32_t __time_critical_func(collectSpriteRows)(PICO9918_INST_ARG uint16_t y)
+{
+  const uint32_t unlockedMask = -(uint32_t)PICO9918_UNLOCKED(tms9918);
+  const uint32_t row30Mode =
+    (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_ROW30) & unlockedMask;
+
+  /* the wrap threshold and the row both carry the YPOS -1 offset, so the walk stays in raw YPOS */
+  const int32_t realY = (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_Y_REAL) ? 0 : 1;
+  const int32_t maxY  = (row30Mode ? 0xf0 : 0xe0) - realY;
+  const int32_t yAdj  = (int32_t)y - realY;
+
+  uint32_t maxSprites = TMS_REGISTER(tms9918, PICO9918_REG_MAX_SPRITES);
+  if (maxSprites > MAX_SPRITES) maxSprites = MAX_SPRITES;
+
+  const uint8_t* spriteAttr = tms9918->vram.bytes + tmsSpriteAttrTableAddr(tms9918);
+  uint32_t count            = 0;
+
+  for (uint32_t spriteIdx = 0; spriteIdx < maxSprites; ++spriteIdx, spriteAttr += SPRITE_ATTR_BYTES)
+  {
+    int32_t yPos = spriteAttr[SPRITE_ATTR_Y];
+
+    /* stop processing when yPos == LAST_SPRITE_YPOS */
+    if (yPos == LAST_SPRITE_YPOS && !row30Mode)
+    {
+      break;
+    }
+
+    /* check if sprite position is in the -31 to 0 range and move back to top */
+    if (yPos > maxY) yPos -= 256;
+
+    const int32_t pattRow = yAdj - yPos;
+    if ((uint32_t)pattRow > 31)
+    {
+      continue;
+    }
+
+    const uint32_t attr = *(const uint32_t*)spriteAttr;
+
+    if (attr == 0 && unlockedMask)
+    {
+      continue;
+    }
+
+    spriteAttrRows[count]                             = attr;
+    ((uint8_t*)&spriteAttrRows[count])[SPRITE_ATTR_Y] = (uint8_t)pattRow;
+    spriteIndices[count]                              = (uint8_t)spriteIdx;
+    ++count;
+  }
+
+  return count;
+}
+
+/** \brief the sprite ECM level, zero on a locked device - the one term a clone can pin */
+static inline uint32_t spriteEcm(PICO9918_INST_ONLY_ARG)
+{
+  return (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_ECM_SPRITE) &
+         -(uint32_t)PICO9918_UNLOCKED(tms9918);
+}
+
+/** \brief Output Sprites to a scanline. ecm0 pins the ECM level to zero, which folds the
+ *         plane loop to one pass, the colour shift to nothing and the whole ECM emit arm away.
+ */
+static inline uint8_t __time_critical_func(renderSprites)(PICO9918_INST_ARG const uint32_t spriteCount,
+                                                          const bool spriteMag, const bool wide,
+                                                          const bool ecm0,
+                                                          uint8_t pixels[TMS9918_PIXELS_X])
+{
+  const uint32_t unlockedMask      = -(uint32_t)PICO9918_UNLOCKED(tms9918);
+  const uint8_t* const vram        = tms9918->vram.bytes;
+  bool hasSprites                  = false;
+  const uint8_t spriteSize         = tmsSpriteSize(tms9918);
+  const bool sprite16              = spriteSize == 16;
+  const uint8_t spriteIdxMask      = sprite16 ? 0xfc : 0xff;
+  const uint8_t spriteColorMask    = 0x8f | unlockedMask;
+  const uint8_t spriteSizePx       = spriteSize << spriteMag;
+  const uint16_t spritePatternAddr = tmsSpritePatternTableAddr(tms9918);
+  uint32_t spritesShown            = 0;
+
+  /* the sprite-number field reads zero unless a fifth sprite latches one in */
+  uint8_t tempStatus               = 0;
+  uint32_t transparentCount        = 0;
+
+  // ecm settings
+  const uint32_t ecm = ecm0 ? 0 : spriteEcm(PICO9918_INST_ONLY);
+  const uint32_t ecmColorOffset = (ecm == 3) ? 2 : ecm;
+  const uint32_t ecmColorMask   = (ecm == 3) ? 0x0e : 0x0f;
+  const uint32_t ecmOffset =
+    0x800 >> ((TMS_REGISTER(tms9918, PICO9918_REG_PAGE_SIZE) & PICO9918_R29_SPRITE_STRIDE) >> 6);
+
+  uint8_t pal = (TMS_REGISTER(tms9918, PICO9918_REG_PALETTE_SELECT) & PICO9918_R24_SPRITE_PS) & unlockedMask;
+  if (ecm == 1)
+  {
+    pal &= 0x20;
+  }
+  else if (ecm)
+  {
+    pal = 0;
+  }
+
+  const uint32_t scanlineSprites = TMS_REGISTER(tms9918, PICO9918_REG_MAX_SCAN_SPRITES);
+  const uint32_t unlimited =
+    (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED2) & PICO9918_R50_REPORT_MAX) & unlockedMask;
+
+  for (uint32_t n = 0; n < spriteCount; ++n)
+  {
+    const uint8_t* spriteAttr = (const uint8_t*)&spriteAttrRows[n];
+
+    int32_t pattRow = spriteAttr[SPRITE_ATTR_Y] >> spriteMag;
+
+    uint8_t thisSpriteSize    = spriteSize;
+    bool thisSprite16         = sprite16;
+    uint8_t thisSpriteIdxMask = spriteIdxMask;
+    uint8_t thisSpriteSizePx  = spriteSizePx;
+    uint8_t spriteAttrColor   = spriteAttr[SPRITE_ATTR_COLOR] & spriteColorMask;
+    bool opaq                 = false;
+
+    if (spriteAttrColor & 0x10)
+    {
+      if (sprite16)
+      {
+        // PICO9918-specific. If all sprites are 16px anyway, this bit is used to have opaque sprites
+        opaq = true;
+      }
+      else
+      {
+        thisSpriteSize    = 16;
+        thisSprite16      = true;
+        thisSpriteIdxMask = 0xfc;
+        thisSpriteSizePx  = thisSpriteSize << spriteMag;
+      }
+    }
+
+    /* check if sprite is visible on this line */
+    if (pattRow >= thisSpriteSize)
+    {
+      continue;
+    }
+
+    /* have we exceeded the scanline sprite limit? */
+    if (++spritesShown > MAX_SCANLINE_SPRITES)
+    {
+      if (((tempStatus & PICO9918_SR0_5S) == 0) && (!unlimited || spritesShown > scanlineSprites))
+      {
+        tempStatus |= PICO9918_SR0_5S | spriteIndices[n];
+      }
+
+      if (spritesShown > scanlineSprites) break;
+    }
+
+    const int32_t earlyClockOffset = (spriteAttrColor & 0x80) ? -32 : 0;
+    int32_t xPos                   = (int32_t)(spriteAttr[SPRITE_ATTR_X]) + earlyClockOffset;
+    if ((xPos > TMS9918_PIXELS_X) || (-xPos > thisSpriteSizePx))
+    {
+      continue;
+    }
+
+    if (spriteAttrColor & 0x20) pattRow = thisSpriteSize - pattRow - 1; // flip Y?
+
+    /* sprite is visible on this line */
+    uint8_t spriteColor   = (spriteAttrColor & ecmColorMask) << ecmColorOffset;
+    const uint8_t pattIdx = spriteAttr[SPRITE_ATTR_NAME] & thisSpriteIdxMask;
+    uint16_t pattOffset   = spritePatternAddr + pattIdx * PATTERN_BYTES + (uint16_t)pattRow;
+
+
+    uint32_t pattMask = 0;
+    uint32_t spriteBits[3] = {0};
+    const bool flipX = spriteAttrColor & 0x40;
+
+    loadSpriteData(vram, spriteBits, pattOffset, &pattMask, ecm, ecmOffset, flipX, thisSprite16);
+
+    if (opaq) pattMask = 0xffff0000;
+
+    /* bail early if no bits to draw */
+    if (!pattMask)
+    {
+      continue;
+    }
+
+    if (spriteMag)
+    {
+      pattMask = ((uint32_t)doubledBits[pattMask >> 24] << 16) | doubledBits[(pattMask >> 16) & 0xff];
+    }
+
+    /* perform clipping operations */
+    if (xPos < 0)
+    {
+      int32_t absX    = -xPos;
+      uint32_t offset = absX >> spriteMag;
+      spriteBits[2] <<= offset;
+      spriteBits[1] <<= offset;
+      spriteBits[0] <<= offset;
+      pattMask <<= absX;
+
+      /* bail early if no bits to draw */
+      if (!pattMask)
+      {
+        continue;
+      }
+
+      thisSpriteSizePx += xPos;
+      xPos = 0;
+    }
+
+    int pixelsLeft = TMS9918_PIXELS_X - xPos;
+    if (pixelsLeft < thisSpriteSizePx)
+    {
+      thisSpriteSizePx = pixelsLeft;
+      pattMask &= ~((1u << (32 - pixelsLeft)) - 1);
+    }
+
+    /* test and update the collision mask */
+    uint32_t validPixels = tmsTestCollisionMask(xPos, pattMask, thisSpriteSizePx);
+
+    /* if the result is different, we collided */
+    if (validPixels != pattMask)
+    {
+      tempStatus |= PICO9918_SR0_COLLISION;
+    }
+
+    /* LOAD-BEARING: a suppressed sprite takes the transparent arm rather than skipping,
+       which is what leaves the collision and fifth-sprite bits above it reported. */
+    if (PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_SPRITES) &&
+        (ecm || (spriteColor != TMS_TRANSPARENT)))
+    {
+      hasSprites = true;
+      spriteColor |= pal;
+      if (ecm)
+      {
+
+        uint32_t quadPal = repeatedPalette(spriteColor);
+
+        if (spriteMag)
+        {
+          uint8_t* p          = pixels + (wide ? xPos * 2 : xPos);
+          const uint32_t step = wide ? 2 : 1;
+          uint32_t bits       = validPixels;
+
+          while (bits)
+          {
+            if (bits >> 24)
+            {
+              const uint32_t ecmIndex = calculateEcmIndex(ecm, spriteBits[0], spriteBits[1], spriteBits[2]);
+              uint32_t quad           = ecmLookup[ecmIndex] | quadPal;
+
+              for (int n = 0; n < 4; ++n)
+              {
+                const uint8_t v = (uint8_t)quad;
+                if (bits & MASK_NEXT_PIXEL)
+                {
+                  if (wide)
+                    *(uint16_t*)p = v | (v << 8);
+                  else
+                    p[0] = v;
+                }
+                bits <<= 1;
+                if (bits & MASK_NEXT_PIXEL)
+                {
+                  if (wide)
+                    *(uint16_t*)(p + 2) = v | (v << 8);
+                  else
+                    p[1] = v;
+                }
+                bits <<= 1;
+                p += 2 * step;
+                quad >>= 8;
+              }
+            }
+            else
+            {
+              bits <<= 8;
+              p += 8 * step;
+            }
+            spriteBits[2] <<= 4;
+            spriteBits[1] <<= 4;
+            spriteBits[0] <<= 4;
+          }
+        }
+        else if (wide)
+        {
+          uint32_t x = xPos;
+
+          while (validPixels)
+          {
+            uint32_t chunkMask = validPixels >> 28;
+            if (chunkMask)
+            {
+              const uint32_t ecmIndex = calculateEcmIndex(ecm, spriteBits[0], spriteBits[1], spriteBits[2]);
+              uint32_t color          = ecmLookup[ecmIndex] | quadPal;
+              uint8_t* q              = pixels + x * 2;
+
+              for (int n = 0; n < 4; ++n)
+              {
+                if (chunkMask & 0x8)
+                {
+                  const uint8_t v = (uint8_t)color;
+                  *(uint16_t*)q   = v | (v << 8);
+                }
+                chunkMask <<= 1;
+                color >>= 8;
+                q += 2;
+              }
+            }
+            spriteBits[2] <<= 4;
+            spriteBits[1] <<= 4;
+            spriteBits[0] <<= 4;
+            x += 4;
+            validPixels <<= 4;
+          }
+        }
+        else // regular ecm sprite (8 or 16px, non-magnified)
+        {
+
+          // get him to be word aligned so we can smash out 4 pixels at a time
+          uint32_t quadOffset      = xPos >> 2;
+          const uint32_t pixOffset = xPos & 0x3;
+          validPixels >>= pixOffset;
+          spriteBits[2] >>= pixOffset;
+          spriteBits[1] >>= pixOffset;
+          spriteBits[0] >>= pixOffset;
+
+          uint32_t* quadPixels = (uint32_t*)pixels;
+
+          while (validPixels)
+          {
+            uint32_t chunkMask = validPixels >> 28;
+            if (chunkMask == 0x0f)
+            {
+              const uint32_t ecmIndex = calculateEcmIndex(ecm, spriteBits[0], spriteBits[1], spriteBits[2]);
+              quadPixels[quadOffset]  = ecmLookup[ecmIndex] | quadPal;
+            }
+            else if (chunkMask)
+            {
+              const uint32_t maskQuad = maskExpandNibbleToWordRev[chunkMask];
+              const uint32_t ecmIndex = calculateEcmIndex(ecm, spriteBits[0], spriteBits[1], spriteBits[2]);
+              const uint32_t color    = ecmLookup[ecmIndex] | quadPal;
+              quadPixels[quadOffset]  = (quadPixels[quadOffset] & ~maskQuad) | (color & maskQuad);
+            }
+            spriteBits[2] <<= 4;
+            spriteBits[1] <<= 4;
+            spriteBits[0] <<= 4;
+            ++quadOffset;
+            validPixels <<= 4;
+          }
+        }
+      }
+      else // non-ecm single-color sprite
+      {
+        if (!wide && pico9918_cached_mode == TMS_MODE_TEXT80) spriteColor |= spriteColor << 4;
+
+        while (validPixels)
+        {
+          if ((int32_t)validPixels < 0)
+          {
+            if (wide)
+              *(uint16_t*)(pixels + xPos * 2) = spriteColor | (spriteColor << 8);
+            else
+              pixels[xPos] = spriteColor;
+          }
+          validPixels <<= 1;
+          ++xPos;
+        }
+      }
+    }
+    else
+    {
+      // keep track of the transparent sprites, we remove them from the sprite mask later
+      tmsSetTransparentSpriteMask(xPos, validPixels, thisSpriteSizePx);
+      ++transparentCount;
+    }
+  }
+
+  tms9918->scanlineHasSprites = hasSprites;
+
+  // remove the transparent sprite pixels if there are any
+  if (transparentCount)
+  {
+    for (int i = 0; i < 9; ++i)
+    {
+      rowMasks.rowSpriteBits[i] ^= rowMasks.rowTransparentSpriteBits[i];
+    }
+  }
+
+
+  return tempStatus;
+}
+
+static EMITTER_NOINLINE uint8_t
+__time_critical_func(pico9918_output_sprites)(PICO9918_INST_ARG uint16_t y, uint8_t pixels[TMS9918_PIXELS_X])
+{
+  const bool spriteMag = tmsSpriteMag(tms9918);
+
+  if (TMS_REGISTER(tms9918, TMS_REG_0) &
+      TMS_R0_DOUBLE_ROWS) // double rows (high-res)? still only have low-res sprites
+    y >>= 1;
+
+  const uint32_t spriteCount = collectSpriteRows(PICO9918_INST y);
+
+  /* LOAD-BEARING: pico9918_scan_line clears scanlineHasSprites before it dispatches, and
+   * renderSprites would only store that same false back, so nothing is owed on this path. */
+  if (spriteCount == 0) return 0;
+
+#if PICO9918_TEXT80_8BPP
+  /* the store width is inside the emit loop, so it rides a clone parameter rather than a test */
+  if (TEXT80_WIDE_ROW)
+  {
+    return spriteMag ? renderSprites(PICO9918_INST spriteCount, true, true, false, pixels)
+                     : renderSprites(PICO9918_INST spriteCount, false, true, false, pixels);
+  }
+#endif
+
+  if (spriteMag)
+  {
+    return renderSprites(PICO9918_INST spriteCount, true, false, false, pixels);
+  }
+
+  /* every locked device and every ECM0 scene lands here, so it earns a clone of its own */
+  if (spriteEcm(PICO9918_INST_ONLY) == 0)
+  {
+    return renderSprites(PICO9918_INST spriteCount, false, false, true, pixels);
+  }
+
+  return renderSprites(PICO9918_INST spriteCount, false, false, false, pixels);
+}
+
+/* What a tile row needs that the mode, rather than the layer, decides. The name and colour
+ * addresses stay out of it: the row loop walks them as it crosses a page boundary.
+ */
+typedef struct
+{
+  const uint8_t* pattern; /* pattern table + this row; index with name * PATTERN_BYTES */
+  int8_t flipY;           /* what the ECM attribute's Y flip adds, or 0 where it is inert */
+  uint8_t nameMask;
+} TileRowAddr;
+
+/**
+ * \brief the per-mode half of a tile row's addressing, once per layer per scanline.
+ *
+ * `y` is the scrolled raster row and `rawY` the unscrolled one. Multicolor is the only mode that
+ * needs both, and it needs them apart: its name address uses the scrolled row while its pattern
+ * byte comes from the raw one, so a vertical scroll changes which
+ * tiles are fetched but not which four-line block of each is shown.
+ */
+static inline void tileRowAddr(PICO9918_INST_ARG const uint16_t y, const uint16_t rawY, const uint8_t colorReg,
+                               const bool gm2, const bool mcm, TileRowAddr* addr, uint16_t* colorTableAddr)
+{
+  uint16_t pageOffset   = 0;
+  const uint8_t pattRow = mcm ? (((rawY >> 2) & 0x01) + ((rawY >> 3) & 0x03) * 2) : (y & 0x07);
+
+  addr->nameMask = 0xff;
+
+  /* Multicolor's pattern address never reads the scrolled row, so Y flip is inert there */
+  addr->flipY = mcm ? 0 : (7 - 2 * pattRow);
+
+  if (gm2)
+  {
+    pageOffset     = (((y >> 6) & 0x03) & (TMS_REGISTER(tms9918, TMS_REG_PATTERN_TABLE) & 0x03)) << 11;
+    addr->nameMask = ((colorReg & 0x7f) << 3) | 0x07;
+    *colorTableAddr += (pageOffset & ((colorReg & 0x60) << 6)) + pattRow;
+  }
+
+  addr->pattern = tms9918->vram.bytes + tmsPatternTableAddr(tms9918) + pageOffset + pattRow;
+}
+
+/* Which cell a scrolled text row starts on. Graphics cells are eight pixels wide so the scroll
+   register splits by shifting; six does not divide, so hardware multiplies by the reciprocal
+   instead, exactly floor(h/6) for every value the register holds. The
+   pixel within that cell is what is left: h - 6 * cell. 80 columns doubles h first, its cells
+   being half as wide, which is why its offset is only ever 0, 2 or 4 (:741). */
+static inline uint32_t textScrollCell(const uint32_t hscrollPixels)
+{
+  return (hscrollPixels * 342) >> 11;
+}
+
+/* 80 columns double the register before dividing, their cells being half as wide, and what is left
+   inside the first cell is an even number of pixels - a whole byte at four bits a pixel, which is
+   what lets that depth place the offset by moving the destination. Both depths and both
+   column counts come through here so the emitter and the composite cannot disagree about it. */
+/* Cell in the low half, the pixel within it in the high. One split a layer a line, handed to the
+   emitter whole, so the nine wide bodies below do not each carry a copy of the division. */
+#define TEXT_SCROLL_CELL(s)   ((s) & 0xffffu)
+#define TEXT_SCROLL_OFFSET(s) ((s) >> 16)
+
+static inline uint32_t textScrollSplit(const uint32_t hscroll, const bool wide)
+{
+  /* = wide ? hscroll * 2 : hscroll, less the branch a run-time `wide` would cost */
+  const uint32_t h      = hscroll << wide;
+  const uint32_t cell   = textScrollCell(h);
+  const uint32_t offset = h - cell * 6;
+
+  /* LOAD-BEARING: the line is handed out at this offset and a caller may read it a word at a time,
+     which an odd one costs the zero-copy path entirely. Two is the only offset six-pixel cells can
+     leave that a word cannot start on, so it backs up a cell to eight - buffer slack covers it. */
+  if (wide && offset == 2) return (cell ? cell - 1 : TEXT80_NUM_COLS - 1) | (8u << 16);
+  return cell | (offset << 16);
+}
+
+static inline uint32_t textPixelOffset(const uint32_t hscroll, const bool wide)
+{
+  return TEXT_SCROLL_OFFSET(textScrollSplit(hscroll, wide));
+}
+
+static inline int scrollOffset(const uint32_t hscroll, const bool text, const bool wide)
+{
+  return text ? (int)textPixelOffset(hscroll, wide) : (int)(hscroll & 0x07);
+}
+
+typedef struct
+{
+  uint8_t vertScrollReg;
+  uint8_t yPageSwapMask;
+  uint8_t paletteShift;
+  uint8_t paletteMask;
+  uint8_t startPattReg;
+  uint8_t hpSizeMask;
+  uint8_t priorityReg;
+  uint8_t priorityMask;
+  uint8_t colorTableReg;
+  bool isTile2;
+  uint16_t (*nameTableAddrFunc)(pico9918_t*);
+  uint16_t (*colorTableAddrFunc)(pico9918_t*);
+} TileLayerConfig;
+
+static const TileLayerConfig T1_CONFIG = {.vertScrollReg      = 0x1c,
+                                          .yPageSwapMask      = 0x01,
+                                          .paletteShift       = 4,
+                                          .paletteMask        = 0x03,
+                                          .startPattReg       = 0x1b,
+                                          .hpSizeMask         = 0x02,
+                                          .priorityReg        = 0, // T1 has no priority control
+                                          .priorityMask       = 0,
+                                          .colorTableReg      = TMS_REG_COLOR_TABLE,
+                                          .isTile2            = false,
+                                          .nameTableAddrFunc  = tmsNameTableAddr,
+                                          .colorTableAddrFunc = tmsColorTableAddr};
+
+static const TileLayerConfig T2_CONFIG = {.vertScrollReg      = 0x1a,
+                                          .yPageSwapMask      = 0x10,
+                                          .paletteShift       = 2,
+                                          .paletteMask        = 0x0c,
+                                          .startPattReg       = 0x19,
+                                          .hpSizeMask         = 0x20,
+                                          .priorityReg        = 0x32,
+                                          .priorityMask       = 0x01,
+                                          .colorTableReg      = 11,
+                                          .isTile2            = true,
+                                          .nameTableAddrFunc  = tmsNameTable2Addr,
+                                          .colorTableAddrFunc = tmsColorTable2Addr};
+
+/* Where a scrolled 80-column row starts. Hardware doubles the scroll register before dividing by
+ * six, T80 cells being half as wide, so the offset it leaves inside the first cell is only ever 0,
+ * 2 or 4 pixels - a whole number of bytes at 4bpp, and never a nibble.
+ *
+ * `startCol` and `cells` are for the aligned emitter, which stores three words per four cells and
+ * so cannot begin part-way through one: it backs up `bytes` cells and the caller moves the
+ * destination four bytes for each, leaving the picture where it should be and the cells backed over
+ * in the side border.
+ */
+typedef struct
+{
+  uint16_t startCell; /* the first cell the row shows */
+  uint16_t startCol;  /* the first cell it emits */
+  uint8_t cells;
+  uint8_t bytes; /* how far into the first cell the row starts */
+  bool scrolled;
+} TextScroll;
+
+static inline TextScroll textScroll80(PICO9918_INST_ARG const TileLayerConfig* config)
+{
+  const uint32_t hscroll =
+    PICO9918_UNLOCKED(tms9918) ? TMS_REGISTER(tms9918, config->startPattReg) * 2 : 0;
+  const uint32_t cell    = textScrollCell(hscroll);
+  const uint32_t bytes   = (hscroll - cell * 6) >> 1;
+
+  TextScroll s;
+  s.startCell = cell;
+  s.startCol  = (cell >= bytes) ? (cell - bytes) : (cell + TEXT80_NUM_COLS - bytes);
+  s.cells     = bytes ? TEXT80_NUM_COLS + 4 : TEXT80_NUM_COLS;
+  s.bytes     = bytes;
+  s.scrolled  = hscroll != 0;
+  return s;
+}
+
+/**
+ * \brief where one layer reads this scanline from: the vertical scroll and its page swap, the name and
+ * colour rows, and the mode's pattern table. Every mode and both layers come through here, which
+ * is what stops the scroll from being written a fourth time.
+ *
+ * Position attributes decide the attribute row offset for every mode alike - by name when they are
+ * off, ECM0 or not. `textMode` selects only what a text row does not have: the page bits, in
+ * either direction.
+ */
+static inline void tileLayerAddr(PICO9918_INST_ARG const uint16_t rawY, const TileLayerConfig* config,
+                                 const uint8_t numCols, const uint8_t nameAddrMask, const bool textMode,
+                                 const bool gm2, const bool mcm, const bool attrPerPos, TileRowAddr* addr,
+                                 uint16_t* namesAddr, uint16_t* colorAddr)
+{
+  uint16_t y     = rawY;
+  bool swapYPage = false;
+
+  if (TMS_REGISTER(tms9918, config->vertScrollReg))
+  {
+    int virtY = y + TMS_REGISTER(tms9918, config->vertScrollReg);
+    const int maxY =
+      ((TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_ROW30) ? (8 * 30) : (8 * 24))
+      << (bool)(TMS_REGISTER(tms9918, TMS_REG_0) & TMS_R0_DOUBLE_ROWS);
+
+    if (virtY >= maxY)
+    {
+      virtY -= maxY;
+
+      /* a text row's address carries no page bit, so the size bit does nothing there */
+      swapYPage = !textMode && (TMS_REGISTER(tms9918, PICO9918_REG_PAGE_SIZE) & config->yPageSwapMask);
+    }
+
+    y = virtY;
+  }
+
+  const uint16_t rowOffset = (y >> 3) * numCols;
+
+  *namesAddr = (config->nameTableAddrFunc(tms9918) & (nameAddrMask << 10)) + rowOffset;
+  if (swapYPage) *namesAddr ^= 0x800;
+
+  *colorAddr = config->colorTableAddrFunc(tms9918);
+  if (attrPerPos)
+  {
+    if (!textMode) *colorAddr += *namesAddr & 0xc00;
+    *colorAddr = (*colorAddr + rowOffset) & VRAM_MASK;
+  }
+
+  tileRowAddr(PICO9918_INST y, rawY, TMS_REGISTER(tms9918, config->colorTableReg), gm2, mcm, addr, colorAddr);
+}
+
+#define TEXT80_COLOR_WORD(n) ((uint32_t)((n) * 0x111111u))
+#define TEXT80_MASK_WORD(bits) \
+  (((uint32_t)((bits) & 0x20 ? 0x0000F0u : 0x0)) | ((uint32_t)((bits) & 0x10 ? 0x00000Fu : 0x0)) | \
+   ((uint32_t)((bits) & 0x08 ? 0x00F000u : 0x0)) | ((uint32_t)((bits) & 0x04 ? 0x000F00u : 0x0)) | \
+   ((uint32_t)((bits) & 0x02 ? 0xF00000u : 0x0)) | ((uint32_t)((bits) & 0x01 ? 0x0F0000u : 0x0)))
+
+static const uint32_t text80ColorWord[16] = {
+  TEXT80_COLOR_WORD(0x0), TEXT80_COLOR_WORD(0x1), TEXT80_COLOR_WORD(0x2), TEXT80_COLOR_WORD(0x3),
+  TEXT80_COLOR_WORD(0x4), TEXT80_COLOR_WORD(0x5), TEXT80_COLOR_WORD(0x6), TEXT80_COLOR_WORD(0x7),
+  TEXT80_COLOR_WORD(0x8), TEXT80_COLOR_WORD(0x9), TEXT80_COLOR_WORD(0xa), TEXT80_COLOR_WORD(0xb),
+  TEXT80_COLOR_WORD(0xc), TEXT80_COLOR_WORD(0xd), TEXT80_COLOR_WORD(0xe), TEXT80_COLOR_WORD(0xf)};
+
+/* the low two pattern bits never reach the screen, so indexing by the raw pattern byte and
+   repeating each entry four times spends table space to save a shift on every cell */
+#define TEXT80_MASK_WORD4(bits) \
+  TEXT80_MASK_WORD(bits), TEXT80_MASK_WORD(bits), TEXT80_MASK_WORD(bits), TEXT80_MASK_WORD(bits)
+
+static const uint32_t text80MaskWord[256] = {
+  TEXT80_MASK_WORD4(0x00), TEXT80_MASK_WORD4(0x01), TEXT80_MASK_WORD4(0x02), TEXT80_MASK_WORD4(0x03),
+  TEXT80_MASK_WORD4(0x04), TEXT80_MASK_WORD4(0x05), TEXT80_MASK_WORD4(0x06), TEXT80_MASK_WORD4(0x07),
+  TEXT80_MASK_WORD4(0x08), TEXT80_MASK_WORD4(0x09), TEXT80_MASK_WORD4(0x0a), TEXT80_MASK_WORD4(0x0b),
+  TEXT80_MASK_WORD4(0x0c), TEXT80_MASK_WORD4(0x0d), TEXT80_MASK_WORD4(0x0e), TEXT80_MASK_WORD4(0x0f),
+  TEXT80_MASK_WORD4(0x10), TEXT80_MASK_WORD4(0x11), TEXT80_MASK_WORD4(0x12), TEXT80_MASK_WORD4(0x13),
+  TEXT80_MASK_WORD4(0x14), TEXT80_MASK_WORD4(0x15), TEXT80_MASK_WORD4(0x16), TEXT80_MASK_WORD4(0x17),
+  TEXT80_MASK_WORD4(0x18), TEXT80_MASK_WORD4(0x19), TEXT80_MASK_WORD4(0x1a), TEXT80_MASK_WORD4(0x1b),
+  TEXT80_MASK_WORD4(0x1c), TEXT80_MASK_WORD4(0x1d), TEXT80_MASK_WORD4(0x1e), TEXT80_MASK_WORD4(0x1f),
+  TEXT80_MASK_WORD4(0x20), TEXT80_MASK_WORD4(0x21), TEXT80_MASK_WORD4(0x22), TEXT80_MASK_WORD4(0x23),
+  TEXT80_MASK_WORD4(0x24), TEXT80_MASK_WORD4(0x25), TEXT80_MASK_WORD4(0x26), TEXT80_MASK_WORD4(0x27),
+  TEXT80_MASK_WORD4(0x28), TEXT80_MASK_WORD4(0x29), TEXT80_MASK_WORD4(0x2a), TEXT80_MASK_WORD4(0x2b),
+  TEXT80_MASK_WORD4(0x2c), TEXT80_MASK_WORD4(0x2d), TEXT80_MASK_WORD4(0x2e), TEXT80_MASK_WORD4(0x2f),
+  TEXT80_MASK_WORD4(0x30), TEXT80_MASK_WORD4(0x31), TEXT80_MASK_WORD4(0x32), TEXT80_MASK_WORD4(0x33),
+  TEXT80_MASK_WORD4(0x34), TEXT80_MASK_WORD4(0x35), TEXT80_MASK_WORD4(0x36), TEXT80_MASK_WORD4(0x37),
+  TEXT80_MASK_WORD4(0x38), TEXT80_MASK_WORD4(0x39), TEXT80_MASK_WORD4(0x3a), TEXT80_MASK_WORD4(0x3b),
+  TEXT80_MASK_WORD4(0x3c), TEXT80_MASK_WORD4(0x3d), TEXT80_MASK_WORD4(0x3e), TEXT80_MASK_WORD4(0x3f)};
+
+
+/**
+ * \brief one 40- or 80-column text row, six pixels a cell at one byte each
+ *
+ * `colorStride` is 0 when the whole row shares one colour pair. At ECM1-3 a cell is an
+ * ordinary ECM tile six pixels wide and the fg/bg pair goes inert.
+ */
+PICO9918_INLINE_HOT void
+renderTextRow(PICO9918_INST_ARG const uint8_t* __restrict rowNames, const TileRowAddr* __restrict addr,
+              const uint8_t* __restrict rowColors, const uint32_t colorStride, uint32_t pal,
+              uint8_t* __restrict dest, const uint32_t scroll, const bool alwaysOnTop,
+              const uint32_t numCols, const bool isTile2, const uint32_t ecm, const bool blend)
+{
+  const uint8_t* __restrict patternTable = addr->pattern;
+  const bool wide                        = numCols == TEXT80_NUM_COLS;
+  const uint32_t padding     = wide ? TEXT80_PADDING_PX : TEXT_PADDING_PX;
+  const uint32_t startCell   = TEXT_SCROLL_CELL(scroll);
+  const uint32_t pixelOffset = TEXT_SCROLL_OFFSET(scroll);
+  const uint32_t numCells    = numCols + (pixelOffset ? 2 : 0);
+
+  uint32_t* pix32 = (uint32_t*)PICO9918_ASSUME_ALIGNED(dest, 4);
+  uint32_t xPos = ecm ? (padding - pixelOffset) : padding;
+
+  const uint8_t* __restrict names  = rowNames + startCell;
+  const uint8_t* __restrict colors = rowColors + startCell * colorStride;
+  const uint32_t colorWrap         = numCols * colorStride;
+  uint32_t col                     = startCell;
+
+  const uint32_t nameAttrMask = (ecm && !colorStride) ? 0xff : 0;
+  const uint32_t spritePriMask = tms9918->scanlineHasSprites ? 0x80 : 0;
+  const uint32_t spritePriForced = (isTile2 && alwaysOnTop) ? spritePriMask : 0;
+
+  /* the row masks are uint32_t too, so a store through one forces this reload unless it is held */
+  const uint32_t clear = transparentPixels[0];
+  const int32_t flipY  = addr->flipY;
+  uint32_t ecmOffset = 0, ecmColorMask = 0, ecmColorOffset = 0;
+  const uint32_t* __restrict palette = ecm0Palette + pal;
+  if (ecm)
+  {
+    ecmColorOffset = (ecm == 3) ? 2 : ecm;
+    ecmColorMask   = (ecm == 3) ? 0x0e : 0x0f;
+    ecmOffset = 0x800 >> ((TMS_REGISTER(tms9918, PICO9918_REG_PAGE_SIZE) & PICO9918_R29_TILE_STRIDE) >> 2);
+    pal            = (ecm == 1) ? (pal & 0x20) : 0;
+  }
+
+  uint8_t lastColor = 0;
+  uint32_t bgWord = palette[0], diffWord = 0;
+  uint32_t coverBg = 0, coverDiff = 0;
+  uint32_t lo = 0, hi = 0, m0 = 0, m1 = 0;
+
+#define TEXT40_NEXT_CELL() \
+  const uint32_t name = *names++; \
+  const uint8_t color = colors[name & nameAttrMask]; \
+  colors += colorStride;
+
+#define TEXT40_CELL(wrapping) \
+  { \
+    TEXT40_NEXT_CELL() \
+    if (wrapping) \
+    { \
+      /* text has no page size bits, so a start cell past the last reads on into the next row */ \
+      if (++col == numCols) \
+      { \
+        col = 0; \
+        names -= numCols; \
+        colors -= colorWrap; \
+      } \
+    } \
+    const uint32_t patt = patternTable[name * PATTERN_BYTES]; \
+    if (color != lastColor) \
+    { \
+      const uint8_t bgColor = color & 0xf; \
+      const uint8_t fgColor = color >> 4; \
+      bgWord                = palette[bgColor]; \
+      diffWord              = bgWord ^ palette[fgColor]; \
+      lastColor             = color; \
+      if (isTile2) \
+      { \
+        /* = bgColor ? ~0u : 0u, and that xor the same for fgColor */ \
+        coverBg   = (uint32_t)(-(int32_t)bgColor >> 31); \
+        coverDiff = coverBg ^ (uint32_t)(-(int32_t)fgColor >> 31); \
+      } \
+    } \
+    /* 0x0c, not 0x0f: six pixels a cell, so the byte's two spare bits are dropped at the index */ \
+    const uint32_t maskLo = maskExpandNibbleToWordRev[patt >> 4]; \
+    const uint32_t maskHi = maskExpandNibbleToWordRev[patt & 0x0c]; \
+    lo                    = bgWord ^ (diffWord & maskLo); \
+    hi                    = bgWord ^ (diffWord & maskHi); \
+    if (isTile2) \
+    { \
+      if (blend) \
+      { \
+        /* cover has the shape colour does, so it selects through the masks already in hand */ \
+        m0 = coverBg ^ (coverDiff & maskLo); \
+        m1 = coverBg ^ (coverDiff & maskHi); \
+      } \
+      else \
+      { \
+        /* = ((fg ? bits : 0) | (bg ? ~bits : 0)) & 0x3f, off the pair memoised above */ \
+        const uint32_t cover = ((coverBg ^ (coverDiff & (patt >> 2))) & 0x3f) << 26; \
+        /* rolled every cell, drawn or not, or the bit position stops tracking */ \
+        coverAcc |= cover >> coverBit; \
+        coverBit += 6; \
+        if (coverBit >= 32) \
+        { \
+          *coverWord++ |= coverAcc; \
+          coverBit -= 32; \
+          coverAcc = cover << (6 - coverBit); \
+        } \
+      } \
+    } \
+  }
+
+#define TEXT40_ECM_CELL() \
+  { \
+    TEXT40_NEXT_CELL() \
+    const uint8_t* pattData = patternTable + name * PATTERN_BYTES + ((color & 0x20) ? flipY : 0); \
+    uint32_t pattMask       = (color & 0x10) ? 0 : 0xff; \
+    uint32_t cover          = 0; \
+    uint8_t patt[3]         = {0}; \
+    switch (ecm) \
+    { \
+    case 3: patt[0] = pattData[ecmOffset * 2]; pattMask |= patt[0]; \
+    case 2: patt[1] = pattData[ecmOffset]; pattMask |= patt[1]; \
+    default: patt[2] = *pattData; pattMask |= patt[2]; \
+    } \
+    if (pattMask) \
+    { \
+      if (color & 0x40) \
+      { \
+        patt[0]  = reversedBits6[patt[0]]; \
+        patt[1]  = reversedBits6[patt[1]]; \
+        patt[2]  = reversedBits6[patt[2]]; \
+        pattMask = reversedBits6[pattMask]; \
+      } \
+      cover = (pattMask & 0xfc) << 24; \
+      if ((color | spritePriForced) & spritePriMask) \
+        tmsClearRowBitsMask(xPos, cover, 6, rowMasks.rowSpriteBits); \
+      uint32_t index = 0; \
+      switch (ecm) \
+      { \
+      case 3: index = ecmSplitQuads(patt[0]) << 8; \
+      case 2: index |= ecmSplitQuads(patt[1]) << 4; \
+      default: index |= ecmSplitQuads(patt[2]); \
+      } \
+      const uint32_t cellPal = repeatedPalette(pal | ((color & ecmColorMask) << ecmColorOffset)); \
+      lo                     = ecmLookup[index >> 16] | cellPal; \
+      hi                     = ecmLookup[(uint16_t)index] | cellPal; \
+      if (!isTile2 && (color & 0x10)) \
+      { \
+        lo = clear ^ ((lo ^ clear) & maskExpandNibbleToWordRev[pattMask >> 4]); \
+        hi = clear ^ ((hi ^ clear) & maskExpandNibbleToWordRev[pattMask & 0x0f]); \
+      } \
+    } \
+    else \
+    { \
+      lo = hi = clear; \
+    } \
+    if (isTile2) \
+    { \
+      /* every cell rolls the six-bit accumulator, drawn or not, or the bit position stops tracking */ \
+      coverAcc |= cover >> coverBit; \
+      coverBit += 6; \
+      if (coverBit >= 32) \
+      { \
+        *coverWord++ |= coverAcc; \
+        coverBit -= 32; \
+        coverAcc = cover << (6 - coverBit); \
+      } \
+    } \
+    xPos += 6; \
+  }
+
+  if (ecm)
+  {
+    /* do not hoist out of the branch: shared, these stay live across both and the ECM row drops rows */
+    uint32_t* coverWord = tms9918->layerSelectionMask + (padding >> 5);
+    uint32_t coverAcc = 0, coverBit = padding & 0x1f;
+
+    uint8_t* p         = dest;
+    uint32_t remaining = numCells;
+    uint32_t run       = (startCell < numCols) ? (numCols - startCell) : numCells;
+
+    while (remaining)
+    {
+      if (run > remaining) run = remaining;
+      remaining -= run;
+
+      while (run--)
+      {
+        TEXT40_ECM_CELL();
+        *(uint16_t*)(p)     = lo;
+        *(uint16_t*)(p + 2) = lo >> 16;
+        *(uint16_t*)(p + 4) = hi;
+        p += 6;
+      }
+
+      names  = rowNames;
+      colors = rowColors;
+      run    = numCols;
+    }
+
+    if (isTile2) *coverWord |= coverAcc;
+  }
+  else if (blend)
+  {
+    /* named, not used: the cell macro's other arm still has to compile here */
+    uint32_t* coverWord = tms9918->layerSelectionMask;
+    uint32_t coverAcc = 0, coverBit = 0;
+
+    uint16_t* p        = (uint16_t*)dest;
+    uint32_t remaining = numCells;
+    uint32_t run       = (startCell < numCols) ? (numCols - startCell) : numCells;
+
+    while (remaining)
+    {
+      if (run > remaining) run = remaining;
+      remaining -= run;
+
+      while (run--)
+      {
+        TEXT40_CELL(false);
+
+        // a cell covering nothing merges nothing: all three of these are provably no-ops
+        if (m0 | m1)
+        {
+          uint32_t d;
+          d    = p[0];
+          p[0] = d ^ ((d ^ lo) & m0);
+          d    = p[1];
+          p[1] = d ^ ((d ^ (lo >> 16)) & (m0 >> 16));
+          d    = p[2];
+          p[2] = d ^ ((d ^ hi) & m1);
+        }
+        p += 3;
+      }
+
+      names  = rowNames;
+      colors = rowColors;
+      run    = numCols;
+    }
+  }
+  else
+  {
+    /* do not hoist out of the branch: shared, these stay live across both and the ECM row drops rows */
+    uint32_t* coverWord = tms9918->layerSelectionMask + (padding >> 5);
+    uint32_t coverAcc = 0, coverBit = padding & 0x1f;
+
+    for (uint32_t tileX = 0; tileX < numCells; tileX += 2)
+    {
+      uint16_t* pix16 = (uint16_t*)pix32;
+
+      TEXT40_CELL(true);
+      pix32[0] = lo;
+      pix16[2] = hi;
+      TEXT40_CELL(true);
+      pix16[3] = lo;
+      pix32[2] = (lo >> 16) | (hi << 16);
+      pix32 += 3;
+    }
+
+    if (isTile2) *coverWord |= coverAcc;
+  }
+
+#undef TEXT40_ECM_CELL
+#undef TEXT40_CELL
+#undef TEXT40_NEXT_CELL
+}
+
+/* One body per (layer, ecm). 80 columns arrives here on the 8bpp tier, where a text row is the same
+   byte-per-pixel shape and only the count differs. At 4bpp it cannot use a layer buffer at all, so
+   RP2040 keeps the blend-in-place emitter below. */
+#define TEXT_ROW_PARAMS \
+  PICO9918_INST_ARG const uint8_t *rowNames, const TileRowAddr *addr, const uint8_t *rowColors, \
+    const uint32_t colorStride, const uint32_t pal, uint8_t *dest, const uint32_t scroll, \
+    const bool alwaysOnTop
+#define TEXT_ROW_CLONE(name, cols, t2, e) \
+  static EMITTER_NOINLINE void __time_critical_func(name)(TEXT_ROW_PARAMS) \
+  { \
+    renderTextRow(PICO9918_INST rowNames, addr, rowColors, colorStride, pal, dest, scroll, alwaysOnTop, \
+                  cols, t2, e, false); \
+  }
+
+TEXT_ROW_CLONE(text40RowT1, TEXT_NUM_COLS, false, 0)
+TEXT_ROW_CLONE(text40RowT1Ecm1, TEXT_NUM_COLS, false, 1)
+TEXT_ROW_CLONE(text40RowT1Ecm2, TEXT_NUM_COLS, false, 2)
+TEXT_ROW_CLONE(text40RowT1Ecm3, TEXT_NUM_COLS, false, 3)
+TEXT_ROW_CLONE(text40RowT2, TEXT_NUM_COLS, true, 0)
+TEXT_ROW_CLONE(text40RowT2Ecm1, TEXT_NUM_COLS, true, 1)
+TEXT_ROW_CLONE(text40RowT2Ecm2, TEXT_NUM_COLS, true, 2)
+TEXT_ROW_CLONE(text40RowT2Ecm3, TEXT_NUM_COLS, true, 3)
+
+static void (*const textRowClones[2][4])(TEXT_ROW_PARAMS) = {
+  {text40RowT1, text40RowT1Ecm1, text40RowT1Ecm2, text40RowT1Ecm3},
+  {text40RowT2, text40RowT2Ecm1, text40RowT2Ecm2, text40RowT2Ecm3}};
+
+#if PICO9918_TEXT80_8BPP
+/* 80 columns are the same body at a different count: one byte a pixel, six pixels a cell, the same
+   word-and-halfword stores at the same alignments, and a layer buffer the composite can arbitrate
+   because a mask bit now covers one pixel rather than two */
+TEXT_ROW_CLONE(text80RowT1, TEXT80_NUM_COLS, false, 0)
+TEXT_ROW_CLONE(text80RowT1Ecm1, TEXT80_NUM_COLS, false, 1)
+TEXT_ROW_CLONE(text80RowT1Ecm2, TEXT80_NUM_COLS, false, 2)
+TEXT_ROW_CLONE(text80RowT1Ecm3, TEXT80_NUM_COLS, false, 3)
+TEXT_ROW_CLONE(text80RowT2, TEXT80_NUM_COLS, true, 0)
+TEXT_ROW_CLONE(text80RowT2Ecm1, TEXT80_NUM_COLS, true, 1)
+TEXT_ROW_CLONE(text80RowT2Ecm2, TEXT80_NUM_COLS, true, 2)
+TEXT_ROW_CLONE(text80RowT2Ecm3, TEXT80_NUM_COLS, true, 3)
+
+/* Layer 2 folded into layer 1's line as it emits, instead of into a coverage mask for the
+   composite to arbitrate. Only an ECM0 line with layer 1 present may do it - above ECM0 priority is
+   attr(0) per tile - so it is a body of its own rather than what the layer always does. */
+static EMITTER_NOINLINE void __time_critical_func(text80RowT2Blend)(TEXT_ROW_PARAMS)
+{
+  renderTextRow(PICO9918_INST rowNames, addr, rowColors, colorStride, pal, dest, scroll, alwaysOnTop,
+                TEXT80_NUM_COLS, true, 0, true);
+}
+
+static void (*const text80RowClones[2][4])(TEXT_ROW_PARAMS) = {
+  {text80RowT1, text80RowT1Ecm1, text80RowT1Ecm2, text80RowT1Ecm3},
+  {text80RowT2, text80RowT2Ecm1, text80RowT2Ecm2, text80RowT2Ecm3}};
+#endif
+
+/**
+ * \brief one 80-column text row, six pixels a cell at half a byte each. Four cells are twelve bytes, so a
+ * group goes out as three words.
+ *
+ * `scrolled` splits it in two. Unscrolled, the colour bytes arrive four at a time as one aligned
+ * word and the row cannot wrap, so the colour memo and the four-cell transparent skip both live in
+ * that loop. Scrolled, the row starts on an arbitrary cell and wraps to its own first one, so
+ * neither holds: the colour table is not word-aligned to the group and the group can straddle the
+ * wrap. That clone reads a colour byte a cell and does without the skip.
+ *
+ * The fine offset is only ever 0, 2 or 4 pixels, which at 4bpp is a whole number of
+ * bytes - so the caller backs the start cell up by that many and moves `pixels` four bytes per
+ * byte of offset, which keeps the three-word store aligned and puts the cells it skipped over in
+ * the side border.
+ */
+PICO9918_INLINE_HOT void
+renderText80Row(PICO9918_INST_ARG const uint8_t* __restrict rowNames,
+                const uint8_t* __restrict patternTable, const uint8_t* __restrict rowColors,
+                const bool opaq, uint8_t* __restrict pixels, const uint32_t startCol,
+                const uint32_t numCells, const bool scrolled)
+{
+  const uint8_t bgc            = tmsMainBgColor(tms9918);
+  const uint8_t* rowNamesTable = rowNames + startCol;
+  const uint8_t* colors        = rowColors + startCol;
+  const uint32_t* colorTable32 = (const uint32_t*)PICO9918_ASSUME_ALIGNED(rowColors, 4);
+  uint32_t* pix32              = (uint32_t*)PICO9918_ASSUME_ALIGNED(pixels, 4);
+  uint32_t col                 = startCol;
+
+  /* the row wraps to its own first cell, with no page swap */
+#define TEXT80_NEXT_CELL() \
+  { \
+    ++rowNamesTable; \
+    if (scrolled && ++col == TEXT80_NUM_COLS) \
+    { \
+      col           = 0; \
+      rowNamesTable = rowNames; \
+      colors        = rowColors; \
+    } \
+    else if (scrolled) \
+      ++colors; \
+  }
+
+  if (opaq)
+  {
+    uint8_t lastColor      = 0;
+    uint32_t bgColorMask   = text80ColorWord[bgc];
+    uint32_t diffColorMask = 0;
+
+    for (uint8_t tileX = 0; tileX < numCells; tileX += 4)
+    {
+      uint32_t colorWord = scrolled ? 0 : *colorTable32++;
+      uint32_t word, acc;
+
+#define TEXT80_OPAQUE_CELL() \
+  { \
+    uint8_t color; \
+    if (scrolled) \
+      color = *colors; \
+    else \
+    { \
+      color = (uint8_t)colorWord; \
+      colorWord >>= 8; \
+    } \
+    if (color != lastColor) \
+    { \
+      const uint8_t bgColor = color & 0xf; \
+      const uint8_t fgColor = color >> 4; \
+      bgColorMask           = text80ColorWord[bgColor ? bgColor : bgc]; \
+      diffColorMask         = bgColorMask ^ text80ColorWord[fgColor ? fgColor : bgc]; \
+      lastColor             = color; \
+    } \
+    const uint32_t mask = text80MaskWord[patternTable[*rowNamesTable * PATTERN_BYTES]]; \
+    TEXT80_NEXT_CELL(); \
+    word = bgColorMask ^ (diffColorMask & mask); \
+  }
+
+      TEXT80_OPAQUE_CELL();
+      acc = word;
+      TEXT80_OPAQUE_CELL();
+      *pix32++ = acc | (word << 24);
+      acc      = word >> 8;
+      TEXT80_OPAQUE_CELL();
+      *pix32++ = acc | (word << 16);
+      acc      = word >> 16;
+      TEXT80_OPAQUE_CELL();
+      *pix32++ = acc | (word << 8);
+
+#undef TEXT80_OPAQUE_CELL
+    }
+  }
+  else
+  {
+    for (uint8_t tileX = 0; tileX < numCells; tileX += 4)
+    {
+      uint32_t colorWord = scrolled ? 0 : *colorTable32++;
+      uint32_t val, sel, accVal, accSel;
+
+      if (!scrolled && !colorWord)
+      {
+        rowNamesTable += 4;
+        pix32 += 3;
+        continue;
+      }
+
+#define TEXT80_OVERLAY_CELL() \
+  { \
+    const uint32_t mask = text80MaskWord[patternTable[*rowNamesTable * PATTERN_BYTES]]; \
+    uint8_t colorByte; \
+    if (scrolled) \
+      colorByte = *colors; \
+    else \
+    { \
+      colorByte = (uint8_t)colorWord; \
+      colorWord >>= 8; \
+    } \
+    TEXT80_NEXT_CELL(); \
+    const uint32_t fgWord = text80ColorWord[colorByte >> 4]; \
+    const uint32_t bgWord = text80ColorWord[colorByte & 0xf]; \
+    const uint32_t fgSel  = fgWord ? mask : 0; \
+    const uint32_t bgSel  = bgWord ? (~mask & 0xffffffu) : 0; \
+    sel                   = fgSel | bgSel; \
+    val                   = (fgWord & fgSel) | (bgWord & bgSel); \
+  }
+
+#define TEXT80_OVERLAY_STORE(shift) \
+  { \
+    const uint32_t m   = accSel | (sel << (shift)); \
+    const uint32_t v   = accVal | (val << (shift)); \
+    const uint32_t old = *pix32; \
+    *pix32++           = old ^ ((old ^ v) & m); \
+  }
+
+      TEXT80_OVERLAY_CELL();
+      accVal = val;
+      accSel = sel;
+      TEXT80_OVERLAY_CELL();
+      TEXT80_OVERLAY_STORE(24);
+      accVal = val >> 8;
+      accSel = sel >> 8;
+      TEXT80_OVERLAY_CELL();
+      TEXT80_OVERLAY_STORE(16);
+      accVal = val >> 16;
+      accSel = sel >> 16;
+      TEXT80_OVERLAY_CELL();
+      TEXT80_OVERLAY_STORE(8);
+
+#undef TEXT80_OVERLAY_CELL
+#undef TEXT80_OVERLAY_STORE
+    }
+  }
+#undef TEXT80_NEXT_CELL
+}
+
+/* One body per (can this row scroll). The unscrolled one keeps its cell count as a constant. */
+#define TEXT80_ROW_CLONE(name, cells, scroll) \
+  static EMITTER_NOINLINE void __time_critical_func(name)( \
+    PICO9918_INST_ARG const uint8_t* rowNames, const uint8_t* patternTable, const uint8_t* rowColors, \
+    const bool opaq, uint8_t* pixels, const uint32_t startCol, const uint32_t numCells) \
+  { \
+    renderText80Row(PICO9918_INST rowNames, patternTable, rowColors, opaq, pixels, startCol, cells, \
+                    scroll); \
+  }
+
+TEXT80_ROW_CLONE(text80Row, TEXT80_NUM_COLS, false)
+TEXT80_ROW_CLONE(text80RowScrolled, numCells, true)
+
+static inline void renderText80Layer(PICO9918_INST_ARG const uint8_t* rowNames,
+                                     const uint8_t* patternTable, const uint8_t* rowColors,
+                                     const bool opaq, uint8_t* pixels, const uint32_t startCol,
+                                     const uint32_t numCells, const bool scrolled)
+{
+  if (scrolled)
+    text80RowScrolled(PICO9918_INST rowNames, patternTable, rowColors, opaq, pixels, startCol, numCells);
+  else
+    text80Row(PICO9918_INST rowNames, patternTable, rowColors, opaq, pixels, 0, TEXT80_NUM_COLS);
+}
+
+
+/* one run of 80-column cells in the two colours R7 holds. Both are constant down the whole row, so
+   this is the one text path that needs no colour memo: one lookup turns a pattern byte into all six
+   pixels and the pair of colours is applied to it whole, the same expansion renderText80Row uses.
+   Three byte stores a cell, so a run can start anywhere - which is what lets the row's wrap be a
+   second call rather than a test on every cell. */
+static inline uint8_t* text80TwoTone(const uint8_t* __restrict names, const uint8_t* __restrict patternTable,
+                                     const uint32_t bgWord, const uint32_t diffWord,
+                                     uint8_t* __restrict pixels, uint32_t cells)
+{
+  while (cells--)
+  {
+    const uint32_t pixelWord = bgWord ^ (diffWord & text80MaskWord[patternTable[*names++ * PATTERN_BYTES]]);
+
+    *pixels++ = pixelWord;
+    *pixels++ = pixelWord >> 8;
+    *pixels++ = pixelWord >> 16;
+  }
+  return pixels;
+}
+
+/**
+ * \brief generate a 40- or 80-column text mode scanline.
+ *
+ * Text has a path of its own, and hardware says so: it selects a different name address, a
+ * different attribute address, a different colour source, a different flip, a different horizontal
+ * scroll counter and a different expansion width - six pixels against eight. What it shares with
+ * the graphics modes is the fetch schedule, which for us is the address generator above, the sprite
+ * pass and the backdrop.
+ *
+ * The emitters write the finished line rather than a layer buffer, so the composite runs only where
+ * something has to be arbitrated - a bitmap layer, or a priority second layer.
+ */
+static EMITTER_NOINLINE void __time_critical_func(text_scan_line)(PICO9918_INST_ARG uint16_t y,
+                                                                            uint8_t pixels[TMS9918_PIXELS_X])
+{
+  const bool wide             = pico9918_cached_mode == TMS_MODE_TEXT80;
+  const uint8_t numCols       = wide ? TEXT80_NUM_COLS : TEXT_NUM_COLS;
+  const uint8_t nameTableMask = (wide && !PICO9918_UNLOCKED(tms9918)) ? 0x0c : 0x0f;
+
+  const bool attrPerPos =
+    PICO9918_UNLOCKED(tms9918) && (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED2) & PICO9918_R50_POS_ATTR);
+
+  TileRowAddr addr;
+  uint16_t rowNamesAddr, colorTableAddr;
+  tileLayerAddr(PICO9918_INST y, &T1_CONFIG, numCols, nameTableMask, true, false, false, attrPerPos, &addr,
+                &rowNamesAddr, &colorTableAddr);
+
+  const uint8_t* patternTable     = addr.pattern;
+  const pico9918_color_t bgColor = tmsMainBgColor(tms9918);
+  uint32_t* border                = (uint32_t*)pixels;
+
+  pixels += TEXT_PADDING_PX;
+
+  const TextScroll t1 = textScroll80(PICO9918_INST & T1_CONFIG);
+
+  PICO9918_FILL32_WAIT(PICO9918_FILL_LINE);
+
+  if (attrPerPos)
+  {
+    const bool tilesDisabled = TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED2) & PICO9918_R50_TILE1_OFF;
+    if (!tilesDisabled)
+      renderText80Layer(PICO9918_INST tms9918->vram.bytes + rowNamesAddr, patternTable,
+                        tms9918->vram.bytes + colorTableAddr, true, pixels - 4 * t1.bytes, t1.startCol,
+                        t1.cells, t1.scrolled);
+
+    if (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_TILE2_ENABLE)
+    {
+      const TextScroll t2 = textScroll80(PICO9918_INST & T2_CONFIG);
+      tileLayerAddr(PICO9918_INST y, &T2_CONFIG, numCols, nameTableMask, true, false, false, attrPerPos, &addr,
+                    &rowNamesAddr, &colorTableAddr);
+
+      renderText80Layer(PICO9918_INST tms9918->vram.bytes + rowNamesAddr, addr.pattern,
+                        tms9918->vram.bytes + colorTableAddr, false, pixels - 4 * t2.bytes, t2.startCol,
+                        t2.cells, t2.scrolled);
+    }
+  }
+  else // just plain old two-tone
+  {
+    const pico9918_color_t fgColor = tmsMainFgColor(tms9918);
+    const uint8_t* rowNamesTable    = tms9918->vram.bytes + rowNamesAddr;
+
+    if (wide)
+    {
+      const uint32_t bgWord   = text80ColorWord[bgColor];
+      const uint32_t diffWord = bgWord ^ text80ColorWord[fgColor];
+
+      const uint32_t cells = t1.bytes ? TEXT80_NUM_COLS + 1 : TEXT80_NUM_COLS;
+      uint32_t run         = cells;
+      if (t1.startCell < TEXT80_NUM_COLS && t1.startCell + run > TEXT80_NUM_COLS)
+        run = TEXT80_NUM_COLS - t1.startCell;
+
+      pixels =
+        text80TwoTone(rowNamesTable + t1.startCell, patternTable, bgWord, diffWord, pixels - t1.bytes, run);
+      if (run < cells) text80TwoTone(rowNamesTable, patternTable, bgWord, diffWord, pixels, cells - run);
+    }
+    else
+    {
+      const uint32_t bgWord   = repeatedPalette(bgColor);
+      const uint32_t diffWord = bgWord ^ repeatedPalette(fgColor);
+      uint32_t* pix32         = (uint32_t*)PICO9918_ASSUME_ALIGNED(pixels, 4);
+
+      for (uint8_t tileX = 0; tileX < TEXT_NUM_COLS; tileX += 2)
+      {
+        uint16_t* pix16 = (uint16_t*)pix32;
+        uint32_t patt   = patternTable[*rowNamesTable++ * PATTERN_BYTES];
+
+        pix32[0] = bgWord ^ (diffWord & maskExpandNibbleToWordRev[patt >> 4]);
+        pix16[2] = bgWord ^ (diffWord & maskExpandNibbleToWordRev[patt & 0x0f]);
+
+        patt              = patternTable[*rowNamesTable++ * PATTERN_BYTES];
+        const uint32_t lo = bgWord ^ (diffWord & maskExpandNibbleToWordRev[patt >> 4]);
+        const uint32_t hi = bgWord ^ (diffWord & maskExpandNibbleToWordRev[patt & 0x0f]);
+
+        pix16[3] = lo;
+        pix32[2] = (lo >> 16) | (hi << 16);
+        pix32 += 3;
+      }
+    }
+  }
+
+  border[0] = border[1] = bg;
+  border[62] = border[63] = bg;
+}
+
+/** \brief Write full tile to aligned buffer - 8 pixels at once */
+static inline void writeToAlignedBuffer(uint8_t* buffer, uint32_t xPos, const uint32_t left,
+                                        const uint32_t right)
+{
+  uint32_t* buffer_words = (uint32_t*)(buffer + xPos);
+  buffer_words[0]        = left;
+  buffer_words[1]        = right;
+}
+
+/**
+ * \brief render an ECM0 (enhanced color mode) graphics I tile. basically the same as original, but can scroll
+ *
+ * INLINE: so will be different versions generated, depending on hard-coded (or known at compile-time) arguments
+ */
+static inline void renderEcm0Tile(PICO9918_INST_ARG uint8_t* buffer, const uint32_t xPos,
+                                  const uint8_t pattIdx, const uint8_t patternTable[],
+                                  const uint32_t colorTableAddr, const uint32_t pal, const bool isTile2,
+                                  const bool gm2Color, const bool mcm)
+{
+  /* is the pixel mask already full here? then nothing of this tile can show */
+  if (!isTile2 && !tmsTestRowBitsMaskAligned(xPos, 0xffu << 24, tms9918->finalMask))
+  {
+    writeToAlignedBuffer(buffer, xPos, transparentPixels[0], transparentPixels[1]);
+    return;
+  }
+
+  const uint32_t pattByte = patternTable[pattIdx * PATTERN_BYTES];
+  const uint32_t colorByte =
+    mcm ? pattByte
+        : tms9918->vram.bytes[colorTableAddr + (gm2Color ? pattIdx * PATTERN_BYTES : (pattIdx >> 3))];
+  const uint32_t patt = mcm ? 0xf0 : pattByte;
+
+  const uint32_t bgColor = colorByte & 0x0f;
+  const uint32_t fgColor = colorByte >> 4;
+
+  const uint32_t bgPalette = ecm0Palette[pal | bgColor];
+  const uint32_t fgPalette = ecm0Palette[pal | fgColor];
+
+  uint32_t pattMask = 0xff;
+  if (!bgColor) pattMask &= patt;
+  if (!fgColor) pattMask ^= patt;
+
+  pattMask <<= 24;
+  if (isTile2) tmsUpdateRowBitsMaskAligned(xPos, pattMask, tms9918->layerSelectionMask);
+
+  if (!pattMask)
+  {
+    if (!isTile2)
+    {
+      writeToAlignedBuffer(buffer, xPos, transparentPixels[0], transparentPixels[1]);
+    }
+    return;
+  }
+
+  const uint32_t rightMask = maskExpandNibbleToWordRev[patt & 0xf];
+  const uint32_t leftMask  = maskExpandNibbleToWordRev[patt >> 4];
+
+  writeToAlignedBuffer(buffer, xPos, (fgPalette & leftMask) | (bgPalette & ~leftMask),
+                       (fgPalette & rightMask) | (bgPalette & ~rightMask));
+}
+
+
+/** \brief render one ECM tile into the layer buffer */
+static inline void
+renderEcmTileToAlignedBuffer(PICO9918_INST_ARG uint8_t* buffer, const uint32_t xPos, const uint32_t pixelOffset,
+                             const uint8_t pattIdx, const uint8_t patternTable[],
+                             const uint32_t colorTableAddr, const uint32_t ecm, const uint32_t ecmOffset,
+                             const uint32_t ecmColorMask, const uint32_t ecmColorOffset, const uint32_t pal,
+                             const bool attrPerPos, const int32_t flipY, const uint32_t tileIndex,
+                             uint32_t* lastEmpty, const bool isTile2, const bool alwaysOnTop)
+{
+  if ((*lastEmpty == pattIdx) ||
+      (!isTile2 && !tmsTestRowBitsMaskAligned(xPos, 0xffu << 24, tms9918->finalMask)))
+  {
+    // T1 must still write: transparentPixels is the backdrop, or 0 under a bitmap layer
+    if (!isTile2)
+    {
+      writeToAlignedBuffer(buffer, xPos, transparentPixels[0], transparentPixels[1]);
+    }
+    return;
+  }
+
+  /* grab the attributes for this tile */
+  uint32_t colorTableOffset = attrPerPos ? tileIndex : pattIdx;
+  uint32_t pattOffset       = pattIdx * PATTERN_BYTES;
+
+  const uint32_t colorByte = tms9918->vram.bytes[colorTableAddr + colorTableOffset];
+
+  const uint8_t* pattData = patternTable + pattOffset;
+
+  /* the pattern pointer already carries this row, so a Y flip only has to step to its mirror */
+  if (colorByte & 0x20) pattData += flipY;
+
+  uint32_t pattMask = (colorByte & 0x10) ? 0 : 0xff; // handle transparency flag
+  uint32_t index    = 0;
+
+  uint8_t patt[3] = {0}; // indexes into this are reversed. ecm3 is in index 0
+
+  switch (ecm)
+  {
+  case 3: patt[0] = pattData[ecmOffset * 2]; pattMask |= patt[0];
+  case 2: patt[1] = pattData[ecmOffset]; pattMask |= patt[1];
+  default: patt[2] = *pattData; pattMask |= patt[2];
+  }
+
+  /* have we any pixels to draw? */
+  if (pattMask)
+  {
+    if (colorByte & 0x40) // flipX
+    {
+      patt[0]  = reversedBits[patt[0]];
+      patt[1]  = reversedBits[patt[1]];
+      patt[2]  = reversedBits[patt[2]];
+      pattMask = reversedBits[pattMask];
+    }
+
+    const uint32_t priority = alwaysOnTop || (colorByte & 0x80);
+    pattMask <<= 24;
+
+    if (isTile2) tmsUpdateRowBitsMaskAligned(xPos, pattMask, tms9918->layerSelectionMask);
+    if (priority && tms9918->scanlineHasSprites)
+    {
+      const uint32_t offScreen = xPos ? 0 : pixelOffset;
+      tmsClearRowBitsMask(xPos - pixelOffset + offScreen, pattMask << offScreen, 8, rowMasks.rowSpriteBits);
+    }
+
+    switch (ecm)
+    {
+    case 3: index = ecmSplitQuads(patt[0]) << 8;
+    case 2: index |= ecmSplitQuads(patt[1]) << 4;
+    default: index |= ecmSplitQuads(patt[2]);
+    }
+
+    const uint32_t palette = repeatedPalette(pal | ((colorByte & ecmColorMask) << ecmColorOffset));
+    const uint32_t left    = ecmLookup[index >> 16] | palette;
+    const uint32_t right   = ecmLookup[(uint16_t)index] | palette;
+
+    if (!isTile2 && (colorByte & 0x10))
+    {
+      const uint32_t clear = transparentPixels[0];
+      writeToAlignedBuffer(buffer, xPos, clear ^ ((left ^ clear) & maskExpandNibbleToWordRev[pattMask >> 28]),
+                           clear ^ ((right ^ clear) & maskExpandNibbleToWordRev[(pattMask >> 24) & 0x0f]));
+    }
+    else
+    {
+      // Write to aligned buffer instead of doing expensive bit shifting
+      writeToAlignedBuffer(buffer, xPos, left, right);
+    }
+  }
+  else
+  {
+    // T1 must still write even when the tile is empty, for the same reason
+    if (!isTile2)
+    {
+      writeToAlignedBuffer(buffer, xPos, transparentPixels[0], transparentPixels[1]);
+    }
+    *lastEmpty = pattIdx;
+  }
+}
+
+/* A tile's colour pair as the two words the nibble expansion wants: the background repeated, and
+   what to flip in it where a pattern bit is set. Four pixels come out of one lookup and one xor,
+   and it is the same expansion the F18A tile and text paths use rather than a second way of drawing
+   the same thing. */
+static inline void lockedFgBg(PICO9918_INST_ARG uint32_t fgbg[2], const uint8_t pal, const uint32_t colorByte)
+{
+  fgbg[0] = repeatedPalette(pal | tmsBgColor(tms9918, colorByte));
+  fgbg[1] = fgbg[0] ^ repeatedPalette(pal | tmsFgColor(tms9918, colorByte));
+}
+
+/** \brief generate a locked (plain TMS9918) tile row, straight into the scanline */
+PICO9918_INLINE_HOT void
+renderTileRowLocked(PICO9918_INST_ARG uint16_t rowNamesAddr, uint16_t colorTableAddr, uint8_t tileIndex,
+                    uint8_t pal, uint8_t pixels[TMS9918_PIXELS_X], const TileRowAddr* addr, const bool gm2,
+                    const bool mcm)
+{
+  const uint8_t* pattTableRow = addr->pattern;
+  const uint8_t nameMask      = addr->nameMask;
+
+  /* locked mode has no horizontal scroll, so 32 tiles cover the screen exactly */
+  uint32_t numTiles = GRAPHICS_NUM_COLS;
+
+  uint32_t* pix32     = (uint32_t*)PICO9918_ASSUME_ALIGNED(pixels, 4);
+  uint8_t* pattPtr    = tms9918->vram.bytes + rowNamesAddr + tileIndex;
+  uint32_t pattOffset = 0;
+
+  uint8_t lastPattIdx    = 0;
+  uint32_t pattByte      = mcm ? 0xf0 : (uint8_t)pattTableRow[0];
+  uint32_t lastColorByte = mcm ? (uint8_t)pattTableRow[0] : tms9918->vram.bytes[colorTableAddr];
+  if (gm2)
+  {
+    lastColorByte = PICO9918_LAYER_SUB(tms9918, PICO9918_SUPPRESS_GM2_COLOUR, 0xf1, lastColorByte);
+    pattByte      = PICO9918_LAYER_SUB(tms9918, PICO9918_SUPPRESS_GM2_PATTERN, 0xff, pattByte);
+  }
+  uint32_t fgbg[2];
+  lockedFgBg(PICO9918_INST fgbg, pal, lastColorByte);
+
+  while (numTiles--)
+  {
+    uint8_t pattIdx = *pattPtr++;
+    if (gm2) pattIdx &= nameMask;
+
+    if (lastPattIdx != pattIdx)
+    {
+      lastPattIdx = pattIdx;
+      pattOffset  = lastPattIdx * PATTERN_BYTES;
+      uint32_t colorByte =
+        mcm ? pattTableRow[pattOffset]
+            : tms9918->vram.bytes[colorTableAddr + (gm2 ? pattOffset : (pattIdx >> 3))];
+      if (!mcm) pattByte = (uint8_t)pattTableRow[pattOffset];
+      if (gm2)
+      {
+        colorByte = PICO9918_LAYER_SUB(tms9918, PICO9918_SUPPRESS_GM2_COLOUR, 0xf1, colorByte);
+        pattByte  = PICO9918_LAYER_SUB(tms9918, PICO9918_SUPPRESS_GM2_PATTERN, 0xff, pattByte);
+      }
+      if (lastColorByte != colorByte)
+      {
+        lastColorByte = colorByte;
+        lockedFgBg(PICO9918_INST fgbg, pal, colorByte);
+      }
+    }
+
+    pix32[0] = fgbg[0] ^ (fgbg[1] & maskExpandNibbleToWordRev[pattByte >> 4]);
+    pix32[1] = fgbg[0] ^ (fgbg[1] & maskExpandNibbleToWordRev[pattByte & 0x0f]);
+    pix32 += 2;
+  }
+}
+
+#define LOCKED_ROW_CLONE(name, g, m) \
+  static void __time_critical_func(name)(PICO9918_INST_ARG uint16_t rowNamesAddr, uint16_t colorTableAddr, \
+                                         uint8_t tileIndex, uint8_t pal, uint8_t pixels[TMS9918_PIXELS_X], \
+                                         const TileRowAddr* addr) \
+  { \
+    renderTileRowLocked(PICO9918_INST rowNamesAddr, colorTableAddr, tileIndex, pal, pixels, addr, g, m); \
+  }
+
+LOCKED_ROW_CLONE(rowLockedGm1, false, false)
+LOCKED_ROW_CLONE(rowLockedGm2, true, false)
+LOCKED_ROW_CLONE(rowLockedMcm, false, true)
+
+/* one F18A tile row into the layer buffer.
+ *
+ * isTile2, ecm and gm2 arrive as literals from the wrappers below, so both per-tile switch chains
+ * and every layer test inside the tile path fold away at compile time, and each wrapper gets
+ * its own body. The attribute is belt and braces: Priv.h already redefines inline as
+ * __force_inline for Pico builds.
+ *
+ * Everything mode-specific reaches this loop through `addr`, which the caller fills once per layer
+ * per scanline. Only two things do not fold into it and so ride the clone instead: the name mask,
+ * which Graphics II applies and Graphics I does not, and Graphics II's colour address, which
+ * indexes by tile row where Graphics I indexes by a group of eight names.
+ */
+#define TILE_ROW_PARAMS \
+  PICO9918_INST_ARG const bool hpSize, uint16_t rowNamesAddr, uint16_t colorTableAddr, uint8_t tileIndex, \
+    uint8_t startPattBit, const bool attrPerPos, uint8_t pal, const bool alwaysOnTop, \
+    const TileRowAddr *addr
+#define TILE_ROW_ARGS \
+  PICO9918_INST hpSize, rowNamesAddr, colorTableAddr, tileIndex, startPattBit, attrPerPos, pal, alwaysOnTop, \
+    addr
+
+PICO9918_INLINE_HOT void renderTileRow(TILE_ROW_PARAMS, const bool isTile2,
+                                       const uint32_t ecm, const bool gm2, const bool mcm)
+{
+  uint32_t xPos      = 0;
+  uint32_t lastEmpty = -1;
+
+  const int32_t flipY         = addr->flipY;
+  const uint8_t* patternTable = addr->pattern;
+  const uint8_t nameMask      = addr->nameMask;
+  uint8_t* targetBuffer       = isTile2 ? tms9918->tileLayer2Buffer : tms9918->tileLayer1Buffer;
+
+  uint32_t numTiles = GRAPHICS_NUM_COLS + (startPattBit != 0);
+
+  uint32_t ecmColorOffset = 0, ecmColorMask = 0, ecmOffset = 0;
+  if (ecm)
+  {
+    ecmColorOffset = (ecm == 3) ? 2 : ecm;
+    ecmColorMask   = (ecm == 3) ? 0x0e : 0x0f;
+    ecmOffset = 0x800 >> ((TMS_REGISTER(tms9918, PICO9918_REG_PAGE_SIZE) & PICO9918_R29_TILE_STRIDE) >> 2);
+    pal            = (ecm == 1) ? (pal & 0x20) : 0;
+  }
+
+  while (numTiles)
+  {
+    uint32_t run = GRAPHICS_NUM_COLS - tileIndex;
+    if (run > numTiles) run = numTiles;
+    numTiles -= run;
+
+    const uint8_t* names = tms9918->vram.bytes + rowNamesAddr + tileIndex;
+
+    while (run--)
+    {
+      uint8_t pattIdx = *names++;
+      if (gm2 || ecm) pattIdx &= nameMask;
+      if (ecm)
+      {
+        renderEcmTileToAlignedBuffer(PICO9918_INST targetBuffer, xPos, startPattBit, pattIdx, patternTable,
+                                     colorTableAddr, ecm, ecmOffset, ecmColorMask, ecmColorOffset, pal,
+                                     attrPerPos, flipY, tileIndex, &lastEmpty, isTile2, alwaysOnTop);
+      }
+      else
+      {
+        renderEcm0Tile(PICO9918_INST targetBuffer, xPos, pattIdx, patternTable, colorTableAddr, pal,
+                       isTile2, gm2, mcm);
+      }
+      ++tileIndex;
+      xPos += 8;
+    }
+
+    if (hpSize)
+    {
+      /* the attribute address gained the page bit by addition, so it has to lose it the same way */
+      rowNamesAddr ^= 0x400;
+      if (attrPerPos) colorTableAddr = (colorTableAddr + ((rowNamesAddr & 0x400) << 1) - 0x400) & VRAM_MASK;
+    }
+    tileIndex = 0;
+  }
+}
+
+#define TILE_ROW_CLONE(name, t2, e, g, m) \
+  static void __time_critical_func(name)(TILE_ROW_PARAMS) \
+  { \
+    renderTileRow(TILE_ROW_ARGS, t2, e, g, m); \
+  }
+
+TILE_ROW_CLONE(rowT1Ecm0, false, 0, false, false)
+TILE_ROW_CLONE(rowT1Ecm1, false, 1, false, false)
+TILE_ROW_CLONE(rowT1Ecm2, false, 2, false, false)
+TILE_ROW_CLONE(rowT1Ecm3, false, 3, false, false)
+TILE_ROW_CLONE(rowT1Gm2, false, 0, true, false)
+TILE_ROW_CLONE(rowT1Mcm, false, 0, false, true)
+TILE_ROW_CLONE(rowT2Ecm0, true, 0, false, false)
+TILE_ROW_CLONE(rowT2Ecm1, true, 1, false, false)
+TILE_ROW_CLONE(rowT2Ecm2, true, 2, false, false)
+TILE_ROW_CLONE(rowT2Ecm3, true, 3, false, false)
+TILE_ROW_CLONE(rowT2Gm2, true, 0, true, false)
+TILE_ROW_CLONE(rowT2Mcm, true, 0, false, true)
+
+/* [layer][ecm], with slot 4 the Graphics II ECM0 body: ECM composes with mode through the plane 1
+   address alone, so ECM1-3 needs no mode of its own */
+#define TILE_ROW_GM2 4
+#define TILE_ROW_MCM 5
+static void (*const tileRowClones[2][6])(TILE_ROW_PARAMS) = {
+  {rowT1Ecm0, rowT1Ecm1, rowT1Ecm2, rowT1Ecm3, rowT1Gm2, rowT1Mcm},
+  {rowT2Ecm0, rowT2Ecm1, rowT2Ecm2, rowT2Ecm3, rowT2Gm2, rowT2Mcm}};
+
+/**
+ * \brief generate a tile mode scanline for either T1 or T2 layer
+ *
+ * Inlined into both callers on purpose, not by the compiler's judgement: only there does `config`
+ * fold to a constant, and every field it reads is otherwise a load on a hot line. It sits near
+ * the size gcc stops at, so a statement added here has twice silently cost the board a layer.
+ */
+PICO9918_INLINE_HOT void f18a_tile_layer_scan_line(PICO9918_INST_ARG uint16_t y,
+                                                             const TileLayerConfig* config, const bool blend)
+{
+  const uint32_t ecm     = (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_ECM_TILE) >> 4;
+  const bool gm2         = pico9918_cached_mode == TMS_MODE_GRAPHICS_II;
+  const bool mcm         = pico9918_cached_mode == TMS_MODE_MULTICOLOR;
+  const bool wide        = TEXT80_WIDE_ROW;
+  const bool text        = wide || pico9918_cached_mode == TMS_MODE_TEXT;
+  const uint8_t textCols = wide ? TEXT80_NUM_COLS : TEXT_NUM_COLS;
+
+  /* text takes its colour per cell at ECM0 too; a graphics mode there does not (D6) */
+  const bool attrPerPos =
+    (text || ecm) && (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED2) & PICO9918_R50_POS_ATTR);
+
+  TileRowAddr addr;
+  uint16_t rowNamesAddr, colorTableAddr;
+  tileLayerAddr(PICO9918_INST y, config, text ? textCols : GRAPHICS_NUM_COLS, 0x0f, text, gm2, mcm, attrPerPos,
+                &addr, &rowNamesAddr, &colorTableAddr);
+
+  const uint8_t pal = (TMS_REGISTER(tms9918, PICO9918_REG_PALETTE_SELECT) & config->paletteMask)
+                      << config->paletteShift;
+
+  const bool alwaysOnTop =
+    config->priorityReg ? !(TMS_REGISTER(tms9918, config->priorityReg) & config->priorityMask) : false;
+
+  if (text)
+  {
+    const uint8_t fixed = (tmsMainFgColor(tms9918) << 4) | tmsMainBgColor(tms9918);
+
+    /* ECM1-3 takes the attribute table by name; only ECM0 has an fg/bg pair to fall back on */
+    const uint8_t* colors = (attrPerPos || ecm) ? tms9918->vram.bytes + colorTableAddr : &fixed;
+    uint8_t* dest         = (config->isTile2 ? tms9918->tileLayer2Buffer : tms9918->tileLayer1Buffer) +
+                    (wide ? TEXT80_PADDING_PX : TEXT_PADDING_PX);
+    const uint32_t scroll = textScrollSplit(TMS_REGISTER(tms9918, config->startPattReg), wide);
+
+#if PICO9918_TEXT80_8BPP
+    if (blend)
+    {
+      /* into layer 1's line, at the offset layer 2's own scroll puts it there */
+      dest = tms9918->tileLayer1Buffer + TEXT80_PADDING_PX +
+             textPixelOffset(TMS_REGISTER(tms9918, PICO9918_REG_T1_HSCROLL), true) -
+             TEXT_SCROLL_OFFSET(scroll);
+      text80RowT2Blend(PICO9918_INST tms9918->vram.bytes + rowNamesAddr, &addr, colors, attrPerPos, pal,
+                       dest, scroll, alwaysOnTop);
+      return;
+    }
+#endif
+
+#if PICO9918_TEXT80_8BPP
+    if (wide)
+    {
+      text80RowClones[config->isTile2][ecm](PICO9918_INST tms9918->vram.bytes + rowNamesAddr, &addr,
+                                            colors, attrPerPos, pal, dest, scroll, alwaysOnTop);
+      return;
+    }
+#endif
+    textRowClones[config->isTile2][ecm](PICO9918_INST tms9918->vram.bytes + rowNamesAddr, &addr, colors,
+                                        attrPerPos, pal, dest, scroll, alwaysOnTop);
+    return;
+  }
+
+  const uint8_t startPattBit = TMS_REGISTER(tms9918, config->startPattReg) & 0x07;
+  const uint8_t tileIndex    = (TMS_REGISTER(tms9918, config->startPattReg) >> 3);
+  const bool hpSize          = TMS_REGISTER(tms9918, PICO9918_REG_PAGE_SIZE) & config->hpSizeMask;
+
+  uint32_t slot = ecm;
+  if (!ecm) slot = gm2 ? TILE_ROW_GM2 : (mcm ? TILE_ROW_MCM : 0);
+
+  /* two indirect calls per scanline buys a body per (isTile2, ecm, mode) with no per-tile dispatch */
+  tileRowClones[config->isTile2][slot](PICO9918_INST hpSize, rowNamesAddr, colorTableAddr, tileIndex,
+                                       startPattBit, attrPerPos, pal, alwaysOnTop, &addr);
+}
+
+/** \brief generate a Graphics I mode scanline for the T1 layer */
+static void __time_critical_func(f18a_tile1_scan_line)(PICO9918_INST_ARG uint16_t y)
+{
+  f18a_tile_layer_scan_line(PICO9918_INST y, &T1_CONFIG, false);
+}
+
+/** \brief generate a Graphics I mode scanline for the T2 layer */
+static void __time_critical_func(f18a_tile2_scan_line)(PICO9918_INST_ARG uint16_t y, const bool blend)
+{
+  f18a_tile_layer_scan_line(PICO9918_INST y, &T2_CONFIG, blend);
+}
+
+static bool underLayer = false;
+
+/* Which buffer holds the finished line. Normally the one the caller passed, which the composite
+   merges into. Where there is nothing to arbitrate it is tile layer 1's own buffer, and the merged
+   line is then neither written nor read back - so the caller must ask rather than assume, which
+   `pico9918_line_source` is for. */
+const uint8_t* pico9918_cached_line_source = 0;
+/**
+ * \brief generate an F18A bitmap layer scanline
+ *
+ * INLINE: so will be different versions generated, depending on hard-coded (or known at compile-time) arguments
+ */
+PICO9918_INLINE_HOT bool renderBitmapLayerBody(PICO9918_INST_ARG uint16_t y, bool opaque, const uint8_t width,
+                                               const uint16_t addr, const uint8_t bmlCtl,
+                                               uint8_t pixels[TMS9918_PIXELS_X], const bool wide,
+                                               const bool intoTile1)
+{
+  // written over T1's own buffer the layer is already above it, so the row mask arbitrates nothing
+  bool writeMask = (bmlCtl & 0x40) && !intoTile1;
+  underLayer     = !(bmlCtl & 0x40);
+
+  bool returnVal = true;
+
+  if (writeMask && opaque && (width == 64))
+  {
+    for (int i = 0; i < TMS9918_PIXELS_X / 32; ++i) rowMasks.rowBits[i] = -1;
+    writeMask = false;
+    returnVal = false;
+  }
+
+  uint32_t currentMask = 0;
+  uint8_t xPos = TMS_REGISTER(tms9918, PICO9918_REG_BML_X);
+
+  if (bmlCtl & 0x10) // fat 4bpp pixels?
+  {
+    const uint8_t colorMask   = 0xf0;
+    const uint8_t colorOffset = 4;
+    const uint8_t colorCount  = 2;
+    const uint8_t colorSize   = 4;
+    uint32_t maskPixelMask    = 0x3u << 30;
+    uint32_t maskX            = xPos;
+
+    uint8_t pal = (bmlCtl & 0xc) << 2;
+
+    for (int xOff = 0; xOff < width; ++xOff)
+    {
+      uint8_t data = tms9918->vram.bytes[addr + xOff];
+      for (int sp = 0; sp < colorCount; ++sp)
+      {
+        uint8_t color = (data & colorMask);
+        if (opaque || color)
+        {
+          uint8_t finalColour = pal | (color >> colorOffset);
+          if (wide)
+          {
+            const uint16_t pair                 = (uint16_t)(finalColour | (finalColour << 8));
+            *(uint16_t*)(pixels + xPos * 2)     = pair;
+            *(uint16_t*)(pixels + xPos * 2 + 2) = pair;
+          }
+          else
+          {
+            pixels[xPos]     = finalColour;
+            pixels[xPos + 1] = finalColour;
+          }
+          currentMask |= maskPixelMask;
+        }
+        xPos += 2;
+        data <<= colorSize;
+        maskPixelMask >>= 2;
+      }
+      if (writeMask && !maskPixelMask && currentMask)
+      {
+        tmsTestRowBitsMask(maskX, currentMask, 32, true, false, false);
+        maskX         = xPos;
+        maskPixelMask = 0x3u << 30;
+        currentMask   = 0;
+      }
+    }
+    if (writeMask && currentMask)
+    {
+      tmsTestRowBitsMask(maskX, currentMask, xPos - maskX, true, false, false);
+    }
+  }
+  else // regular 2bpp pixels
+  {
+    const uint8_t colorMask   = 0xc0;
+    const uint8_t colorOffset = 6;
+    const uint8_t colorCount  = 4;
+    const uint8_t colorSize   = 2;
+    uint32_t maskPixelMask    = 0x1u << 31;
+    uint32_t maskX            = xPos;
+
+    uint8_t pal = (bmlCtl & 0xf) << 2;
+
+    if (opaque && !wide && ((xPos & 3) == 0))
+    {
+      /* LOAD-BEARING: an aligned start stays aligned because the layer advances four pixels a
+       * byte and the row is 256 wide, so no word store ever straddles xPos wrapping. That is
+       * what removes the head/tail an unaligned block expansion would need on Cortex-M0+. */
+      const uint32_t palQuad = repeatedPalette(pal);
+      uint32_t* const quadPixels = (uint32_t*)pixels;
+      uint32_t quadOffset        = xPos >> 2;
+
+      for (int xOff = 0; xOff < width; ++xOff)
+      {
+        const uint8_t data = tms9918->vram.bytes[addr + xOff];
+        quadPixels[quadOffset & (TMS9918_PIXELS_X / 4 - 1)] =
+          (bmlExpand2bpp[data >> 4] | ((uint32_t)bmlExpand2bpp[data & 0x0f] << 16)) | palQuad;
+        ++quadOffset;
+      }
+
+      if (writeMask)
+      {
+        /* every pixel is opaque, so a whole group is a full mask and only the tail is partial */
+        uint32_t left = (uint32_t)width * colorCount;
+        while (left >= 32)
+        {
+          tmsTestRowBitsMask(maskX, 0xffffffffu, 32, true, false, false);
+          maskX = (maskX + 32) & 0xff;
+          left -= 32;
+        }
+        if (left) tmsTestRowBitsMask(maskX, ~0u << (32 - left), left, true, false, false);
+      }
+      return returnVal;
+    }
+
+    for (int xOff = 0; xOff < width; ++xOff)
+    {
+      uint8_t data = tms9918->vram.bytes[addr + xOff];
+      for (int sp = 0; sp < colorCount; ++sp)
+      {
+        uint8_t color = (data & colorMask);
+        if (opaque || color)
+        {
+          const uint8_t v = pal | (color >> colorOffset);
+          if (wide)
+            *(uint16_t*)(pixels + xPos * 2) = (uint16_t)(v | (v << 8));
+          else
+            pixels[xPos] = v;
+          currentMask |= maskPixelMask;
+        }
+        ++xPos;
+        data <<= colorSize;
+        maskPixelMask >>= 1;
+      }
+
+      if (writeMask && !maskPixelMask && currentMask)
+      {
+        tmsTestRowBitsMask(maskX, currentMask, 32, true, false, false);
+        maskX         = xPos;
+        maskPixelMask = 0x1u << 31;
+        currentMask   = 0;
+      }
+    }
+    if (writeMask && currentMask)
+    {
+      tmsTestRowBitsMask(maskX, currentMask, xPos - maskX, true, false, false);
+    }
+  }
+  return returnVal;
+}
+
+/* One body per line width, for the reason spriteGridWord gives: the layer is on the 256-pixel grid
+   whatever the mode, so a wide row draws each of its pixels twice. The F18A does the same - see the
+   text2 case in f18a_tiles.vhd, which halves the layer's pixel clock rather than repeating it. */
+#if PICO9918_TEXT80_8BPP
+static EMITTER_NOINLINE bool __time_critical_func(renderBitmapLayer80)(
+  PICO9918_INST_ARG uint16_t y, bool opaque, const uint8_t width, const uint16_t addr, const uint8_t bmlCtl,
+  uint8_t pixels[TMS9918_PIXELS_X], const bool intoTile1)
+{
+  return renderBitmapLayerBody(PICO9918_INST y, opaque, width, addr, bmlCtl, pixels, true, intoTile1);
+}
+#endif
+
+static inline bool __time_critical_func(renderBitmapLayer40)(PICO9918_INST_ARG uint16_t y, bool opaque,
+                                                             const uint8_t width, const uint16_t addr,
+                                                             const uint8_t bmlCtl,
+                                                             uint8_t pixels[TMS9918_PIXELS_X])
+{
+  return renderBitmapLayerBody(PICO9918_INST y, opaque, width, addr, bmlCtl, pixels, false, false);
+}
+
+/** \brief generate an F18A bitmap layer scanline */
+static bool __time_critical_func(bitmap_layer_scan_line)(PICO9918_INST_ARG uint16_t y,
+                                                                  uint8_t pixels[TMS9918_PIXELS_X],
+                                                                  const bool intoTile1)
+{
+  /* bml enabled? */
+  const uint8_t bmlCtl = TMS_REGISTER(tms9918, PICO9918_REG_BML_CONTROL);
+  if (!(bmlCtl & 0x80) || !PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_BITMAP)) return true;
+
+  /* bml on this scanline? */
+  const uint8_t top = TMS_REGISTER(tms9918, PICO9918_REG_BML_TOP_ROW);
+  if (top > y) return true;
+
+  y -= top;
+  if (y >= TMS_REGISTER(tms9918, PICO9918_REG_BML_HEIGHT)) return true;
+
+  /* row stride in bytes, four pixels each, rounded up so every row starts on a byte */
+  const uint8_t bmlWidth = TMS_REGISTER(tms9918, PICO9918_REG_BML_WIDTH);
+  const uint8_t width    = bmlWidth ? ((bmlWidth + 3) >> 2) : 64;
+  const uint16_t addr    = (TMS_REGISTER(tms9918, PICO9918_REG_BML_BASE) << 6) + (y * width);
+
+  const bool opaque = !(bmlCtl & 0x20);
+
+#if PICO9918_TEXT80_8BPP
+  if (TEXT80_WIDE_ROW)
+    return renderBitmapLayer80(PICO9918_INST y, opaque, width, addr, bmlCtl, pixels, intoTile1);
+#endif
+  return renderBitmapLayer40(PICO9918_INST y, opaque, width, addr, bmlCtl, pixels);
+}
+
+/* One 32-pixel chunk of the composite, four pixels at a time. Selecting a layer per pixel is a byte
+ * mask over two words, and the nibble-to-word lookup the tile emitters use is exactly that mask - so
+ * a chunk is eight selects rather than thirty-two.
+ *
+ * `hasSprites` arrives as a literal, so a chunk no sprite touches compiles to a plain store and one
+ * that a sprite crosses to a merge, with no test in either. The caller can only use this where both
+ * layer pointers are word-aligned, which a scroll that is not a multiple of four denies.
+ */
+static inline void compositeChunkWide(uint32_t* __restrict pix32, const uint32_t* __restrict l1,
+                                      const uint32_t* __restrict l2, uint32_t sel, uint32_t open,
+                                      const bool hasSprites)
+{
+  for (int i = 0; i < 8; ++i)
+  {
+    const uint32_t layers = maskExpandNibbleToWordRev[sel >> 28];
+    uint32_t merged       = l1[i] ^ ((l1[i] ^ l2[i]) & layers);
+
+    if (hasSprites)
+    {
+      const uint32_t old = pix32[i];
+      merged             = old ^ ((old ^ merged) & maskExpandNibbleToWordRev[open >> 28]);
+      open <<= 4;
+    }
+
+    pix32[i] = merged;
+    sel <<= 4;
+  }
+}
+
+/* the same chunk with a bitmap layer under the tiles, which is the one case that has to stay per
+ * pixel: zero means transparent here, so every byte needs its own test and there is no word to
+ * select whole. `hasSprites` is the same literal the other two chunks take, and it is worth more
+ * here than anywhere - without it every pixel of every chunk tests and shifts a mask that is zero.
+ */
+static inline void compositeChunkUnder(uint8_t* __restrict pixels, const uint8_t* __restrict layer1,
+                                       const uint8_t* __restrict layer2, uint32_t mask, uint32_t spriteMask,
+                                       const bool hasSprites)
+{
+  for (int i = 0; i < 8; ++i)
+  {
+#define UNDER_PIXEL(n) \
+  if (!hasSprites || !(spriteMask & MASK_NEXT_PIXEL)) \
+  { \
+    const uint8_t pixel = (mask & MASK_NEXT_PIXEL) ? layer2[n] : layer1[n]; \
+    if (pixel) pixels[n] = pixel; \
+  } \
+  mask <<= 1; \
+  if (hasSprites) spriteMask <<= 1;
+
+    UNDER_PIXEL(0)
+    UNDER_PIXEL(1)
+    UNDER_PIXEL(2)
+    UNDER_PIXEL(3)
+#undef UNDER_PIXEL
+
+    pixels += 4;
+    layer1 += 4;
+    layer2 += 4;
+  }
+}
+
+/* the same chunk a byte at a time, for a scroll that leaves a layer unaligned */
+static inline void compositeChunkBytes(uint8_t* __restrict pixels, const uint8_t* __restrict layer1,
+                                       const uint8_t* __restrict layer2, uint32_t mask, uint32_t spriteMask,
+                                       const bool hasSprites)
+{
+  for (int i = 0; i < 8; ++i)
+  {
+#define MIXED_PIXEL(n) \
+  if (!hasSprites || !(spriteMask & MASK_NEXT_PIXEL)) \
+  { \
+    pixels[n] = (mask & MASK_NEXT_PIXEL) ? layer2[n] : layer1[n]; \
+  } \
+  mask <<= 1; \
+  if (hasSprites) spriteMask <<= 1;
+
+    MIXED_PIXEL(0)
+    MIXED_PIXEL(1)
+    MIXED_PIXEL(2)
+    MIXED_PIXEL(3)
+#undef MIXED_PIXEL
+
+    pixels += 4;
+    layer1 += 4;
+    layer2 += 4;
+  }
+}
+
+/* Sprites and the bitmap layer are on the 256-pixel grid whatever the mode, so a wide
+   row's chunk of 32 tile pixels is only 16 of theirs: half a mask word, doubled bit by bit through
+   the table the magnified sprite emitter already uses. `wide` is a clone parameter rather than a
+   count, because that read is inside the chunk loop. */
+static inline uint32_t spriteGridWord(const uint32_t maskWord, const BitMask mask, const bool wide)
+{
+  if (!wide) return mask[maskWord];
+
+  const uint32_t half = (maskWord & 1) ? (mask[maskWord >> 1] & 0xffff) : (mask[maskWord >> 1] >> 16);
+  return ((uint32_t)doubledBits[half >> 8] << 16) | doubledBits[half & 0xff];
+}
+
+/* A line the zero-copy path would have handed out whole, but for the sprites drawn into pixels[].
+ * Rather than copy the tile line over them and merge the sprites back, put the sprites into the
+ * tile line and hand that out: a word no sprite touches then costs nothing at all, and there is
+ * no second layer or selection mask to read for the ones that do. Every other zero-copy condition
+ * already holds here, so nothing else in pixels[] has to survive.
+ */
+static inline void overlaySpritesOnTile1(uint32_t* __restrict dst, const uint32_t* __restrict src,
+                                         const bool wide)
+{
+  const uint32_t maskWords = (wide ? SCANLINE_BYTES_MAX : TMS9918_PIXELS_X) / 32;
+
+  for (uint32_t maskWord = 0; maskWord < maskWords; ++maskWord, dst += 8, src += 8)
+  {
+    uint32_t open = spriteGridWord(maskWord, rowMasks.rowSpriteBits, wide);
+
+    for (int i = 0; open; ++i, open <<= 4)
+    {
+      const uint32_t nibble = open >> 28;
+      if (nibble)
+      {
+        const uint32_t take = maskExpandNibbleToWordRev[nibble];
+        dst[i]              = dst[i] ^ ((dst[i] ^ src[i]) & take);
+      }
+    }
+  }
+}
+
+PICO9918_INLINE_HOT void
+compositeAlignedBody(PICO9918_INST_ARG uint8_t pixels[TMS9918_PIXELS_X], const int t1Scroll, const int t2Scroll,
+                     const bool wide)
+{
+  uint8_t* layer1          = tms9918->tileLayer1Buffer + t1Scroll;
+  uint8_t* layer2          = tms9918->tileLayer2Buffer + t2Scroll;
+  uint32_t* selectionMask  = tms9918->layerSelectionMask;
+  const uint32_t maskWords = (wide ? SCANLINE_BYTES_MAX : TMS9918_PIXELS_X) / 32;
+
+
+  const bool wordAligned    = ((t1Scroll | t2Scroll) & 3) == 0;
+  const uint32_t chunkCount = wordAligned ? 32 / sizeof(uint32_t) : 32;
+  PICO9918_COPY_SET_WIDTH(PICO9918_COPY, wordAligned);
+
+  // Process in 32-pixel chunks (1 mask word at a time)
+  for (uint32_t maskWord = 0; maskWord < maskWords; maskWord++)
+  {
+    uint32_t mask = selectionMask[maskWord];
+
+    /* a priority bitmap layer wins over T1 only - T2 still draws over it */
+    uint32_t spriteMask = spriteGridWord(maskWord, rowMasks.rowSpriteBits, wide) |
+                          (spriteGridWord(maskWord, rowMasks.rowBits, wide) & ~mask);
+
+    if (spriteMask == 0xffffffffu)
+    {
+      layer1 += 32;
+      layer2 += 32;
+      pixels += 32;
+      continue;
+    }
+
+    if (!underLayer && !spriteMask)
+    {
+      if (mask == 0)
+      {
+        // All T1 pixels - use DMA copy for speed
+        PICO9918_COPY_WAIT(PICO9918_COPY);
+        PICO9918_COPY_SET_SRC(PICO9918_COPY, layer1);
+        PICO9918_COPY_SET_DST(PICO9918_COPY, pixels);
+        PICO9918_COPY_TRIGGER(PICO9918_COPY, chunkCount);
+        pixels += 32;
+        layer1 += 32;
+        layer2 += 32;
+        continue;
+      }
+      else if (mask == 0xffffffffu)
+      {
+        // All T2 pixels - use DMA copy for speed
+        PICO9918_COPY_WAIT(PICO9918_COPY);
+        PICO9918_COPY_SET_SRC(PICO9918_COPY, layer2);
+        PICO9918_COPY_SET_DST(PICO9918_COPY, pixels);
+        PICO9918_COPY_TRIGGER(PICO9918_COPY, chunkCount);
+        pixels += 32;
+        layer1 += 32;
+        layer2 += 32;
+        continue;
+      }
+    }
+
+
+    // mixed - process 4 pixels at a time with individual byte access
+    if (underLayer)
+    {
+      if (spriteMask)
+        compositeChunkUnder(pixels, layer1, layer2, mask, spriteMask, true);
+      else
+        compositeChunkUnder(pixels, layer1, layer2, mask, 0, false);
+
+      pixels += 32;
+      layer1 += 32;
+      layer2 += 32;
+    }
+    else if (wordAligned)
+    {
+      uint32_t* pix32    = (uint32_t*)PICO9918_ASSUME_ALIGNED(pixels, 4);
+      const uint32_t* l1 = (const uint32_t*)PICO9918_ASSUME_ALIGNED(layer1, 4);
+      const uint32_t* l2 = (const uint32_t*)PICO9918_ASSUME_ALIGNED(layer2, 4);
+
+      if (spriteMask)
+        compositeChunkWide(pix32, l1, l2, mask, ~(uint32_t)spriteMask, true);
+      else
+        compositeChunkWide(pix32, l1, l2, mask, 0, false);
+
+      pixels += 32;
+      layer1 += 32;
+      layer2 += 32;
+    }
+    else
+    {
+      if (spriteMask)
+        compositeChunkBytes(pixels, layer1, layer2, mask, spriteMask, true);
+      else
+        compositeChunkBytes(pixels, layer1, layer2, mask, 0, false);
+
+      pixels += 32;
+      layer1 += 32;
+      layer2 += 32;
+    }
+  }
+}
+
+
+/* One body per line width. The chunk loop reads the sprite grid on every pass, so the rate it reads
+   it at has to be a literal there rather than a value carried in - which is also what keeps the
+   256-pixel modes paying nothing for the tier. */
+#if PICO9918_TEXT80_8BPP
+static EMITTER_NOINLINE
+#else
+/* one width, one caller, so it inlines: standing it out of line costs RP2040 two-layer lines dearly */
+static inline
+#endif
+  void __time_critical_func(compositeAligned40)(PICO9918_INST_ARG uint8_t pixels[TMS9918_PIXELS_X],
+                                                const int t1Scroll, const int t2Scroll)
+{
+  compositeAlignedBody(PICO9918_INST pixels, t1Scroll, t2Scroll, false);
+}
+
+#if PICO9918_TEXT80_8BPP
+static EMITTER_NOINLINE void
+__time_critical_func(compositeAligned80)(PICO9918_INST_ARG uint8_t pixels[TMS9918_PIXELS_X], const int t1Scroll,
+                                         const int t2Scroll)
+{
+  compositeAlignedBody(PICO9918_INST pixels, t1Scroll, t2Scroll, true);
+}
+#endif
+
+static inline void compositeAlignedTileBuffers(PICO9918_INST_ARG uint8_t pixels[TMS9918_PIXELS_X],
+                                               const int t1Scroll, const int t2Scroll, const bool wide)
+{
+#if PICO9918_TEXT80_8BPP
+  if (wide)
+  {
+    compositeAligned80(PICO9918_INST pixels, t1Scroll, t2Scroll);
+    return;
+  }
+#endif
+  compositeAligned40(PICO9918_INST pixels, t1Scroll, t2Scroll);
+}
+
+/**
+ * \brief Composite with tile layer 1 disabled (reg 0x32 bit 4). Layer 1 contributes no pixel at all, so
+ * every position the selection mask leaves to it must keep whatever the backdrop, bitmap layer and
+ * sprites already put there - the colour stage falls through to the backdrop for a transparent
+ * merged pixel. Writing layer 1's buffer, or a zero buffer, would paint palette entry 0 instead.
+ */
+static PICO9918_NOINLINE void
+__time_critical_func(compositeTile2OnlyBuffer)(PICO9918_INST_ARG uint8_t pixels[TMS9918_PIXELS_X],
+                                               const int t2Scroll, const bool wide)
+{
+  const uint8_t* layer2    = tms9918->tileLayer2Buffer + t2Scroll;
+  const uint32_t maskWords = (wide ? SCANLINE_BYTES_MAX : TMS9918_PIXELS_X) / 32;
+
+  for (uint32_t maskWord = 0; maskWord < maskWords; ++maskWord)
+  {
+    uint32_t mask =
+      tms9918->layerSelectionMask[maskWord] & ~spriteGridWord(maskWord, rowMasks.rowSpriteBits, wide);
+
+    if (!mask) /* nothing of layer 2 reaches the screen here */
+    {
+      layer2 += 32;
+      pixels += 32;
+      continue;
+    }
+
+    for (int i = 0; i < 8; ++i)
+    {
+      if (mask & MASK_NEXT_PIXEL) pixels[0] = layer2[0];
+      mask <<= 1;
+
+      if (mask & MASK_NEXT_PIXEL) pixels[1] = layer2[1];
+      mask <<= 1;
+
+      if (mask & MASK_NEXT_PIXEL) pixels[2] = layer2[2];
+      mask <<= 1;
+
+      if (mask & MASK_NEXT_PIXEL) pixels[3] = layer2[3];
+      mask <<= 1;
+
+      pixels += 4;
+      layer2 += 4;
+    }
+  }
+}
+
+/**
+ * \brief A text row draws 240 of the 256 pixels and the composite copies all of them, so layer 1's buffer
+ * has to carry the side borders itself. The row is emitted on cell boundaries and read back
+ * `t1Scroll` pixels along, so the border moves with the scroll - and the cells that fall outside it
+ * either side are overwritten here rather than never written.
+ */
+static void __time_critical_func(textRowBorder)(PICO9918_INST_ARG const int t1Scroll, const uint32_t padding,
+                                                const uint32_t width)
+{
+  uint8_t* left  = tms9918->tileLayer1Buffer + t1Scroll;
+  uint8_t* right = left + width - padding;
+
+  for (uint32_t i = 0; i < padding; ++i)
+  {
+    left[i]  = bg;
+    right[i] = bg;
+  }
+}
+
+/** \brief generate a Graphics I or Graphics II mode scanline */
+static uint8_t __time_critical_func(graphics_i_scan_line)(PICO9918_INST_ARG uint16_t y,
+                                                                   uint8_t pixels[TMS9918_PIXELS_X])
+{
+  uint8_t tempStatus = 0;
+
+  /* locked or unlocked is decided once here, not re-tested per row */
+  if (PICO9918_UNLOCKED(tms9918))
+  {
+    /* the background fill owns pixels[] until it completes */
+    PICO9918_FILL32_WAIT(PICO9918_FILL_LINE);
+
+    const uint8_t bmlCtlReg = TMS_REGISTER(tms9918, PICO9918_REG_BML_CONTROL);
+
+    /* LOAD-BEARING: drawn over tile layer 1's buffer a priority layer is above T1 by construction,
+       which is what lets the blend and the zero-copy line survive it. Each condition breaks that:
+       an UNDER layer needs per-pixel arbitration, tile 1 off means that buffer is never read, and
+       only a wide row doubles. Relax any of them and the layer is lost or lands under T1. */
+    const bool bmlInTile1 = TEXT80_WIDE_ROW && (bmlCtlReg & PICO9918_R31_BML_ENABLE) &&
+                            (bmlCtlReg & 0x40) &&
+                            !(TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED2) & PICO9918_R50_TILE1_OFF) &&
+                            PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_TILE1) &&
+                            PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_BITMAP);
+
+    bool writeMask = true;
+    if (bmlInTile1)
+      underLayer = false;
+    else
+      writeMask = bitmap_layer_scan_line(PICO9918_INST y, pixels, false);
+
+    const uint32_t transparent = underLayer ? 0 : bg;
+    transparentPixels[0] = transparentPixels[1] = transparent;
+    ecm0Palette[0x00] = ecm0Palette[0x10] = ecm0Palette[0x20] = ecm0Palette[0x30] = transparent;
+
+    tempStatus = pico9918_output_sprites(PICO9918_INST y, pixels);
+
+    if (writeMask) // bitmap layer completely masked it?
+    {
+      const bool wide         = TEXT80_WIDE_ROW;
+      const bool textRow      = wide || pico9918_cached_mode == TMS_MODE_TEXT;
+      const int t1Scroll      = scrollOffset(TMS_REGISTER(tms9918, PICO9918_REG_T1_HSCROLL), textRow, wide);
+      const int t2Scroll      = scrollOffset(TMS_REGISTER(tms9918, PICO9918_REG_T2_HSCROLL), textRow, wide);
+      const bool tile2Enabled = (TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_TILE2_ENABLE) &&
+                                PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_TILE2);
+      const bool tile1Enabled = !(TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED2) & PICO9918_R50_TILE1_OFF) &&
+                                PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_TILE1);
+
+      const bool blend = wide && tile1Enabled && tile2Enabled &&
+                         !((TMS_REGISTER(tms9918, PICO9918_REG_ENHANCED1) & PICO9918_R49_ECM_TILE) >> 4) &&
+                         (bmlInTile1 || !(bmlCtlReg & PICO9918_R31_BML_ENABLE));
+
+      if (tile2Enabled && !blend)
+      {
+        f18a_tile2_scan_line(PICO9918_INST y, false);
+        tmsCopyAlignMask(tms9918->finalMask, tms9918->layerSelectionMask, t1Scroll - t2Scroll);
+      }
+
+      if (tile1Enabled)
+      {
+        f18a_tile1_scan_line(PICO9918_INST y);
+        if (bmlInTile1)
+          bitmap_layer_scan_line(PICO9918_INST y, tms9918->tileLayer1Buffer + t1Scroll, true);
+        if (blend) f18a_tile2_scan_line(PICO9918_INST y, true);
+        if (textRow)
+          textRowBorder(PICO9918_INST t1Scroll, wide ? TEXT80_PADDING_PX : TEXT_PADDING_PX,
+                        wide ? SCANLINE_BYTES_MAX : TMS9918_PIXELS_X);
+      }
+
+      if (tile2Enabled && !blend)
+        tmsRestoreAlignMask(tms9918->layerSelectionMask, tms9918->finalMask, -t1Scroll, t2Scroll);
+
+      if (textRow && !blend)
+      {
+        const uint32_t pad = wide ? TEXT80_PADDING_PX : TEXT_PADDING_PX;
+        const uint32_t end = pad + (wide ? TEXT80_NUM_COLS : TEXT_NUM_COLS) * TEXT_CHAR_WIDTH;
+        tms9918->layerSelectionMask[0] &= 0xffffffffu >> pad;
+        tms9918->layerSelectionMask[(end - 1) >> 5] &= ~(0xffffffffu >> (end & 0x1f));
+      }
+
+      /* WARNING: the scroll test keeps the handed-out line word-aligned. A caller may read it a
+         word at a time, and on Cortex-M0+ an unaligned word load HardFaults rather than running slow */
+      if (tile1Enabled && (!tile2Enabled || blend) && !underLayer && !(t1Scroll & 3) &&
+          (bmlInTile1 || !(bmlCtlReg & PICO9918_R31_BML_ENABLE)))
+      {
+        uint8_t* line = tms9918->tileLayer1Buffer + t1Scroll;
+
+        if (tms9918->scanlineHasSprites)
+          overlaySpritesOnTile1((uint32_t*)PICO9918_ASSUME_ALIGNED(line, 4),
+                                (const uint32_t*)PICO9918_ASSUME_ALIGNED(pixels, 4), wide);
+
+        pico9918_cached_line_source = line;
+      }
+      else if (tile1Enabled)
+      {
+        compositeAlignedTileBuffers(PICO9918_INST pixels, t1Scroll, t2Scroll, wide);
+      }
+      else if (tile2Enabled)
+      {
+        compositeTile2OnlyBuffer(PICO9918_INST pixels, t2Scroll, wide);
+      }
+      /* both layers off: the backdrop, bitmap layer and sprites are already in pixels[] */
+    }
+  }
+  else
+  {
+    const uint8_t tileY = y >> 3; /* which name table row (0 - 23)... or 29 */
+
+    /* address in name table at the start of this row */
+    const uint16_t rowOffset = tileY * GRAPHICS_NUM_COLS;
+    uint16_t rowNamesAddr    = tmsNameTableAddr(tms9918) + rowOffset;
+    uint16_t colorTableAddr  = tmsColorTableAddr(tms9918);
+
+    const bool gm2 = pico9918_cached_mode == TMS_MODE_GRAPHICS_II;
+    const bool mcm = pico9918_cached_mode == TMS_MODE_MULTICOLOR;
+    TileRowAddr addr;
+    tileRowAddr(PICO9918_INST y, y, TMS_REGISTER(tms9918, TMS_REG_COLOR_TABLE), gm2, mcm, &addr,
+                &colorTableAddr);
+
+    PICO9918_FILL32_WAIT(PICO9918_FILL_LINE);
+
+    if (PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_TILE1))
+    {
+      if (gm2)
+        rowLockedGm2(PICO9918_INST rowNamesAddr, colorTableAddr, 0, 0, pixels, &addr);
+      else if (mcm)
+        rowLockedMcm(PICO9918_INST rowNamesAddr, colorTableAddr, 0, 0, pixels, &addr);
+      else
+        rowLockedGm1(PICO9918_INST rowNamesAddr, colorTableAddr, 0, 0, pixels, &addr);
+    }
+
+    tempStatus = pico9918_output_sprites(PICO9918_INST y, pixels);
+  }
+
+  return tempStatus;
+}
+
+/** \brief generate a scanline */
+PICO9918_DLLEXPORT uint8_t __time_critical_func(pico9918_scan_line)(PICO9918_INST_ARG uint16_t y)
+{
+  uint8_t* const pixels = scanlineBuffer;
+  uint8_t tempStatus    = 0;
+
+  if (!lookupsReady) initLookups();
+
+  pico9918_mode_t currentCachedMode = tmsMode(tms9918);
+  if (currentCachedMode != pico9918_cached_mode)
+  {
+    pico9918_cached_mode = currentCachedMode;
+    tms9918->palDirty    = 1;
+  }
+
+  const uint8_t bgc        = tmsMainBgColor(tms9918);
+  const bool packedNibbles = pico9918_cached_mode == TMS_MODE_TEXT80 && !TEXT80_WIDE_ROW;
+  bg                       = repeatedPalette(
+    bgc |
+    (packedNibbles ? bgc << 4
+                                         : (TMS_REGISTER(tms9918, PICO9918_REG_PALETTE_SELECT) & PICO9918_R24_TILE1_PS) << 4));
+#if PICO9918_TEXT80_8BPP
+  /* a wide row is twice the line to fill, and the count is per mode rather than per build */
+  PICO9918_FILL32_SET_COUNT(PICO9918_FILL_LINE, pico9918_line_bytes(PICO9918_INST_ONLY) / 4);
+#endif
+  PICO9918_FILL32_TRIGGER(PICO9918_FILL_LINE, pixels);
+  pico9918_cached_line_source = pixels;
+  underLayer = false;
+
+  bool dispActive = (TMS_REGISTER(tms9918, TMS_REG_1) & TMS_R1_DISP_ACTIVE) ||
+                    PICO9918_SUPPRESSED(tms9918, PICO9918_SUPPRESS_BLANKING);
+
+  if (dispActive)
+  {
+    /* the three row masks go out as one transfer; the instance masks below cover its latency */
+    PICO9918_FILL32_TRIGGER(PICO9918_FILL_MASKS, &rowMasks);
+
+    for (int i = 0; i < SCANLINE_MASK_WORDS; ++i)
+    {
+      tms9918->layerSelectionMask[i] = 0; // Default to all T1 pixels
+      tms9918->finalMask[i]          = 0;
+    }
+    tms9918->scanlineHasSprites = false;
+
+    PICO9918_FILL32_WAIT(PICO9918_FILL_MASKS);
+
+    /* WARNING: the unreachable modes are deliberately not named, and there is no default.
+       Either one makes the compiler stop assuming the value is in range, and it pays for a
+       bounds check on every scanline. Suppressed rather than silenced so a consumer
+       building these sources is not the one who sees it. */
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
+#endif
+    switch (pico9918_cached_mode)
+    {
+    case TMS_MODE_GRAPHICS_I:
+    case TMS_MODE_GRAPHICS_II:
+    case TMS_MODE_MULTICOLOR: tempStatus = graphics_i_scan_line(PICO9918_INST y, pixels); break;
+
+    case TMS_MODE_TEXT:
+    case TMS_MODE_TEXT80:
+      if (PICO9918_UNLOCKED(tms9918) && (pico9918_cached_mode == TMS_MODE_TEXT || TEXT80_WIDE_ROW))
+      {
+        tempStatus = graphics_i_scan_line(PICO9918_INST y, pixels);
+        break;
+      }
+
+      if (PICO9918_DRAWS(tms9918, PICO9918_SUPPRESS_TILE1)) text_scan_line(PICO9918_INST y, pixels);
+      if (PICO9918_UNLOCKED(tms9918)) tempStatus = pico9918_output_sprites(PICO9918_INST y, pixels);
+      break;
+    }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+  }
+
+  /* pixels[] must be complete, and owned by nobody, when we return */
+  PICO9918_FILL32_WAIT(PICO9918_FILL_LINE);
+  PICO9918_COPY_WAIT(PICO9918_COPY);
+
+  return tempStatus;
+}
+
+/** \brief return a register value - see the header for the locked-device aliasing */
+PICO9918_DLLEXPORT
+uint8_t __time_critical_func(pico9918_reg_value)(PICO9918_INST_ARG pico9918_register_t reg)
+{
+  return TMS_REGISTER(tms9918, reg & tms9918->lockedMask); // was 0x07
+}
+
+/** \brief return a status register value without the side effects of reading it */
+PICO9918_DLLEXPORT
+uint8_t __time_critical_func(pico9918_status_value)(PICO9918_INST_ARG pico9918_status_register_t reg)
+{
+  return TMS_STATUS(tms9918, reg & PICO9918_R15_STATUS_NUM);
+}
+
+PICO9918_INTERNAL
+void __time_critical_func(pico9918_write_reg_value_impl)(PICO9918_INST_ARG uint8_t reg, uint8_t value)
+{
+  if (PICO9918_HAS(tms9918, PICO9918_FEAT_UNLOCK) && PICO9918_UNLOCK_REG(reg))
+  {
+    /* Recomputed on every write, so a redundant unlock is a no-op and anything else locks */
+    const bool unlockValue = PICO9918_UNLOCK_VALUE(value);
+    const bool unlocked    = unlockValue && tms9918->unlockCount;
+
+    TMS_REGISTER(tms9918, PICO9918_REG_UNLOCK) = value; // through even when locked
+    tms9918->unlockCount                       = unlockValue;
+
+    if (unlocked != tms9918->isUnlocked)
+    {
+      tms9918->isUnlocked = unlocked;
+      tms9918->lockedMask = unlocked ? 0x3f : 0x07;
+      tms9918->palDirty   = 1;
+      if (unlocked) TMS_REGISTER(tms9918, PICO9918_REG_MAX_SCAN_SPRITES) = MAX_SPRITES - 1;
+    }
+  }
+  else
+  {
+    /* A write the personality never sees does not disturb the unlock counter either */
+    if (((reg & ~tms9918->lockedMask) != 0x80) && PICO9918_M4(tms9918)) return;
+
+    tms9918->unlockCount = 0;
+
+    const int regIndex = reg & tms9918->lockedMask; // was 0x07
+
+    TMS_REGISTER(tms9918, regIndex) = value;
+    if (regIndex < PICO9918_REG_STATUS_SELECT)
+    {
+      /* LOAD-BEARING: R0 and R1 hold the only register bits pico9918_interrupt_status_impl
+       * reads, and regIndex is post-mask - a locked write to R25 lands on R1 and must
+       * reconcile, so testing the byte the host sent would miss it. */
+      if (regIndex <= TMS_REG_1) pico9918_write_reconcile_int_impl(PICO9918_INST_ONLY);
+      return;
+    }
+
+    if ((regIndex == PICO9918_REG_GPU_PC_LSB) ||
+        ((regIndex == PICO9918_REG_GPU_CONTROL) && ((value & PICO9918_R56_GPU_RUN) == 0)))
+    {
+      tms9918->gpuAddress = ((TMS_REGISTER(tms9918, PICO9918_REG_GPU_PC_MSB) << 8) |
+                             TMS_REGISTER(tms9918, PICO9918_REG_GPU_PC_LSB)) &
+                            0xFFFE;
+      if (regIndex == PICO9918_REG_GPU_PC_LSB)
+      {
+        TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) = 0;
+        tms9918->gpuStatus          = 0; /* a new program, not a resumed one */
+        tms9918->restart            = 1;
+        pico9918_gpu_service(PICO9918_INST_ONLY);
+      }
+    }
+    else if ((regIndex == PICO9918_REG_GPU_CONTROL) && (value & PICO9918_R56_GPU_RUN))
+    {
+      tms9918->restart = 1;
+      pico9918_gpu_service(PICO9918_INST_ONLY);
+    }
+    else if (regIndex == PICO9918_REG_FLASH_CONTROL &&
+             PICO9918_HAS(tms9918, PICO9918_FEAT_CONFIG)) // firmware update
+    {
+      // b7      : 0 = idle:   1 = execute
+      // b6      : 0 = verify: 1 = write
+      // b5 - b0 : address to read firmware data (256 byte boundaries)
+      //           reads one UF2 frame (512 bytes)
+      if (TMS_REGISTER(tms9918, PICO9918_REG_GPU_CONTROL) == 0)
+      {
+        TMS_STATUS(tms9918, PICO9918_SR_GPU) = 0x80; // set gpu processing flag
+        tms9918->flash                       = 1;
+      }
+      else
+      {
+        TMS_STATUS(tms9918, PICO9918_SR_GPU) = 0x14; // error - busy
+      }
+    }
+    else if (regIndex == PICO9918_REG_MAX_SCAN_SPRITES && value == 0)
+    {
+      TMS_REGISTER(tms9918, PICO9918_REG_MAX_SCAN_SPRITES) = MAX_SPRITES - 1;
+    }
+    else if ((regIndex == PICO9918_REG_ENHANCED2) && (value & PICO9918_R50_RESET))
+    { // reset all registers?
+      vdpRegisterReset(tms9918);
+
+      // reset palette, etc as well?
+      if (value & 0x40)
+      {
+        tms9918->configDirty    = true;
+        tms9918->configVdpDirty = true;
+      }
+    }
+    else if (regIndex == PICO9918_REG_STATUS_SELECT)
+    {
+      uint8_t statReg           = (value & 0x0f);
+      TMS_STATUS(tms9918, 0x0F) = statReg; // is this right? or should this be the read-ahead value?
+      if (value & 0x40) tms9918->startTime = PICO9918_HOST_TIME_US(); // reset
+      if (value & 0x20)
+        tms9918->currentTime = PICO9918_HOST_TIME_US(); // snap
+      else if (value & 0x10)
+        tms9918->startTime += (tms9918->stopTime - tms9918->startTime);
+      else
+        tms9918->currentTime = tms9918->stopTime = PICO9918_HOST_TIME_US();
+
+      if (statReg > 3 && statReg < 12)
+      {
+        uint32_t elapsed = tms9918->currentTime - tms9918->startTime;
+        uint32_t microQ, microR;
+        PICO9918_DIVMOD_U32(elapsed, 1000, microQ, microR);
+        uint32_t milliQ, milliR;
+        PICO9918_DIVMOD_U32(microQ, 1000, milliQ, milliR);
+
+        TMS_STATUS(tms9918, PICO9918_SR_MICROS_LSB)  = microR & 0x0ff;
+        TMS_STATUS(tms9918, PICO9918_SR_MICROS_MSB)  = microR >> 8;
+        TMS_STATUS(tms9918, PICO9918_SR_MILLIS_LSB)  = milliR & 0x0ff;
+        TMS_STATUS(tms9918, PICO9918_SR_MILLIS_MSB)  = milliR >> 8;
+        TMS_STATUS(tms9918, PICO9918_SR_SECONDS_LSB) = milliQ & 0x00ff;
+        TMS_STATUS(tms9918, PICO9918_SR_SECONDS_MSB) = milliQ >> 8;
+      }
+    }
+    // SR12 holds the value of the option in VR58 (options)
+    else if (regIndex == PICO9918_REG_CONFIG_INDEX && PICO9918_HAS(tms9918, PICO9918_FEAT_CONFIG))
+    {
+      const uint8_t option = TMS_REGISTER(tms9918, PICO9918_REG_CONFIG_INDEX);
+
+      TMS_STATUS(tms9918, PICO9918_SR_CONFIG_VALUE) = tms9918->config[option];
+    }
+    // option number in reg 58, value in 59 (options)
+    else if (regIndex == PICO9918_REG_CONFIG_VALUE && PICO9918_HAS(tms9918, PICO9918_FEAT_CONFIG) &&
+             TMS_REGISTER(tms9918, PICO9918_REG_CONFIG_INDEX) >= PICO9918_CONFIG_FIRST_SETTABLE)
+    {
+      const uint8_t option = TMS_REGISTER(tms9918, PICO9918_REG_CONFIG_INDEX);
+
+      tms9918->config[option]                       = value;
+      TMS_STATUS(tms9918, PICO9918_SR_CONFIG_VALUE) = value;
+      tms9918->configDirty                          = true;
+    }
+  }
+}
+
+
+/** \brief return a value from vram */
+PICO9918_DLLEXPORT
+uint8_t __time_critical_func(pico9918_vram_value)(PICO9918_INST_ARG uint16_t addr)
+{
+  return tms9918->vram.bytes[addr & VRAM_MASK];
+}
+
+/** \brief check BLANK flag */
+PICO9918_DLLEXPORT
+bool __time_critical_func(pico9918_display_enabled)(PICO9918_INST_ONLY_ARG)
+{
+  return (TMS_REGISTER(tms9918, TMS_REG_1) & TMS_R1_DISP_ACTIVE);
+}
+
+/** \brief current display mode */
+PICO9918_DLLEXPORT
+pico9918_mode_t __time_critical_func(pico9918_display_mode)(PICO9918_INST_ONLY_ARG)
+{
+  return pico9918_cached_mode;
+}
+
+#if PICO9918_BUILD_DEBUG_API
+/** \brief see impl/pico9918_priv.h. What the scanline entry does, for a caller between two. */
+void pico9918_debug_sync_mode_impl(PICO9918_INST_ONLY_ARG)
+{
+  pico9918_cached_mode = tmsMode(tms9918);
+}
+#endif
+
+/**
+ * \brief how many bytes of pixels[] this mode fills. Every mode is 256 but unlocked 80-column text on a
+ * board with the 8bpp tier, which is 512 - so the palette expansion, the backdrop fill and anything
+ * reading the line ask here rather than each deciding it again.
+ */
+PICO9918_DLLEXPORT
+uint32_t __time_critical_func(pico9918_line_bytes)(PICO9918_INST_ONLY_ARG)
+{
+  return TEXT80_WIDE_ROW ? SCANLINE_BYTES_MAX : TMS9918_PIXELS_X;
+}
+
+/**
+ * \brief where the scanline just generated actually is. Usually the buffer that was passed in, but on a
+ * line with nothing to arbitrate it is a tile layer's own buffer and the passed one holds only the
+ * backdrop fill - so read the line from here rather than from what was handed over.
+ */
+PICO9918_DLLEXPORT
+const uint8_t* __time_critical_func(pico9918_line_source)(PICO9918_INST_ONLY_ARG)
+{
+  return pico9918_cached_line_source;
+}
+
+/** \brief a default palette entry, 0xargb */
+PICO9918_DLLEXPORT
+uint16_t pico9918_default_palette(int index)
+{
+  return defaultPalette[index & 0x3f];
+}

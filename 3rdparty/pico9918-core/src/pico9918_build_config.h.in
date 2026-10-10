@@ -1,0 +1,103 @@
+/*
+ * pico9918-core - build configuration (GENERATED)
+ *
+ * Copyright (c) 2026 Troy Schrapel
+ *
+ * This code is licensed under the MIT license
+ *
+ * https://github.com/visrealm/pico9918-core
+ *
+ * DO NOT EDIT - generated from pico9918_build_config.h.in by CMake.
+ *
+ * Records the choices the library was actually COMPILED with, so a consumer
+ * cannot silently disagree with the binary it links against. A plain compile
+ * definition on the library target cannot do this job: it reaches the library's
+ * own translation units and nothing else, so a consumer built by a different
+ * build system sees the platform defaults instead and the mismatch is silent.
+ */
+
+#ifndef _PICO9918_BUILD_CONFIG_H
+#define _PICO9918_BUILD_CONFIG_H
+
+/*
+ * Width of PICO9918_PIXEL_T in the compiled library, in bytes.
+ *
+ * The pixel policy is a per-build choice (2 for the Pico BGR12 policy, which
+ * the golden harness also selects; 4 for the desktop RGBA8888 default), and it
+ * changes the layout of every pixel buffer and palette the library exports.
+ * Public headers that expose PICO9918_PIXEL_T assert against this.
+ */
+#define PICO9918_BUILD_PIXEL_SIZE @PICO9918_ASSET_PIXEL_SIZE@
+
+/*
+ * Whether the compiled library renders 80-column text at eight bits a pixel.
+ *
+ * It doubles the widest line, so PICO9918_SCANLINE_BUFFER_SIZE is derived from this
+ * rather than from the consumer's own flags - a consumer that disagreed would allocate
+ * half the buffer the library writes.
+ */
+#define PICO9918_BUILD_TEXT80_8BPP @PICO9918_BUILD_TEXT80_8BPP@
+
+/*
+ * Whether the compiled library picks its chip personality at runtime.
+ *
+ * 1 adds two fields to the instance and two entry points to the API, so a consumer
+ * that disagreed with the binary would be calling into an ABI the library did not
+ * compile. 0 - what a board builds - fixes the PICO9918 feature gates at compile time.
+ */
+#define PICO9918_BUILD_RUNTIME_CHIP @PICO9918_BUILD_RUNTIME_CHIP@
+
+/*
+ * Whether the compiled library takes the instance as an implicit global.
+ *
+ * 1 removes the pico9918_t* parameter from nearly every public entry point. C symbols
+ * encode no argument types, so a consumer that disagrees with this compiles, links
+ * clean, and then calls with the wrong argument list - which is why pico9918.h derives
+ * PICO9918_SINGLE_INSTANCE from this rather than trusting the consumer's own flags.
+ */
+#define PICO9918_BUILD_SINGLE_INSTANCE @PICO9918_BUILD_SINGLE_INSTANCE@
+
+/*
+ * This library's own version, as the two bytes a settings block is stamped with.
+ *
+ * PICO9918_BUILD_SW_VERSION packs major and minor into a nibble each; the patch is a
+ * whole byte. Together they are what pico9918_config_validate() compares against the
+ * field table's introducedIn, which is why the number has to come from the build that
+ * carries the table rather than from whoever is calling: a caller one release behind
+ * leaves the fields added since at whatever the stored block held.
+ */
+#define PICO9918_BUILD_SW_VERSION @PICO9918_BUILD_SW_VERSION@
+#define PICO9918_BUILD_SW_PATCH   @PICO9918_BUILD_SW_PATCH@
+
+/*
+ * Whether the compiled library carries pico9918_debug.h's entry points.
+ *
+ * Purely additive - no instance field, no layout, no calling convention - so unlike
+ * the ABI and layout choices above, a disagreement here is a link error rather than
+ * silent corruption. It is recorded anyway so a host can ask at compile time whether
+ * the archive it found can back a memory pane, instead of discovering it at link time
+ * or shipping two builds.
+ */
+#define PICO9918_BUILD_DEBUG_API @PICO9918_BUILD_DEBUG_API@
+
+/*
+ * Whether the compiled library can suppress a layer at render time.
+ *
+ * The one debugger feature that is not purely additive: it puts a word on the instance,
+ * so a consumer that disagreed would size a placed buffer or a stored snapshot to a
+ * different struct than the archive writes. A board builds 0, where every suppression
+ * test folds to "draw it" and the field does not exist.
+ */
+#define PICO9918_BUILD_LAYER_MASK @PICO9918_BUILD_LAYER_MASK@
+
+/*
+ * Whether pico9918_debug_set_step_callback() exists.
+ *
+ * Instance fields again, and the same consequence for a consumer that disagrees. A host
+ * that vendors the sources rather than the CMake also reads this to find out whether the
+ * interpreter hook it depends on was compiled, which is otherwise a private define it
+ * cannot see.
+ */
+#define PICO9918_BUILD_STEP_CALLBACK @PICO9918_BUILD_STEP_CALLBACK@
+
+#endif // _PICO9918_BUILD_CONFIG_H
