@@ -2407,7 +2407,20 @@ That will give you a 1MB RAMdisk, which is file backed. You will have to load th
 
 24 Sep 2026
 
+Troy is too modest. He did this entire commit.
+
 - added pico9918-core as a selectable VDP engine (Video->Engine), and the chip it
   answers as (Video->VDP) - thanks to Troy Schrapel (visrealm)
 - the F18A/PICO9918 GPU inside that engine is debuggable - a V prefix on a breakpoint
   breaks on its PC, shift+F2 steps it, shift+F3 steps over a call
+
+-----------------------------------------------
+
+10 Oct 2026
+
+- Releasing with Troy's Pico9918 code - this is a big update that adds a new VDP Engine select under the VDP menu.
+  Troy's Pico9918 code is a software implementation of the F18A and is fully feature complete.
+- fix for TI disk controller not clearing the error byte at >8350 (broke pCode)
+- Update of ForthFB
+- Manual is not updated for the new VDP features, and some debug features may not be possible with pico (some are better!)
+
