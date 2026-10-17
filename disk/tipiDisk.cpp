@@ -3390,16 +3390,11 @@ bool TipiWebDisk::BufferFiadFile(FileInfo *pFile) {
 
 		if (pFile->Status & FLAG_VARIABLE) {
 			// read a variable record
-			int nLen=*(pOffset++);
-			if (pOffset >= pFile->initData+pFile->initDataSize) {
-				debug_write("Corrupt file - truncating read at record %d.", idx);
-				pFile->NumberRecords = idx;
-				break;
-			}
-
+			int nLen=*(pOffset++);      // NOTE! Length check AFTER the nLen end of sector check, don't read *pOffset till that is done.
 			nSector--;
 			if (nLen==0xff) {
 				// end of sector indicator, no record read, skip rest of sector
+				// We can update pOffset but not read it, we haven't checked against the buffer size yet
                 pOffset+=nSector;
 				nSector=256;
 				pFile->NumberRecords--;
@@ -3410,6 +3405,13 @@ bool TipiWebDisk::BufferFiadFile(FileInfo *pFile) {
 					break;
 				}
 			} else {
+                // make sure the record fits in received data
+                if (pOffset >= pFile->initData+pFile->initDataSize) {
+                    debug_write("Corrupt file - truncating read at record %d.", idx);
+                    pFile->NumberRecords = idx;
+                    break;
+                }
+
 				// check for buffer resize
 				if ((pFile->pData+pFile->nDataSize) - pData < (pFile->RecordLength+2)*10) {
 					int nOffset = pData - pFile->pData;		// in case the buffer moves

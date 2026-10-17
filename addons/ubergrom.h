@@ -41,6 +41,4 @@ extern unsigned char UberGROM[120*1024];
 extern unsigned char UberEEPROM[4*1024];
 Byte UberGromRead(Word GromAddress, int nBase);
 void UberGromWrite(Word GromAddress, int nBase, Byte x);
-
-
-
+bool ubergromIsRollover();

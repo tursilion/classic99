@@ -138,7 +138,7 @@ extern int nVideoLeft, nVideoTop;
 extern int bAppLockFullScreen;
 
 // VDP tables
-extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize;
+extern int SIT, CT, PDT, SAL, SDT, CTsize, PDTsize, SITsize;
 extern bool CPUSpeechHalt;
 extern Byte CPUSpeechHaltByte;
 extern int cpucount, cpuframes;					// CPU counters for timing
@@ -4942,7 +4942,7 @@ void DebugUpdateThread(void*) {
 				csOut+="\r\n";
 
 				// VDP tables
-				sprintf(buf1, " SIT  %04X\r\n", SIT);
+				sprintf(buf1, " SIT  %04X   Size %04X\r\n", SIT, SITsize);
 				csOut+=buf1;
 				sprintf(buf1, " SDT  %04X   SAL  %04X\r\n", SDT, SAL);
 				csOut+=buf1;

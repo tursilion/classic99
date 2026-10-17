@@ -255,8 +255,9 @@ int CT;										// Color Table
 int PDT;									// Pattern Descriptor Table
 int SAL;									// Sprite Allocation Table
 int SDT;									// Sprite Descriptor Table
-int CTsize;									// Color Table size in Bitmap Mode
-int PDTsize;								// Pattern Descriptor Table size in Bitmap Mode
+int SITsize;                                // Screen Image Table size
+int CTsize;									// Color Table size
+int PDTsize;								// Pattern Descriptor Table size
 
 Byte *VDP = NULL;  /*[128*1024]*/			// Video RAM (16k, except for now we are faking the rest of the VDP address space for F18A (todo: only 18k on real chip))
 Byte SprColBuf[256][192];					// Sprite Collision Buffer
@@ -412,6 +413,7 @@ void SetTVValues(double hue, double sat, double cont, double bright, double shar
 //////////////////////////////////////////////////////////
 int gettables(int isLayer2)
 {
+    int rows=0,cols=0;
 	int reg0 = VDPREG[0];
 	if (nSystem == 0) {
 		// disable bitmap for 99/4
@@ -437,6 +439,7 @@ int gettables(int isLayer2)
 		SIT=(VDPREG[2]&0x0F);
 		if ((SIT&0x03)==0x03) SIT&=0x0C;	// mask off a 0x03 pattern, 0x00,0x01,0x02 left alone
 		SIT<<=10;
+        cols=80;
 	} else {
 		SIT=((VDPREG[2]&0x0f)<<10);
 	}
@@ -452,12 +455,14 @@ int gettables(int isLayer2)
 		CT=(VDPREG[3]&0x80) ? 0x2000 : 0;
 		CTsize=((VDPREG[3]&0x7f)<<6)|0x3f;
 		PDT=(VDPREG[4]&0x04) ? 0x2000 : 0;
+        SITsize = 768;
 		PDTsize=((VDPREG[4]&0x03)<<11);
 		if (VDPREG[1]&0x10) {	// in Bitmap text, we fill bits with 1, as there is no color table
 			PDTsize|=0x7ff;
 		} else {
 			PDTsize|=(CTsize&0x7ff);	// In other bitmap modes we get bits from the color table mask
 		}
+        cols=32;
 	} else {
 		// this is for non-bitmap modes
 		/* Colour Table */
@@ -467,13 +472,16 @@ int gettables(int isLayer2)
         if (VDPREG[1]&0x10) {
             // text mode
             CTsize = 0;
+            SITsize = 40*24;
+            if (cols != 80) cols=40;
         } else {
     		CTsize=32;
+            cols = 32;
         }
 		PDTsize=2048;
 
         if (isLayer2) {
-            // get the F18A layer information
+            // get the F18A layer information - this probbaly breaks the debug screen a bit
             // TODO: bigger tables are possible with F18A
 		    /* Colour Table */
 		    CT=VDPREG[11]<<6;
@@ -491,6 +499,10 @@ int gettables(int isLayer2)
 		    //PDTsize=2048;
         }
 	}
+
+    // classic99 only supports 24 rows for now
+    rows=24;
+
 
     // in all of these cases, the addresses are restricted to the actual 16k memory space (even with F18A active)
     SIT &= 0x3fff;

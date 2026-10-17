@@ -142,6 +142,7 @@ void p9918SyncShadow() {
 	if (!engaged) return;
 
 	memcpy(VDPREG, VDP+PICO9918_MAP_REGISTERS, sizeof(VDPREG));
+    gettables(false);
 	VDPS = pico9918_peek_status(tms9918);
 
 	// R57's stored byte cannot answer this: the device unlocks on the value

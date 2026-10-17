@@ -46,7 +46,7 @@
 #include "tivdp_pico9918.h"		// for VDPINT below
 
 // Defines
-#define VERSION "QI399.093"
+#define VERSION "QI399.094"
 #define DEBUGLEN 120
 #define DEBUGLINES 40
 
@@ -278,7 +278,7 @@ struct GROMType {
 	Byte grmaccess,grmdata;							// GROM Prefetch emulation
     int LastRead, LastBase;                         // Reports last access (stored on base 0 only)
 };
-
+extern bool GROMAddressInvalid;
 extern struct GROMType GROMBase[17];				// support 16 GROM bases (there is room for 256 of them!), plus 1 for PCODE
 #define PCODEGROMBASE 16							// which base we'll use for PCODE (highest + 1)
 

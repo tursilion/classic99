@@ -35,8 +35,7 @@
 //
 // http://harmlesslion.com - visit the web page for contact info
 //
-// Simulation of the UberGROM. Everything is just done as 
-// blocks of memory, no attempt to handle hardware is done
+// Simulation of the UberGROM. Not 100%
 //
 
 #include <stdio.h>
@@ -53,11 +52,11 @@
 #include "..\console\tiemul.h"
 #include "ubergrom.h"
 
-// TODO: does not support the recovery program right now
 // TODO: does not support the GROM wrap bit either, because it uses the
-// main system GROM address.
+// main system GROM address. <<< need to implement this for pCode
 
 bool bUberGROMActive = false;			// enables the various hacks needed to emulate this
+bool GROMAddressInvalid = false;        // in the ubergrom case, the addresses can get mismatched and shouldn't be read
 extern volatile unsigned long total_cycles;
 unsigned char Override = 0xff;			// override/recovery program
 int eeLocked = 0;
@@ -445,4 +444,11 @@ void UberGromWrite(Word GromAddress, int nBase, Byte x) {
 	default:
 		return;
 	}
+}
+
+// Return true if uberGrom is active and has rollover enabled
+bool ubergromIsRollover() {
+    return ((bUberGROMActive) &&                        // turned on
+        ((UberEEPROM[0]&4)!=0) &&                       // rollover enabled
+        (UberEEPROM[0] == ((~UberEEPROM[1])&0xff)));    // config byte valid
 }

@@ -5863,8 +5863,18 @@ void wsndbyte(Byte c)
 // Increment the GROM address - handle wraparound
 //////////////////////////////////////////////////////////////////
 void IncrementGROMAddress(Word &adrRef) {
-    int base = adrRef&0xe000;
-    adrRef = ((++adrRef)&0x1fff) | base;
+    if ((ubergromIsRollover())&&(adrRef>=0x6000)) {
+        // ubergrom mode with rollover
+        ++adrRef;
+        if ((adrRef&0x1fff) == 0) {
+            // we rolled over - flag the address as invalid
+            GROMAddressInvalid = true;
+        }
+    } else {
+        // real GROM mode
+        int base = adrRef&0xe000;
+        adrRef = ((++adrRef)&0x1fff) | base;
+    }
 }
 
 //////////////////////////////////////////////////////////////////
@@ -5911,7 +5921,12 @@ Byte ReadValidGrom(int nBase, Word x, bool sideEffects) {
 
 	// the -1 accounts for the prefetch to get the data we're going to read
     // account for GROM wraparound
-	int nPrevAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+	int nPrevAddress;
+    if ((ubergromIsRollover())&&(GROMBase[0].GRMADD>0x6000)) {
+        nPrevAddress = GROMBase[0].GRMADD-1;
+    } else {
+        nPrevAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+    }
 	if (((Word)(nPrevAddress) < 0x6000) && (!((bankedConsoleGROMs) && (grombanking)))) {
 		// console GROMs always respond, unless the optional banked console GROMs is on AND we have loaded GROM banks
 		nBase=0;
@@ -5936,6 +5951,10 @@ Byte ReadValidGrom(int nBase, Word x, bool sideEffects) {
 
         // GROM read address always adds about 13 cycles
 		pCurrentCPU->AddCycleCount(13);
+
+        if ((GROMAddressInvalid) && (ubergromIsRollover())) {
+            debug_write("Reading bad GROM address due to UberGROM rollover from PC >%04X", pCurrentCPU->GetPC());
+        }
 
 		return(z);
 	}
@@ -6052,6 +6071,7 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
             // TODO: This is not correct emulation for the gigacart, which ACTUALLY maintains
             // an 8-bit address latch and a 1 bit select (for GROM >8000)
             // But it's enough to let me test some theories...
+            GROMAddressInvalid = false;
             IncrementGROMAddress(GROMBase[0].GRMADD);
 		} else {
             // first GROM address write adds about 15 cycles (verified)
@@ -6086,7 +6106,12 @@ void WriteValidGrom(int nBase, Word x, Byte c) {
 		// minus one. Well, they were hacks in hardware, I'll just do a hack here.
         // note because we do real GROM wraparound now, that we need to assume the wraparound
         // is in the same GROM, not the entire space.
-		int nRealAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+		int nRealAddress;
+        if ((ubergromIsRollover())&&(GROMBase[0].GRMADD>0x6000)) {
+            nRealAddress = GROMBase[0].GRMADD-1;
+        } else {
+            nRealAddress = (((GROMBase[0].GRMADD&0x1fff)-1)&0x1fff) | (GROMBase[0].GRMADD&0xe000);
+        }
 
         // MPD overrides the GRAM switch below
 		if (bMpdActive) {
