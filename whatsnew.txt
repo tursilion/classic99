@@ -2429,3 +2429,5 @@ Troy is too modest. He did this entire commit.
 17 Oct 2026
 - implemented rollover bit in UberGROM emulation
 - partial fix for table sizes in debug window with Pico VDP engine (does not reflect >24 rows, but no longer zero)
+(a)
+- added keyboard slowdown for pCode overdrive

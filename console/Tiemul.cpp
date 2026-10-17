@@ -4271,18 +4271,33 @@ void do1()
 			// has been incremented to the next instruction (IE: we just incremented the
 			// repeat counter). If so, we only allow the increment at a much slower rate
 			// based on the interrupt timer (for real time slowdown).
-			// This doesn't work in XB! TODO IF THIS DOESN'T WORK ANYWHERE WE SHOULD REMOVE IT. NEED A PCODE FIX TOO.
-			if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x2a62)) {
-				if ((ticks%10) != 0) {
-					WriteMemoryByte(0x830D, ReadMemoryByte(0x830D, ACCESS_FREE) - 1, false);
-				}
-			} // todo: ELSE??
-			// but this one does (note it will trigger for ANY bank-switched cartridge that uses this code at this address...)
-			if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard) && (in == 0xdcc2) && ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) && (GROMBase[0].GRMADD == 0x6AB6) && (xb)) {
-				if ((ticks%10) != 0) {
-					WriteMemoryByte(0x8300, ReadMemoryByte(0x8300, ACCESS_FREE) - 1, false);
-				}
-			}
+            if ((ThrottleMode > THROTTLE_NORMAL) && (slowdown_keyboard)) {
+                if ((keyboard==KEY_994A)||(keyboard==KEY_994A_PS2)) {
+                    // TI BASIC
+			        if ((in == 0xdcc2) && (GROMBase[0].GRMADD == 0x2a62)) {
+				        if ((ticks%10) != 0) {
+					        WriteMemoryByte(0x830D, ReadMemoryByte(0x830D, ACCESS_FREE) - 1, false);
+				        }
+			        } else 
+                    // EXtended BASIC/RXB
+			        if ((in == 0xdcc2) && (GROMBase[0].GRMADD == 0x6AB6) && (xb)) {
+				        if ((ticks%10) != 0) {
+					        WriteMemoryByte(0x8300, ReadMemoryByte(0x8300, ACCESS_FREE) - 1, false);
+				        }
+			        } else
+                    // pCode original
+                    if ((in == 0x1006) && (pCPU->GetPC() == 0x41e4) && (nCurrentDSR == 0xf)) {
+                        // no delay, just set a longer period
+                        WriteMemoryByte(0x2cd0, 0x10, false);
+                    } else
+                    // pCode cartridge
+                    if ((in == 0x1006) && (pCPU->GetPC() == 0x61e4) && (xb) && (xbBank == 1)) {
+                        // no delay, just set a longer period
+                        WriteMemoryByte(0x2cd0, 0x10, false);
+                    }
+                }
+                // no 99/4 keyboard yet
+            }
 		}
 
 		if (pCurrentCPU == pCPU) {

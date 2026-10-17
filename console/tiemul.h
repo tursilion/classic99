@@ -46,7 +46,7 @@
 #include "tivdp_pico9918.h"		// for VDPINT below
 
 // Defines
-#define VERSION "QI399.094"
+#define VERSION "QI399.094a"
 #define DEBUGLEN 120
 #define DEBUGLINES 40
 
