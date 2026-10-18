@@ -3000,14 +3000,19 @@ void LoadOneImg(struct IMG *pImg, char *szFork) {
 
 			case TYPE_UBER_GROM:
 				// my hacky little Uber GROM simulation
-				if (pImg->nLoadAddr+nLen > 120*1024) {
+                // Note: there is only 120k of GROM simulation, BUT the file is usually 128k
+                // because it includes the AVR code. Now that we can write the file back out,
+                // allow to load all 128k so we can save it back. We should not permit access
+                // past 120k though.
+				if (pImg->nLoadAddr+nLen > 128*1024) {
 					debug_write("%s overwrites memory block - truncating.", pImg->szFileName);
-					nLen=120*1024-pImg->nLoadAddr;
+					nLen=128*1024-pImg->nLoadAddr;
 				}
 				memcpy(&UberGROM[pImg->nLoadAddr], pData, nLen);
 				bUberGROMActive=true;
+                bUberGROMChanged = false;
 				grombanking=1;
-				debug_write("Loaded %d bytes", nLen);
+				debug_write("Loaded %d bytes%s", nLen, nLen>120*1024?" - keeping AVR 8k memory space":"");
 				debug_write("WARNING: Uber-GROM ACTIVE");
 				break;
 
@@ -3520,10 +3525,10 @@ void readroms() {
     }
 }
 
-extern unsigned char UberEEPROM[4*1024];
 void saveroms()
 {
 	// if there is a cart plugged in, see if there is any NVRAM to save
+    // we'll also save the uberGROM if it changed, as an XOR overlay
 	if (nCart != -1) {
 		struct CARTS *pBank=NULL;
 
@@ -3545,30 +3550,45 @@ void saveroms()
 			break;
 		}
 
-		if ((pBank)&&(nvRamUpdated)) {
+		if ((pBank)&&((nvRamUpdated)||(bUberGROMChanged))) {
 			for (int idx=0; idx<MAXROMSPERCART; idx++) {
 				if (pBank[nCart].Img[idx].nType == TYPE_NVRAM) {
-					// presumably all the data is correct, length and so on
-					FILE *fp = fopen(pBank[nCart].Img[idx].szFileName, "wb");
-					if (NULL == fp) {
-						debug_write("Failed to write NVRAM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
-					} else {
-						unsigned char buf[8192];
-						debug_write("Saving NVRAM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
-						ReadMemoryBlock(pBank[nCart].Img[idx].nLoadAddr, buf, min(sizeof(buf), pBank[nCart].Img[idx].nLength));
-						fwrite(buf, 1, pBank[nCart].Img[idx].nLength, fp);
-						fclose(fp);
-					}
+                    if (nvRamUpdated) {
+					    // presumably all the data is correct, length and so on
+					    FILE *fp = fopen(pBank[nCart].Img[idx].szFileName, "wb");
+					    if (NULL == fp) {
+						    debug_write("Failed to write NVRAM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
+					    } else {
+						    unsigned char buf[8192];
+						    debug_write("Saving NVRAM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
+						    ReadMemoryBlock(pBank[nCart].Img[idx].nLoadAddr, buf, min(sizeof(buf), pBank[nCart].Img[idx].nLength));
+						    fwrite(buf, 1, pBank[nCart].Img[idx].nLength, fp);
+						    fclose(fp);
+					    }
+                    }
 				} else if (pBank[nCart].Img[idx].nType == TYPE_UBER_EEPROM) {
-					// presumably all the data is correct, length and so on
-					FILE *fp = fopen(pBank[nCart].Img[idx].szFileName, "wb");
-					if (NULL == fp) {
-						debug_write("Failed to write UBER_EEPROM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
-					} else {
-						debug_write("Saving UBER EEPROM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
-						fwrite(UberEEPROM, 1, min(sizeof(UberEEPROM), pBank[nCart].Img[idx].nLength), fp);
-						fclose(fp);
-					}
+                    if (nvRamUpdated) {
+					    // presumably all the data is correct, length and so on
+					    FILE *fp = fopen(pBank[nCart].Img[idx].szFileName, "wb");
+					    if (NULL == fp) {
+						    debug_write("Failed to write UBER_EEPROM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
+					    } else {
+						    debug_write("Saving UBER EEPROM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
+						    fwrite(UberEEPROM, 1, min(sizeof(UberEEPROM), pBank[nCart].Img[idx].nLength), fp);
+						    fclose(fp);
+					    }
+                    }
+                } else if (pBank[nCart].Img[idx].nType == TYPE_UBER_GROM) {
+                    if (bUberGROMChanged) {
+					    FILE *fp = fopen(pBank[nCart].Img[idx].szFileName, "wb");
+					    if (NULL == fp) {
+						    debug_write("Failed to write UBER_GROM file '%s', code %d", pBank[nCart].Img[idx].szFileName, errno);
+					    } else {
+						    debug_write("Saving UBER GROM file '%s', addr >%04X, len >%04X", pBank[nCart].Img[idx].szFileName, pBank[nCart].Img[idx].nLoadAddr, pBank[nCart].Img[idx].nLength);
+						    fwrite(UberGROM, 1, min(sizeof(UberGROM), pBank[nCart].Img[idx].nLength), fp);
+						    fclose(fp);
+					    }
+                    }
                 }
 			}
 		}
@@ -5960,16 +5980,30 @@ Byte ReadValidGrom(int nBase, Word x, bool sideEffects) {
 		// address
 		GROMBase[0].grmaccess=2;
 		z=(GROMBase[0].GRMADD&0xff00)>>8;
-		// read is destructive
+
+        if ((GROMAddressInvalid) && (ubergromIsRollover())) {
+            debug_write("WARN: Reading bad GROM address due to UberGROM rollover from PC >%04X", pCurrentCPU->GetPC());
+            // the real GROMs would probably return 0x2000 less (assuming we don't roll over twice), so as
+            // a hacky test, do that. Only problem is... is this the first or second byte?
+            // in a normal access, the two bytes of address won't be identical yet... this is a hacky case
+            // so catching "most of the time" should be adequate. V4 will need separate address counters.
+            if (((GROMBase[0].GRMADD&0xff00)>>8) != (GROMBase[0].GRMADD&0xff)) {
+                // this is "probably" the first byte. There are so many ways to break this test
+                // but we are just trying to ensure software caught in this trap can deal with a
+                // bad address. We probably rolled over ie: from 0x7FFF to 0x8000 while the real
+                // GROMs will have rolled back to 0x6000, so just subtract 0x20 from that first byte.
+                // ie: first read address will be 0x8123. 0x81 != 0x23, so return 0x61
+                //     second read address will be 0x2323. 0x23 == 0x23, so return 0x23 unmodified.
+                z-=0x20;
+            }
+        }
+        
+        // read is destructive
 		GROMBase[0].GRMADD=(((GROMBase[0].GRMADD&0xff)<<8)|(GROMBase[0].GRMADD&0xff));		
 		// TODO: Is the address incremented anyway? ie: if you keep reading, what do you get?
 
         // GROM read address always adds about 13 cycles
 		pCurrentCPU->AddCycleCount(13);
-
-        if ((GROMAddressInvalid) && (ubergromIsRollover())) {
-            debug_write("Reading bad GROM address due to UberGROM rollover from PC >%04X", pCurrentCPU->GetPC());
-        }
 
 		return(z);
 	}

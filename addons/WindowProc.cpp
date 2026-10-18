@@ -115,7 +115,7 @@ extern struct history Disasm[DEBUGLINES];	    // last x addresses for disasm - p
 extern bool bScrambleMemory;
 extern RECT gWindowRect;
 extern bool bCorruptDSKRAM;
-extern unsigned char UberGROM[120*1024];
+extern unsigned char UberGROM[128*1024];
 extern unsigned char UberRAM[15*1024];
 extern unsigned char UberEEPROM[4*1024];
 extern bool bWindowInitComplete;

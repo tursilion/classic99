@@ -57,12 +57,13 @@
 
 bool bUberGROMActive = false;			// enables the various hacks needed to emulate this
 bool GROMAddressInvalid = false;        // in the ubergrom case, the addresses can get mismatched and shouldn't be read
+bool bUberGROMChanged = false;          // tracks if the flash device was used to change the image
 extern volatile unsigned long total_cycles;
 unsigned char Override = 0xff;			// override/recovery program
 int eeLocked = 0;
 
 // the various memories we need to care about
-unsigned char UberGROM[120*1024];
+unsigned char UberGROM[128*1024];
 unsigned char UberRAM[15*1024];
 unsigned char UberEEPROM[4*1024];
 unsigned char UberGPIO[1];
@@ -418,6 +419,7 @@ void UberGromWrite(Word GromAddress, int nBase, Byte x) {
 						UberFlash[0x0103]=3;
 					} else {
 						memset(&UberGROM[nOffset], 0xff, 256);
+                        bUberGROMChanged = true;
 					}
 				} else if (x == 0x2d) {
 					// write
@@ -428,6 +430,7 @@ void UberGromWrite(Word GromAddress, int nBase, Byte x) {
 						UberFlash[0x0103]=3;
 					} else {
 						memcpy(&UberGROM[nOffset], &UberFlash[0], 256);
+                        bUberGROMChanged = true;
 					}
 				} else {
 					debug_write("Warning: unknown flash command (%02X/%02X)", UberFlash[0x0101], UberFlash[0x0102]);

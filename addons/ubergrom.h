@@ -37,7 +37,8 @@
 //
 
 extern bool bUberGROMActive;
-extern unsigned char UberGROM[120*1024];
+extern bool bUberGROMChanged;
+extern unsigned char UberGROM[128*1024];
 extern unsigned char UberEEPROM[4*1024];
 Byte UberGromRead(Word GromAddress, int nBase);
 void UberGromWrite(Word GromAddress, int nBase, Byte x);
