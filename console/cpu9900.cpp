@@ -1777,6 +1777,10 @@ void CPU9900::op_ldcr()
 
     AddCycleCount(2*D);
 
+    // TODO DEBUG FOR D4
+    //debug_write("LDCR to %d, val 0x%X, cnt %d", cruBase, x1, D);
+
+
     // TODO: the data manual says this return is not true - test
     // whether a word load affects the other status bits
     //  if (D>8) return;
@@ -1860,7 +1864,7 @@ void CPU9900::op_stcr()
     FormatIV;
     x1=0; x3=1;
   
-    cruBase=(ROMWORD(WP+24)>>1)&0xfff;  // read R12
+    cruBase=(ROMWORD(WP+24)>>1)&0xfff;  // read R12 - cruBase is CRU space (not R12 doubled)
     for (x2=0; x2<D; x2++)
     { 
         x4=rcru(cruBase+x2);
@@ -1870,6 +1874,10 @@ void CPU9900::op_stcr()
         }
         x3<<=1;
     }
+
+    // TODO DEBUG FOR D4
+    //debug_write("STCR to 0x%X, from %d, cnt %d got 0x%02X", S, cruBase, D, x1);
+
 
     if (D<9) 
     {

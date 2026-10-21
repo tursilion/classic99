@@ -288,6 +288,22 @@ unsigned char DummyROM[6]={
 
 int KEYS[2][8][8]= {  
 {
+#ifdef DIMENSION_4
+// keyboard - Dimension 4 - the column select is by address!
+// we haven't mapped the joysticks yet
+
+/* 0x12 */		VK_RETURN, 'L', 'P', '0', VK_SHIFT, VK_SPACE, 'Q', '1',
+/* 0x32 */		VK_OEM_COMMA, 'K', 'O', '9', 'Z', 'A', 'W', '2', 
+/* 0x52 */		'M', 'J', 'I', '8', 'X', 'S', 'E', '3', 
+/* 0x72 */		'N', 'H', 'U', '7', 'C', 'D', 'R', '4', 
+/* 0x92 */		'B', 'G', 'Y', '6', 'V', 'F', 'T', '5', 
+
+/* Unknown */	VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE,
+/* Unknown */	VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE,
+/* Unknown */	VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE,
+
+#else
+
 // Keyboard - 99/4 - no PS/2 emulation :)
 /* unused */	VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE, VK_ESCAPE,
 
@@ -300,6 +316,7 @@ int KEYS[2][8][8]= {
 /* 5 */			'M', 'J', 'I', '8', 'X', 'S', 'E', '3',
 /* 6 */			'B', 'G', 'Y', '6', 'V', 'F', 'T', '5',
 /* 7 */			VK_RETURN, 'L', 'P', '0', VK_SHIFT, VK_SPACE, 'Q', '1'
+#endif
 },
 {
 // Keyboard - 99/4A
@@ -7114,9 +7131,41 @@ int rcru(Word ad)
         return CRU[ad];
     }
 
-	// The CRU bits >0000 through >001f are repeated through the whole 1k range from 0000-0400!
+    // The CRU bits >0000 through >001f are repeated through the whole 1k range from 0000-0400!
+    Word upperad = (ad&0x3e0);                          // the other bits on the address bus
 	ad=(ad&0x001f);										// get actual CRU line
 	ret=1;												// default return code (false)
+
+#ifdef DIMENSION_4
+    if ((keyboard == KEY_994) && (ad >= 18) && (ad <= 25)) {
+        // TODO HACK D4 - column is selected by address - input address is /2 - shifting it up just cause
+        // that's what I wrote for docs:
+        // Columns (REVERSE ORDER - SEE SCHEMATIC)
+        // 9/10 5 T F V / 6 Y G B			A5
+        // 7/12 4 R D C / 7 U H N			A6
+        // 5/14 3 E S X / 8 I J M			A7
+        // 3/16 2 W A Z / 9 O K L			A8
+        // 1/18 1 2 SPACE SHIFT / O P L Enter	A9
+        // 
+        // CRU bits are masked 0x1f, so in the from addressing:
+        // rrrc cccc - r=row, c=cru
+        // 
+        // Column addressing:
+        // STCR to 0x83EA, from 18, cnt 8		0x12    0001 0010 - row 0, cru 18
+        // STCR to 0x83EA, from 50, cnt 8		0x32    0011 0010 - row 1, cru 18
+        // STCR to 0x83EA, from 82, cnt 8		0x52    0101 0010 - row 2, cru 18
+        // STCR to 0x83EA, from 114, cnt 8		0x72    0111 0010 - row 3, cru 18
+        // STCR to 0x83EA, from 146, cnt 8		0x92    1001 0010 - row 4, cru 18
+        // 
+        // So the column is likely the top three bits
+        col = (upperad>>5)&0x07;
+        ad &= 0x1f;
+		if (key[KEYS[keyboard][col][(ad-0x12)]])	{			// normal key
+			return 0;
+		}
+        return 1;
+    }
+#endif
 
 	// are we checking VDP interrupt?
     // it should reflect on bit 15 in clock mode, too, IF !INT2 is enabled in the mask (done above)
