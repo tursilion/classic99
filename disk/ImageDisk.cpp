@@ -2010,6 +2010,9 @@ bool ImageDisk::CreateOutputFile(FileInfo *pFile) {
         // flush will remove any existing file if needed
 	}
 
+    // flush also opens the OS file itself
+    fclose(fp);
+
 	// check if the user requested a default record length, and fill it in if so
 	if (pFile->RecordLength == 0) {
 		pFile->RecordLength = 80;
@@ -2034,11 +2037,9 @@ bool ImageDisk::CreateOutputFile(FileInfo *pFile) {
 	// Since we opened it on the disk, we should flush it just to ensure there is valid data in it
 	if (!Flush(pFile)) {
 		pFile->LastError = ERR_FILEERROR;
-        fclose(fp);
 		return false;
 	}
 
-    fclose(fp);
 	return true;
 }
 
@@ -2237,7 +2238,7 @@ bool ImageDisk::Flush(FileInfo *pFile) {
 
 	if (ret) {
 		pFile->LastError = ERR_NOERROR;
-		debug_write("Flushed %s (%d records) to ImageDisk", (LPCSTR)csFileName, pFile->NumberRecords);
+		debug_write("Flushed %s (%d records) to ImageDisk %s", (LPCSTR)csFileName, pFile->NumberRecords, pFile->csName);
 		pFile->bDirty = false;
 	}
 
@@ -2359,6 +2360,7 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
                 // new cluster
                 clusterOff+=3;
                 startnum = sectorList[ofs];
+                num = startnum;
 
                 if (clusterOff >= 0xfd) {
 		            debug_write("Cluster list full - defragment disk image!");
@@ -2388,7 +2390,7 @@ bool ImageDisk::WriteOutFile(FileInfo *pFile, FILE *fp, unsigned char *pBuffer, 
 
 	// I think we're good then!
 	pFile->LastError = ERR_NOERROR;
-	debug_write("File written successfully.");
+	debug_write("File %s written successfully.", pFile->csName);
 	return true;
 }
 
