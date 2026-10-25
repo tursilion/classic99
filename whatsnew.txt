@@ -2434,3 +2434,9 @@ Troy is too modest. He did this entire commit.
 (.095)
 - made uberGROM flash non-volatile
 - made uberGROM flash retain the 8k of uberGROM AVR code (make sure to set sizes to 128k)
+
+-----------------------------------------------
+
+24 Oct 2026
+- fix for writing record based files to disk images - would cause duplication of filenames and possible corruption
+

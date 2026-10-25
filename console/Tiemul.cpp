@@ -496,7 +496,7 @@ struct IMG AlwaysLoad[] = {
     {	IDR_AMI99DSK,	0x1100, 0x0200,	TYPE_DSR	, 0, 0},
     {	IDR_TIDISK,		0x1100, 0x2000,	TYPE_DSR2	, 0, 0},	// not paged on the real hardware, but this is how we fake it with all our features :)
     {   IDR_TIPISIM,    0x1200, 0x0110, TYPE_DSR    , 0, 0},
-//	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0, 0},
+	{	IDR_RS232,		0x1300, 0x0900, TYPE_DSR	, 0, 0},
     {	IDR_SPCHROM,	0x0000,	0x8000,	TYPE_SPEECH	, 0, 0},
     {	IDR_PGROM,		0x0000, 0xF800, TYPE_PCODEG , 0, 0},
 };

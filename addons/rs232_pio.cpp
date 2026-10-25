@@ -140,12 +140,11 @@ int ReadRS232CRU(int ad) {
 		case CRUR_RXING_BYTE     :
 		case CRUR_RIN            :
 		case CRUR_RX_INT         :
-		case CRUR_EMISSION_INT   :
 		case CRUR_TIMER_INT      :
+		case CRUR_EMISSION_INT   :
 		case CRUR_CTSRTS_INT     :
 		case CRUR_RX_FULL        :
 		case CRUR_EMISSION_EMPTY :
-		case CRUR_OUTPUT_EMPTY   :
 		case CRUR_TIMER_ERROR    :
 		case CRUR_TIMER_ELAPSED  :
 		case CRUR_RTS            :
@@ -156,6 +155,10 @@ int ReadRS232CRU(int ad) {
 		case CRUR_INT_OCCURRED   :
 		default:
 			return 0;
+
+        // returning 1 here lets Telco start, it's not emulation yet
+		case CRUR_OUTPUT_EMPTY   :
+            return 1;
 	}
 }
 
